@@ -1,0 +1,23 @@
+# build output
+dist/
+extension/
+.astro/
+
+# dependencies
+node_modules/
+
+# capacitor native platforms (generated)
+/android
+/ios
+
+# logs / env
+*.log
+.env
+.env.*
+!.env.example
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

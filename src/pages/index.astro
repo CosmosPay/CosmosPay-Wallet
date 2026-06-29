@@ -1,0 +1,328 @@
+---
+import WalletApp from '../components/WalletApp.tsx';
+---
+
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#080808" />
+    <meta name="color-scheme" content="dark" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+    <meta
+      name="description"
+      content="Cosmos — non-custodial Stellar wallet. Your keys, your crypto."
+    />
+    <title>Cosmos · Stellar Wallet</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style is:global>
+      * {
+        box-sizing: border-box;
+      }
+      /* ---------------- theme tokens ---------------- */
+      :root,
+      [data-theme='dark'] {
+        --bg: #080808;
+        --text: #ffffff;
+        --text-soft: #cfd4d1;
+        --muted: #9aa19d;
+        --dim: #6a716d;
+        --dimmer: #5c6460;
+        --accent: #ffffff;
+        --on-accent: #0a0c0b;
+        --glass-bg: rgba(255, 255, 255, 0.06);
+        --glass-border: rgba(255, 255, 255, 0.12);
+        --glass-soft-bg: rgba(255, 255, 255, 0.07);
+        --glass-soft-border: rgba(255, 255, 255, 0.09);
+        --primary-bg: rgba(255, 255, 255, 0.92);
+        --primary-border: rgba(255, 255, 255, 0.65);
+        --primary-text: #0a0c0b;
+        --surface: rgba(255, 255, 255, 0.05);
+        --surface-2: rgba(255, 255, 255, 0.045);
+        --hairline: rgba(255, 255, 255, 0.08);
+        --nav-bg: rgba(10, 10, 10, 0.55);
+        --blob: rgba(255, 255, 255, 0.12);
+        --glow: rgba(255, 255, 255, 0.16);
+        --avatar-bg: rgba(255, 255, 255, 0.09);
+        --avatar-brand: rgba(255, 255, 255, 0.16);
+        --avatar-text: #ffffff;
+        --up: #ffffff;
+        --down: #7c8480;
+        --gb-bg-a: rgba(255, 255, 255, 0.05);
+        --gb-bg-b: rgba(255, 255, 255, 0.085);
+        --gb-bd-a: rgba(255, 255, 255, 0.08);
+        --gb-bd-b: rgba(255, 255, 255, 0.2);
+      }
+      [data-theme='light'] {
+        --bg: #eceef1;
+        --text: #0e1311;
+        --text-soft: #2b322f;
+        --muted: #5d6762;
+        --dim: #8b938e;
+        --dimmer: #aab2ad;
+        --accent: #0e1311;
+        --on-accent: #ffffff;
+        --glass-bg: rgba(255, 255, 255, 0.58);
+        --glass-border: rgba(255, 255, 255, 0.85);
+        --glass-soft-bg: rgba(255, 255, 255, 0.62);
+        --glass-soft-border: rgba(0, 0, 0, 0.05);
+        --primary-bg: #14191b;
+        --primary-border: rgba(0, 0, 0, 0.2);
+        --primary-text: #ffffff;
+        --surface: rgba(255, 255, 255, 0.5);
+        --surface-2: rgba(255, 255, 255, 0.4);
+        --hairline: rgba(0, 0, 0, 0.08);
+        --nav-bg: rgba(236, 238, 241, 0.62);
+        --blob: rgba(120, 150, 185, 0.3);
+        --glow: rgba(120, 150, 190, 0.22);
+        --avatar-bg: rgba(0, 0, 0, 0.06);
+        --avatar-brand: rgba(0, 0, 0, 0.1);
+        --avatar-text: #0e1311;
+        --up: #0e1311;
+        --down: #8b938e;
+        --gb-bg-a: rgba(255, 255, 255, 0.42);
+        --gb-bg-b: rgba(255, 255, 255, 0.62);
+        --gb-bd-a: rgba(255, 255, 255, 0.5);
+        --gb-bd-b: rgba(255, 255, 255, 0.95);
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Poppins, system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        transition: background-color 0.25s ease, color 0.25s ease;
+        /* lock the mobile viewport */
+        overscroll-behavior: none;
+      }
+      /* all buttons are fully rounded (pill) */
+      button {
+        border-radius: 999px !important;
+      }
+      /* brand logo: white asset; invert to black in light mode */
+      [data-theme='light'] .brand-logo {
+        filter: invert(1);
+      }
+      /* hide scrollbars to keep the native-app feel */
+      ::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+        display: none;
+      }
+      .scr {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+      }
+      button {
+        font-family: inherit;
+      }
+      input,
+      textarea {
+        font-family: inherit;
+      }
+      @keyframes pop {
+        0% {
+          transform: scale(0.5);
+          opacity: 0;
+        }
+        60% {
+          transform: scale(1.1);
+        }
+        100% {
+          transform: scale(1);
+          opacity: 1;
+        }
+      }
+      @keyframes fadeUp {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes blink {
+        from {
+          opacity: 1;
+        }
+        to {
+          opacity: 0;
+        }
+      }
+      @keyframes ring {
+        from {
+          transform: scale(0.7);
+          opacity: 0.5;
+        }
+        to {
+          transform: scale(1.5);
+          opacity: 0;
+        }
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ---- ambient fluidity: drifting background blobs ---- */
+      @keyframes floatA {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
+        }
+        50% {
+          transform: translate(34px, 44px) scale(1.14);
+        }
+      }
+      @keyframes floatB {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
+        }
+        50% {
+          transform: translate(-46px, -26px) scale(1.16);
+        }
+      }
+      @keyframes floatC {
+        0%,
+        100% {
+          transform: translate(0, 0) scale(1);
+        }
+        50% {
+          transform: translate(28px, -34px) scale(1.1);
+        }
+      }
+      /* breathing top glow */
+      @keyframes glowBreath {
+        0%,
+        100% {
+          opacity: 0.55;
+          transform: scale(1);
+        }
+        50% {
+          opacity: 1;
+          transform: scale(1.08);
+        }
+      }
+      /* breathing glass: the frosted edge + frost density gently pulse */
+      @keyframes glassBreath {
+        0%,
+        100% {
+          border-color: var(--gb-bd-a);
+          background-color: var(--gb-bg-a);
+        }
+        50% {
+          border-color: var(--gb-bd-b);
+          background-color: var(--gb-bg-b);
+        }
+      }
+      .cosmos-glow {
+        animation: glowBreath 9s ease-in-out infinite;
+        will-change: opacity, transform;
+      }
+      .cosmos-blob-a {
+        animation: floatA 22s ease-in-out infinite;
+        will-change: transform;
+      }
+      .cosmos-blob-b {
+        animation: floatB 28s ease-in-out infinite;
+        will-change: transform;
+      }
+      .cosmos-blob-c {
+        animation: floatC 25s ease-in-out infinite;
+        will-change: transform;
+      }
+      /* intro splash logo */
+      @keyframes splashIn {
+        0% {
+          opacity: 0;
+          transform: scale(0.55);
+        }
+        60% {
+          opacity: 1;
+          transform: scale(1.08);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+      .splash-logo {
+        animation: splashIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+      }
+      /* entrance pop for buttons + input elements (overrides inline animations) */
+      @keyframes popIn {
+        0% {
+          opacity: 0;
+          transform: scale(0.9);
+        }
+        70% {
+          transform: scale(1.02);
+        }
+        100% {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      button,
+      input,
+      textarea,
+      select {
+        animation: popIn 0.36s cubic-bezier(0.2, 0.9, 0.25, 1) !important;
+      }
+      /* hover + tactile press feedback on buttons and tappable elements */
+      button,
+      .tap {
+        transition: transform 0.13s ease, filter 0.16s ease, box-shadow 0.2s ease;
+      }
+      .tap {
+        cursor: pointer;
+      }
+      button:hover,
+      .tap:hover {
+        filter: brightness(1.07);
+      }
+      button:active,
+      .tap:active {
+        transform: scale(0.96);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        button,
+        input,
+        textarea,
+        select {
+          animation: none !important;
+        }
+      }
+
+      /* respect users who prefer less motion */
+      @media (prefers-reduced-motion: reduce) {
+        .cosmos-glow,
+        .cosmos-blob-a,
+        .cosmos-blob-b,
+        .cosmos-blob-c,
+        .splash-logo,
+        [style*='glassBreath'] {
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <WalletApp client:only="react" />
+  </body>
+</html>
