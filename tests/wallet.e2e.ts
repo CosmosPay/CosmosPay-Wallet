@@ -40,11 +40,13 @@ try {
   await page.locator('textarea').fill(MNEMONIC);
   await page.getByRole('button', { name: 'Importar wallet' }).click();
 
-  // profile step (name + optional birthdate)
+  // profile step (name + email + birthdate + consent — all required now)
   await page.getByText('¿Cómo te llamas?').waitFor({ timeout: 8000 });
   await page.getByPlaceholder('p. ej. Alex').fill('Test User');
+  await page.getByPlaceholder('tu@correo.com').fill('test@cosmos.com');
+  await page.locator('input[type="date"]').fill('1990-05-15');
   await page.getByRole('button', { name: 'Continuar' }).click();
-  ok(true, 'Profile step (name) captured');
+  ok(true, 'Profile step (name/email/dob) captured');
 
   // seal vault
   await page.getByText('Crea una contraseña').waitFor();
@@ -56,6 +58,7 @@ try {
   const wallets = JSON.parse((await page.evaluate(() => localStorage.getItem('cosmos.wallets'))) || '[]');
   ok(wallets[0]?.publicKey === EXPECTED_PUB, 'Derived pubkey matches SEP-5 vector');
   ok(wallets[0]?.name === 'Test User', 'User name stored in wallet list');
+  ok(wallets[0]?.email === 'test@cosmos.com', 'User email stored in wallet list');
   const sealed = await page.evaluate(() => {
     const a = localStorage.getItem('cosmos.active');
     return a ? !!localStorage.getItem('cosmos.w.' + a) : false;

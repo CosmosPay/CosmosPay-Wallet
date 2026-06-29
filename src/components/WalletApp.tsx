@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWalletStore, type WalletStore } from './store';
-import { Shell, Toast, Spinner, Logo } from './parts';
+import { Shell, Spinner, Logo } from './parts';
 import { Welcome, Backup, Verify, Import, ProfileSetup, PasswordSetup } from './screens/Onboarding';
 import { Unlock } from './screens/Unlock';
 import { Home, Earn, Markets, Profile, Asset } from './screens/Main';
 import { Receive, Send, Confirm, Success, Swap } from './screens/Money';
 import { Settings, Export } from './screens/Settings';
+import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from './screens/Extras';
 
-const NAV_SCREENS = ['home', 'earn', 'markets', 'profile'];
+const NAV_SCREENS = ['home', 'earn', 'markets', 'profile', 'swap'];
 
 /** Map the Android hardware back button to a sensible in-app navigation. */
 function handleBack(store: WalletStore, exitApp: () => void) {
@@ -36,6 +37,15 @@ function handleBack(store: WalletStore, exitApp: () => void) {
     case 'settings':
     case 'export':
       return store.go(store.session ? 'profile' : 'home', store.session ? 'profile' : 'home');
+    case 'operations':
+      return store.go('home', 'home');
+    case 'sign-tx':
+      return store.setScreen('operations');
+    case 'add-network':
+    case 'add-asset':
+      return store.go('home', 'home');
+    case 'scan':
+      return store.setScreen('send');
     case 'success':
       return store.session ? store.go('home', 'home') : store.setScreen('unlock');
     case 'earn':
@@ -88,6 +98,16 @@ function renderScreen(screen: WalletStore['screen'], store: WalletStore) {
       return <Settings store={store} />;
     case 'export':
       return <Export store={store} />;
+    case 'operations':
+      return <Operations store={store} />;
+    case 'sign-tx':
+      return <SignTx store={store} />;
+    case 'add-network':
+      return <AddNetwork store={store} />;
+    case 'add-asset':
+      return <AddAsset store={store} />;
+    case 'scan':
+      return <ScanQR store={store} />;
     default:
       return <Home store={store} />;
   }
@@ -149,8 +169,6 @@ export default function WalletApp() {
           )}
         </Shell>
       </div>
-
-      <Toast toast={store.toast} />
 
       {intro !== 'done' && <Splash fading={intro !== 'show'} />}
     </>

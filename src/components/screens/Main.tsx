@@ -1,11 +1,12 @@
 import type { WalletStore } from '../store';
-import { C, TokenAvatar, assetMeta, Spinner, Logo } from '../parts';
-import { computePortfolio, type AssetRow } from '../../lib/portfolio';
-import { fmt, splitMoney, trim, pct, shortAddr } from '../../lib/format';
-import { NETWORKS, explorerAccountUrl, type PriceInfo } from '../../lib/stellar';
-import { getGreeting } from '../../lib/greeting';
+import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, Logo, NetworkDropdown } from '../parts';
+import { computePortfolio, type AssetRow } from '@/lib/portfolio';
+import { fmt, splitMoney, trim, pct, shortAddr } from '@/lib/format';
+import { explorerAccountUrl, type PriceInfo } from '@/lib/stellar';
+import { getGreeting } from '@/lib/greeting';
 
-const MARKET_TOKENS = ['XLM', 'BTC', 'ETH', 'SOL', 'USDC', 'USDT'];
+// Stellar-ecosystem assets only (no BTC/ETH/SOL; USDT isn't native to Stellar).
+const MARKET_TOKENS = ['XLM', 'USDC', 'EURC'];
 
 function changeColor(n: number) {
   // monochrome: up = text colour, down = muted grey (direction shown by the ↗/↘ arrow)
@@ -39,9 +40,12 @@ export function Home({ store }: { store: WalletStore }) {
         </div>
       </div>
 
+      <div style={{ margin: '0 0 10px' }}>
+        <NetworkDropdown store={store} />
+      </div>
       <div style={{ fontSize: '14px', color: C.muted, fontWeight: 700, margin: '0 2px 2px' }}>{greeting.line} 👋</div>
 
-      <div style={{ textAlign: 'center', padding: '10px 0 6px' }}>
+      <div style={{ textAlign: 'center', padding: '8px 0 6px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: C.muted, fontSize: '13px', fontWeight: 600, marginBottom: '8px' }}>
           {t('home.portfolio')} <span style={{ opacity: 0.6 }}>ⓘ</span>
         </div>
@@ -63,7 +67,7 @@ export function Home({ store }: { store: WalletStore }) {
         <Action label={t('home.swap')} onClick={() => store.setScreen('swap')}>
           <path d="M7 7h11l-3-3M17 17H6l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </Action>
-        <Action label={t('home.more')} onClick={() => store.setScreen('settings')}>
+        <Action label={t('home.more')} onClick={() => store.setScreen('operations')}>
           <circle cx="6" cy="12" r="1.6" fill="currentColor" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /><circle cx="18" cy="12" r="1.6" fill="currentColor" />
         </Action>
       </div>
@@ -71,14 +75,17 @@ export function Home({ store }: { store: WalletStore }) {
       {notActivated && <ActivateCard store={store} />}
 
       <div style={{ marginBottom: '8px' }}>
-        <div style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '-.3px', margin: '6px 2px 12px' }}>{t('home.assets')}</div>
-        {store.account?.exists && rows.length ? (
-          rows.map((r, i) => <AssetListRow key={r.code} row={r} delay={i * 0.05} onClick={() => { store.setSelectedAsset(r.code); store.setScreen('asset'); }} />)
-        ) : !notActivated ? (
-          <div style={{ textAlign: 'center', color: C.dim, fontSize: '13px', fontWeight: 600, padding: '20px' }}>
-            {store.loading ? t('home.loading') : t('home.noAssets')}
-          </div>
-        ) : null}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '6px 2px 12px' }}>
+          <span style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '-.3px' }}>{t('home.assets')}</span>
+          {store.account?.exists && (
+            <span onClick={() => store.setScreen('add-asset')} className="tap" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12.5px', color: C.accent, fontWeight: 800, cursor: 'pointer', ...C.glassSoft, padding: '6px 12px', borderRadius: '999px' }}>
+              <span style={{ fontSize: '15px', lineHeight: 1 }}>+</span> {t('addAsset.title')}
+            </span>
+          )}
+        </div>
+        {rows.map((r, i) => (
+          <AssetListRow key={r.code} row={r} delay={i * 0.05} onClick={() => { store.setSelectedAsset(r.code); store.setScreen('asset'); }} />
+        ))}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 10px' }}>
@@ -95,7 +102,7 @@ export function Home({ store }: { store: WalletStore }) {
 function Action({ label, onClick, children }: { label: string; onClick: () => void; children: any }) {
   return (
     <div onClick={onClick} className="tap" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '9px', cursor: 'pointer' }}>
-      <div style={{ width: '58px', height: '58px', borderRadius: '20px', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: '58px', height: '58px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">{children}</svg>
       </div>
       <span style={{ fontSize: '11.5px', color: C.muted, fontWeight: 600 }}>{label}</span>
@@ -105,7 +112,7 @@ function Action({ label, onClick, children }: { label: string; onClick: () => vo
 
 function ActivateCard({ store }: { store: WalletStore }) {
   const t = store.t;
-  const testnet = store.network === 'testnet';
+  const testnet = !!store.network.friendbot;
   return (
     <div style={{ ...C.glass, borderRadius: '18px', padding: '18px', marginBottom: '22px' }}>
       <div style={{ fontSize: '15px', fontWeight: 800, marginBottom: '6px' }}>{t('home.activate')}</div>
@@ -114,11 +121,11 @@ function ActivateCard({ store }: { store: WalletStore }) {
         {testnet ? t('home.activateTestnet') : t('home.activateMainnet')}
       </div>
       {testnet ? (
-        <button onClick={() => store.fund()} disabled={store.busy} style={{ width: '100%', background: C.accent, color: 'var(--on-accent)', border: 'none', borderRadius: '14px', padding: '14px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
+        <button onClick={() => store.fund()} disabled={store.busy} style={{ width: '100%', height: '54px', background: C.accent, color: 'var(--on-accent)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
           {store.busy ? <Spinner /> : t('home.getTestXlm')}
         </button>
       ) : (
-        <button onClick={() => store.setScreen('receive')} style={{ width: '100%', background: C.accent, color: 'var(--on-accent)', border: 'none', borderRadius: '14px', padding: '14px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
+        <button onClick={() => store.setScreen('receive')} style={{ width: '100%', height: '54px', background: C.accent, color: 'var(--on-accent)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
           {t('home.viewAddress')}
         </button>
       )}
@@ -131,7 +138,7 @@ function AssetListRow({ row, onClick, delay = 0 }: { row: AssetRow; onClick: () 
   return (
     <div onClick={onClick} className="tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 12px', borderRadius: '16px', cursor: 'pointer', marginBottom: '2px', animation: 'fadeUp .45s ease backwards', animationDelay: `${delay}s` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <TokenAvatar glyph={m.glyph} color={m.color} size={34} />
+        <AssetLogo code={row.code} size={34} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '15px', fontWeight: 700 }}>{m.name}</span>
           <span style={{ fontSize: '12px', color: C.dim, fontWeight: 600 }}>{trim(row.amount, 4)} {row.code}</span>
@@ -150,7 +157,7 @@ function MarketRow({ code, price, onClick, delay = 0 }: { code: string; price?: 
   return (
     <div onClick={onClick} className="tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 2px', cursor: 'pointer', animation: 'fadeUp .45s ease backwards', animationDelay: `${delay}s` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-        <TokenAvatar glyph={m.glyph} color={m.color} size={38} />
+        <AssetLogo code={code} size={38} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '15px', fontWeight: 700 }}>{m.name}</span>
           <span style={{ fontSize: '12px', color: C.dim, fontWeight: 600 }}>{code}</span>
@@ -180,7 +187,7 @@ export function Earn({ store }: { store: WalletStore }) {
         <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '6px' }}>{t('earn.totalAssets')}</div>
         <div style={{ fontSize: '34px', fontWeight: 800, letterSpacing: '-1px', fontVariantNumeric: 'tabular-nums' }}>${fmt(total, 2)}</div>
         <div style={{ marginTop: '14px', fontSize: '13px', color: C.muted, fontWeight: 600 }}>{t('earn.network')}</div>
-        <div style={{ fontSize: '16px', color: C.accent, fontWeight: 800, marginTop: '2px' }}>{NETWORKS[store.network].label}</div>
+        <div style={{ fontSize: '16px', color: C.accent, fontWeight: 800, marginTop: '2px' }}>{store.network.label}</div>
       </div>
 
       <div style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-.4px', marginBottom: '14px' }}>{t('earn.generate')}</div>
@@ -265,7 +272,7 @@ export function Profile({ store }: { store: WalletStore }) {
           <span style={{ fontSize: '18px', fontWeight: 800 }}>{name}</span>
           <span style={{ fontSize: '13px', color: C.dim, fontWeight: 600, fontFamily: 'monospace' }}>{shortAddr(pub, 8, 8)}</span>
           <span style={{ fontSize: '11.5px', color: C.accent, fontWeight: 700 }}>
-            {NETWORKS[store.network].label}{g.age !== null ? ` · ${g.age} ${t('profile.years')}` : ''}
+            {store.network.label}{g.age !== null ? ` · ${g.age} ${t('profile.years')}` : ''}
           </span>
         </div>
       </div>
@@ -325,7 +332,7 @@ export function Asset({ store }: { store: WalletStore }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0 18px' }}>
         <div onClick={() => store.go(store.tab, store.tab)} style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px', cursor: 'pointer' }}>‹</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <TokenAvatar glyph={m.glyph} color={m.color} size={24} />
+          <AssetLogo code={code} size={24} />
           <span style={{ fontSize: '16px', fontWeight: 700 }}>{m.name} <span style={{ color: C.dim, fontSize: '11px' }}>{code}</span></span>
         </div>
         <div style={{ width: '38px' }} />
@@ -347,8 +354,8 @@ export function Asset({ store }: { store: WalletStore }) {
 
       {code === 'XLM' && (
         <div style={{ display: 'flex', gap: '10px', marginBottom: '16px' }}>
-          <button onClick={() => store.setScreen('send')} style={{ flex: 1, background: 'var(--primary-bg)', color: 'var(--primary-text)', border: 'none', borderRadius: '16px', padding: '16px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{t('common.send')}</button>
-          <button onClick={() => store.setScreen('receive')} style={{ flex: 1, ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '16px', padding: '16px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{t('common.receive')}</button>
+          <button onClick={() => store.setScreen('send')} style={{ flex: 1, height: '54px', background: 'var(--primary-bg)', color: 'var(--primary-text)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{t('common.send')}</button>
+          <button onClick={() => store.setScreen('receive')} style={{ flex: 1, height: '54px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{t('common.receive')}</button>
         </div>
       )}
       {store.meta && (

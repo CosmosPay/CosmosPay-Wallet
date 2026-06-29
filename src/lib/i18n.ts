@@ -146,13 +146,22 @@ const T: Record<string, Record<Lang, string>> = {
     fr: 'C’est ainsi que nous t’accueillons à chaque ouverture du portefeuille. Ces données restent uniquement sur ton appareil.',
   },
   'setup.nameLabel': { es: 'Nombre o apodo', en: 'Name or nickname', pt: 'Nome ou alcunha', de: 'Name oder Spitzname', fr: 'Nom ou pseudo' },
-  'setup.dobLabel': { es: 'Fecha de nacimiento (opcional)', en: 'Date of birth (optional)', pt: 'Data de nascimento (opcional)', de: 'Geburtsdatum (optional)', fr: 'Date de naissance (facultatif)' },
-  'setup.birthdayNote': {
-    es: 'Si la indicas, te felicitaremos el día de tu cumpleaños 🎂',
-    en: 'If you add it, we’ll wish you a happy birthday 🎂',
-    pt: 'Se a indicares, desejamos-te feliz aniversário 🎂',
-    de: 'Wenn du es angibst, gratulieren wir dir zum Geburtstag 🎂',
-    fr: 'Si tu l’indiques, on te souhaitera ton anniversaire 🎂',
+  'setup.emailLabel': { es: 'Correo electrónico', en: 'Email', pt: 'E-mail', de: 'E-Mail', fr: 'E-mail' },
+  'setup.emailInvalid': { es: 'Introduce un correo válido', en: 'Enter a valid email', pt: 'Introduz um e-mail válido', de: 'Gültige E-Mail eingeben', fr: 'Saisis un e-mail valide' },
+  'setup.dobLabel': { es: 'Fecha de nacimiento', en: 'Date of birth', pt: 'Data de nascimento', de: 'Geburtsdatum', fr: 'Date de naissance' },
+  'setup.dataNote': {
+    es: 'Tu correo y fecha de nacimiento se guardan en este dispositivo y solo se usan para vincular tu cuenta a productos de Cosmos cuando tú lo pidas.',
+    en: 'Your email and date of birth are stored on this device and only used to link your account to Cosmos products when you ask.',
+    pt: 'O teu e-mail e data de nascimento ficam neste dispositivo e só são usados para vincular a tua conta aos produtos Cosmos quando o pedires.',
+    de: 'Deine E-Mail und dein Geburtsdatum werden auf diesem Gerät gespeichert und nur verwendet, um dein Konto auf Wunsch mit Cosmos-Produkten zu verknüpfen.',
+    fr: 'Ton e-mail et ta date de naissance restent sur cet appareil et ne servent qu’à lier ton compte aux produits Cosmos à ta demande.',
+  },
+  'setup.consent': {
+    es: 'Acepto que Cosmos use mi correo y fecha de nacimiento para vincular mi cuenta a los productos de Cosmos cuando lo solicite. No se comparten con terceros sin mi consentimiento.',
+    en: 'I agree that Cosmos may use my email and date of birth to link my account to Cosmos products when I request it. Not shared with third parties without my consent.',
+    pt: 'Concordo que a Cosmos use o meu e-mail e data de nascimento para vincular a minha conta aos produtos Cosmos quando o solicitar. Não partilhado com terceiros sem o meu consentimento.',
+    de: 'Ich stimme zu, dass Cosmos meine E-Mail und mein Geburtsdatum verwendet, um mein Konto auf Wunsch mit Cosmos-Produkten zu verknüpfen. Keine Weitergabe an Dritte ohne meine Zustimmung.',
+    fr: 'J’accepte que Cosmos utilise mon e-mail et ma date de naissance pour lier mon compte aux produits Cosmos à ma demande. Non partagé avec des tiers sans mon consentement.',
   },
   'setup.addWallet': { es: 'Añadir wallet', en: 'Add wallet', pt: 'Adicionar wallet', de: 'Wallet hinzufügen', fr: 'Ajouter le portefeuille' },
 
@@ -186,6 +195,10 @@ const T: Record<string, Record<Lang, string>> = {
     fr: 'Sans le mot de passe, ce portefeuille ne peut pas être déchiffré. Tu peux le supprimer de cet appareil et le restaurer avec ta phrase de récupération.',
   },
   'unlock.deleteRestore': { es: 'Borrar wallet y restaurar con frase', en: 'Delete wallet & restore with phrase', pt: 'Apagar wallet e restaurar com a frase', de: 'Wallet löschen & mit Phrase wiederherstellen', fr: 'Supprimer et restaurer avec la phrase' },
+  'unlock.switchTitle': { es: 'Cambiar de wallet', en: 'Switch wallet', pt: 'Mudar de wallet', de: 'Wallet wechseln', fr: 'Changer de portefeuille' },
+  'unlock.use': { es: 'Usar', en: 'Use', pt: 'Usar', de: 'Verwenden', fr: 'Utiliser' },
+  'unlock.current': { es: 'Actual', en: 'Current', pt: 'Atual', de: 'Aktuell', fr: 'Actuel' },
+  'unlock.removeConfirm': { es: '¿Eliminar «{name}» de este dispositivo? Asegúrate de tener su frase de recuperación.', en: 'Remove “{name}” from this device? Make sure you have its recovery phrase.', pt: 'Remover «{name}» deste dispositivo? Certifica-te de que tens a frase de recuperação.', de: '„{name}“ von diesem Gerät entfernen? Stelle sicher, dass du die Wiederherstellungsphrase hast.', fr: 'Supprimer « {name} » de cet appareil ? Assure-toi d’avoir sa phrase de récupération.' },
   'unlock.happyDay': { es: '¡Feliz día!', en: 'Happy day!', pt: 'Feliz dia!', de: 'Schönen Tag!', fr: 'Joyeuse journée !' },
   'unlock.yearsOld': { es: '¡{age} años!', en: '{age} years old!', pt: '{age} anos!', de: '{age} Jahre!', fr: '{age} ans !' },
 
@@ -271,7 +284,8 @@ const T: Record<string, Record<Lang, string>> = {
   },
 
   // ---- send ----
-  'send.title': { es: 'Enviar XLM', en: 'Send XLM', pt: 'Enviar XLM', de: 'XLM senden', fr: 'Envoyer des XLM' },
+  'send.title': { es: 'Enviar', en: 'Send', pt: 'Enviar', de: 'Senden', fr: 'Envoyer' },
+  'send.asset': { es: 'Activo', en: 'Asset', pt: 'Ativo', de: 'Asset', fr: 'Actif' },
   'send.to': { es: 'Para', en: 'To', pt: 'Para', de: 'An', fr: 'À' },
   'send.dest': { es: 'Dirección de destino (G…)', en: 'Destination address (G…)', pt: 'Endereço de destino (G…)', de: 'Zieladresse (G…)', fr: 'Adresse de destination (G…)' },
   'send.validAddr': { es: '✓ Dirección válida', en: '✓ Valid address', pt: '✓ Endereço válido', de: '✓ Gültige Adresse', fr: '✓ Adresse valide' },
@@ -399,6 +413,87 @@ const T: Record<string, Record<Lang, string>> = {
   'toast.walletActive': { es: 'Wallet activa: {name}', en: 'Active wallet: {name}', pt: 'Wallet ativa: {name}', de: 'Aktive Wallet: {name}', fr: 'Portefeuille actif : {name}' },
   'toast.walletRemoved': { es: 'Wallet eliminada.', en: 'Wallet removed.', pt: 'Wallet removida.', de: 'Wallet entfernt.', fr: 'Portefeuille supprimé.' },
   'toast.langChanged': { es: 'Idioma: {lang}', en: 'Language: {lang}', pt: 'Idioma: {lang}', de: 'Sprache: {lang}', fr: 'Langue : {lang}' },
+  'toast.assetAdded': { es: 'Activo {code} añadido', en: 'Asset {code} added', pt: 'Ativo {code} adicionado', de: 'Asset {code} hinzugefügt', fr: 'Actif {code} ajouté' },
+
+  // ---- success / error ----
+  'success.failed': { es: 'No se pudo enviar', en: 'Couldn’t send', pt: 'Não foi possível enviar', de: 'Senden fehlgeschlagen', fr: 'Échec de l’envoi' },
+
+  // ---- add asset (trustline) ----
+  'addAsset.title': { es: 'Añadir activo', en: 'Add asset', pt: 'Adicionar ativo', de: 'Asset hinzufügen', fr: 'Ajouter un actif' },
+  'addAsset.desc': {
+    es: 'Crea una línea de confianza (trustline) para poder recibir un activo de Stellar. Indica su código e emisor.',
+    en: 'Create a trustline so you can hold a Stellar asset. Enter its code and issuer.',
+    pt: 'Cria uma trustline para poderes deter um ativo Stellar. Indica o código e o emissor.',
+    de: 'Erstelle eine Trustline, um ein Stellar-Asset halten zu können. Gib Code und Aussteller an.',
+    fr: 'Crée une trustline pour détenir un actif Stellar. Saisis son code et son émetteur.',
+  },
+  'addAsset.code': { es: 'Código del activo', en: 'Asset code', pt: 'Código do ativo', de: 'Asset-Code', fr: 'Code de l’actif' },
+  'addAsset.issuer': { es: 'Emisor (G…)', en: 'Issuer (G…)', pt: 'Emissor (G…)', de: 'Aussteller (G…)', fr: 'Émetteur (G…)' },
+  'addAsset.add': { es: 'Añadir línea de confianza', en: 'Add trustline', pt: 'Adicionar trustline', de: 'Trustline hinzufügen', fr: 'Ajouter la trustline' },
+  'addAsset.suggested': { es: 'Sugeridos', en: 'Suggested', pt: 'Sugeridos', de: 'Vorschläge', fr: 'Suggérés' },
+  'addAsset.common': { es: 'Activos más comunes', en: 'Most common assets', pt: 'Ativos mais comuns', de: 'Häufigste Assets', fr: 'Actifs les plus courants' },
+  'addAsset.loading': { es: 'Buscando activos en la red…', en: 'Finding assets on the network…', pt: 'A procurar ativos na rede…', de: 'Assets im Netzwerk suchen…', fr: 'Recherche d’actifs sur le réseau…' },
+  'addAsset.none': { es: 'No se encontraron activos comunes en esta red. Añade uno personalizado con su código y emisor.', en: 'No common assets found on this network. Add a custom one with its code and issuer.', pt: 'Nenhum ativo comum encontrado nesta rede. Adiciona um personalizado com código e emissor.', de: 'Keine gängigen Assets in diesem Netzwerk gefunden. Füge ein eigenes mit Code und Aussteller hinzu.', fr: 'Aucun actif courant trouvé sur ce réseau. Ajoute-en un personnalisé avec son code et son émetteur.' },
+  'addAsset.custom': { es: 'Añadir activo personalizado', en: 'Add custom asset', pt: 'Adicionar ativo personalizado', de: 'Eigenes Asset hinzufügen', fr: 'Ajouter un actif personnalisé' },
+  'addAsset.manual': { es: 'Activo personalizado', en: 'Custom asset', pt: 'Ativo personalizado', de: 'Eigenes Asset', fr: 'Actif personnalisé' },
+  'addAsset.held': { es: 'Ya añadido', en: 'Already added', pt: 'Já adicionado', de: 'Bereits hinzugefügt', fr: 'Déjà ajouté' },
+  'addAsset.testnetNote': { es: 'La lista de activos comunes está disponible en Mainnet. En testnet añade el activo por su código y emisor.', en: 'The common-asset list is available on Mainnet. On testnet, add assets by code and issuer.', pt: 'A lista de ativos comuns está disponível na Mainnet. Na testnet, adiciona pelo código e emissor.', de: 'Die Liste gängiger Assets ist im Mainnet verfügbar. Im Testnet per Code und Aussteller hinzufügen.', fr: 'La liste des actifs courants est disponible sur le Mainnet. Sur testnet, ajoute par code et émetteur.' },
+  'addAsset.invalidIssuer': { es: 'El emisor no es una dirección Stellar válida (G…)', en: 'The issuer is not a valid Stellar address (G…)', pt: 'O emissor não é um endereço Stellar válido (G…)', de: 'Der Aussteller ist keine gültige Stellar-Adresse (G…)', fr: 'L’émetteur n’est pas une adresse Stellar valide (G…)' },
+
+  // ---- networks ----
+  'net.title': { es: 'Redes', en: 'Networks', pt: 'Redes', de: 'Netzwerke', fr: 'Réseaux' },
+  'net.add': { es: 'Añadir red', en: 'Add network', pt: 'Adicionar rede', de: 'Netzwerk hinzufügen', fr: 'Ajouter un réseau' },
+  'net.addTitle': { es: 'Añadir red personalizada', en: 'Add custom network', pt: 'Adicionar rede personalizada', de: 'Eigenes Netzwerk hinzufügen', fr: 'Ajouter un réseau personnalisé' },
+  'net.name': { es: 'Nombre', en: 'Name', pt: 'Nome', de: 'Name', fr: 'Nom' },
+  'net.horizon': { es: 'URL de Horizon', en: 'Horizon URL', pt: 'URL do Horizon', de: 'Horizon-URL', fr: 'URL Horizon' },
+  'net.passphrase': { es: 'Network passphrase', en: 'Network passphrase', pt: 'Network passphrase', de: 'Network passphrase', fr: 'Network passphrase' },
+  'net.save': { es: 'Guardar red', en: 'Save network', pt: 'Guardar rede', de: 'Netzwerk speichern', fr: 'Enregistrer le réseau' },
+  'net.remove': { es: 'Eliminar red', en: 'Remove network', pt: 'Remover rede', de: 'Netzwerk entfernen', fr: 'Supprimer le réseau' },
+
+  // ---- QR scanner ----
+  'scan.scanQr': { es: 'Escanear QR', en: 'Scan QR', pt: 'Ler QR', de: 'QR scannen', fr: 'Scanner QR' },
+  'scan.title': { es: 'Escanea un código QR', en: 'Scan a QR code', pt: 'Lê um código QR', de: 'QR-Code scannen', fr: 'Scanne un code QR' },
+  'scan.point': { es: 'Apunta la cámara al QR de una dirección Stellar.', en: 'Point the camera at a Stellar address QR.', pt: 'Aponta a câmara ao QR de um endereço Stellar.', de: 'Richte die Kamera auf einen Stellar-Adressen-QR.', fr: 'Pointe la caméra vers un QR d’adresse Stellar.' },
+  'scan.denied': { es: 'No se pudo acceder a la cámara. Revisa los permisos.', en: 'Couldn’t access the camera. Check permissions.', pt: 'Não foi possível aceder à câmara. Verifica as permissões.', de: 'Kamerazugriff fehlgeschlagen. Berechtigungen prüfen.', fr: 'Accès à la caméra impossible. Vérifie les autorisations.' },
+
+  // ---- operations hub ----
+  'ops.title': { es: 'Operaciones', en: 'Operations', pt: 'Operações', de: 'Operationen', fr: 'Opérations' },
+  'ops.desc': { es: 'Herramientas avanzadas para tu cuenta Stellar.', en: 'Advanced tools for your Stellar account.', pt: 'Ferramentas avançadas para a tua conta Stellar.', de: 'Erweiterte Tools für dein Stellar-Konto.', fr: 'Outils avancés pour ton compte Stellar.' },
+  'ops.signTx': { es: 'Firmar transacción', en: 'Sign transaction', pt: 'Assinar transação', de: 'Transaktion signieren', fr: 'Signer une transaction' },
+  'ops.signTxSub': { es: 'Pega un XDR para firmarlo o enviarlo', en: 'Paste an XDR to sign or submit it', pt: 'Cola um XDR para assinar ou enviar', de: 'XDR zum Signieren oder Senden einfügen', fr: 'Colle un XDR pour le signer ou l’envoyer' },
+  'ops.pastePay': { es: 'Pegar URL de pago', en: 'Paste payment URL', pt: 'Colar URL de pagamento', de: 'Zahlungs-URL einfügen', fr: 'Coller l’URL de paiement' },
+  'ops.pastePaySub': { es: 'Enlace SEP-7 (web+stellar:pay…)', en: 'SEP-7 link (web+stellar:pay…)', pt: 'Ligação SEP-7 (web+stellar:pay…)', de: 'SEP-7-Link (web+stellar:pay…)', fr: 'Lien SEP-7 (web+stellar:pay…)' },
+  'ops.pasteInvalid': { es: 'El portapapeles no contiene una dirección o enlace SEP-7 válido.', en: 'The clipboard has no valid Stellar address or SEP-7 link.', pt: 'A área de transferência não tem um endereço ou ligação SEP-7 válidos.', de: 'Die Zwischenablage enthält keine gültige Stellar-Adresse oder SEP-7-Link.', fr: 'Le presse-papiers ne contient pas d’adresse Stellar ou de lien SEP-7 valide.' },
+
+  // ---- sign transaction ----
+  'sign.title': { es: 'Firmar transacción', en: 'Sign transaction', pt: 'Assinar transação', de: 'Transaktion signieren', fr: 'Signer une transaction' },
+  'sign.desc': { es: 'Pega el XDR de una transacción para revisarla, firmarla con esta wallet y opcionalmente enviarla a la red.', en: 'Paste a transaction XDR to review it, sign it with this wallet, and optionally submit it.', pt: 'Cola o XDR de uma transação para a rever, assinar com esta wallet e, opcionalmente, enviar.', de: 'Füge das XDR einer Transaktion ein, um sie zu prüfen, mit dieser Wallet zu signieren und optional zu senden.', fr: 'Colle le XDR d’une transaction pour la vérifier, la signer avec ce portefeuille et l’envoyer si besoin.' },
+  'sign.paste': { es: 'Pegar XDR', en: 'Paste XDR', pt: 'Colar XDR', de: 'XDR einfügen', fr: 'Coller le XDR' },
+  'sign.invalid': { es: 'XDR no válido para esta red.', en: 'Invalid XDR for this network.', pt: 'XDR inválido para esta rede.', de: 'Ungültiges XDR für dieses Netzwerk.', fr: 'XDR non valide pour ce réseau.' },
+  'sign.source': { es: 'Origen', en: 'Source', pt: 'Origem', de: 'Quelle', fr: 'Source' },
+  'sign.fee': { es: 'Comisión', en: 'Fee', pt: 'Taxa', de: 'Gebühr', fr: 'Frais' },
+  'sign.ops': { es: 'Operaciones', en: 'Operations', pt: 'Operações', de: 'Operationen', fr: 'Opérations' },
+  'sign.memo': { es: 'Memo', en: 'Memo', pt: 'Memo', de: 'Memo', fr: 'Mémo' },
+  'sign.signatures': { es: 'Firmas', en: 'Signatures', pt: 'Assinaturas', de: 'Signaturen', fr: 'Signatures' },
+  'sign.sign': { es: 'Firmar', en: 'Sign', pt: 'Assinar', de: 'Signieren', fr: 'Signer' },
+  'sign.signedLabel': { es: 'XDR firmado', en: 'Signed XDR', pt: 'XDR assinado', de: 'Signiertes XDR', fr: 'XDR signé' },
+  'sign.submit': { es: 'Enviar a la red', en: 'Submit to network', pt: 'Enviar para a rede', de: 'An Netzwerk senden', fr: 'Envoyer au réseau' },
+  'sign.submitted': { es: 'Transacción enviada', en: 'Transaction submitted', pt: 'Transação enviada', de: 'Transaktion gesendet', fr: 'Transaction envoyée' },
+
+  // ---- signing confirmation (password gate) ----
+  'confirmSig.sign': { es: 'Firmar', en: 'Sign', pt: 'Assinar', de: 'Signieren', fr: 'Signer' },
+  'confirmSig.wrongPwd': { es: 'Contraseña incorrecta.', en: 'Wrong password.', pt: 'Palavra-passe incorreta.', de: 'Falsches Passwort.', fr: 'Mot de passe incorrect.' },
+  'confirmSig.sendTitle': { es: 'Confirmar envío', en: 'Confirm payment', pt: 'Confirmar envio', de: 'Zahlung bestätigen', fr: 'Confirmer le paiement' },
+  'confirmSig.sendMsg': { es: 'Introduce tu contraseña para firmar el envío de {amount} {code}.', en: 'Enter your password to sign sending {amount} {code}.', pt: 'Introduz a tua palavra-passe para assinar o envio de {amount} {code}.', de: 'Gib dein Passwort ein, um das Senden von {amount} {code} zu signieren.', fr: 'Saisis ton mot de passe pour signer l’envoi de {amount} {code}.' },
+  'confirmSig.trustTitle': { es: 'Confirmar trustline', en: 'Confirm trustline', pt: 'Confirmar trustline', de: 'Trustline bestätigen', fr: 'Confirmer la trustline' },
+  'confirmSig.trustMsg': { es: 'Introduce tu contraseña para firmar la línea de confianza de {code}.', en: 'Enter your password to sign the {code} trustline.', pt: 'Introduz a tua palavra-passe para assinar a trustline de {code}.', de: 'Gib dein Passwort ein, um die {code}-Trustline zu signieren.', fr: 'Saisis ton mot de passe pour signer la trustline {code}.' },
+  'confirmSig.signTitle': { es: 'Firmar transacción', en: 'Sign transaction', pt: 'Assinar transação', de: 'Transaktion signieren', fr: 'Signer la transaction' },
+  'confirmSig.signMsg': { es: 'Introduce tu contraseña para firmar esta transacción.', en: 'Enter your password to sign this transaction.', pt: 'Introduz a tua palavra-passe para assinar esta transação.', de: 'Gib dein Passwort ein, um diese Transaktion zu signieren.', fr: 'Saisis ton mot de passe pour signer cette transaction.' },
+  'confirmSig.submitTitle': { es: 'Enviar a la red', en: 'Submit to network', pt: 'Enviar para a rede', de: 'An Netzwerk senden', fr: 'Envoyer au réseau' },
+  'confirmSig.submitMsg': { es: 'Introduce tu contraseña para enviar esta transacción a la red.', en: 'Enter your password to submit this transaction to the network.', pt: 'Introduz a tua palavra-passe para enviar esta transação para a rede.', de: 'Gib dein Passwort ein, um diese Transaktion an das Netzwerk zu senden.', fr: 'Saisis ton mot de passe pour envoyer cette transaction au réseau.' },
+
+  'settings.confirmSigns': { es: 'Confirmaciones manuales', en: 'Manual confirmations', pt: 'Confirmações manuais', de: 'Manuelle Bestätigungen', fr: 'Confirmations manuelles' },
+  'settings.confirmSignsDesc': { es: 'Pedir la contraseña antes de firmar cualquier operación (envíos, trustlines, transacciones).', en: 'Ask for your password before signing any operation (payments, trustlines, transactions).', pt: 'Pedir a palavra-passe antes de assinar qualquer operação (envios, trustlines, transações).', de: 'Vor jedem Signieren (Zahlungen, Trustlines, Transaktionen) nach dem Passwort fragen.', fr: 'Demander le mot de passe avant de signer toute opération (paiements, trustlines, transactions).' },
 };
 
 export function makeT(lang: Lang) {

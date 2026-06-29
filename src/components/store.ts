@@ -13,27 +13,32 @@ import {
   addWallet as vaultAddWallet,
   destroyAll,
   getActiveEntry,
-  getNetwork,
+  getCustomNetworks,
+  getNetworkId,
   listWallets,
   migrate,
   removeWallet as vaultRemoveWallet,
   setActiveId,
-  setNetwork as vaultSetNetwork,
+  setCustomNetworks as vaultSetCustomNetworks,
+  setNetworkId as vaultSetNetworkId,
   unlockWallet,
   verifyPassword,
   type WalletEntry,
 } from '../lib/vault';
 import {
+  addTrustline as stellarAddTrustline,
+  allNetworks,
   fundWithFriendbot,
   getAccountState,
   getPrices,
-  NETWORKS,
-  sendXlm,
+  resolveNetwork,
+  sendPayment,
   type AccountState,
+  type NetConfig,
   type PriceInfo,
-  type StellarNetwork,
 } from '../lib/stellar';
 import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '../lib/i18n';
+import { parseStellarQr } from '../lib/sep7';
 
 export type Theme = 'dark' | 'light';
 
@@ -42,6 +47,15 @@ function savedTheme(): Theme {
     return localStorage.getItem('cosmos.theme') === 'light' ? 'light' : 'dark';
   } catch {
     return 'dark';
+  }
+}
+
+/** Manual signing confirmations (password prompt before any signing action). Default ON. */
+function savedRequireConfirm(): boolean {
+  try {
+    return localStorage.getItem('cosmos.confirm') !== 'off';
+  } catch {
+    return true;
   }
 }
 
@@ -76,7 +90,12 @@ export type Screen =
   | 'confirm'
   | 'success'
   | 'export'
-  | 'settings';
+  | 'settings'
+  | 'operations'
+  | 'sign-tx'
+  | 'add-network'
+  | 'add-asset'
+  | 'scan';
 
 export type Tab = 'home' | 'earn' | 'markets' | 'profile';
 
@@ -92,6 +111,7 @@ export interface SuccessInfo {
   msg: string;
   rows: { label: string; val: string }[];
   hash?: string;
+  kind?: 'ok' | 'err'; // controls the green check / red cross icon
 }
 
 export interface Toast {
@@ -113,10 +133,43 @@ export interface SendDraft {
 
 const ACCENT = '#ffffff';
 
+/** Read a SEP-7 `web+stellar:` link from the current URL (?uri=, ?sep7=, or hash). */
+function readIncomingSep7(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const url = new URL(window.location.href);
+    const cand =
+      url.searchParams.get('uri') ||
+      url.searchParams.get('sep7') ||
+      (url.hash.slice(1).toLowerCase().startsWith('web+stellar:') ? url.hash.slice(1) : '');
+    if (cand && cand.toLowerCase().startsWith('web+stellar:')) {
+      // Clean the URL so a later refresh doesn't re-trigger the same payment.
+      window.history.replaceState(null, '', url.origin + url.pathname);
+      return cand;
+    }
+  } catch {
+    /* malformed URL — ignore */
+  }
+  return null;
+}
+
+/** Offer this web wallet as the browser handler for `web+stellar:` links (SEP-7). */
+function registerStellarHandler(): void {
+  if (typeof navigator === 'undefined' || typeof navigator.registerProtocolHandler !== 'function') return;
+  try {
+    navigator.registerProtocolHandler('web+stellar', window.location.origin + '/?uri=%s');
+  } catch {
+    /* not permitted here (native app / extension / insecure origin) — ignore */
+  }
+}
+
 export function useWalletStore() {
   const [screen, setScreen] = useState<Screen>('boot');
   const [tab, setTab] = useState<Tab>('home');
-  const [network, setNetwork] = useState<StellarNetwork>('testnet');
+  const [networkId, setNetworkIdState] = useState<string>('testnet');
+  const [customNetworks, setCustomNetworksState] = useState<NetConfig[]>([]);
+  const networks = useMemo(() => allNetworks(customNetworks), [customNetworks]);
+  const network = useMemo(() => resolveNetwork(networkId, customNetworks), [networkId, customNetworks]);
   const [meta, setMetaState] = useState<WalletEntry | null>(null);
   const [wallets, setWallets] = useState<WalletEntry[]>([]);
   const [session, setSession] = useState<Session | null>(null);
@@ -130,8 +183,18 @@ export function useWalletStore() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [theme, setThemeState] = useState<Theme>(savedTheme);
   const [lang, setLangState] = useState<Lang>(savedLang);
+  const [requireConfirm, setRequireConfirmState] = useState<boolean>(savedRequireConfirm);
   const t = useMemo(() => makeT(lang), [lang]);
   const locale = useMemo(() => localeOf(lang), [lang]);
+
+  const setRequireConfirm = useCallback((on: boolean) => {
+    setRequireConfirmState(on);
+    try {
+      localStorage.setItem('cosmos.confirm', on ? 'on' : 'off');
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   const setTheme = useCallback((th: Theme) => {
     setThemeState(th);
@@ -165,6 +228,7 @@ export function useWalletStore() {
   const [importText, setImportText] = useState('');
   const [draftName, setDraftName] = useState('');
   const [draftBirthdate, setDraftBirthdate] = useState('');
+  const [draftEmail, setDraftEmail] = useState('');
 
   // verify-phrase state
   const [verifyTargets, setVerifyTargets] = useState<VerifyTarget[]>([]);
@@ -183,18 +247,77 @@ export function useWalletStore() {
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
 
+  // SEP-7 payment links (web+stellar:pay?…) — pasted, scanned, or arriving via URL.
+  const pendingSep7 = useRef<string | null>(null);
+  const applySep7 = useCallback((raw: string): boolean => {
+    const parsed = parseStellarQr(raw);
+    if (!parsed) return false;
+    setSend((s) => ({
+      ...s,
+      to: parsed.destination,
+      amount: parsed.amount ?? s.amount,
+      memo: parsed.memo ? parsed.memo.slice(0, 28) : s.memo,
+    }));
+    return true;
+  }, []);
+
+  // Signing-confirmation gate: every signing action runs through requestSignature,
+  // which (when manual confirmations are on) shows a password prompt and only
+  // resolves true once the password is verified. Toggle lives in Settings.
+  const [confirmReq, setConfirmReq] = useState<{ title: string; message?: string } | null>(null);
+  const confirmResolver = useRef<((ok: boolean) => void) | null>(null);
+
+  const requestSignature = useCallback(
+    (opts: { title: string; message?: string }): Promise<boolean> => {
+      if (!savedRequireConfirm()) return Promise.resolve(true);
+      return new Promise<boolean>((resolve) => {
+        confirmResolver.current = resolve;
+        setConfirmReq(opts);
+      });
+    },
+    [],
+  );
+
+  const resolveConfirm = useCallback((okSig: boolean) => {
+    setConfirmReq(null);
+    const r = confirmResolver.current;
+    confirmResolver.current = null;
+    r?.(okSig);
+  }, []);
+
   /* ----------------------------- boot ----------------------------- */
   useEffect(() => {
+    // SEP-7: become the browser handler for web+stellar: links + pick up an incoming one.
+    registerStellarHandler();
+    const incoming = readIncomingSep7();
+    if (incoming) pendingSep7.current = incoming;
+
     (async () => {
       await migrate();
-      const [list, active, net] = await Promise.all([listWallets(), getActiveEntry(), getNetwork()]);
+      const [list, active, netId, custom] = await Promise.all([
+        listWallets(),
+        getActiveEntry(),
+        getNetworkId(),
+        getCustomNetworks(),
+      ]);
       setWallets(list);
-      setNetwork(net);
+      setCustomNetworksState(custom);
+      setNetworkIdState(netId);
       if (active) setMetaState(active);
       setScreen(list.length > 0 ? 'unlock' : 'welcome');
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Once unlocked, if a SEP-7 link is waiting, jump straight into a prefilled send.
+  useEffect(() => {
+    if (session && pendingSep7.current) {
+      const uri = pendingSep7.current;
+      pendingSep7.current = null;
+      if (applySep7(uri)) setScreen('send');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   /* ------------------------- data loading ------------------------- */
   const refresh = useCallback(
@@ -306,7 +429,7 @@ export function useWalletStore() {
       try {
         const entry = await vaultAddWallet(
           { secret: draftAccount.secret, mnemonic: draftHasMnemonic ? draftMnemonic : null },
-          { publicKey: draftAccount.publicKey, name: draftName.trim() || 'astronauta', birthdate: draftBirthdate },
+          { publicKey: draftAccount.publicKey, name: draftName.trim() || 'astronauta', birthdate: draftBirthdate, email: draftEmail.trim() },
           pwd,
         );
         setMetaState(entry);
@@ -336,7 +459,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, addingWallet, session, t, flash],
+    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, draftEmail, addingWallet, session, t, flash],
   );
 
   /* ----------------------------- unlock --------------------------- */
@@ -381,6 +504,31 @@ export function useWalletStore() {
     setScreen('welcome');
   }, []);
 
+  /** Lock screen: choose which wallet to unlock (no decryption — just sets it active). */
+  const selectWalletForUnlock = useCallback(
+    async (id: string) => {
+      const entry = wallets.find((w) => w.id === id);
+      if (!entry || id === meta?.id) return;
+      await setActiveId(id);
+      setMetaState(entry);
+    },
+    [wallets, meta],
+  );
+
+  /** Lock screen: delete one wallet without unlocking (e.g. one you can't access),
+   *  keeping the others. Doesn't need the password since deleting only removes data. */
+  const removeWalletLocked = useCallback(async (id: string) => {
+    const { remaining, newActive } = await vaultRemoveWallet(id);
+    setWallets(remaining);
+    if (!newActive) {
+      setMetaState(null);
+      setScreen('welcome');
+      return;
+    }
+    const entry = remaining.find((w) => w.id === newActive) ?? remaining[0];
+    setMetaState(entry);
+  }, []);
+
   /* ------------------------- multi-wallet ------------------------- */
   const startAddWallet = useCallback(() => {
     setAddingWallet(true);
@@ -389,6 +537,7 @@ export function useWalletStore() {
     setImportText('');
     setDraftName('');
     setDraftBirthdate('');
+    setDraftEmail('');
     setScreen('welcome');
   }, []);
 
@@ -453,18 +602,67 @@ export function useWalletStore() {
 
   /* -------------------------- network switch ---------------------- */
   const switchNetwork = useCallback(
-    async (net: StellarNetwork) => {
-      setNetwork(net);
-      await vaultSetNetwork(net);
-      flash(t('toast.network', { net: NETWORKS[net].label }), 'info');
+    async (id: string) => {
+      // No toast on switch — the network label already updates in the dropdown.
+      setNetworkIdState(id);
+      await vaultSetNetworkId(id);
+      setAccount(null);
     },
-    [t, flash],
+    [],
+  );
+
+  const addNetwork = useCallback(
+    async (cfg: Omit<NetConfig, 'id' | 'custom'>) => {
+      const id = 'custom-' + Math.random().toString(36).slice(2, 9);
+      const entry: NetConfig = { ...cfg, id, custom: true };
+      const next = [...customNetworks, entry];
+      setCustomNetworksState(next);
+      await vaultSetCustomNetworks(next);
+      await switchNetwork(id);
+      return entry;
+    },
+    [customNetworks, switchNetwork],
+  );
+
+  const removeNetwork = useCallback(
+    async (id: string) => {
+      const next = customNetworks.filter((n) => n.id !== id);
+      setCustomNetworksState(next);
+      await vaultSetCustomNetworks(next);
+      if (networkId === id) await switchNetwork('testnet');
+    },
+    [customNetworks, networkId, switchNetwork],
+  );
+
+  /** Add a trustline so the account can hold a new asset. */
+  const addAssetTrustline = useCallback(
+    async (code: string, issuer: string) => {
+      if (!session) return false;
+      const okSig = await requestSignature({
+        title: t('confirmSig.trustTitle'),
+        message: t('confirmSig.trustMsg', { code: code.trim() }),
+      });
+      if (!okSig) return false;
+      setBusy(true);
+      try {
+        await stellarAddTrustline({ cfg: network, secret: session.secret, code: code.trim(), issuer: issuer.trim() });
+        await refresh(true);
+        flash(t('toast.assetAdded', { code: code.trim() }), 'ok');
+        return true;
+      } catch (e) {
+        flash((e as Error).message, 'err');
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [session, network, refresh, requestSignature, t, flash],
   );
 
   /* ----------------------------- money ---------------------------- */
   const fund = useCallback(async () => {
     if (!session) return;
-    if (network !== 'testnet') {
+    if (!network.friendbot) {
       flash(t('toast.friendbotMainnet'), 'info');
       setScreen('receive');
       return;
@@ -483,20 +681,32 @@ export function useWalletStore() {
 
   const submitSend = useCallback(async () => {
     if (!session) return;
+    const code0 = send.asset || 'XLM';
+    const okSig = await requestSignature({
+      title: t('confirmSig.sendTitle'),
+      message: t('confirmSig.sendMsg', { amount: send.amount, code: code0 }),
+    });
+    if (!okSig) return;
     setBusy(true);
     try {
-      const { hash } = await sendXlm({
-        network,
+      // Resolve the selected asset's issuer from the held balances (XLM = native).
+      const code = send.asset || 'XLM';
+      const bal = account?.balances.find((b) => b.code === code && !b.isNative);
+      const asset = code === 'XLM' || !bal?.issuer ? null : { code, issuer: bal.issuer };
+      const { hash } = await sendPayment({
+        cfg: network,
         secret: session.secret,
         destination: send.to.trim(),
         amount: send.amount,
         memo: send.memo,
+        asset,
       });
       setSuccessInfo({
+        kind: 'ok',
         title: t('success.sent'),
         msg: t('success.sentMsg'),
         rows: [
-          { label: t('confirm.amount'), val: `${send.amount} XLM` },
+          { label: t('confirm.amount'), val: `${send.amount} ${code}` },
           { label: t('confirm.to'), val: `${send.to.slice(0, 6)}…${send.to.slice(-6)}` },
         ],
         hash,
@@ -505,11 +715,18 @@ export function useWalletStore() {
       setSend({ to: '', amount: '0', memo: '', asset: 'XLM' });
       refresh(true);
     } catch (e) {
-      flash((e as Error).message, 'err');
+      // show a red error confirmation screen instead of a transient toast
+      setSuccessInfo({
+        kind: 'err',
+        title: t('success.failed'),
+        msg: (e as Error).message,
+        rows: [],
+      });
+      setScreen('success');
     } finally {
       setBusy(false);
     }
-  }, [session, network, send, refresh, t, flash]);
+  }, [session, network, send, account, refresh, requestSignature, t, flash]);
 
   /* ----------------------------- export --------------------------- */
   const checkPassword = useCallback((pwd: string) => verifyPassword(pwd), []);
@@ -525,6 +742,8 @@ export function useWalletStore() {
     screen,
     tab,
     network,
+    networkId,
+    networks,
     meta,
     wallets,
     addingWallet,
@@ -538,6 +757,11 @@ export function useWalletStore() {
     setTheme,
     lang,
     setLang,
+    requireConfirm,
+    setRequireConfirm,
+    confirmReq,
+    requestSignature,
+    resolveConfirm,
     t,
     locale,
     accent: ACCENT,
@@ -547,6 +771,7 @@ export function useWalletStore() {
     importText,
     draftName,
     draftBirthdate,
+    draftEmail,
     verifyTargets,
     verifyFilled,
     verifyBank,
@@ -560,10 +785,12 @@ export function useWalletStore() {
     setImportText,
     setDraftName,
     setDraftBirthdate,
+    setDraftEmail,
     setSend,
     setSelectedAsset,
     setSuccessInfo,
     flash,
+    applySep7,
     // actions
     go,
     refresh,
@@ -576,11 +803,16 @@ export function useWalletStore() {
     unlock,
     lock,
     deleteWallet,
+    selectWalletForUnlock,
+    removeWalletLocked,
     startAddWallet,
     cancelAddWallet,
     switchWallet,
     removeActiveWallet,
     switchNetwork,
+    addNetwork,
+    removeNetwork,
+    addAssetTrustline,
     fund,
     submitSend,
     checkPassword,

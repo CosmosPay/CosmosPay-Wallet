@@ -1,6 +1,8 @@
 /** Shared UI primitives — faithful to the Cosmos design system. */
+import { useEffect, useState } from 'react';
 import type { ReactNode, CSSProperties } from 'react';
 import type { WalletStore } from './store';
+import { ASSET_ICONS, STELLAR_MARK } from './assetIcons';
 
 // Colours come from CSS variables (see src/pages/index.astro) so the whole UI
 // re-themes instantly when `data-theme` flips between dark and light.
@@ -47,6 +49,25 @@ export const C = {
   } as CSSProperties,
 };
 
+// Unified control metrics. Every full-width <input> and <button> shares the same
+// height + pill radius so the form controls line up — mismatched sizes break the UI.
+export const CONTROL_H = 54;
+export const CONTROL: CSSProperties = {
+  height: `${CONTROL_H}px`,
+  boxSizing: 'border-box',
+  borderRadius: '999px',
+  padding: '0 20px',
+};
+/** Spread onto full-width single-line inputs for a pill that matches the buttons. */
+export const inputStyle: CSSProperties = {
+  ...CONTROL,
+  width: '100%',
+  color: 'var(--text)',
+  fontSize: '15px',
+  fontWeight: 600,
+  outline: 'none',
+};
+
 /** Brand logo (white asset; CSS inverts it to black in light mode). No frame. */
 export function Logo({ size = 72 }: { size?: number }) {
   return (
@@ -89,7 +110,7 @@ export function Shell({
           position: 'relative',
           width: '100%',
           maxWidth: '440px',
-          minHeight: '100vh',
+          height: '100vh',
           background: C.bg,
           overflow: 'hidden',
           color: 'var(--text)',
@@ -135,6 +156,87 @@ export function Shell({
         </div>
 
         {showNav && store && <BottomNav store={store} />}
+        {store && <Toast toast={store.toast} />}
+        {store && <ConfirmSign store={store} />}
+      </div>
+    </div>
+  );
+}
+
+/** Password gate shown before any signing action (toggleable in Settings). */
+export function ConfirmSign({ store }: { store: WalletStore }) {
+  const t = store.t;
+  const req = store.confirmReq;
+  const [pwd, setPwd] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    setPwd('');
+    setErr('');
+    setBusy(false);
+  }, [req]);
+
+  if (!req) return null;
+
+  const submit = async () => {
+    if (!pwd || busy) return;
+    setBusy(true);
+    setErr('');
+    const okPwd = await store.checkPassword(pwd);
+    setBusy(false);
+    if (okPwd) {
+      store.resolveConfirm(true);
+    } else {
+      setErr(t('confirmSig.wrongPwd'));
+      setPwd('');
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        zIndex: 70,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        background: 'rgba(0,0,0,.55)',
+        backdropFilter: 'blur(4px)',
+        WebkitBackdropFilter: 'blur(4px)',
+        animation: 'fadeUp .2s ease',
+      }}
+    >
+      <div style={{ width: '100%', maxWidth: '340px', ...C.glass, borderRadius: '22px', padding: '22px', animation: 'pop .26s ease' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
+          <div style={{ width: '52px', height: '52px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>✎</div>
+        </div>
+        <div style={{ fontSize: '18px', fontWeight: 800, textAlign: 'center', marginBottom: '6px' }}>{req.title}</div>
+        {req.message && <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, textAlign: 'center', lineHeight: 1.5, marginBottom: '16px' }}>{req.message}</div>}
+        <input
+          type="password"
+          value={pwd}
+          autoFocus
+          placeholder={t('pwd.label')}
+          onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
+          onKeyDown={(e) => e.key === 'Enter' && submit()}
+          style={{ ...C.glass, ...inputStyle, textAlign: 'center', marginBottom: err ? '8px' : '16px' }}
+        />
+        {err && <div style={{ fontSize: '12.5px', fontWeight: 700, color: C.danger, textAlign: 'center', marginBottom: '12px' }}>{err}</div>}
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <button onClick={() => store.resolveConfirm(false)} style={{ flex: 1, height: '52px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
+            {t('common.cancel')}
+          </button>
+          <button
+            onClick={submit}
+            disabled={!pwd || busy}
+            style={{ flex: 1, height: '52px', ...C.glassBright, color: 'var(--primary-text)', borderRadius: '999px', fontSize: '15px', fontWeight: 800, cursor: !pwd || busy ? 'default' : 'pointer', opacity: !pwd || busy ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            {busy ? <Spinner /> : t('confirmSig.sign')}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -169,9 +271,54 @@ function Blob(p: {
   );
 }
 
+type NavTab = 'home' | 'earn' | 'markets' | 'profile';
+
 export function BottomNav({ store }: { store: WalletStore }) {
-  const active = store.tab;
-  const col = (t: string) => (active === t ? 'var(--text)' : 'var(--dim)');
+  const t = store.t;
+  // Home sits in the centre so the active indicator rests in the middle by default.
+  const tabs: { key: string; label: string; icon: ReactNode }[] = [
+    {
+      key: 'earn',
+      label: t('tab.earn'),
+      icon: (
+        <>
+          <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.9" />
+          <path d="M9 14.5l6-6M9.5 9.5h.01M14.5 14.5h.01" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+        </>
+      ),
+    },
+    {
+      key: 'markets',
+      label: t('tab.markets'),
+      icon: <path d="M4 16l4-5 4 3 4-7 4 5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />,
+    },
+    {
+      key: 'home',
+      label: t('tab.home'),
+      icon: <path d="M4 11l8-7 8 7M6 9.5V20h12V9.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />,
+    },
+    {
+      key: 'swap',
+      label: t('home.swap'),
+      icon: <path d="M7 7h11l-3-3M17 17H6l3 3" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />,
+    },
+    {
+      key: 'profile',
+      label: t('tab.profile'),
+      icon: (
+        <>
+          <circle cx="12" cy="8" r="3.6" stroke="currentColor" strokeWidth="1.9" />
+          <path d="M5 20a7 7 0 0 1 14 0" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
+        </>
+      ),
+    },
+  ];
+  const activeKey = store.screen === 'swap' ? 'swap' : store.tab;
+  const idx = Math.max(0, tabs.findIndex((x) => x.key === activeKey));
+  const go = (key: string) =>
+    key === 'swap' ? store.setScreen('swap') : store.go(key as NavTab, key as NavTab);
+  const spring = 'cubic-bezier(.34,1.3,.5,1)';
+
   return (
     <div
       style={{
@@ -181,74 +328,62 @@ export function BottomNav({ store }: { store: WalletStore }) {
         bottom: 0,
         height: '92px',
         zIndex: 5,
-        padding: '0 24px calc(26px + env(safe-area-inset-bottom))',
+        padding: '0 16px calc(20px + env(safe-area-inset-bottom))',
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'space-between',
         background: 'var(--nav-bg)',
         backdropFilter: 'blur(24px) saturate(150%)',
         WebkitBackdropFilter: 'blur(24px) saturate(150%)',
         borderTop: '1px solid var(--hairline)',
       }}
     >
-      <NavItem label={store.t('tab.home')} color={col('home')} onClick={() => store.go('home', 'home')}>
-        <path d="M4 11l8-7 8 7M6 9.5V20h12V9.5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-      </NavItem>
-      <NavItem label={store.t('tab.earn')} color={col('earn')} onClick={() => store.go('earn', 'earn')}>
-        <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.9" />
-        <path d="M9 14.5l6-6M9.5 9.5h.01M14.5 14.5h.01" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-      </NavItem>
+      {/* sliding active indicator — follows the selected tab */}
       <div
-        onClick={() => store.setScreen('swap')}
-        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', cursor: 'pointer', transform: 'translateY(-8px)' }}
+        style={{
+          position: 'absolute',
+          left: '16px',
+          top: 0,
+          bottom: 'calc(20px + env(safe-area-inset-bottom))',
+          width: `calc((100% - 32px) / ${tabs.length})`,
+          transform: `translateX(${idx * 100}%)`,
+          transition: `transform .42s ${spring}`,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          pointerEvents: 'none',
+          zIndex: 1,
+        }}
       >
-        <div
-          className="tap"
-          style={{
-            width: '52px',
-            height: '52px',
-            borderRadius: '18px',
-            background: C.accent,
-            color: 'var(--on-accent)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            boxShadow: '0 8px 20px rgba(0,0,0,.28)',
-          }}
-        >
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-            <path d="M7 7h11l-3-3M17 17H6l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
+        <div style={{ width: '50px', height: '50px', borderRadius: '50%', background: C.accent, boxShadow: '0 10px 22px rgba(0,0,0,.30)', transform: 'translateY(-10px)' }} />
       </div>
-      <NavItem label={store.t('tab.markets')} color={col('markets')} onClick={() => store.go('markets', 'markets')}>
-        <path d="M4 16l4-5 4 3 4-7 4 5" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" />
-      </NavItem>
-      <NavItem label={store.t('tab.profile')} color={col('profile')} onClick={() => store.go('profile', 'profile')}>
-        <circle cx="12" cy="8" r="3.6" stroke="currentColor" strokeWidth="1.9" />
-        <path d="M5 20a7 7 0 0 1 14 0" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-      </NavItem>
-    </div>
-  );
-}
 
-function NavItem({
-  label,
-  color,
-  onClick,
-  children,
-}: {
-  label: string;
-  color: string;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div onClick={onClick} className="tap" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', cursor: 'pointer', color }}>
-      <svg width="23" height="23" viewBox="0 0 24 24" fill="none">
-        {children}
-      </svg>
-      <span style={{ fontSize: '10px', fontWeight: 700 }}>{label}</span>
+      {tabs.map((tb) => {
+        const on = tb.key === activeKey;
+        return (
+          <div
+            key={tb.key}
+            onClick={() => go(tb.key)}
+            className="tap"
+            style={{
+              flex: 1,
+              position: 'relative',
+              zIndex: 2,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '5px',
+              cursor: 'pointer',
+              color: on ? 'var(--on-accent)' : 'var(--dim)',
+              transform: on ? 'translateY(-10px)' : 'none',
+              transition: `transform .42s ${spring}, color .25s ease`,
+            }}
+          >
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none">{tb.icon}</svg>
+            {!on && <span style={{ fontSize: '10px', fontWeight: 700 }}>{tb.label}</span>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -307,9 +442,11 @@ export function PrimaryButton({
       style={{
         width: '100%',
         ...C.glassBright,
+        ...CONTROL,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         color: 'var(--primary-text)',
-        borderRadius: '16px',
-        padding: '17px',
         fontSize: '16px',
         fontWeight: 800,
         cursor: disabled ? 'default' : 'pointer',
@@ -337,9 +474,11 @@ export function GhostButton({
       style={{
         width: '100%',
         ...C.glassSoft,
+        ...CONTROL,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
         color: 'var(--text)',
-        borderRadius: '16px',
-        padding: '18px',
         fontSize: '16px',
         fontWeight: 800,
         cursor: 'pointer',
@@ -367,7 +506,7 @@ export function NumberPad({ onKey }: { onKey: (k: string) => void }) {
             justifyContent: 'center',
             fontSize: '24px',
             fontWeight: 600,
-            borderRadius: '14px',
+            borderRadius: '999px',
             cursor: 'pointer',
             userSelect: 'none',
             ...C.glassSoft,
@@ -407,31 +546,42 @@ export function Toast({ toast }: { toast: WalletStore['toast'] }) {
       : 'var(--glass-bg)';
   const fg = toast.kind === 'ok' ? 'var(--on-accent)' : toast.kind === 'err' ? '#fff' : 'var(--text)';
   return (
+    // Flex-centered overlay so the card is centered from the first frame; only the
+    // inner card scales in (animating transform on the card itself would fight the
+    // centering and make it appear off to one side before snapping to the middle).
     <div
       style={{
-        position: 'fixed',
-        left: '50%',
-        bottom: 'calc(108px + env(safe-area-inset-bottom))',
-        transform: 'translateX(-50%)',
-        zIndex: 50,
-        maxWidth: '380px',
-        width: 'calc(100% - 40px)',
-        background: bg,
-        backdropFilter: 'blur(20px) saturate(150%)',
-        WebkitBackdropFilter: 'blur(20px) saturate(150%)',
-        border: '1px solid rgba(255,255,255,.16)',
-        color: fg,
-        borderRadius: '14px',
-        padding: '13px 16px',
-        fontSize: '13.5px',
-        fontWeight: 700,
-        textAlign: 'center',
-        lineHeight: 1.4,
-        boxShadow: '0 12px 30px rgba(0,0,0,.4)',
-        animation: 'fadeUp .25s ease',
+        position: 'absolute',
+        inset: 0,
+        zIndex: 60,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        pointerEvents: 'none',
       }}
     >
-      {toast.msg}
+      <div
+        style={{
+          maxWidth: '320px',
+          width: '100%',
+          background: bg,
+          backdropFilter: 'blur(20px) saturate(150%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+          border: '1px solid rgba(255,255,255,.16)',
+          color: fg,
+          borderRadius: '18px',
+          padding: '16px 18px',
+          fontSize: '14px',
+          fontWeight: 700,
+          textAlign: 'center',
+          lineHeight: 1.45,
+          boxShadow: '0 18px 50px rgba(0,0,0,.5)',
+          animation: 'pop .28s ease',
+        }}
+      >
+        {toast.msg}
+      </div>
     </div>
   );
 }
@@ -479,14 +629,87 @@ const AV_BRAND = 'var(--avatar-brand)';
 export const ASSET_META: Record<string, { name: string; glyph: string; color: string }> = {
   XLM: { name: 'Stellar Lumens', glyph: '✦', color: AV_BRAND },
   USDC: { name: 'USD Coin', glyph: '$', color: AV },
-  USDT: { name: 'Tether', glyph: '₮', color: AV },
+  EURC: { name: 'Euro Coin', glyph: '€', color: AV },
   yXLM: { name: 'yieldXLM', glyph: 'y', color: AV },
   AQUA: { name: 'Aquarius', glyph: 'A', color: AV },
-  BTC: { name: 'Bitcoin', glyph: '₿', color: AV },
-  ETH: { name: 'Ethereum', glyph: 'Ξ', color: AV },
-  SOL: { name: 'Solana', glyph: '◎', color: AV },
 };
 
 export function assetMeta(code: string) {
   return ASSET_META[code] || { name: code, glyph: code.slice(0, 1), color: AV };
+}
+
+/** Official monochrome asset logo (falls back to a glyph circle for unknown codes). */
+export function AssetLogo({ code, size = 34 }: { code: string; size?: number }) {
+  const icon = ASSET_ICONS[code];
+  if (icon) {
+    return (
+      <svg width={size} height={size} viewBox="0 0 32 32" style={{ display: 'block', flexShrink: 0, color: 'var(--text)' }}>
+        <path d={icon.d} fill="currentColor" fillRule={icon.evenodd ? 'evenodd' : 'nonzero'} />
+      </svg>
+    );
+  }
+  const m = assetMeta(code);
+  return <TokenAvatar glyph={m.glyph} color={m.color} size={size} />;
+}
+
+/** The Stellar wordmark/glyph (monochrome) — used by the network selector. */
+export function StellarMark({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0, color: 'currentColor' }}>
+      <path d={STELLAR_MARK} fill="currentColor" />
+    </svg>
+  );
+}
+
+/** Network selector as a dropdown (lists networks + "add network") — dev fast-access. */
+export function NetworkDropdown({ store }: { store: WalletStore }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{ display: 'flex', alignItems: 'center', gap: '7px', ...C.glassSoft, color: 'var(--text)', borderRadius: '999px', padding: '7px 12px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}
+      >
+        <StellarMark size={13} />
+        {store.network.label}
+        <span style={{ fontSize: '9px', opacity: 0.7, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▼</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+          <div style={{ position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 31, minWidth: '200px', ...C.glass, borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
+            {store.networks.map((n) => {
+              const on = n.id === store.network.id;
+              return (
+                <div
+                  key={n.id}
+                  onClick={() => {
+                    if (!on) store.switchNetwork(n.id);
+                    setOpen(false);
+                  }}
+                  className="tap"
+                  style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '10px 12px', borderRadius: '11px', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent', color: 'var(--text)' }}
+                >
+                  <StellarMark size={14} />
+                  <span style={{ flex: 1, fontSize: '13.5px', fontWeight: 700 }}>{n.label}</span>
+                  {on && <span style={{ color: C.accent, fontWeight: 800 }}>✓</span>}
+                </div>
+              );
+            })}
+            <div
+              onClick={() => {
+                setOpen(false);
+                store.setScreen('add-network');
+              }}
+              className="tap"
+              style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '10px 12px', borderRadius: '11px', cursor: 'pointer', color: C.accent, fontWeight: 800, fontSize: '13.5px', borderTop: '1px solid var(--hairline)', marginTop: '2px' }}
+            >
+              <span style={{ width: '14px', textAlign: 'center', fontSize: '16px' }}>+</span>
+              {store.t('net.add')}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

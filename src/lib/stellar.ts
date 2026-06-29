@@ -16,31 +16,47 @@ import {
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
 
-export type StellarNetwork = 'testnet' | 'public';
+// A network is identified by an id; built-ins are testnet/public, plus any
+// custom networks the user adds (own Horizon + passphrase).
+export type StellarNetwork = string;
 
-interface NetConfig {
+export interface NetConfig {
+  id: string;
+  label: string;
   horizon: string;
   passphrase: string;
-  label: string;
   friendbot?: string;
+  custom?: boolean;
 }
 
-export const NETWORKS: Record<StellarNetwork, NetConfig> = {
-  testnet: {
+export const BUILTIN_NETWORKS: NetConfig[] = [
+  {
+    id: 'testnet',
+    label: 'Testnet',
     horizon: 'https://horizon-testnet.stellar.org',
     passphrase: Networks.TESTNET,
-    label: 'Testnet',
     friendbot: 'https://friendbot.stellar.org',
   },
-  public: {
+  {
+    id: 'public',
+    label: 'Mainnet',
     horizon: 'https://horizon.stellar.org',
     passphrase: Networks.PUBLIC,
-    label: 'Mainnet',
   },
-};
+];
 
-export function getServer(network: StellarNetwork): Horizon.Server {
-  return new Horizon.Server(NETWORKS[network].horizon);
+/** All available networks (built-ins + the user's custom ones). */
+export function allNetworks(custom: NetConfig[]): NetConfig[] {
+  return [...BUILTIN_NETWORKS, ...custom];
+}
+
+/** Resolve a network id to its config (falls back to testnet). */
+export function resolveNetwork(id: string, custom: NetConfig[]): NetConfig {
+  return allNetworks(custom).find((n) => n.id === id) ?? BUILTIN_NETWORKS[0];
+}
+
+export function getServer(cfg: NetConfig): Horizon.Server {
+  return new Horizon.Server(cfg.horizon);
 }
 
 export interface TokenBalance {
@@ -65,10 +81,10 @@ function isNotFound(err: unknown): boolean {
 
 /** Load balances for a public key. Brand-new keys 404 until funded — handled. */
 export async function getAccountState(
-  network: StellarNetwork,
+  cfg: NetConfig,
   publicKey: string,
 ): Promise<AccountState> {
-  const server = getServer(network);
+  const server = getServer(cfg);
   try {
     const acc = await server.loadAccount(publicKey);
     const balances: TokenBalance[] = acc.balances.map((b: any) => {
@@ -97,7 +113,7 @@ export async function getAccountState(
 }
 
 export interface SendParams {
-  network: StellarNetwork;
+  cfg: NetConfig;
   secret: string;
   destination: string;
   amount: string; // in XLM
@@ -106,14 +122,13 @@ export interface SendParams {
 
 /** Send native XLM. Creates the destination account if it doesn't exist yet. */
 export async function sendXlm({
-  network,
+  cfg,
   secret,
   destination,
   amount,
   memo,
 }: SendParams): Promise<{ hash: string }> {
-  const cfg = NETWORKS[network];
-  const server = getServer(network);
+  const server = getServer(cfg);
   const keypair = Keypair.fromSecret(secret);
 
   const source = await server.loadAccount(keypair.publicKey());
@@ -170,6 +185,110 @@ export async function sendXlm({
   }
 }
 
+export interface PaymentParams {
+  cfg: NetConfig;
+  secret: string;
+  destination: string;
+  amount: string;
+  memo?: string;
+  /** null/undefined = native XLM; otherwise a credit asset (requires dest trustline). */
+  asset?: { code: string; issuer: string } | null;
+}
+
+/**
+ * Send a payment in any asset. Native XLM creates the destination account when
+ * it doesn't exist yet; credit assets require the destination to exist and to
+ * already trust the asset (otherwise Horizon rejects with op_no_trust).
+ */
+export async function sendPayment({
+  cfg,
+  secret,
+  destination,
+  amount,
+  memo,
+  asset,
+}: PaymentParams): Promise<{ hash: string }> {
+  if (!asset || asset.code === 'XLM' || !asset.issuer) {
+    return sendXlm({ cfg, secret, destination, amount, memo });
+  }
+  const server = getServer(cfg);
+  const keypair = Keypair.fromSecret(secret);
+  const source = await server.loadAccount(keypair.publicKey());
+
+  let fee = BASE_FEE;
+  try {
+    fee = String(await server.fetchBaseFee());
+  } catch {
+    /* keep BASE_FEE fallback */
+  }
+
+  const builder = new TransactionBuilder(source, { fee, networkPassphrase: cfg.passphrase }).addOperation(
+    Operation.payment({
+      destination,
+      asset: new Asset(asset.code, asset.issuer),
+      amount: normalizeAmount(amount),
+    }),
+  );
+  if (memo && memo.trim()) builder.addMemo(Memo.text(memo.trim().slice(0, 28)));
+
+  const tx = builder.setTimeout(180).build();
+  tx.sign(keypair);
+  try {
+    const res = await server.submitTransaction(tx);
+    return { hash: res.hash };
+  } catch (err) {
+    throw new Error(parseHorizonError(err));
+  }
+}
+
+/* ----------------------- raw transaction signing ----------------------- */
+
+export interface TxSummary {
+  source: string;
+  fee: string;
+  memo: string;
+  operations: string[]; // operation type names
+  signatures: number;
+}
+
+/** Decode an XDR envelope for display (does not sign). Throws on malformed input. */
+export function inspectXdr(cfg: NetConfig, xdr: string): TxSummary {
+  const tx: any = TransactionBuilder.fromXDR(xdr.trim(), cfg.passphrase);
+  const ops: any[] = Array.isArray(tx.operations) ? tx.operations : [];
+  let memo = '';
+  try {
+    if (tx.memo && tx.memo.value != null) memo = tx.memo.value.toString();
+  } catch {
+    /* non-text memo */
+  }
+  return {
+    source: tx.source ?? '',
+    fee: String(tx.fee ?? ''),
+    memo,
+    operations: ops.map((o) => String(o.type)),
+    signatures: Array.isArray(tx.signatures) ? tx.signatures.length : 0,
+  };
+}
+
+/** Sign an XDR with the active secret and return the signed XDR (base64). */
+export function signXdr(cfg: NetConfig, secret: string, xdr: string): string {
+  const tx = TransactionBuilder.fromXDR(xdr.trim(), cfg.passphrase);
+  tx.sign(Keypair.fromSecret(secret));
+  return tx.toXDR();
+}
+
+/** Submit a (signed) XDR envelope to the network. */
+export async function submitXdr(cfg: NetConfig, xdr: string): Promise<{ hash: string }> {
+  const server = getServer(cfg);
+  const tx = TransactionBuilder.fromXDR(xdr.trim(), cfg.passphrase);
+  try {
+    const res = await server.submitTransaction(tx as any);
+    return { hash: res.hash };
+  } catch (err) {
+    throw new Error(parseHorizonError(err));
+  }
+}
+
 /** Stellar amounts allow at most 7 decimal places. */
 export function normalizeAmount(amount: string): string {
   const n = Number(amount);
@@ -200,11 +319,7 @@ function parseHorizonError(err: unknown): string {
 }
 
 /** Testnet only: fund a fresh account with free XLM via Friendbot. */
-export async function fundWithFriendbot(
-  network: StellarNetwork,
-  publicKey: string,
-): Promise<void> {
-  const cfg = NETWORKS[network];
+export async function fundWithFriendbot(cfg: NetConfig, publicKey: string): Promise<void> {
   if (!cfg.friendbot) {
     throw new Error('Friendbot solo está disponible en Testnet.');
   }
@@ -214,20 +329,83 @@ export async function fundWithFriendbot(
   }
 }
 
-export function explorerTxUrl(network: StellarNetwork, hash: string): string {
-  const base =
-    network === 'public'
-      ? 'https://stellar.expert/explorer/public/tx/'
-      : 'https://stellar.expert/explorer/testnet/tx/';
-  return base + hash;
+/** Add (or remove, with limit '0') a trustline so the account can hold an asset. */
+export async function addTrustline({
+  cfg,
+  secret,
+  code,
+  issuer,
+  limit,
+}: {
+  cfg: NetConfig;
+  secret: string;
+  code: string;
+  issuer: string;
+  limit?: string;
+}): Promise<{ hash: string }> {
+  const server = getServer(cfg);
+  const keypair = Keypair.fromSecret(secret);
+  const source = await server.loadAccount(keypair.publicKey());
+
+  let fee = BASE_FEE;
+  try {
+    fee = String(await server.fetchBaseFee());
+  } catch {
+    /* fallback */
+  }
+
+  const tx = new TransactionBuilder(source, { fee, networkPassphrase: cfg.passphrase })
+    .addOperation(Operation.changeTrust({ asset: new Asset(code, issuer), limit }))
+    .setTimeout(180)
+    .build();
+  tx.sign(keypair);
+
+  try {
+    const res = await server.submitTransaction(tx);
+    return { hash: res.hash };
+  } catch (err) {
+    throw new Error(parseHorizonError(err));
+  }
 }
 
-export function explorerAccountUrl(network: StellarNetwork, pub: string): string {
-  const base =
-    network === 'public'
-      ? 'https://stellar.expert/explorer/public/account/'
-      : 'https://stellar.expert/explorer/testnet/account/';
-  return base + pub;
+/**
+ * Resolve the canonical issuer for an asset code on this network by asking
+ * Horizon which issuer has the most holders. Avoids hard-coding issuers that
+ * differ between mainnet/testnet (and lets testnet variants resolve too).
+ * Returns null when no issuer for that code exists on the network.
+ */
+export async function resolveAssetIssuer(cfg: NetConfig, code: string): Promise<string | null> {
+  const server = getServer(cfg);
+  try {
+    const res = await server.assets().forCode(code).limit(200).call();
+    const recs = ((res as any).records ?? []) as any[];
+    if (!recs.length) return null;
+    const score = (r: any) =>
+      Number(r.accounts?.authorized ?? 0) +
+      Number(r.accounts?.authorized_to_maintain_liabilities ?? 0) +
+      Number(r.num_claimable_balances ?? 0);
+    recs.sort((a, b) => score(b) - score(a));
+    return recs[0]?.asset_issuer ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** stellar.expert only knows the built-in networks; custom networks have no explorer. */
+function explorerSegment(cfg: NetConfig): string | null {
+  if (cfg.id === 'public') return 'public';
+  if (cfg.id === 'testnet') return 'testnet';
+  return null;
+}
+
+export function explorerTxUrl(cfg: NetConfig, hash: string): string {
+  const seg = explorerSegment(cfg);
+  return seg ? `https://stellar.expert/explorer/${seg}/tx/${hash}` : '';
+}
+
+export function explorerAccountUrl(cfg: NetConfig, pub: string): string {
+  const seg = explorerSegment(cfg);
+  return seg ? `https://stellar.expert/explorer/${seg}/account/${pub}` : '';
 }
 
 /* ----------------------------- price feed ------------------------------ */
@@ -237,16 +415,16 @@ export interface PriceInfo {
   change24h: number; // percent
 }
 
+// Stellar-ecosystem assets only.
 const COINGECKO =
-  'https://api.coingecko.com/api/v3/simple/price?ids=stellar,bitcoin,ethereum,solana,tether,usd-coin&vs_currencies=usd&include_24hr_change=true';
+  'https://api.coingecko.com/api/v3/simple/price?ids=stellar,usd-coin,euro-coin,aquarius&vs_currencies=usd&include_24hr_change=true';
 
+// USDT does not exist as a native Stellar asset — Stellar's fiat stables are USDC & EURC.
 const CG_IDS: Record<string, string> = {
   XLM: 'stellar',
-  BTC: 'bitcoin',
-  ETH: 'ethereum',
-  SOL: 'solana',
-  USDT: 'tether',
   USDC: 'usd-coin',
+  EURC: 'euro-coin',
+  AQUA: 'aquarius',
 };
 
 /** Best-effort price fetch. Returns {} on failure (offline / rate-limited). */

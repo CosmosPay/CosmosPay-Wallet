@@ -14,7 +14,7 @@
  */
 import { open, seal, type SealedBox } from './crypto';
 import { storageGet, storageRemove, storageSet } from './storage';
-import type { StellarNetwork } from './stellar';
+import type { NetConfig } from './stellar';
 
 const WALLETS_KEY = 'cosmos.wallets';
 const ACTIVE_KEY = 'cosmos.active';
@@ -34,7 +34,8 @@ export interface WalletEntry {
   id: string;
   publicKey: string; // G...
   name: string; // user name / nickname
-  birthdate: string; // ISO "YYYY-MM-DD" or ''
+  birthdate: string; // ISO "YYYY-MM-DD" (required at signup)
+  email: string; // for opt-in linking to Cosmos products (required at signup)
   createdAt: number;
 }
 
@@ -82,12 +83,29 @@ export async function getActiveEntry(): Promise<WalletEntry | null> {
 
 /* ------------------------------- network -------------------------------- */
 
-export async function getNetwork(): Promise<StellarNetwork> {
-  return (await storageGet(NETWORK_KEY)) === 'public' ? 'public' : 'testnet';
+const CUSTOM_NETWORKS_KEY = 'cosmos.networks';
+
+/** Active network id ('testnet' | 'public' | a custom id). */
+export async function getNetworkId(): Promise<string> {
+  return (await storageGet(NETWORK_KEY)) || 'testnet';
 }
 
-export async function setNetwork(net: StellarNetwork): Promise<void> {
-  await storageSet(NETWORK_KEY, net);
+export async function setNetworkId(id: string): Promise<void> {
+  await storageSet(NETWORK_KEY, id);
+}
+
+export async function getCustomNetworks(): Promise<NetConfig[]> {
+  const raw = await storageGet(CUSTOM_NETWORKS_KEY);
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as NetConfig[];
+  } catch {
+    return [];
+  }
+}
+
+export async function setCustomNetworks(list: NetConfig[]): Promise<void> {
+  await storageSet(CUSTOM_NETWORKS_KEY, JSON.stringify(list));
 }
 
 /* ------------------------------- migration ------------------------------ */
@@ -108,11 +126,12 @@ export async function migrate(): Promise<void> {
         publicKey: meta.publicKey,
         name: meta.name ?? 'astronauta',
         birthdate: meta.birthdate ?? '',
+        email: meta.email ?? '',
         createdAt: meta.createdAt ?? Date.now(),
       },
     ]);
     await setActiveId(id);
-    if (meta.network) await setNetwork(meta.network);
+    if (meta.network) await setNetworkId(meta.network);
     await storageRemove(OLD_VAULT);
     await storageRemove(OLD_META);
   } catch {
@@ -125,7 +144,7 @@ export async function migrate(): Promise<void> {
 /** Seal a new wallet under `password`, append it, and make it active. */
 export async function addWallet(
   secret: VaultSecret,
-  info: { publicKey: string; name: string; birthdate: string },
+  info: { publicKey: string; name: string; birthdate: string; email: string },
   password: string,
 ): Promise<WalletEntry> {
   const list = await listWallets();
@@ -143,6 +162,7 @@ export async function addWallet(
     publicKey: info.publicKey,
     name: info.name,
     birthdate: info.birthdate,
+    email: info.email,
     createdAt: Date.now(),
   };
   await writeWallets([...list, entry]);

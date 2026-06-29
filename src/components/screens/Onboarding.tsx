@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { WalletStore } from '../store';
-import { C, PrimaryButton, GhostButton, BackBar, Spinner, Logo } from '../parts';
-import { copyText, readText } from '../../lib/clipboard';
-import { isValidMnemonic, isValidSecret } from '../../lib/wallet';
-import { APP_VERSION } from '../../lib/config';
+import { C, PrimaryButton, GhostButton, BackBar, Spinner, Logo, inputStyle } from '../parts';
+import { copyText, readText } from '@/lib/clipboard';
+import { isValidMnemonic, isValidSecret } from '@/lib/wallet';
+import { APP_VERSION } from '@/lib/config';
 
 export function Welcome({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -183,7 +183,7 @@ export function Import({ store }: { store: WalletStore }) {
       )}
       <button
         onClick={async () => store.setImportText(await readText())}
-        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '9px', ...C.glassSoft, border: 'none', borderRadius: '14px', padding: '14px', fontSize: '14px', fontWeight: 800, cursor: 'pointer', color: 'var(--text)', marginTop: '6px', marginBottom: '22px' }}
+        style={{ width: '100%', height: '54px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '9px', ...C.glassSoft, border: 'none', borderRadius: '999px', fontSize: '14px', fontWeight: 800, cursor: 'pointer', color: 'var(--text)', marginTop: '6px', marginBottom: '22px' }}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
           <rect x="6" y="4" width="12" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
@@ -198,19 +198,22 @@ export function Import({ store }: { store: WalletStore }) {
   );
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function ProfileSetup({ store }: { store: WalletStore }) {
   const t = store.t;
   const name = store.draftName;
-  const ok = name.trim().length >= 2;
+  const email = store.draftEmail;
+  const emailOk = EMAIL_RE.test(email.trim());
+  // Name, email and birthdate are all required.
+  const ok = name.trim().length >= 2 && emailOk && !!store.draftBirthdate;
   const back = () =>
     store.setScreen(store.draftHasMnemonic && store.draftMnemonic ? 'verify' : 'import');
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 28px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('setup.about')} onBack={back} />
-      <div style={{ display: 'flex', justifyContent: 'center', margin: '18px 0 8px' }}>
-        <div style={{ width: '76px', height: '76px', borderRadius: '24px', ...C.glass, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '34px' }}>👋</div>
-      </div>
+      <div style={{ display: 'flex', justifyContent: 'center', margin: '14px 0 6px', fontSize: '50px', lineHeight: 1 }}>👋</div>
       <div style={{ fontSize: '22px', fontWeight: 800, textAlign: 'center', letterSpacing: '-.5px', marginBottom: '8px' }}>{t('setup.title')}</div>
       <div style={{ fontSize: '13.5px', color: C.muted, fontWeight: 600, lineHeight: 1.5, textAlign: 'center', margin: '0 6px 22px' }}>
         {t('setup.subtitle')}
@@ -222,6 +225,16 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
         onChange={(v) => store.setDraftName(v.slice(0, 24))}
         placeholder="p. ej. Alex"
       />
+      <Field
+        label={t('setup.emailLabel')}
+        value={email}
+        type="email"
+        onChange={(v) => store.setDraftEmail(v.trim().slice(0, 80))}
+        placeholder="tu@correo.com"
+      />
+      {email.length > 0 && !emailOk && (
+        <div style={{ fontSize: '12px', fontWeight: 700, color: C.danger, margin: '-8px 2px 12px' }}>{t('setup.emailInvalid')}</div>
+      )}
       <label style={{ display: 'block', marginBottom: '14px' }}>
         <div style={{ fontSize: '12px', color: C.dim, fontWeight: 700, marginBottom: '7px', textTransform: 'uppercase', letterSpacing: '.5px' }}>{t('setup.dobLabel')}</div>
         <input
@@ -229,12 +242,9 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
           value={store.draftBirthdate}
           max="2099-12-31"
           onChange={(e) => store.setDraftBirthdate((e.target as HTMLInputElement).value)}
-          style={{ width: '100%', ...C.glass, borderRadius: '14px', padding: '15px 16px', color: 'var(--text)', colorScheme: store.theme === 'light' ? 'light' : 'dark', fontSize: '15px', fontWeight: 600, outline: 'none' }}
+          style={{ ...C.glass, ...inputStyle, colorScheme: store.theme === 'light' ? 'light' : 'dark' }}
         />
       </label>
-      <div style={{ fontSize: '12px', color: C.dim, fontWeight: 600, lineHeight: 1.5, marginBottom: '4px' }}>
-        {t('setup.birthdayNote')}
-      </div>
 
       <div style={{ flex: 1 }} />
       <PrimaryButton
@@ -309,7 +319,7 @@ export function Field({
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange((e.target as HTMLInputElement).value)}
-        style={{ width: '100%', ...C.glass, borderRadius: '14px', padding: '15px 16px', color: 'var(--text)', fontSize: '15px', fontWeight: 600, outline: 'none' }}
+        style={{ ...C.glass, ...inputStyle }}
       />
     </label>
   );

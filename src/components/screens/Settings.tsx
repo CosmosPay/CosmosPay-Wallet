@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import type { WalletStore } from '../store';
-import { C, PrimaryButton, BackBar, Spinner } from '../parts';
+import { C, PrimaryButton, BackBar, Spinner, inputStyle } from '../parts';
 import { Field } from './Onboarding';
-import { copyText } from '../../lib/clipboard';
-import { shortAddr } from '../../lib/format';
-import { NETWORKS, type StellarNetwork } from '../../lib/stellar';
-import { changePassword } from '../../lib/vault';
-import { LANGUAGES } from '../../lib/i18n';
+import { copyText } from '@/lib/clipboard';
+import { shortAddr } from '@/lib/format';
+import { changePassword } from '@/lib/vault';
+import { LANGUAGES } from '@/lib/i18n';
 
 export function Settings({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -25,16 +24,19 @@ export function Settings({ store }: { store: WalletStore }) {
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 40px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('settings.title')} onBack={() => store.go(store.session ? 'profile' : 'home', 'profile')} />
 
-      <Section title={t('settings.network')}>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {(['testnet', 'public'] as StellarNetwork[]).map((net) => {
-            const on = store.network === net;
+      <Section title={t('net.title')}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {store.networks.map((n) => {
+            const on = n.id === store.network.id;
             return (
-              <button key={net} onClick={() => store.switchNetwork(net)} style={{ flex: 1, background: on ? C.accent : C.cardSolid, color: on ? 'var(--on-accent)' : 'var(--text)', border: 'none', borderRadius: '14px', padding: '14px', fontSize: '14px', fontWeight: 800, cursor: 'pointer' }}>
-                {NETWORKS[net].label}
+              <button key={n.id} onClick={() => store.switchNetwork(n.id)} style={{ background: on ? C.accent : C.cardSolid, color: on ? 'var(--on-accent)' : 'var(--text)', border: 'none', borderRadius: '999px', padding: '11px 16px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}>
+                {n.label}
               </button>
             );
           })}
+          <button onClick={() => store.setScreen('add-network')} style={{ background: 'transparent', color: C.accent, border: '1px dashed var(--glass-border)', borderRadius: '999px', padding: '11px 16px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}>
+            + {t('net.add')}
+          </button>
         </div>
         <div style={{ fontSize: '12px', color: C.dim, fontWeight: 600, marginTop: '10px', lineHeight: 1.5 }}>
           {t('settings.networkDesc')}
@@ -75,6 +77,7 @@ export function Settings({ store }: { store: WalletStore }) {
       </Section>
 
       <Section title={t('settings.security')}>
+        <ToggleRow label={t('settings.confirmSigns')} desc={t('settings.confirmSignsDesc')} on={store.requireConfirm} onChange={store.setRequireConfirm} />
         <Row label={t('settings.exportPhrase')} onClick={() => store.setScreen('export')} />
         <Row label={pwOpen ? t('settings.cancelChangePwd') : t('settings.changePwd')} onClick={() => setPwOpen((o) => !o)} last={!pwOpen} />
         {pwOpen && <ChangePassword store={store} onDone={() => setPwOpen(false)} />}
@@ -148,6 +151,20 @@ function Row({ label, onClick, last }: { label: string; onClick: () => void; las
   );
 }
 
+function ToggleRow({ label, desc, on, onChange }: { label: string; desc?: string; on: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', ...C.glass, borderRadius: '14px', padding: '15px 16px', marginBottom: '10px' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '15px', fontWeight: 700 }}>{label}</div>
+        {desc && <div style={{ fontSize: '12px', color: C.dim, fontWeight: 600, lineHeight: 1.4, marginTop: '2px' }}>{desc}</div>}
+      </div>
+      <div onClick={() => onChange(!on)} className="tap" style={{ flexShrink: 0, width: '46px', height: '28px', borderRadius: '999px', background: on ? C.accent : 'var(--surface)', border: '1px solid var(--glass-border)', position: 'relative', cursor: 'pointer', transition: 'background .2s' }}>
+        <div style={{ position: 'absolute', top: '2px', left: on ? '20px' : '2px', width: '22px', height: '22px', borderRadius: '50%', background: on ? 'var(--on-accent)' : 'var(--text)', transition: 'left .2s' }} />
+      </div>
+    </div>
+  );
+}
+
 /* ------------------------------ EXPORT ------------------------------ */
 export function Export({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -189,7 +206,7 @@ export function Export({ store }: { store: WalletStore }) {
           <div style={{ fontSize: '14px', color: C.muted, fontWeight: 600, lineHeight: 1.5, marginBottom: '18px' }}>
             {t('export.enterPwd')}
           </div>
-          <input type="password" value={pwd} placeholder={t('pwd.label')} onChange={(e) => setPwd((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} style={{ width: '100%', ...C.glass, borderRadius: '14px', padding: '15px 16px', color: 'var(--text)', fontSize: '15px', fontWeight: 600, outline: 'none', marginBottom: '18px' }} />
+          <input type="password" value={pwd} placeholder={t('pwd.label')} onChange={(e) => setPwd((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} style={{ ...C.glass, ...inputStyle, marginBottom: '18px' }} />
           <PrimaryButton disabled={!pwd || busy} onClick={unlock}>{busy ? <Spinner /> : t('export.reveal')}</PrimaryButton>
         </>
       ) : (

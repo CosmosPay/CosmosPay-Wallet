@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '../store';
-import { C, PrimaryButton, BackBar, NumberPad, Spinner, TokenAvatar, assetMeta } from '../parts';
-import { qrDataUrl } from '../../lib/qr';
-import { copyText } from '../../lib/clipboard';
-import { computePortfolio } from '../../lib/portfolio';
-import { fmt, trim, shortAddr } from '../../lib/format';
-import { NETWORKS, explorerTxUrl, normalizeAmount } from '../../lib/stellar';
-import { isValidPublicKey } from '../../lib/wallet';
+import { C, PrimaryButton, BackBar, NumberPad, Spinner, AssetLogo, inputStyle } from '../parts';
+import { qrDataUrl } from '@/lib/qr';
+import { buildSep7Pay } from '@/lib/sep7';
+import { copyText, readText } from '@/lib/clipboard';
+import { computePortfolio } from '@/lib/portfolio';
+import { fmt, trim, shortAddr } from '@/lib/format';
+import { explorerTxUrl, normalizeAmount } from '@/lib/stellar';
+import { isValidPublicKey } from '@/lib/wallet';
 
 /** Numeric keypad editing with Stellar's 7-decimal limit. */
 function editAmount(v: string, d: string): string {
@@ -38,7 +39,8 @@ export function Receive({ store }: { store: WalletStore }) {
   const pub = store.meta?.publicKey ?? '';
 
   useEffect(() => {
-    if (pub) qrDataUrl(pub).then(setQr).catch(() => {});
+    // Encode a SEP-0007 payment request so other Stellar wallets can pre-fill the send.
+    if (pub) qrDataUrl(buildSep7Pay({ destination: pub })).then(setQr).catch(() => {});
   }, [pub]);
 
   const copy = async () => {
@@ -70,7 +72,7 @@ export function Receive({ store }: { store: WalletStore }) {
       </div>
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', ...C.glassSoft, padding: '8px 16px 8px 9px', borderRadius: '30px' }}>
-          <TokenAvatar glyph="✦" color="var(--avatar-brand)" size={26} />
+          <AssetLogo code="XLM" size={26} />
           <span style={{ fontSize: '14px', fontWeight: 700 }}>{t('receive.stellarAddress')}</span>
         </div>
       </div>
@@ -84,19 +86,65 @@ export function Receive({ store }: { store: WalletStore }) {
         </div>
       </div>
       <div style={{ display: 'flex', gap: '10px' }}>
-        <button onClick={copy} style={{ flex: 1, ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '16px', padding: '16px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{copied ? t('common.copied') : t('common.copy')}</button>
-        <button onClick={share} style={{ flex: 1, background: C.accent, color: 'var(--on-accent)', border: 'none', borderRadius: '16px', padding: '16px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{t('common.share')}</button>
+        <button onClick={copy} style={{ flex: 1, height: '54px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{copied ? t('common.copied') : t('common.copy')}</button>
+        <button onClick={share} style={{ flex: 1, height: '54px', background: C.accent, color: 'var(--on-accent)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{t('common.share')}</button>
       </div>
     </div>
   );
 }
 
 /* ------------------------------- SEND ------------------------------- */
+/** Assets the wallet can send: native XLM (always present) + any trustline balances. */
+function sendableAssets(store: WalletStore) {
+  const list = (store.account?.balances ?? []).slice();
+  // XLM is the native asset — it never depends on a trustline, so it's always available.
+  if (!list.some((b) => b.isNative || b.code === 'XLM')) {
+    list.unshift({ code: 'XLM', issuer: null, balance: String(store.account?.xlm ?? 0), isNative: true });
+  }
+  return list.sort((a, b) => (a.isNative ? -1 : b.isNative ? 1 : 0));
+}
+
+/** Pill dropdown to choose which asset to send. */
+function AssetPicker({ store }: { store: WalletStore }) {
+  const [open, setOpen] = useState(false);
+  const assets = sendableAssets(store);
+  const code = store.send.asset || 'XLM';
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ display: 'flex', alignItems: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', padding: '7px 14px 7px 7px', fontSize: '14px', fontWeight: 800, cursor: 'pointer' }}>
+        <AssetLogo code={code} size={26} />
+        {code}
+        <span style={{ fontSize: '9px', opacity: 0.7, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▼</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+          <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 31, minWidth: '210px', ...C.glass, borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
+            {assets.map((a) => {
+              const on = a.code === code;
+              return (
+                <div key={a.code + (a.issuer ?? '')} onClick={() => { store.setSend({ ...store.send, asset: a.code, amount: '0' }); setOpen(false); }} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '11px', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent' }}>
+                  <AssetLogo code={a.code} size={26} />
+                  <span style={{ flex: 1, fontSize: '13.5px', fontWeight: 700 }}>{a.code}</span>
+                  <span style={{ fontSize: '12px', color: C.dim, fontWeight: 600 }}>{trim(parseFloat(a.balance) || 0, 4)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function Send({ store }: { store: WalletStore }) {
   const t = store.t;
   const s = store.send;
-  const avail = spendableXlm(store);
-  const xlmPrice = store.prices.XLM?.usd ?? 0;
+  const code = s.asset || 'XLM';
+  const isNative = code === 'XLM';
+  const bal = store.account?.balances.find((b) => b.code === code);
+  const avail = isNative ? spendableXlm(store) : parseFloat(bal?.balance ?? '0') || 0;
+  const price = store.prices[code]?.usd ?? 0;
   const amt = parseFloat(s.amount) || 0;
   const addrValid = isValidPublicKey(s.to);
   const amtValid = amt > 0 && amt <= avail;
@@ -104,35 +152,58 @@ export function Send({ store }: { store: WalletStore }) {
 
   const setPct = (p: number) => store.setSend({ ...s, amount: String(Math.floor(avail * p * 1e7) / 1e7) });
   const key = (d: string) => store.setSend({ ...s, amount: editAmount(s.amount, d) });
+  const pastePayUrl = async () => {
+    const txt = (await readText())?.trim();
+    if (txt && store.applySep7(txt)) return;
+    store.flash(t('ops.pasteInvalid'), 'err');
+  };
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 24px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('send.title')} onBack={() => store.go('home', 'home')} />
 
       <div style={{ marginTop: '8px', marginBottom: '6px', fontSize: '12px', color: C.dim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px' }}>{t('send.to')}</div>
-      <input
-        value={s.to}
-        onChange={(e) => store.setSend({ ...s, to: (e.target as HTMLInputElement).value.trim() })}
-        placeholder={t('send.dest')}
-        style={{ width: '100%', ...C.glass, borderRadius: '14px', padding: '14px 16px', color: 'var(--text)', fontSize: '14px', fontWeight: 600, outline: 'none', fontFamily: 'monospace' }}
-      />
-      <div style={{ fontSize: '12px', fontWeight: 700, color: !s.to ? 'transparent' : addrValid ? C.accent : C.danger, margin: '6px 2px 4px', minHeight: '14px' }}>
-        {!s.to ? '·' : addrValid ? t('send.validAddr') : t('send.invalidAddr')}
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <input
+          value={s.to}
+          onChange={(e) => {
+            const v = (e.target as HTMLInputElement).value.trim();
+            // Pasting a SEP-7 link fills destination + amount + memo in one go.
+            if (v.toLowerCase().startsWith('web+stellar:') && store.applySep7(v)) return;
+            store.setSend({ ...s, to: v });
+          }}
+          placeholder={t('send.dest')}
+          style={{ ...C.glass, ...inputStyle, flex: 1, width: 'auto', minWidth: 0, fontSize: '14px', fontFamily: 'monospace' }}
+        />
+        <button onClick={() => store.setScreen('scan')} title={t('scan.scanQr')} style={{ flexShrink: 0, width: '54px', height: '54px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><path d="M14 14h3v3M21 14v.01M21 21v-4M14 21h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+        </button>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', margin: '6px 2px 4px', minHeight: '20px' }}>
+        <button onClick={pastePayUrl} style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '6px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', padding: '7px 13px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
+          ⛓ {t('ops.pastePay')}
+        </button>
+        <span style={{ fontSize: '12px', fontWeight: 700, color: !s.to ? 'transparent' : addrValid ? C.accent : C.danger, textAlign: 'right' }}>
+          {!s.to ? '·' : addrValid ? t('send.validAddr') : t('send.invalidAddr')}
+        </span>
       </div>
 
       <div style={{ textAlign: 'center', padding: '10px 0 4px' }}>
-        <div style={{ fontSize: '44px', fontWeight: 800, letterSpacing: '-1.5px', fontVariantNumeric: 'tabular-nums' }}>
-          {s.amount}<span style={{ fontSize: '22px', color: C.muted, marginLeft: '8px' }}>XLM</span>
-          <span style={{ color: C.accent, fontWeight: 400, animation: 'blink .9s steps(1) infinite' }}>|</span>
+        {/* asset selector sits right next to the amount for a clear, fast edit */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '44px', fontWeight: 800, letterSpacing: '-1.5px', fontVariantNumeric: 'tabular-nums' }}>
+            {s.amount}
+          </div>
+          <AssetPicker store={store} />
         </div>
-        <div style={{ marginTop: '8px', fontSize: '13px', color: C.dim, fontWeight: 600 }}>
-          ≈ ${fmt(amt * xlmPrice, 2)} · {t('send.available')}: {trim(avail, 4)} XLM
+        <div style={{ marginTop: '10px', fontSize: '13px', color: C.dim, fontWeight: 600 }}>
+          {price > 0 ? `≈ $${fmt(amt * price, 2)} · ` : ''}{t('send.available')}: {trim(avail, 4)} {code}
         </div>
       </div>
 
       <div style={{ display: 'flex', gap: '8px', margin: '10px 0 12px' }}>
         {([['25%', 0.25], ['50%', 0.5], ['Máx', 1]] as [string, number][]).map(([l, p]) => (
-          <span key={l} onClick={() => setPct(p)} className="tap" style={{ flex: 1, textAlign: 'center', fontSize: '13px', fontWeight: 700, color: C.muted, ...C.glassSoft, padding: '11px', borderRadius: '11px', cursor: 'pointer' }}>{l}</span>
+          <span key={l} onClick={() => setPct(p)} className="tap" style={{ flex: 1, textAlign: 'center', fontSize: '13px', fontWeight: 700, color: C.muted, ...C.glassSoft, padding: '11px', borderRadius: '999px', cursor: 'pointer' }}>{l}</span>
         ))}
       </div>
 
@@ -140,7 +211,7 @@ export function Send({ store }: { store: WalletStore }) {
         value={s.memo}
         onChange={(e) => store.setSend({ ...s, memo: (e.target as HTMLInputElement).value.slice(0, 28) })}
         placeholder={t('send.memo')}
-        style={{ width: '100%', ...C.glass, borderRadius: '12px', padding: '12px 14px', color: 'var(--text)', fontSize: '13px', fontWeight: 600, outline: 'none', marginBottom: '12px' }}
+        style={{ ...C.glass, ...inputStyle, fontSize: '13px', marginBottom: '12px' }}
       />
 
       <NumberPad onKey={key} />
@@ -156,8 +227,9 @@ export function Send({ store }: { store: WalletStore }) {
 export function Confirm({ store }: { store: WalletStore }) {
   const t = store.t;
   const s = store.send;
+  const code = s.asset || 'XLM';
   const amt = parseFloat(s.amount) || 0;
-  const xlmPrice = store.prices.XLM?.usd ?? 0;
+  const price = store.prices[code]?.usd ?? 0;
   const from = store.meta?.publicKey ?? '';
 
   let normalized = s.amount;
@@ -170,8 +242,8 @@ export function Confirm({ store }: { store: WalletStore }) {
   const rows: [string, string, string?][] = [
     [t('confirm.from'), shortAddr(from, 6, 6), t('confirm.yourWallet')],
     [t('confirm.to'), shortAddr(s.to, 6, 6)],
-    [t('confirm.amount'), `${normalized} XLM`, '≈ $' + fmt(amt * xlmPrice, 2)],
-    [t('confirm.network'), `Stellar ${NETWORKS[store.network].label}`],
+    [t('confirm.amount'), `${normalized} ${code}`, price > 0 ? '≈ $' + fmt(amt * price, 2) : undefined],
+    [t('confirm.network'), `Stellar ${store.network.label}`],
     [t('confirm.fee'), '≈ 0.00001 XLM'],
   ];
   if (s.memo) rows.push([t('confirm.memo'), s.memo]);
@@ -180,10 +252,10 @@ export function Confirm({ store }: { store: WalletStore }) {
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '2px 20px 24px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('confirm.title')} onBack={() => store.setScreen('send')} />
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '20px 0 8px' }}>
-        <TokenAvatar glyph="✦" color="var(--avatar-brand)" size={64} />
+        <AssetLogo code={code} size={64} />
       </div>
-      <div style={{ textAlign: 'center', fontSize: '30px', fontWeight: 800, letterSpacing: '-1px', marginBottom: '4px' }}>{normalized} XLM</div>
-      <div style={{ textAlign: 'center', fontSize: '14px', color: C.dim, fontWeight: 600, marginBottom: '26px' }}>≈ ${fmt(amt * xlmPrice, 2)}</div>
+      <div style={{ textAlign: 'center', fontSize: '30px', fontWeight: 800, letterSpacing: '-1px', marginBottom: '4px' }}>{normalized} {code}</div>
+      <div style={{ textAlign: 'center', fontSize: '14px', color: C.dim, fontWeight: 600, marginBottom: '26px' }}>{price > 0 ? `≈ $${fmt(amt * price, 2)}` : ' '}</div>
 
       <div style={{ ...C.glass, borderRadius: '18px', padding: '6px 18px' }}>
         {rows.map((r, i) => (
@@ -209,6 +281,8 @@ export function Confirm({ store }: { store: WalletStore }) {
 export function Success({ store }: { store: WalletStore }) {
   const t = store.t;
   const si = store.successInfo;
+  const isErr = si?.kind === 'err';
+  const ringColor = isErr ? '#ff5d5d' : '#23c552'; // red on failure, green on success
   const goHome = () => {
     store.setSuccessInfo(null);
     if (store.session) store.go('home', 'home');
@@ -218,9 +292,13 @@ export function Success({ store }: { store: WalletStore }) {
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '2px 20px 24px' }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
         <div style={{ position: 'relative', width: '96px', height: '96px', marginBottom: '26px' }}>
-          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: C.accent, animation: 'ring 1.6s ease-out infinite' }} />
-          <div style={{ position: 'relative', width: '96px', height: '96px', borderRadius: '50%', background: C.accent, color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'pop .5s ease' }}>
-            <svg width="44" height="44" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4 10-11" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <div style={{ position: 'absolute', inset: 0, borderRadius: '50%', background: ringColor, animation: 'ring 1.6s ease-out infinite' }} />
+          <div style={{ position: 'relative', width: '96px', height: '96px', borderRadius: '50%', background: ringColor, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'pop .5s ease', boxShadow: `0 12px 34px ${ringColor}55` }}>
+            {isErr ? (
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none"><path d="M7 7l10 10M17 7L7 17" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" /></svg>
+            ) : (
+              <svg width="44" height="44" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4 10-11" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            )}
           </div>
         </div>
         <div style={{ fontSize: '26px', fontWeight: 800, marginBottom: '10px' }}>{si?.title ?? 'Listo'}</div>
@@ -258,7 +336,7 @@ export function Swap({ store }: { store: WalletStore }) {
   const receive = toPrice ? (payNum * fromPrice) / toPrice : 0;
 
   return (
-    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 24px', animation: 'fadeUp .3s ease' }}>
+    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 104px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('swap.title')} onBack={() => store.go('home', 'home')} />
 
       <div style={{ position: 'relative', marginTop: '6px' }}>
@@ -273,7 +351,7 @@ export function Swap({ store }: { store: WalletStore }) {
             <span>≈ ${fmt(payNum * fromPrice, 2)}</span>
           </div>
         </div>
-        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: '44px', height: '44px', borderRadius: '14px', ...C.glassSoft, border: '4px solid #080808', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', zIndex: 2 }}>⇅</div>
+        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: '44px', height: '44px', borderRadius: '50%', ...C.glassSoft, border: '4px solid #080808', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', zIndex: 2 }}>⇅</div>
         <div style={{ ...C.glass, borderRadius: '20px', padding: '18px', marginTop: '10px' }}>
           <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '14px' }}>{t('swap.receiveEst')}</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -295,10 +373,9 @@ export function Swap({ store }: { store: WalletStore }) {
 }
 
 function Pill({ code }: { code: string }) {
-  const m = assetMeta(code);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', ...C.glassSoft, padding: '7px 14px 7px 8px', borderRadius: '30px' }}>
-      <TokenAvatar glyph={m.glyph} color={m.color} size={28} />
+      <AssetLogo code={code} size={28} />
       <span style={{ fontSize: '15px', fontWeight: 700 }}>{code}</span>
     </div>
   );
