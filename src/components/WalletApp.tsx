@@ -4,7 +4,7 @@ import { Shell, Spinner, Logo } from '@/components/parts';
 import { Welcome, Backup, Verify, Import, ProfileSetup, PasswordSetup } from '@/components/screens/Onboarding';
 import { Unlock } from '@/components/screens/Unlock';
 import { Home, Earn, Markets, Profile, Asset } from '@/components/screens/Main';
-import { Receive, Send, Confirm, Success, Swap } from '@/components/screens/Money';
+import { Receive, Send, Confirm, Success, Swap, History } from '@/components/screens/Money';
 import { Settings, Export, About } from '@/components/screens/Settings';
 import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from '@/components/screens/Extras';
 
@@ -39,6 +39,8 @@ function handleBack(store: WalletStore, exitApp: () => void) {
     case 'about':
       return store.go(store.session ? 'profile' : 'home', store.session ? 'profile' : 'home');
     case 'operations':
+      return store.go('home', 'home');
+    case 'history':
       return store.go('home', 'home');
     case 'sign-tx':
       return store.setScreen('operations');
@@ -103,6 +105,8 @@ function renderScreen(screen: WalletStore['screen'], store: WalletStore) {
       return <About store={store} />;
     case 'operations':
       return <Operations store={store} />;
+    case 'history':
+      return <History store={store} />;
     case 'sign-tx':
       return <SignTx store={store} />;
     case 'add-network':

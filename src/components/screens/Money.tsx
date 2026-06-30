@@ -5,7 +5,7 @@ import { qrDataUrl } from '@/lib/qr';
 import { buildSep7Pay } from '@/lib/sep7';
 import { copyText, readText } from '@/lib/clipboard';
 import { fmt, trim, shortAddr } from '@/lib/format';
-import { explorerTxUrl, networkEnv, normalizeAmount } from '@/lib/stellar';
+import { explorerTxUrl, networkEnv, normalizeAmount, type HistoryOp } from '@/lib/stellar';
 import { isValidPublicKey } from '@/lib/wallet';
 import type { SwapQuote } from '@/lib/cosmospay';
 
@@ -359,7 +359,11 @@ export function Swap({ store }: { store: WalletStore }) {
   // (e.g. an older single-key account), the link card shows so the user can mint both.
   const enabled = !!store.cosmosPay?.keys[networkEnv(store.network)];
   const sameAsset = fromCode === toCode;
-  const canSwap = enabled && payNum > 0 && !sameAsset && !!from && !!to;
+  // Spendable amount of the source asset — XLM keeps the account's minimum reserve free,
+  // so the swap (which sends the gross amount) can't exceed it. Prevents op_underfunded.
+  const availFrom = from ? (from.isNative ? spendableXlm(store) : parseFloat(from.balance) || 0) : 0;
+  const insufficient = payNum > 0 && payNum > availFrom;
+  const canSwap = enabled && payNum > 0 && !sameAsset && !!from && !!to && !insufficient;
 
   // The receive amount comes straight from the gateway quote — no CoinGecko/market
   // approximation here, so what's shown is exactly what the swap routes.
@@ -445,6 +449,13 @@ export function Swap({ store }: { store: WalletStore }) {
         <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '12.5px', color: C.muted, fontWeight: 600 }}>{t('swap.sameAsset')}</div>
       )}
 
+      {/* Insufficient-balance guard (reserve-aware for XLM). */}
+      {enabled && !sameAsset && insufficient && (
+        <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '12.5px', color: C.danger, fontWeight: 600 }}>
+          {t('swap.insufficient', { avail: trim(availFrom, 4), code: fromCode })}
+        </div>
+      )}
+
       {/* Quotes refresh automatically — show a subtle indicator while re-pricing. */}
       {enabled && quoting && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '14px', fontSize: '12px', color: C.dim, fontWeight: 600 }}>
@@ -526,5 +537,73 @@ function SwapTokenSelect({
         </>
       )}
     </div>
+  );
+}
+
+/* ----------------------------- HISTORY ------------------------------ */
+/** Recent on-chain activity for the active wallet (payments + swaps), from Horizon. */
+export function History({ store }: { store: WalletStore }) {
+  const t = store.t;
+  // Refresh whenever the screen opens (or the active wallet / network changes).
+  useEffect(() => {
+    store.loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.meta?.id, store.network.id]);
+  const items = store.history;
+  return (
+    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 104px', animation: 'fadeUp .3s ease' }}>
+      <BackBar title={t('history.title')} onBack={() => store.go('home', 'home')} />
+      {store.historyLoading && items.length === 0 ? (
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Spinner color="var(--text)" /></div>
+      ) : items.length === 0 ? (
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: C.muted, gap: '10px', paddingBottom: '60px' }}>
+          <div style={{ fontSize: '40px', opacity: 0.5 }}>🗒️</div>
+          <div style={{ fontSize: '14px', fontWeight: 700 }}>{t('history.empty')}</div>
+        </div>
+      ) : (
+        <div style={{ marginTop: '6px' }}>
+          {items.map((it, i) => <HistoryRow key={it.id} item={it} store={store} delay={i * 0.03} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function HistoryRow({ item, store, delay = 0 }: { item: HistoryOp; store: WalletStore; delay?: number }) {
+  const t = store.t;
+  const url = explorerTxUrl(store.network, item.hash);
+  const date = new Date(item.createdAt).toLocaleDateString(store.locale, { day: 'numeric', month: 'short', year: 'numeric' });
+  const icon = item.kind === 'swap' ? '⇅' : item.kind === 'received' || item.kind === 'create' ? '↓' : item.kind === 'sent' ? '↑' : '•';
+  const title =
+    item.kind === 'sent' ? t('history.sent')
+    : item.kind === 'received' ? t('history.received')
+    : item.kind === 'swap' ? t('history.swap')
+    : item.kind === 'create' ? t('history.created')
+    : t('history.other');
+  const sub = item.kind === 'swap'
+    ? `${trim(parseFloat(item.fromAmount || '0'), 4)} ${item.fromCode} → ${trim(parseFloat(item.amount || '0'), 4)} ${item.code}`
+    : item.counterparty ? shortAddr(item.counterparty) : '';
+  const sign = item.kind === 'sent' ? '−' : item.kind === 'received' || item.kind === 'create' ? '+' : '';
+  const amountText = item.kind === 'swap'
+    ? `+${trim(parseFloat(item.amount || '0'), 4)} ${item.code}`
+    : item.amount ? `${sign}${trim(parseFloat(item.amount), 4)} ${item.code}` : '';
+  const amountColor = sign === '+' || item.kind === 'swap' ? 'var(--up)' : 'var(--text)';
+  const Wrapper: any = url ? 'a' : 'div';
+  return (
+    <Wrapper
+      {...(url ? { href: url, target: '_blank', rel: 'noreferrer' } : {})}
+      className="tap"
+      style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 12px', borderRadius: '16px', textDecoration: 'none', color: 'inherit', animation: 'fadeUp .45s ease backwards', animationDelay: `${delay}s` }}
+    >
+      <div style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '17px', flexShrink: 0 }}>{icon}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '14.5px', fontWeight: 800 }}>{title}</div>
+        {sub && <div style={{ fontSize: '12px', color: C.dim, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
+      </div>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        {amountText && <div style={{ fontSize: '14px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: amountColor }}>{amountText}</div>}
+        <div style={{ fontSize: '11px', color: C.dim, fontWeight: 600 }}>{date}</div>
+      </div>
+    </Wrapper>
   );
 }

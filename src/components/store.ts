@@ -38,12 +38,14 @@ import {
   allNetworks,
   fundWithFriendbot,
   getAccountState,
+  getHistory,
   getPrices,
   networkEnv,
   resolveNetwork,
   sendPayment,
   signXdr,
   type AccountState,
+  type HistoryOp,
   type NetConfig,
   type PriceInfo,
 } from '@/lib/stellar';
@@ -114,6 +116,7 @@ export type Screen =
   | 'settings'
   | 'about'
   | 'operations'
+  | 'history'
   | 'sign-tx'
   | 'add-network'
   | 'add-asset'
@@ -227,6 +230,8 @@ export function useWalletStore() {
   const [prices, setPrices] = useState<Record<string, PriceInfo>>({});
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [history, setHistory] = useState<HistoryOp[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
 
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -235,6 +240,17 @@ export function useWalletStore() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2600);
   }, []);
+
+  /** Load the active wallet's recent on-chain activity (payments/swaps) from Horizon. */
+  const loadHistory = useCallback(async () => {
+    if (!meta) return;
+    setHistoryLoading(true);
+    try {
+      setHistory(await getHistory(network, meta.publicKey, 40));
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [meta, network]);
   const [theme, setThemeState] = useState<Theme>(savedTheme);
   const [lang, setLangState] = useState<Lang>(savedLang);
   const [requireConfirm, setRequireConfirmState] = useState<boolean>(savedRequireConfirm);
@@ -1127,6 +1143,9 @@ export function useWalletStore() {
     prices,
     loading,
     busy,
+    history,
+    historyLoading,
+    loadHistory,
     toast,
     theme,
     setTheme,

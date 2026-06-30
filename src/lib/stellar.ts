@@ -417,6 +417,74 @@ export function explorerAccountUrl(cfg: NetConfig, pub: string): string {
   return seg ? `https://stellar.expert/explorer/${seg}/account/${pub}` : '';
 }
 
+/* --------------------------- operation history -------------------------- */
+
+/** A single money movement for an account, normalized for display. Newest first. */
+export interface HistoryOp {
+  id: string;
+  kind: 'sent' | 'received' | 'swap' | 'create' | 'other';
+  createdAt: string; // ISO
+  code: string; // primary (received/sent) asset code
+  amount: string;
+  fromCode?: string; // swap only: the asset spent
+  fromAmount?: string;
+  counterparty: string | null; // the other account (null for self-swaps)
+  hash: string;
+}
+
+function assetCodeOf(type?: string, code?: string): string {
+  return !type || type === 'native' ? 'XLM' : code || '?';
+}
+
+/** Normalize a Horizon payment record into a HistoryOp (null for ones we don't show). */
+function normalizeHistoryOp(r: any, pub: string): HistoryOp | null {
+  const base = { id: String(r.id), createdAt: r.created_at, hash: r.transaction_hash };
+  switch (r.type) {
+    case 'payment': {
+      const sent = r.from === pub;
+      return { ...base, kind: sent ? 'sent' : 'received', code: assetCodeOf(r.asset_type, r.asset_code), amount: r.amount, counterparty: sent ? r.to : r.from };
+    }
+    case 'create_account': {
+      const sent = r.funder === pub;
+      return { ...base, kind: sent ? 'sent' : 'create', code: 'XLM', amount: r.starting_balance, counterparty: sent ? r.account : r.funder };
+    }
+    case 'path_payment_strict_send':
+    case 'path_payment_strict_receive': {
+      const destCode = assetCodeOf(r.asset_type, r.asset_code);
+      const srcCode = assetCodeOf(r.source_asset_type, r.source_asset_code);
+      if (r.from === pub && r.to === pub) {
+        return { ...base, kind: 'swap', code: destCode, amount: r.amount, fromCode: srcCode, fromAmount: r.source_amount, counterparty: null };
+      }
+      const sent = r.from === pub;
+      return { ...base, kind: sent ? 'sent' : 'received', code: sent ? srcCode : destCode, amount: sent ? (r.source_amount ?? r.amount) : r.amount, counterparty: sent ? r.to : r.from };
+    }
+    case 'account_merge':
+      return { ...base, kind: 'other', code: 'XLM', amount: '', counterparty: r.into ?? null };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Recent money movements for an account (payments, path-payments/swaps, account creation),
+ * newest first. Best-effort: returns [] on any error (offline / account not found).
+ */
+export async function getHistory(cfg: NetConfig, pub: string, limit = 40): Promise<HistoryOp[]> {
+  try {
+    const server = getServer(cfg);
+    const res: any = await server.payments().forAccount(pub).order('desc').limit(limit).call();
+    const recs: any[] = res.records ?? [];
+    const out: HistoryOp[] = [];
+    for (const r of recs) {
+      const item = normalizeHistoryOp(r, pub);
+      if (item) out.push(item);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /* ----------------------------- price feed ------------------------------ */
 
 export interface PriceInfo {

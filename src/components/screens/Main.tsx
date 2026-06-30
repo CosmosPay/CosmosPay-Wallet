@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, Logo, NetworkDropdown, EnableReceivingCard } from '@/components/parts';
+import { HistoryRow } from '@/components/screens/Money';
 import { computePortfolio, type AssetRow } from '@/lib/portfolio';
 import { fmt, splitMoney, trim, pct, shortAddr } from '@/lib/format';
 import { explorerAccountUrl, type PriceInfo } from '@/lib/stellar';
@@ -41,6 +42,11 @@ export function Home({ store }: { store: WalletStore }) {
   const { total, rows, xlmChange } = computePortfolio(store.account, store.prices);
   const money = splitMoney(total);
   const notActivated = store.account && !store.account.exists;
+  // Load recent activity for the home preview (refreshes on wallet / network change).
+  const loadHistory = store.loadHistory;
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory, store.meta?.id, store.network.id]);
   const greeting = getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', store.t);
   const initial = (store.meta?.name || 'C').slice(0, 1).toUpperCase();
 
@@ -108,13 +114,20 @@ export function Home({ store }: { store: WalletStore }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 10px' }}>
-        <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-.4px' }}>{t('home.markets')}</span>
-        <span onClick={() => store.go('markets', 'markets')} style={{ fontSize: '13px', color: C.muted, fontWeight: 700, cursor: 'pointer' }}>{t('home.viewAll')}</span>
+      {/* Recent activity — markets has its own dedicated tab, so the home shows history here. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 6px' }}>
+        <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-.4px' }}>{t('history.title')}</span>
+        {store.history.length > 0 && (
+          <span onClick={() => store.setScreen('history')} style={{ fontSize: '13px', color: C.muted, fontWeight: 700, cursor: 'pointer' }}>{t('home.viewAll')}</span>
+        )}
       </div>
-      {MARKET_TOKENS.slice(0, 3).map((code, i) => (
-        <MarketRow key={code} code={code} price={store.prices[code]} delay={i * 0.06} onClick={() => { store.setSelectedAsset(code); store.setScreen('asset'); }} />
-      ))}
+      {store.history.length === 0 ? (
+        <div style={{ ...C.glass, borderRadius: '16px', padding: '22px', textAlign: 'center', color: C.muted, fontSize: '13px', fontWeight: 600 }}>
+          {store.historyLoading ? <Spinner color="var(--text)" /> : t('history.empty')}
+        </div>
+      ) : (
+        store.history.slice(0, 5).map((it, i) => <HistoryRow key={it.id} item={it} store={store} delay={i * 0.05} />)
+      )}
     </div>
   );
 }

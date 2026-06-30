@@ -350,6 +350,16 @@ const T: Record<string, Record<Lang, string>> = {
   'swap.fee': { es: 'Comisión', en: 'Fee', pt: 'Fee', de: 'Fee', fr: 'Fee' },
   'swap.feeRate': { es: 'Tasa de comisión', en: 'Fee rate', pt: 'Fee rate', de: 'Fee rate', fr: 'Fee rate' },
   'swap.sameAsset': { es: 'Elegí dos tokens distintos para intercambiar.', en: 'Pick two different tokens to swap.', pt: 'Pick two different tokens to swap.', de: 'Pick two different tokens to swap.', fr: 'Pick two different tokens to swap.' },
+  'swap.insufficient': { es: 'Saldo insuficiente. Disponible: {avail} {code}.', en: 'Insufficient balance. Available: {avail} {code}.', pt: 'Insufficient balance. Available: {avail} {code}.', de: 'Insufficient balance. Available: {avail} {code}.', fr: 'Insufficient balance. Available: {avail} {code}.' },
+
+  // ---- operation history ----
+  'history.title': { es: 'Historial', en: 'Activity', pt: 'Atividade', de: 'Verlauf', fr: 'Activité' },
+  'history.empty': { es: 'Sin movimientos todavía.', en: 'No activity yet.', pt: 'No activity yet.', de: 'No activity yet.', fr: 'No activity yet.' },
+  'history.sent': { es: 'Enviado', en: 'Sent', pt: 'Enviado', de: 'Gesendet', fr: 'Envoyé' },
+  'history.received': { es: 'Recibido', en: 'Received', pt: 'Recebido', de: 'Erhalten', fr: 'Reçu' },
+  'history.swap': { es: 'Intercambio', en: 'Swap', pt: 'Troca', de: 'Tausch', fr: 'Échange' },
+  'history.created': { es: 'Cuenta creada', en: 'Account created', pt: 'Account created', de: 'Account created', fr: 'Account created' },
+  'history.other': { es: 'Operación', en: 'Operation', pt: 'Operação', de: 'Vorgang', fr: 'Opération' },
   'swap.cta': { es: 'Intercambiar', en: 'Swap', pt: 'Swap', de: 'Swap', fr: 'Swap' },
   'swap.quoteError': { es: 'No se pudo obtener la cotización.', en: 'Couldn’t get a quote.', pt: 'Couldn’t get a quote.', de: 'Couldn’t get a quote.', fr: 'Couldn’t get a quote.' },
   'swap.success': { es: 'Intercambio completado', en: 'Swap completed', pt: 'Swap completed', de: 'Swap completed', fr: 'Swap completed' },
