@@ -1,7 +1,17 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import { loadEnv } from 'vite';
 import { fileURLToPath } from 'node:url';
+
+// Dev-proxy targets (Node-side only — never shipped to the client). The empty
+// prefix makes loadEnv read non-PUBLIC_ vars too, so these stay server-side.
+const env = loadEnv(process.env.NODE_ENV || 'development', process.cwd(), '');
+// Developer-Platform (Astro) serves /api/wallet/* — `astro dev` defaults to 4321.
+const DEV_PLATFORM_TARGET = env.COSMOS_DEV_PLATFORM_PROXY || 'http://localhost:4321';
+// APISIX gateway fronts the payments service (/v1/*) — community-server is on 3000
+// behind it, but the wallet must go through the gateway so the API key is validated.
+const GATEWAY_TARGET = env.COSMOS_GATEWAY_PROXY || 'http://localhost:9080';
 
 // https://astro.build/config
 export default defineConfig({
@@ -10,7 +20,21 @@ export default defineConfig({
   integrations: [react()],
   // Mobile-first: no trailing-slash surprises inside the WebView.
   trailingSlash: 'ignore',
+  // Dev + preview server run on 4500.
+  server: { port: 4500 },
   vite: {
+    // Dev-only reverse proxy: the browser hits same-origin /api and /v1, Vite
+    // forwards them to the local backends server-side — so there's no CORS
+    // preflight. Production / native builds bypass this (set PUBLIC_COSMOS_*_URL
+    // to absolute URLs; the relative paths below only resolve via this proxy).
+    server: {
+      proxy: {
+        '/api': { target: DEV_PLATFORM_TARGET, changeOrigin: true },
+        // The gateway exposes the payments API at /cosmos-api/* (APISIX strips that
+        // prefix itself before forwarding upstream), so forward the prefix as-is.
+        '/cosmos-api': { target: GATEWAY_TARGET, changeOrigin: true },
+      },
+    },
     resolve: {
       // `@` -> src so modules can import `@/lib/...` instead of `../../lib/...`.
       // Existing relative (`../..`) imports keep working — both resolve to the same files.

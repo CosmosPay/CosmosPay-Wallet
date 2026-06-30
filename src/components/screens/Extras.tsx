@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
-import type { WalletStore } from '../store';
-import { C, PrimaryButton, BackBar, Spinner, AssetLogo, inputStyle } from '../parts';
-import { Field } from './Onboarding';
+import type { WalletStore } from '@/components/store';
+import { C, PrimaryButton, BackBar, Spinner, AssetLogo, inputStyle } from '@/components/parts';
+import { Field } from '@/components/screens/Onboarding';
 import { isValidPublicKey } from '@/lib/wallet';
 import { parseStellarQr } from '@/lib/sep7';
 import { copyText, readText } from '@/lib/clipboard';
@@ -114,7 +114,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
   };
 
   return (
-    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 28px', animation: 'fadeUp .3s ease' }}>
+    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 40px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('addAsset.title')} onBack={() => store.go('home', 'home')} />
       <div style={{ fontSize: '13.5px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '12px 0 18px' }}>
         {t('addAsset.desc')}

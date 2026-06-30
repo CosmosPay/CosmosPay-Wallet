@@ -1,8 +1,8 @@
 /** Shared UI primitives — faithful to the Cosmos design system. */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactNode, CSSProperties } from 'react';
-import type { WalletStore } from './store';
-import { ASSET_ICONS, STELLAR_MARK } from './assetIcons';
+import type { WalletStore } from '@/components/store';
+import { ASSET_ICONS, STELLAR_MARK } from '@/components/assetIcons';
 
 // Colours come from CSS variables (see src/pages/index.astro) so the whole UI
 // re-themes instantly when `data-theme` flips between dark and light.
@@ -537,14 +537,42 @@ export function Spinner({ size = 18, color = 'var(--primary-text)' }: { size?: n
 }
 
 export function Toast({ toast }: { toast: WalletStore['toast'] }) {
-  if (!toast) return null;
+  // Keep the last toast mounted while it animates out, so it doesn't vanish
+  // abruptly when `toast` flips to null. `leaving` swaps the entrance pop for
+  // an exit popOut; once that finishes we unmount (or a new toast interrupts it).
+  const [shown, setShown] = useState(toast);
+  const [leaving, setLeaving] = useState(false);
+  const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (exitTimer.current) {
+      clearTimeout(exitTimer.current);
+      exitTimer.current = null;
+    }
+    if (toast) {
+      setShown(toast);
+      setLeaving(false);
+    } else if (shown) {
+      setLeaving(true);
+      exitTimer.current = setTimeout(() => {
+        setShown(null);
+        setLeaving(false);
+      }, 230); // must match the popOut duration below
+    }
+    return () => {
+      if (exitTimer.current) clearTimeout(exitTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast]);
+
+  if (!shown) return null;
   const bg =
-    toast.kind === 'ok'
+    shown.kind === 'ok'
       ? 'var(--accent)'
-      : toast.kind === 'err'
+      : shown.kind === 'err'
       ? 'rgba(210,64,64,.92)'
       : 'var(--glass-bg)';
-  const fg = toast.kind === 'ok' ? 'var(--on-accent)' : toast.kind === 'err' ? '#fff' : 'var(--text)';
+  const fg = shown.kind === 'ok' ? 'var(--on-accent)' : shown.kind === 'err' ? '#fff' : 'var(--text)';
   return (
     // Flex-centered overlay so the card is centered from the first frame; only the
     // inner card scales in (animating transform on the card itself would fight the
@@ -562,6 +590,7 @@ export function Toast({ toast }: { toast: WalletStore['toast'] }) {
       }}
     >
       <div
+        key={shown.msg}
         style={{
           maxWidth: '320px',
           width: '100%',
@@ -577,11 +606,86 @@ export function Toast({ toast }: { toast: WalletStore['toast'] }) {
           textAlign: 'center',
           lineHeight: 1.45,
           boxShadow: '0 18px 50px rgba(0,0,0,.5)',
-          animation: 'pop .28s ease',
+          animation: leaving ? 'popOut .23s ease forwards' : 'pop .28s ease',
         }}
       >
-        {toast.msg}
+        {shown.msg}
       </div>
+    </div>
+  );
+}
+
+/**
+ * CosmosPay account card — shared by the Home screen and the Swap screen so both
+ * route the user through the same provisioning/linking flow. States:
+ *   - enable (initial) / confirm-email (register flow);
+ *   - link offer + access-code entry (when the email already has an account).
+ */
+export function EnableReceivingCard({ store }: { store: WalletStore }) {
+  const t = store.t;
+  const pending = !!store.cosmosPayPending;
+  const link = store.cosmosLink;
+  const [code, setCode] = useState('');
+
+  const cardStyle: CSSProperties = { ...C.glass, borderRadius: '18px', padding: '18px', marginBottom: '22px' };
+  const titleStyle: CSSProperties = { fontSize: '15px', fontWeight: 800, marginBottom: '6px' };
+  const descStyle: CSSProperties = { fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, marginBottom: '14px' };
+  const primaryBtn: CSSProperties = { width: '100%', height: '54px', background: C.accent, color: 'var(--on-accent)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, cursor: 'pointer' };
+  const cancelBtn: CSSProperties = { width: '100%', marginTop: '10px', background: 'transparent', border: 'none', color: C.muted, fontSize: '13px', fontWeight: 700, cursor: 'pointer' };
+
+  // Link flow — enter the emailed access code.
+  if (link?.stage === 'sent') {
+    const ready = code.length === 6 && !store.busy;
+    return (
+      <div style={cardStyle}>
+        <div style={titleStyle}>{t('cosmospay.codeTitle')}</div>
+        <div style={descStyle}>{t('cosmospay.codeDesc')}</div>
+        <input
+          value={code}
+          onChange={(e) => setCode((e.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 6))}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          placeholder={t('cosmospay.codePlaceholder')}
+          style={{ width: '100%', height: '54px', boxSizing: 'border-box', borderRadius: '999px', padding: '0 20px', textAlign: 'center', letterSpacing: '.3em', fontSize: '20px', fontWeight: 800, background: C.cardSolid, color: 'var(--text)', border: '1px solid var(--glass-border)', outline: 'none', marginBottom: '12px' }}
+        />
+        <button onClick={() => store.submitLinkCode(code)} disabled={!ready} style={{ ...primaryBtn, opacity: ready ? 1 : 0.5 }}>
+          {store.busy ? <Spinner /> : t('cosmospay.linkVerifyCta')}
+        </button>
+        <button onClick={() => { setCode(''); store.cancelLink(); }} disabled={store.busy} style={cancelBtn}>
+          {t('common.cancel')}
+        </button>
+      </div>
+    );
+  }
+
+  // Link flow — offer to link the existing account.
+  if (link?.stage === 'offer') {
+    return (
+      <div style={cardStyle}>
+        <div style={titleStyle}>{t('cosmospay.existsLinkTitle')}</div>
+        <div style={descStyle}>{t('cosmospay.existsLinkDesc')}</div>
+        <button onClick={() => store.linkReceiving()} disabled={store.busy} style={primaryBtn}>
+          {store.busy ? <Spinner /> : t('cosmospay.linkCta')}
+        </button>
+        <button onClick={() => store.cancelLink()} disabled={store.busy} style={cancelBtn}>
+          {t('common.cancel')}
+        </button>
+      </div>
+    );
+  }
+
+  // Default — enable (create) / confirm-email.
+  return (
+    <div style={cardStyle}>
+      <div style={titleStyle}>{pending ? t('cosmospay.pendingTitle') : t('cosmospay.cardTitle')}</div>
+      <div style={descStyle}>{pending ? t('cosmospay.pendingDesc') : t('cosmospay.cardDesc')}</div>
+      <button
+        onClick={() => (pending ? store.claimReceiving() : store.enableReceiving())}
+        disabled={store.busy}
+        style={primaryBtn}
+      >
+        {store.busy ? <Spinner /> : pending ? t('cosmospay.confirmCta') : t('cosmospay.cta')}
+      </button>
     </div>
   );
 }

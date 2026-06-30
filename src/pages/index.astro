@@ -1,5 +1,5 @@
 ---
-import WalletApp from '../components/WalletApp.tsx';
+import WalletApp from '@/components/WalletApp.tsx';
 ---
 
 <!doctype html>
@@ -143,6 +143,16 @@ import WalletApp from '../components/WalletApp.tsx';
         100% {
           transform: scale(1);
           opacity: 1;
+        }
+      }
+      @keyframes popOut {
+        0% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(0.86);
+          opacity: 0;
         }
       }
       @keyframes fadeUp {

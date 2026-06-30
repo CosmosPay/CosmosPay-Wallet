@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import type { WalletStore } from '../store';
-import { C, PrimaryButton, GhostButton, BackBar, Spinner, Logo, inputStyle } from '../parts';
+import type { WalletStore } from '@/components/store';
+import { C, PrimaryButton, GhostButton, BackBar, Spinner, Logo, inputStyle } from '@/components/parts';
+import { LangSelect } from '@/components/flags';
 import { copyText, readText } from '@/lib/clipboard';
 import { isValidMnemonic, isValidSecret } from '@/lib/wallet';
 import { APP_VERSION } from '@/lib/config';
@@ -9,11 +10,14 @@ export function Welcome({ store }: { store: WalletStore }) {
   const t = store.t;
   return (
     <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '2px 26px 32px', animation: 'fadeUp .3s ease' }}>
-      {store.addingWallet && (
-        <div onClick={() => store.cancelAddWallet()} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start', color: C.muted, fontSize: '14px', fontWeight: 700, cursor: 'pointer', padding: '6px 4px' }}>
-          <span style={{ fontSize: '20px' }}>‹</span> {t('common.cancel')}
-        </div>
-      )}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: store.addingWallet ? 'space-between' : 'flex-end', minHeight: '34px', marginBottom: '2px' }}>
+        {store.addingWallet && (
+          <div onClick={() => store.cancelAddWallet()} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: C.muted, fontSize: '14px', fontWeight: 700, cursor: 'pointer', padding: '6px 4px' }}>
+            <span style={{ fontSize: '20px' }}>‹</span> {t('common.cancel')}
+          </div>
+        )}
+        <LangSelect value={store.lang} onChange={store.setLang} />
+      </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center' }}>
         <div style={{ marginBottom: '24px' }}>
           <Logo size={104} />

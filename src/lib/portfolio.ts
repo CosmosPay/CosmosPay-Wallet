@@ -1,5 +1,5 @@
 /** Turn raw Horizon balances + a price map into display rows + a USD total. */
-import type { AccountState, PriceInfo } from './stellar';
+import type { AccountState, PriceInfo } from '@/lib/stellar';
 
 export interface AssetRow {
   code: string;

@@ -55,6 +55,15 @@ export function resolveNetwork(id: string, custom: NetConfig[]): NetConfig {
   return allNetworks(custom).find((n) => n.id === id) ?? BUILTIN_NETWORKS[0];
 }
 
+/**
+ * The CosmosPay key environment a network maps to: mainnet (public passphrase) -> 'prod',
+ * everything else (testnet / custom dev nets) -> 'dev'. Compares the passphrase so a custom
+ * mainnet node still resolves to 'prod'.
+ */
+export function networkEnv(cfg: NetConfig): 'dev' | 'prod' {
+  return cfg.passphrase === Networks.PUBLIC ? 'prod' : 'dev';
+}
+
 export function getServer(cfg: NetConfig): Horizon.Server {
   return new Horizon.Server(cfg.horizon);
 }

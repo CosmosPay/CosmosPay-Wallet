@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import type { WalletStore } from '../store';
-import { C, PrimaryButton, BackBar, NumberPad, Spinner, AssetLogo, inputStyle } from '../parts';
+import type { WalletStore } from '@/components/store';
+import { C, PrimaryButton, BackBar, NumberPad, Spinner, AssetLogo, inputStyle, EnableReceivingCard } from '@/components/parts';
 import { qrDataUrl } from '@/lib/qr';
 import { buildSep7Pay } from '@/lib/sep7';
 import { copyText, readText } from '@/lib/clipboard';
-import { computePortfolio } from '@/lib/portfolio';
 import { fmt, trim, shortAddr } from '@/lib/format';
-import { explorerTxUrl, normalizeAmount } from '@/lib/stellar';
+import { explorerTxUrl, networkEnv, normalizeAmount } from '@/lib/stellar';
 import { isValidPublicKey } from '@/lib/wallet';
+import type { SwapQuote } from '@/lib/cosmospay';
 
 /** Numeric keypad editing with Stellar's 7-decimal limit. */
 function editAmount(v: string, d: string): string {
@@ -325,15 +325,90 @@ export function Success({ store }: { store: WalletStore }) {
 }
 
 /* ------------------------------- SWAP ------------------------------- */
+// Auto-quote cadence: re-price this long after the last input change (debounce),
+// and refresh on this interval so a sitting quote stays fresh. Each quote is a real
+// Horizon path search, so we don't poll every second — drop QUOTE_REFRESH_MS to 1000
+// if you want literal 1s refresh. The executed swap re-prices server-side regardless.
+const QUOTE_DEBOUNCE_MS = 500;
+const QUOTE_REFRESH_MS = 10000;
+
+/**
+ * Swap any trustlined asset for another via CosmosPay (preferential rate per the
+ * org plan). The gateway builds the transaction (XDR), we sign it locally with the
+ * wallet secret, and the gateway submits it — the wallet stays non-custodial.
+ * Requires a provisioned/linked CosmosPay account.
+ */
 export function Swap({ store }: { store: WalletStore }) {
   const t = store.t;
-  const { rows } = computePortfolio(store.account, store.prices);
-  const fromBal = rows.find((r) => r.code === 'XLM');
-  const fromPrice = store.prices.XLM?.usd ?? 0;
-  const toPrice = store.prices.USDC?.usd ?? 1;
+  // Both sides can be any trustlined asset (XLM always present).
+  const assets = sendableAssets(store);
+  const firstDest = assets.find((a) => !a.isNative && a.code !== 'XLM');
+
+  const [fromCode, setFromCode] = useState('XLM');
+  const [toCode, setToCode] = useState(firstDest?.code ?? 'USDC');
   const [pay, setPay] = useState('1');
+  const [quote, setQuote] = useState<SwapQuote | null>(null);
+  const [quoting, setQuoting] = useState(false);
+
+  const from = assets.find((a) => a.code === fromCode);
+  const to = assets.find((a) => a.code === toCode);
+  const fromBal = parseFloat(from?.balance ?? '0') || 0;
   const payNum = parseFloat(pay) || 0;
-  const receive = toPrice ? (payNum * fromPrice) / toPrice : 0;
+  // "Enabled" for swapping means we have a CosmosPay key for the wallet's CURRENT network
+  // (testnet -> dev, mainnet -> prod). If the account exists but lacks this network's key
+  // (e.g. an older single-key account), the link card shows so the user can mint both.
+  const enabled = !!store.cosmosPay?.keys[networkEnv(store.network)];
+  const sameAsset = fromCode === toCode;
+  const canSwap = enabled && payNum > 0 && !sameAsset && !!from && !!to;
+
+  // The receive amount comes straight from the gateway quote — no CoinGecko/market
+  // approximation here, so what's shown is exactly what the swap routes.
+  const receive = quote ? parseFloat(quote.destination.estimated) || 0 : 0;
+  // Commission rate the user is actually charged (bps -> %), shown for transparency.
+  const feePct = quote ? quote.fee.bps / 100 : null;
+  // Effective rate the user actually gets (fee included): dest estimated per 1 unit paid.
+  const rate = quote && payNum > 0 ? (parseFloat(quote.destination.estimated) || 0) / payNum : null;
+
+  const asSwapAsset = (b: { code: string; issuer: string | null }) => ({ code: b.code, issuer: b.issuer });
+
+  // Clear a stale quote the instant the amount or either asset changes.
+  useEffect(() => {
+    setQuote(null);
+  }, [pay, fromCode, toCode]);
+
+  // Auto-quote: re-price shortly after any change (debounced) and refresh on an
+  // interval, so the shown cost stays coherent — no manual "get quote" step. The
+  // executed swap re-prices server-side on submit and enforces destMin, so the user
+  // is protected even if the displayed quote is a few seconds old.
+  useEffect(() => {
+    const amt = parseFloat(pay) || 0;
+    const f = assets.find((a) => a.code === fromCode);
+    const tt = assets.find((a) => a.code === toCode);
+    if (!enabled || amt <= 0 || !f || !tt || f.code === tt.code) return;
+    let cancelled = false;
+    const run = async () => {
+      setQuoting(true);
+      const q = await store.quoteSwap(pay, { code: f.code, issuer: f.issuer }, { code: tt.code, issuer: tt.issuer });
+      if (cancelled) return;
+      setQuoting(false);
+      if (q) setQuote(q);
+    };
+    const debounce = setTimeout(run, QUOTE_DEBOUNCE_MS);
+    const refresh = setInterval(run, QUOTE_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(debounce);
+      clearInterval(refresh);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pay, fromCode, toCode, enabled, store.account]);
+
+  // Swap the two sides (and any quote, which no longer applies).
+  const invert = () => {
+    setFromCode(toCode);
+    setToCode(fromCode);
+    setQuote(null);
+  };
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 104px', animation: 'fadeUp .3s ease' }}>
@@ -342,41 +417,114 @@ export function Swap({ store }: { store: WalletStore }) {
       <div style={{ position: 'relative', marginTop: '6px' }}>
         <div style={{ ...C.glass, borderRadius: '20px', padding: '18px' }}>
           <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '14px' }}>{t('swap.pay')}</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Pill code="XLM" />
-            <input value={pay} onChange={(e) => setPay((e.target as HTMLInputElement).value)} inputMode="decimal" style={{ width: '120px', background: 'transparent', border: 'none', textAlign: 'right', color: 'var(--text)', fontSize: '28px', fontWeight: 800, outline: 'none', fontVariantNumeric: 'tabular-nums' }} />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <SwapTokenSelect assets={assets} code={fromCode} onPick={setFromCode} />
+            <input value={pay} onChange={(e) => setPay((e.target as HTMLInputElement).value)} inputMode="decimal" style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', textAlign: 'right', color: 'var(--text)', fontSize: '28px', fontWeight: 800, outline: 'none', fontVariantNumeric: 'tabular-nums' }} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', color: C.dim, fontSize: '12px', fontWeight: 600 }}>
-            <span>{t('swap.balance')}: {fromBal ? trim(fromBal.amount, 4) : '0'} XLM</span>
-            <span>≈ ${fmt(payNum * fromPrice, 2)}</span>
+          <div style={{ marginTop: '10px', color: C.dim, fontSize: '12px', fontWeight: 600 }}>
+            {t('swap.balance')}: {trim(fromBal, 4)} {fromCode}
           </div>
         </div>
-        <div style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: '44px', height: '44px', borderRadius: '50%', ...C.glassSoft, border: '4px solid #080808', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', zIndex: 2 }}>⇅</div>
+        <button onClick={invert} aria-label="invert" className="tap" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: '44px', height: '44px', borderRadius: '50%', ...C.glassSoft, border: '4px solid var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: 'var(--text)', zIndex: 2, cursor: 'pointer' }}>⇅</button>
         <div style={{ ...C.glass, borderRadius: '20px', padding: '18px', marginTop: '10px' }}>
           <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '14px' }}>{t('swap.receiveEst')}</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Pill code="USDC" />
-            <div style={{ fontSize: '28px', fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{trim(receive, 4)}</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <SwapTokenSelect assets={assets} code={toCode} onPick={setToCode} />
+            <div style={{ fontSize: '28px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: quote ? 'var(--text)' : C.dim }}>{quote ? trim(receive, 4) : '—'}</div>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px', color: C.dim, fontSize: '12px', fontWeight: 600 }}>≈ ${fmt(receive * toPrice, 2)}</div>
+          {rate !== null && (
+            <div style={{ textAlign: 'right', marginTop: '10px', color: C.dim, fontSize: '12px', fontWeight: 600 }}>
+              1 {fromCode} ≈ {trim(rate, rate < 1 ? 6 : 4)} {toCode}
+            </div>
+          )}
         </div>
       </div>
 
-      <div style={{ ...C.glass, borderRadius: '14px', padding: '14px', marginTop: '16px', fontSize: '12.5px', color: C.muted, fontWeight: 600, lineHeight: 1.55 }}>
-        {t('swap.note')}
-      </div>
+      {/* Same-asset guard. */}
+      {enabled && sameAsset && (
+        <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '12.5px', color: C.muted, fontWeight: 600 }}>{t('swap.sameAsset')}</div>
+      )}
 
-      <div style={{ flex: 1 }} />
-      <PrimaryButton onClick={() => store.flash(t('swap.soon'), 'info')}>{t('common.continue')}</PrimaryButton>
+      {/* Quotes refresh automatically — show a subtle indicator while re-pricing. */}
+      {enabled && quoting && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '14px', fontSize: '12px', color: C.dim, fontWeight: 600 }}>
+          <Spinner color="var(--dim)" /> {t('swap.quoting')}
+        </div>
+      )}
+
+      {/* Quote breakdown: commission RATE + amount + min, so the cost is transparent. */}
+      {quote && (
+        <div style={{ ...C.glass, borderRadius: '16px', padding: '6px 16px', marginTop: '12px' }}>
+          {[
+            [t('swap.feeRate'), feePct !== null ? `${trim(feePct, 2)}%` : '—'],
+            [t('swap.fee'), `${trim(parseFloat(quote.fee.amount) || 0, 4)} ${quote.fee.asset}`],
+            [t('swap.receiveEst'), `${trim(parseFloat(quote.destination.estimated) || 0, 4)} ${quote.destination.asset}`],
+            [t('swap.minReceived'), `${trim(parseFloat(quote.destination.minimum) || 0, 4)} ${quote.destination.asset}`],
+          ].map(([label, val], i, arr) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--hairline)' : 'none' }}>
+              <span style={{ color: C.muted, fontSize: '13px', fontWeight: 600 }}>{label}</span>
+              <span style={{ fontSize: '13.5px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{val}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* When enabled, a short note; otherwise the CosmosPay card below explains the step. */}
+      {enabled && (
+        <div style={{ ...C.glass, borderRadius: '14px', padding: '14px', marginTop: '12px', fontSize: '12.5px', color: C.muted, fontWeight: 600, lineHeight: 1.55 }}>
+          {t('swap.note2')}
+        </div>
+      )}
+
+      <div style={{ flex: 1, minHeight: '12px' }} />
+      {enabled ? (
+        <PrimaryButton disabled={store.busy || !canSwap} onClick={() => from && to && store.submitSwap(pay, asSwapAsset(from), asSwapAsset(to))}>
+          {store.busy ? <Spinner /> : t('swap.cta')}
+        </PrimaryButton>
+      ) : (
+        // Not provisioned/linked yet — route through the same Cosmos account flow as Home
+        // (enable → confirm email, or link an existing account via a one-time access code).
+        <EnableReceivingCard store={store} />
+      )}
     </div>
   );
 }
 
-function Pill({ code }: { code: string }) {
+/** Token dropdown for the swap screen — any trustlined asset (XLM always present). */
+function SwapTokenSelect({
+  assets,
+  code,
+  onPick,
+}: {
+  assets: { code: string; issuer: string | null; balance: string; isNative: boolean }[];
+  code: string;
+  onPick: (code: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', ...C.glassSoft, padding: '7px 14px 7px 8px', borderRadius: '30px' }}>
-      <AssetLogo code={code} size={28} />
-      <span style={{ fontSize: '15px', fontWeight: 700 }}>{code}</span>
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <button onClick={() => setOpen((o) => !o)} style={{ display: 'flex', alignItems: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', padding: '7px 14px 7px 7px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
+        <AssetLogo code={code} size={28} />
+        {code}
+        <span style={{ fontSize: '9px', opacity: 0.7, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▼</span>
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+          <div style={{ position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 31, minWidth: '210px', ...C.glass, borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
+            {assets.map((a) => {
+              const on = a.code === code;
+              return (
+                <div key={a.code + (a.issuer ?? '')} onClick={() => { onPick(a.code); setOpen(false); }} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '11px', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent' }}>
+                  <AssetLogo code={a.code} size={26} />
+                  <span style={{ flex: 1, fontSize: '13.5px', fontWeight: 700 }}>{a.code}</span>
+                  <span style={{ fontSize: '12px', color: C.dim, fontWeight: 600 }}>{trim(parseFloat(a.balance) || 0, 4)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </div>
   );
 }

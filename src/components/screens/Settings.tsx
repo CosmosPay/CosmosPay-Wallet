@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import type { WalletStore } from '../store';
-import { C, PrimaryButton, BackBar, Spinner, inputStyle } from '../parts';
-import { Field } from './Onboarding';
+import type { WalletStore } from '@/components/store';
+import { C, PrimaryButton, BackBar, Spinner, Logo, inputStyle } from '@/components/parts';
+import { Field } from '@/components/screens/Onboarding';
+import { LangFlag } from '@/components/flags';
 import { copyText } from '@/lib/clipboard';
 import { shortAddr } from '@/lib/format';
 import { changePassword } from '@/lib/vault';
 import { LANGUAGES } from '@/lib/i18n';
+import { APP_VERSION } from '@/lib/config';
+import { buildKind, platformName } from '@/lib/platform';
 
 export function Settings({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -23,25 +26,6 @@ export function Settings({ store }: { store: WalletStore }) {
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 40px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('settings.title')} onBack={() => store.go(store.session ? 'profile' : 'home', 'profile')} />
-
-      <Section title={t('net.title')}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-          {store.networks.map((n) => {
-            const on = n.id === store.network.id;
-            return (
-              <button key={n.id} onClick={() => store.switchNetwork(n.id)} style={{ background: on ? C.accent : C.cardSolid, color: on ? 'var(--on-accent)' : 'var(--text)', border: 'none', borderRadius: '999px', padding: '11px 16px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}>
-                {n.label}
-              </button>
-            );
-          })}
-          <button onClick={() => store.setScreen('add-network')} style={{ background: 'transparent', color: C.accent, border: '1px dashed var(--glass-border)', borderRadius: '999px', padding: '11px 16px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}>
-            + {t('net.add')}
-          </button>
-        </div>
-        <div style={{ fontSize: '12px', color: C.dim, fontWeight: 600, marginTop: '10px', lineHeight: 1.5 }}>
-          {t('settings.networkDesc')}
-        </div>
-      </Section>
 
       <Section title={t('settings.appearance')}>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -61,8 +45,8 @@ export function Settings({ store }: { store: WalletStore }) {
           {LANGUAGES.map((l) => {
             const on = store.lang === l.code;
             return (
-              <button key={l.code} onClick={() => store.setLang(l.code)} style={{ display: 'flex', alignItems: 'center', gap: '7px', background: on ? C.accent : C.cardSolid, color: on ? 'var(--on-accent)' : 'var(--text)', border: 'none', borderRadius: '999px', padding: '10px 16px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}>
-                <span>{l.flag}</span>{l.name}
+              <button key={l.code} onClick={() => store.setLang(l.code)} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: on ? C.accent : C.cardSolid, color: on ? 'var(--on-accent)' : 'var(--text)', border: 'none', borderRadius: '999px', padding: '9px 16px 9px 11px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}>
+                <LangFlag code={l.code} size={20} />{l.name}
               </button>
             );
           })}
@@ -77,7 +61,7 @@ export function Settings({ store }: { store: WalletStore }) {
       </Section>
 
       <Section title={t('settings.security')}>
-        <ToggleRow label={t('settings.confirmSigns')} desc={t('settings.confirmSignsDesc')} on={store.requireConfirm} onChange={store.setRequireConfirm} />
+        <ToggleRow label={t('settings.confirmSigns')} desc={t('settings.confirmSignsDesc')} on={store.requireConfirm} onChange={() => store.toggleConfirm()} />
         <Row label={t('settings.exportPhrase')} onClick={() => store.setScreen('export')} />
         <Row label={pwOpen ? t('settings.cancelChangePwd') : t('settings.changePwd')} onClick={() => setPwOpen((o) => !o)} last={!pwOpen} />
         {pwOpen && <ChangePassword store={store} onDone={() => setPwOpen(false)} />}
@@ -161,6 +145,40 @@ function ToggleRow({ label, desc, on, onChange }: { label: string; desc?: string
       <div onClick={() => onChange(!on)} className="tap" style={{ flexShrink: 0, width: '46px', height: '28px', borderRadius: '999px', background: on ? C.accent : 'var(--surface)', border: '1px solid var(--glass-border)', position: 'relative', cursor: 'pointer', transition: 'background .2s' }}>
         <div style={{ position: 'absolute', top: '2px', left: on ? '20px' : '2px', width: '22px', height: '22px', borderRadius: '50%', background: on ? 'var(--on-accent)' : 'var(--text)', transition: 'left .2s' }} />
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------ ABOUT ------------------------------- */
+export function About({ store }: { store: WalletStore }) {
+  const t = store.t;
+  const kind = buildKind();
+  const buildLabel = kind === 'ext' ? t('about.buildExt') : kind === 'app' ? t('about.buildApp') : t('about.buildWeb');
+  const rows: [string, string][] = [
+    [t('about.version'), 'v' + APP_VERSION],
+    [t('about.build'), buildLabel],
+  ];
+  if (kind === 'app') rows.push([t('about.platform'), platformName()]);
+
+  return (
+    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 30px', animation: 'fadeUp .3s ease' }}>
+      <BackBar title={t('about.title')} onBack={() => store.go(store.session ? 'profile' : 'home', 'profile')} />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', margin: '24px 0 26px' }}>
+        <Logo size={84} />
+        <div style={{ fontSize: '22px', fontWeight: 800, marginTop: '16px' }}>Cosmos Pay</div>
+        <div style={{ fontSize: '13.5px', color: C.muted, fontWeight: 600, marginTop: '4px' }}>{t('about.tagline')}</div>
+      </div>
+      <div style={{ ...C.glass, borderRadius: '18px', padding: '6px 18px' }}>
+        {rows.map((r, i) => (
+          <div key={r[0]} style={{ display: 'flex', justifyContent: 'space-between', padding: '15px 0', borderBottom: i < rows.length - 1 ? '1px solid var(--hairline)' : 'none' }}>
+            <span style={{ color: C.muted, fontSize: '14px', fontWeight: 600 }}>{r[0]}</span>
+            <span style={{ fontSize: '14px', fontWeight: 700, textTransform: r[0] === t('about.platform') ? 'capitalize' : 'none' }}>{r[1]}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: '12.5px', color: C.dim, fontWeight: 600, lineHeight: 1.55, marginTop: '16px', textAlign: 'center' }}>{t('about.desc')}</div>
+      <div style={{ flex: 1, minHeight: '20px' }} />
+      <div style={{ textAlign: 'center', fontSize: '11.5px', color: C.dim, fontWeight: 600 }}>Un producto de Cosmos · v{APP_VERSION}</div>
     </div>
   );
 }

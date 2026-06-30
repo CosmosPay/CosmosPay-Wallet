@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { useWalletStore, type WalletStore } from './store';
-import { Shell, Spinner, Logo } from './parts';
-import { Welcome, Backup, Verify, Import, ProfileSetup, PasswordSetup } from './screens/Onboarding';
-import { Unlock } from './screens/Unlock';
-import { Home, Earn, Markets, Profile, Asset } from './screens/Main';
-import { Receive, Send, Confirm, Success, Swap } from './screens/Money';
-import { Settings, Export } from './screens/Settings';
-import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from './screens/Extras';
+import { useWalletStore, type WalletStore } from '@/components/store';
+import { Shell, Spinner, Logo } from '@/components/parts';
+import { Welcome, Backup, Verify, Import, ProfileSetup, PasswordSetup } from '@/components/screens/Onboarding';
+import { Unlock } from '@/components/screens/Unlock';
+import { Home, Earn, Markets, Profile, Asset } from '@/components/screens/Main';
+import { Receive, Send, Confirm, Success, Swap } from '@/components/screens/Money';
+import { Settings, Export, About } from '@/components/screens/Settings';
+import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from '@/components/screens/Extras';
 
 const NAV_SCREENS = ['home', 'earn', 'markets', 'profile', 'swap'];
 
@@ -36,6 +36,7 @@ function handleBack(store: WalletStore, exitApp: () => void) {
       return store.go('home', 'home');
     case 'settings':
     case 'export':
+    case 'about':
       return store.go(store.session ? 'profile' : 'home', store.session ? 'profile' : 'home');
     case 'operations':
       return store.go('home', 'home');
@@ -98,6 +99,8 @@ function renderScreen(screen: WalletStore['screen'], store: WalletStore) {
       return <Settings store={store} />;
     case 'export':
       return <Export store={store} />;
+    case 'about':
+      return <About store={store} />;
     case 'operations':
       return <Operations store={store} />;
     case 'sign-tx':

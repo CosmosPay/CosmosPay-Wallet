@@ -1,5 +1,5 @@
 /** Friendly, localized greeting built from the user's name + birthdate. */
-import type { TFn } from './i18n';
+import type { TFn } from '@/lib/i18n';
 
 export interface Greeting {
   line: string; // e.g. "Good evening, Alex"

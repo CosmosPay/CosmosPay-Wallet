@@ -1,9 +1,31 @@
-import type { WalletStore } from '../store';
-import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, Logo, NetworkDropdown } from '../parts';
+import { useRef, useState } from 'react';
+import type { WalletStore } from '@/components/store';
+import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, Logo, NetworkDropdown, EnableReceivingCard } from '@/components/parts';
 import { computePortfolio, type AssetRow } from '@/lib/portfolio';
 import { fmt, splitMoney, trim, pct, shortAddr } from '@/lib/format';
 import { explorerAccountUrl, type PriceInfo } from '@/lib/stellar';
 import { getGreeting } from '@/lib/greeting';
+import { copyText } from '@/lib/clipboard';
+
+/** Center-crop + downscale an image file to a small JPEG data URL for the avatar. */
+function resizeToDataUrl(file: File, size = 160): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return reject(new Error('no ctx'));
+      const s = Math.min(img.width, img.height);
+      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+      resolve(canvas.toDataURL('image/jpeg', 0.85));
+      URL.revokeObjectURL(img.src);
+    };
+    img.onerror = () => reject(new Error('bad image'));
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 // Stellar-ecosystem assets only (no BTC/ETH/SOL; USDT isn't native to Stellar).
 const MARKET_TOKENS = ['XLM', 'USDC', 'EURC'];
@@ -34,8 +56,8 @@ export function Home({ store }: { store: WalletStore }) {
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18 16M20 5v6h-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
             )}
           </div>
-          <div onClick={() => store.go('profile', 'profile')} className="tap" style={{ width: '38px', height: '38px', borderRadius: '50%', background: 'var(--glass-soft-bg)', border: '1px solid var(--glass-soft-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700, color: 'var(--text)', cursor: 'pointer' }}>
-            {initial}
+          <div onClick={() => store.go('profile', 'profile')} className="tap" style={{ width: '38px', height: '38px', borderRadius: '50%', overflow: 'hidden', background: 'var(--glass-soft-bg)', border: '1px solid var(--glass-soft-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700, color: 'var(--text)', cursor: 'pointer' }}>
+            {store.meta?.avatar ? <img src={store.meta.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
           </div>
         </div>
       </div>
@@ -73,19 +95,17 @@ export function Home({ store }: { store: WalletStore }) {
       </div>
 
       {notActivated && <ActivateCard store={store} />}
+      {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
 
       <div style={{ marginBottom: '8px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '6px 2px 12px' }}>
-          <span style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '-.3px' }}>{t('home.assets')}</span>
-          {store.account?.exists && (
-            <span onClick={() => store.setScreen('add-asset')} className="tap" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '12.5px', color: C.accent, fontWeight: 800, cursor: 'pointer', ...C.glassSoft, padding: '6px 12px', borderRadius: '999px' }}>
-              <span style={{ fontSize: '15px', lineHeight: 1 }}>+</span> {t('addAsset.title')}
-            </span>
-          )}
-        </div>
+        <div style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '-.3px', margin: '6px 2px 12px' }}>{t('home.assets')}</div>
         {rows.map((r, i) => (
           <AssetListRow key={r.code} row={r} delay={i * 0.05} onClick={() => { store.setSelectedAsset(r.code); store.setScreen('asset'); }} />
         ))}
+        <div onClick={() => store.setScreen('add-asset')} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: '16px', cursor: 'pointer', color: C.accent, marginTop: '2px' }}>
+          <div style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1px dashed var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>+</div>
+          <span style={{ fontSize: '14.5px', fontWeight: 800 }}>{t('addAsset.title')}</span>
+        </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '18px 0 10px' }}>
@@ -253,24 +273,68 @@ export function Markets({ store }: { store: WalletStore }) {
 /* ------------------------------ PROFILE ------------------------------ */
 export function Profile({ store }: { store: WalletStore }) {
   const t = store.t;
+  const enabled = !!store.cosmosPay;
+  const pending = !!store.cosmosPayPending;
+  // CosmosPay: enabled (static) / pending (tap → claim) / off (tap → enable).
+  const cosmosPayRow = enabled
+    ? { icon: '✓', label: t('cosmospay.enabledRow'), onClick: () => {} }
+    : pending
+      ? { icon: '✉', label: t('cosmospay.confirmRow'), onClick: () => store.claimReceiving() }
+      : { icon: '↯', label: t('cosmospay.row'), onClick: () => store.enableReceiving() };
   const rows = [
-    { icon: '◈', label: t('profile.accountDetails'), onClick: () => store.setScreen('settings') },
+    ...(store.meta?.email ? [cosmosPayRow] : []),
     { icon: '⚷', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') },
     { icon: '⛁', label: t('profile.receiveAddr'), onClick: () => store.setScreen('receive') },
     { icon: '⚙', label: t('profile.settings'), onClick: () => store.setScreen('settings') },
-    { icon: '?', label: t('profile.about'), onClick: () => store.flash(t('profile.aboutToast'), 'info') },
+    { icon: '?', label: t('profile.about'), onClick: () => store.setScreen('about') },
   ];
   const pub = store.meta?.publicKey ?? '';
   const name = store.meta?.name || 'Mi wallet';
+  const avatar = store.meta?.avatar;
   const g = getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  const onFile = async (e: { target: HTMLInputElement }) => {
+    const f = e.target.files?.[0];
+    if (f) {
+      try {
+        await store.setWalletAvatar(await resizeToDataUrl(f));
+      } catch {
+        /* ignore bad image */
+      }
+    }
+    e.target.value = '';
+  };
+  const copyAddr = async () => {
+    await copyText(pub);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 110px', animation: 'fadeUp .3s ease' }}>
       <div style={{ padding: '8px 0 22px' }}><span style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-.8px' }}>{t('tab.profile')}</span></div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '26px' }}>
-        <div style={{ width: '62px', height: '62px', borderRadius: '50%', background: 'var(--glass-soft-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 800 }}>{name.slice(0, 1).toUpperCase()}</div>
+        <div onClick={() => fileRef.current?.click()} className="tap" title={t('profile.changePhoto')} style={{ position: 'relative', flexShrink: 0, width: '62px', height: '62px', borderRadius: '50%', background: 'var(--glass-soft-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 800, cursor: 'pointer', overflow: 'visible' }}>
+          {avatar ? (
+            <img src={avatar} alt="" style={{ width: '62px', height: '62px', borderRadius: '50%', objectFit: 'cover' }} />
+          ) : (
+            name.slice(0, 1).toUpperCase()
+          )}
+          <div style={{ position: 'absolute', right: '-2px', bottom: '-2px', width: '22px', height: '22px', borderRadius: '50%', background: C.accent, color: 'var(--on-accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--bg)' }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="currentColor" strokeWidth="2" /></svg>
+          </div>
+        </div>
+        <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', minWidth: 0 }}>
           <span style={{ fontSize: '18px', fontWeight: 800 }}>{name}</span>
-          <span style={{ fontSize: '13px', color: C.dim, fontWeight: 600, fontFamily: 'monospace' }}>{shortAddr(pub, 8, 8)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+            <span style={{ fontSize: '13px', color: C.dim, fontWeight: 600, fontFamily: 'monospace' }}>{shortAddr(pub, 8, 8)}</span>
+            <span onClick={copyAddr} className="tap" title={t('profile.copyAddress')} style={{ display: 'flex', color: copied ? C.accent : C.muted, cursor: 'pointer' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.9" /><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>
+            </span>
+          </div>
           <span style={{ fontSize: '11.5px', color: C.accent, fontWeight: 700 }}>
             {store.network.label}{g.age !== null ? ` · ${g.age} ${t('profile.years')}` : ''}
           </span>
