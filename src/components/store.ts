@@ -1436,7 +1436,7 @@ export function useWalletStore() {
    * Mirrors the swap signing flow. Lands on the success screen either way.
    */
   const confirmWithdraw = useCallback(
-    async (quote: PayoutQuote, token: FiatToken): Promise<boolean> => {
+    async (quote: PayoutQuote, token: FiatToken, fiatCcy?: string): Promise<boolean> => {
       if (!session) return false;
       const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
       if (!apiKey) {
@@ -1454,7 +1454,9 @@ export function useWalletStore() {
         const payout = await cpCreatePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar', signed_transaction: signed });
         const fiatMinor = quote.receiver_local_amount || quote.receiver_amount || 0;
         const sent = payout.senderAmount ?? (quote.sender_amount != null ? (quote.sender_amount / 100).toFixed(2) : '');
-        const got = payout.receiverAmount ?? (fiatMinor ? (fiatMinor / 100).toFixed(2) : '');
+        // Local fiat (e.g. ARS) shown as whole units — no centavos — with its currency suffix.
+        const gotAmount = fiatMinor ? Math.round(fiatMinor / 100).toLocaleString('es-AR') : (payout.receiverAmount ?? '');
+        const got = gotAmount && fiatCcy ? `${gotAmount} ${fiatCcy}` : gotAmount;
         setSuccessInfo({
           kind: 'ok',
           title: t('fiat.withdrawSuccess'),

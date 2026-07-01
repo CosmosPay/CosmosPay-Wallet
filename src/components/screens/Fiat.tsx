@@ -36,10 +36,23 @@ const RAILS: { type: string; label: string; fields: RailField[] }[] = [
 const railLabel = (type?: string | null) =>
   type ? (RAILS.find((r) => r.type === type)?.label ?? type.replace(/_/g, ' ').toUpperCase()) : '';
 
+/** ISO currency for a BlindPay rail / payin method (used as the fiat amount suffix). */
+const RAIL_CCY: Record<string, string> = {
+  pix: 'BRL', pix_safe: 'BRL', ted: 'BRL',
+  spei: 'MXN', spei_bitso: 'MXN',
+  transfers: 'ARS', transfers_bitso: 'ARS',
+  pse: 'COP', ach_cop_bitso: 'COP',
+  ach: 'USD', wire: 'USD', rtp: 'USD', international_swift: 'USD',
+  sepa: 'EUR',
+};
+const railCurrency = (rail?: string | null) => (rail ? RAIL_CCY[rail] ?? '' : '');
+
 /* ---- onramp/offramp helpers ---- */
 const STABLES = ['USDC', 'USDT', 'USDB'];
 /** Minor units (cents) -> "12.34". */
 const fmtMinor = (n?: number | null) => (n == null ? '—' : (n / 100).toFixed(2));
+/** Local fiat (minor units) -> whole units, grouped, no centavos (e.g. ARS "15.615"). */
+const fmtFiat = (n?: number | null) => (n == null ? '—' : Math.round(n / 100).toLocaleString('es-AR'));
 /** "12.34" -> 1234 minor units (the API takes integer cents). */
 const toMinor = (s: string) => Math.round((parseFloat(s) || 0) * 100);
 
@@ -548,7 +561,7 @@ export function Deposit({ store }: { store: WalletStore }) {
 
       {quote && (
         <div style={quoteCardStyle}>
-          <QuoteRow label={t('fiat.youPay')} val={fmtMinor(quote.sender_amount)} />
+          <QuoteRow label={t('fiat.youPay')} val={`${fmtFiat(quote.sender_amount)}${railCurrency(method) ? ` ${railCurrency(method)}` : ''}`} />
           <QuoteRow label={t('fiat.youReceive')} val={`${fmtMinor(quote.receiver_amount)} ${token}`} last />
         </div>
       )}
@@ -640,6 +653,8 @@ export function Withdraw({ store }: { store: WalletStore }) {
 
   useEffect(() => { if (!bankId && accounts[0]) setBankId(accounts[0].id); }, [accounts, bankId]);
 
+  const account = accounts.find((a) => a.id === bankId) ?? null;
+  const ccy = railCurrency(account?.rail ?? account?.type); // fiat currency for the amount suffix
   const bal = tokens.find((x) => x.code === token)?.balance ?? 0;
   const insufficient = (parseFloat(amount) || 0) > bal;
   const canQuote = !!bankId && !!token && toMinor(amount) >= 1 && !insufficient && !store.busy;
@@ -648,7 +663,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
     const q = await store.quoteWithdraw({ bank_account_id: bankId, request_amount: toMinor(amount), token, cover_fees: coverFees });
     if (q) setQuote(q);
   };
-  const confirm = async () => { if (quote) await store.confirmWithdraw(quote, token); };
+  const confirm = async () => { if (quote) await store.confirmWithdraw(quote, token, ccy); };
 
   if (!accounts.length) {
     return (
@@ -694,7 +709,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
       {quote && (
         <div style={quoteCardStyle}>
           <QuoteRow label={t('fiat.youSend')} val={`${fmtMinor(quote.sender_amount)} ${token}`} />
-          <QuoteRow label={t('fiat.youReceive')} val={fmtMinor(quote.receiver_local_amount || quote.receiver_amount)} last />
+          <QuoteRow label={t('fiat.youReceive')} val={`${fmtFiat(quote.receiver_local_amount || quote.receiver_amount)}${ccy ? ` ${ccy}` : ''}`} last />
         </div>
       )}
 
