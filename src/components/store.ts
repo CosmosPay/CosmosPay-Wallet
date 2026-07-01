@@ -1452,8 +1452,9 @@ export function useWalletStore() {
         if (!xdr) throw new Error(t('fiat.noXdr'));
         const signed = signXdr(network, session.secret, xdr);
         const payout = await cpCreatePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar', signed_transaction: signed });
+        const fiatMinor = quote.receiver_local_amount || quote.receiver_amount || 0;
         const sent = payout.senderAmount ?? (quote.sender_amount != null ? (quote.sender_amount / 100).toFixed(2) : '');
-        const got = payout.receiverAmount ?? (quote.receiver_local_amount != null ? (quote.receiver_local_amount / 100).toFixed(2) : '');
+        const got = payout.receiverAmount ?? (fiatMinor ? (fiatMinor / 100).toFixed(2) : '');
         setSuccessInfo({
           kind: 'ok',
           title: t('fiat.withdrawSuccess'),

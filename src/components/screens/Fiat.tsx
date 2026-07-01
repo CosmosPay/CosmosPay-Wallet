@@ -694,7 +694,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
       {quote && (
         <div style={quoteCardStyle}>
           <QuoteRow label={t('fiat.youSend')} val={`${fmtMinor(quote.sender_amount)} ${token}`} />
-          <QuoteRow label={t('fiat.youReceive')} val={fmtMinor(quote.receiver_local_amount)} last />
+          <QuoteRow label={t('fiat.youReceive')} val={fmtMinor(quote.receiver_local_amount || quote.receiver_amount)} last />
         </div>
       )}
 

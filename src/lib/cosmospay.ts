@@ -653,7 +653,8 @@ export function blindpayNetwork(env: 'dev' | 'prod'): 'stellar' | 'stellar_testn
 export function extractUnsignedXdr(obj: unknown): string | null {
   if (!obj || typeof obj !== 'object') return null;
   const o = obj as Record<string, unknown>;
-  const keys = ['unsigned_transaction', 'unsignedTransaction', 'transaction', 'xdr', 'tx', 'raw_transaction', 'serialized_transaction', 'unsigned_tx'];
+  // `transaction_hash` is BlindPay's (misnamed) field carrying the unsigned XDR.
+  const keys = ['unsigned_transaction', 'unsignedTransaction', 'transaction_hash', 'transaction', 'xdr', 'tx', 'raw_transaction', 'serialized_transaction', 'unsigned_tx'];
   for (const k of keys) {
     const v = o[k];
     if (typeof v === 'string' && v.length > 40) return v;
@@ -748,7 +749,8 @@ export interface PayoutQuote {
   id: string;
   expires_at?: number;
   sender_amount?: number; // minor units (crypto sent)
-  receiver_local_amount?: number; // minor units (local fiat received)
+  receiver_local_amount?: number; // minor units (local fiat received) — normalized by the gateway
+  receiver_amount?: number; // BlindPay's raw local-fiat field (fallback when receiver_local_amount is 0)
 }
 
 export async function offrampQuote(apiKey: string, input: PayoutQuoteInput): Promise<PayoutQuote> {
