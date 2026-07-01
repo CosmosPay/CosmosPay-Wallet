@@ -51,6 +51,8 @@ export interface WalletEntry {
   // CosmosPay (non-sensitive flags; the API keys themselves are sealed separately).
   cosmosPayEnabled?: boolean;
   cosmosPayOrgId?: string;
+  // Default BlindPay fiat receiver (KYC account) used for on/off-ramp.
+  cosmosPayReceiverId?: string;
 }
 
 /**
@@ -258,6 +260,34 @@ export async function saveCosmosPay(
   const next = list.map((w) =>
     w.id === id ? { ...w, cosmosPayEnabled: true, cosmosPayOrgId: data.organizationId } : w,
   );
+  await writeWallets(next);
+  return next;
+}
+
+/** Mark a receiver as the wallet's default BlindPay fiat account. */
+export async function saveDefaultReceiver(id: string, receiverId: string): Promise<WalletEntry[]> {
+  const list = await listWallets();
+  const next = list.map((w) => (w.id === id ? { ...w, cosmosPayReceiverId: receiverId } : w));
+  await writeWallets(next);
+  return next;
+}
+
+/** Unlink CosmosPay from a wallet: drop the sealed API keys + pending + the plaintext flags. */
+export async function clearCosmosPay(id: string): Promise<WalletEntry[]> {
+  await storageRemove(cosmosPayKey(id));
+  await storageRemove(cosmosPayPendingKey(id));
+  const list = await listWallets();
+  const next = list.map((w) =>
+    w.id === id ? { ...w, cosmosPayEnabled: false, cosmosPayOrgId: undefined } : w,
+  );
+  await writeWallets(next);
+  return next;
+}
+
+/** Unlink the default BlindPay receiver from a wallet (keeps the CosmosPay keys). */
+export async function clearReceiver(id: string): Promise<WalletEntry[]> {
+  const list = await listWallets();
+  const next = list.map((w) => (w.id === id ? { ...w, cosmosPayReceiverId: undefined } : w));
   await writeWallets(next);
   return next;
 }

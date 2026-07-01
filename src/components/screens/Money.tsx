@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, BackBar, NumberPad, Spinner, AssetLogo, inputStyle, EnableReceivingCard } from '@/components/parts';
+import { C, PrimaryButton, GhostButton, BackBar, NumberPad, Spinner, AssetLogo, inputStyle, EnableReceivingCard } from '@/components/parts';
 import { qrDataUrl } from '@/lib/qr';
 import { buildSep7Pay } from '@/lib/sep7';
 import { copyText, readText } from '@/lib/clipboard';
 import { fmt, trim, shortAddr } from '@/lib/format';
 import { explorerTxUrl, networkEnv, normalizeAmount, type HistoryOp } from '@/lib/stellar';
 import { isValidPublicKey } from '@/lib/wallet';
-import type { SwapQuote } from '@/lib/cosmospay';
+import type { SwapQuote, PayIntent } from '@/lib/cosmospay';
 
 /** Numeric keypad editing with Stellar's 7-decimal limit. */
 function editAmount(v: string, d: string): string {
@@ -88,6 +88,17 @@ export function Receive({ store }: { store: WalletStore }) {
       <div style={{ display: 'flex', gap: '10px' }}>
         <button onClick={copy} style={{ flex: 1, height: '54px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{copied ? t('common.copied') : t('common.copy')}</button>
         <button onClick={share} style={{ flex: 1, height: '54px', background: C.accent, color: 'var(--on-accent)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>{t('common.share')}</button>
+      </div>
+
+      <div onClick={() => store.setScreen('paylink')} className="tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px', borderRadius: '16px', cursor: 'pointer', marginTop: '14px', ...C.glassSoft }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ fontSize: '18px' }}>🔗</div>
+          <div>
+            <div style={{ fontSize: '14px', fontWeight: 800 }}>{t('paylink.title')}</div>
+            <div style={{ fontSize: '12px', color: C.muted, fontWeight: 600 }}>{t('paylink.entryDesc')}</div>
+          </div>
+        </div>
+        <span style={{ color: C.dim, fontSize: '18px' }}>›</span>
       </div>
     </div>
   );
@@ -349,6 +360,10 @@ export function Swap({ store }: { store: WalletStore }) {
   const [pay, setPay] = useState('1');
   const [quote, setQuote] = useState<SwapQuote | null>(null);
   const [quoting, setQuoting] = useState(false);
+  // Which token dropdown is open. The glass cards each create a backdrop-filter stacking
+  // context, so an open menu would be painted under the sibling card / quote below it.
+  // We lift the active card (and the whole stack) above the rest while a menu is open.
+  const [openSel, setOpenSel] = useState<null | 'from' | 'to'>(null);
 
   const from = assets.find((a) => a.code === fromCode);
   const to = assets.find((a) => a.code === toCode);
@@ -418,11 +433,11 @@ export function Swap({ store }: { store: WalletStore }) {
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 104px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('swap.title')} onBack={() => store.go('home', 'home')} />
 
-      <div style={{ position: 'relative', marginTop: '6px' }}>
-        <div style={{ ...C.glass, borderRadius: '20px', padding: '18px' }}>
+      <div style={{ position: 'relative', marginTop: '6px', zIndex: openSel ? 50 : undefined }}>
+        <div style={{ position: 'relative', zIndex: openSel === 'from' ? 3 : undefined, ...C.glass, borderRadius: '20px', padding: '18px' }}>
           <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '14px' }}>{t('swap.pay')}</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-            <SwapTokenSelect assets={assets} code={fromCode} onPick={setFromCode} />
+            <SwapTokenSelect assets={assets} code={fromCode} onPick={setFromCode} open={openSel === 'from'} onToggle={(n) => setOpenSel(n ? 'from' : null)} />
             <input value={pay} onChange={(e) => setPay((e.target as HTMLInputElement).value)} inputMode="decimal" style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', textAlign: 'right', color: 'var(--text)', fontSize: '28px', fontWeight: 800, outline: 'none', fontVariantNumeric: 'tabular-nums' }} />
           </div>
           <div style={{ marginTop: '10px', color: C.dim, fontSize: '12px', fontWeight: 600 }}>
@@ -430,10 +445,10 @@ export function Swap({ store }: { store: WalletStore }) {
           </div>
         </div>
         <button onClick={invert} aria-label="invert" className="tap" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: '44px', height: '44px', borderRadius: '50%', ...C.glassSoft, border: '4px solid var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: 'var(--text)', zIndex: 2, cursor: 'pointer' }}>⇅</button>
-        <div style={{ ...C.glass, borderRadius: '20px', padding: '18px', marginTop: '10px' }}>
+        <div style={{ position: 'relative', zIndex: openSel === 'to' ? 3 : undefined, ...C.glass, borderRadius: '20px', padding: '18px', marginTop: '10px' }}>
           <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '14px' }}>{t('swap.receiveEst')}</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-            <SwapTokenSelect assets={assets} code={toCode} onPick={setToCode} />
+            <SwapTokenSelect assets={assets} code={toCode} onPick={setToCode} open={openSel === 'to'} onToggle={(n) => setOpenSel(n ? 'to' : null)} />
             <div style={{ fontSize: '28px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: quote ? 'var(--text)' : C.dim }}>{quote ? trim(receive, 4) : '—'}</div>
           </div>
           {rate !== null && (
@@ -501,20 +516,29 @@ export function Swap({ store }: { store: WalletStore }) {
   );
 }
 
-/** Token dropdown for the swap screen — any trustlined asset (XLM always present). */
+/** Token dropdown for the swap screen — any trustlined asset (XLM always present).
+ *  `open`/`onToggle` make it controllable so the parent can lift the card's stacking
+ *  context while open (the glass cards' backdrop-filter would otherwise trap the menu
+ *  below the sibling card). Uncontrolled (internal state) when those props are omitted. */
 function SwapTokenSelect({
   assets,
   code,
   onPick,
+  open: openProp,
+  onToggle,
 }: {
   assets: { code: string; issuer: string | null; balance: string; isNative: boolean }[];
   code: string;
   onPick: (code: string) => void;
+  open?: boolean;
+  onToggle?: (next: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [openLocal, setOpenLocal] = useState(false);
+  const open = openProp ?? openLocal;
+  const setOpen = (next: boolean) => (onToggle ? onToggle(next) : setOpenLocal(next));
   return (
     <div style={{ position: 'relative', flexShrink: 0 }}>
-      <button onClick={() => setOpen((o) => !o)} style={{ display: 'flex', alignItems: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', padding: '7px 14px 7px 7px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
+      <button onClick={() => setOpen(!open)} style={{ display: 'flex', alignItems: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', padding: '7px 14px 7px 7px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
         <AssetLogo code={code} size={28} />
         {code}
         <span style={{ fontSize: '9px', opacity: 0.7, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▼</span>
@@ -587,7 +611,7 @@ export function HistoryRow({ item, store, delay = 0 }: { item: HistoryOp; store:
   const amountText = item.kind === 'swap'
     ? `+${trim(parseFloat(item.amount || '0'), 4)} ${item.code}`
     : item.amount ? `${sign}${trim(parseFloat(item.amount), 4)} ${item.code}` : '';
-  const amountColor = sign === '+' || item.kind === 'swap' ? 'var(--up)' : 'var(--text)';
+  const amountColor = item.failed ? C.danger : sign === '+' || item.kind === 'swap' ? 'var(--up)' : 'var(--text)';
   const Wrapper: any = url ? 'a' : 'div';
   return (
     <Wrapper
@@ -595,15 +619,92 @@ export function HistoryRow({ item, store, delay = 0 }: { item: HistoryOp; store:
       className="tap"
       style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '13px 12px', borderRadius: '16px', textDecoration: 'none', color: 'inherit', animation: 'fadeUp .45s ease backwards', animationDelay: `${delay}s` }}
     >
-      <div style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '17px', flexShrink: 0 }}>{icon}</div>
+      <div style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '17px', flexShrink: 0, opacity: item.failed ? 0.6 : 1 }}>{icon}</div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '14.5px', fontWeight: 800 }}>{title}</div>
+        <div style={{ fontSize: '14.5px', fontWeight: 800 }}>
+          {title}{item.failed && <span style={{ color: C.danger, fontWeight: 700 }}> · {t('history.failed')}</span>}
+        </div>
         {sub && <div style={{ fontSize: '12px', color: C.dim, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sub}</div>}
       </div>
       <div style={{ textAlign: 'right', flexShrink: 0 }}>
-        {amountText && <div style={{ fontSize: '14px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: amountColor }}>{amountText}</div>}
+        {amountText && <div style={{ fontSize: '14px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: amountColor, textDecoration: item.failed ? 'line-through' : 'none' }}>{amountText}</div>}
         <div style={{ fontSize: '11px', color: C.dim, fontWeight: 600 }}>{date}</div>
       </div>
     </Wrapper>
+  );
+}
+
+/* ----------------------------- PAY LINK ----------------------------- */
+/** Create a shareable CosmosPay pay link (SEP-7 pay request) to send to a friend. */
+export function PayLink({ store }: { store: WalletStore }) {
+  const t = store.t;
+  const assets = sendableAssets(store);
+  const [code, setCode] = useState('XLM');
+  const [amount, setAmount] = useState('');
+  const [msg, setMsg] = useState('');
+  const [intent, setIntent] = useState<PayIntent | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const asset = assets.find((a) => a.code === code);
+
+  const generate = async () => {
+    setLoading(true);
+    const res = await store.createPayLink({
+      amount: amount.trim() || undefined,
+      assetCode: code === 'XLM' ? undefined : code,
+      assetIssuer: asset && !asset.isNative ? asset.issuer ?? undefined : undefined,
+      msg: msg.trim() || undefined,
+    });
+    setLoading(false);
+    if (res) setIntent(res);
+  };
+
+  const share = async () => {
+    if (!intent) return;
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ text: intent.uri });
+        return;
+      }
+    } catch {
+      /* fall back to copy */
+    }
+    await copyText(intent.uri);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+
+  return (
+    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 104px', animation: 'fadeUp .3s ease' }}>
+      <BackBar title={t('paylink.title')} onBack={() => (intent ? setIntent(null) : store.setScreen('receive'))} />
+      {!intent ? (
+        <>
+          <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '4px 2px 14px' }}>{t('paylink.desc')}</div>
+          <div style={{ ...C.glass, borderRadius: '18px', padding: '18px' }}>
+            <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '14px' }}>{t('paylink.amount')}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+              <SwapTokenSelect assets={assets} code={code} onPick={setCode} />
+              <input value={amount} onChange={(e) => setAmount((e.target as HTMLInputElement).value)} inputMode="decimal" placeholder="0" style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', textAlign: 'right', color: 'var(--text)', fontSize: '28px', fontWeight: 800, outline: 'none', fontVariantNumeric: 'tabular-nums' }} />
+            </div>
+          </div>
+          <input value={msg} onChange={(e) => setMsg((e.target as HTMLInputElement).value.slice(0, 28))} placeholder={t('paylink.msgPlaceholder')} style={{ ...inputStyle, background: C.cardSolid, border: '1px solid var(--glass-border)', marginTop: '12px' }} />
+          <div style={{ flex: 1, minHeight: '14px' }} />
+          <PrimaryButton disabled={loading} onClick={generate}>{loading ? <Spinner /> : t('paylink.cta')}</PrimaryButton>
+        </>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', marginTop: '8px' }}>
+          <img src={intent.qr} alt="" style={{ width: '230px', height: '230px', borderRadius: '20px', background: '#fff', padding: '10px' }} />
+          <div style={{ fontSize: '20px', fontWeight: 800 }}>
+            {intent.amount ? `${trim(parseFloat(intent.amount), 4)} ${intent.asset === 'native' ? 'XLM' : intent.asset}` : t('paylink.anyAmount')}
+          </div>
+          {intent.msg && <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600 }}>{intent.msg}</div>}
+          <div style={{ ...C.glassSoft, borderRadius: '14px', padding: '12px 14px', fontSize: '11.5px', color: C.muted, fontWeight: 600, wordBreak: 'break-all', width: '100%', textAlign: 'center' }}>{intent.uri}</div>
+          <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
+            <GhostButton onClick={() => setIntent(null)} style={{ flex: 1 }}>{t('paylink.another')}</GhostButton>
+            <PrimaryButton onClick={share} style={{ flex: 1 }}>{copied ? t('common.copied') : t('paylink.share')}</PrimaryButton>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

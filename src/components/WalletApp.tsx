@@ -4,9 +4,11 @@ import { Shell, Spinner, Logo } from '@/components/parts';
 import { Welcome, Backup, Verify, Import, ProfileSetup, PasswordSetup } from '@/components/screens/Onboarding';
 import { Unlock } from '@/components/screens/Unlock';
 import { Home, Earn, Markets, Profile, Asset } from '@/components/screens/Main';
-import { Receive, Send, Confirm, Success, Swap, History } from '@/components/screens/Money';
+import { Receive, Send, Confirm, Success, Swap, History, PayLink } from '@/components/screens/Money';
 import { Settings, Export, About } from '@/components/screens/Settings';
 import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from '@/components/screens/Extras';
+import { Fiat, BankAccount, Deposit, Withdraw } from '@/components/screens/Fiat';
+import { CosmosPay } from '@/components/screens/CosmosPay';
 
 const NAV_SCREENS = ['home', 'earn', 'markets', 'profile', 'swap'];
 
@@ -42,6 +44,16 @@ function handleBack(store: WalletStore, exitApp: () => void) {
       return store.go('home', 'home');
     case 'history':
       return store.go('home', 'home');
+    case 'paylink':
+      return store.setScreen('receive');
+    case 'fiat':
+      return store.go('home', 'home');
+    case 'cosmospay':
+      return store.go('profile', 'profile');
+    case 'bankaccount':
+    case 'deposit':
+    case 'withdraw':
+      return store.setScreen('fiat');
     case 'sign-tx':
       return store.setScreen('operations');
     case 'add-network':
@@ -107,6 +119,18 @@ function renderScreen(screen: WalletStore['screen'], store: WalletStore) {
       return <Operations store={store} />;
     case 'history':
       return <History store={store} />;
+    case 'paylink':
+      return <PayLink store={store} />;
+    case 'fiat':
+      return <Fiat store={store} />;
+    case 'cosmospay':
+      return <CosmosPay store={store} />;
+    case 'bankaccount':
+      return <BankAccount store={store} />;
+    case 'deposit':
+      return <Deposit store={store} />;
+    case 'withdraw':
+      return <Withdraw store={store} />;
     case 'sign-tx':
       return <SignTx store={store} />;
     case 'add-network':

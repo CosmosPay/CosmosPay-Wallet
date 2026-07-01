@@ -430,6 +430,7 @@ export interface HistoryOp {
   fromAmount?: string;
   counterparty: string | null; // the other account (null for self-swaps)
   hash: string;
+  failed: boolean; // the operation's transaction failed on submit
 }
 
 function assetCodeOf(type?: string, code?: string): string {
@@ -438,7 +439,8 @@ function assetCodeOf(type?: string, code?: string): string {
 
 /** Normalize a Horizon payment record into a HistoryOp (null for ones we don't show). */
 function normalizeHistoryOp(r: any, pub: string): HistoryOp | null {
-  const base = { id: String(r.id), createdAt: r.created_at, hash: r.transaction_hash };
+  // With includeFailed, ops carry `transaction_successful`; false = the tx was rejected.
+  const base = { id: String(r.id), createdAt: r.created_at, hash: r.transaction_hash, failed: r.transaction_successful === false };
   switch (r.type) {
     case 'payment': {
       const sent = r.from === pub;
@@ -472,7 +474,8 @@ function normalizeHistoryOp(r: any, pub: string): HistoryOp | null {
 export async function getHistory(cfg: NetConfig, pub: string, limit = 40): Promise<HistoryOp[]> {
   try {
     const server = getServer(cfg);
-    const res: any = await server.payments().forAccount(pub).order('desc').limit(limit).call();
+    // includeFailed surfaces operations whose transaction was rejected on submit.
+    const res: any = await server.payments().forAccount(pub).includeFailed(true).order('desc').limit(limit).call();
     const recs: any[] = res.records ?? [];
     const out: HistoryOp[] = [];
     for (const r of recs) {

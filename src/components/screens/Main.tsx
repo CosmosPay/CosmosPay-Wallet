@@ -100,6 +100,15 @@ export function Home({ store }: { store: WalletStore }) {
         </Action>
       </div>
 
+      <div onClick={() => store.setScreen('fiat')} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', borderRadius: '16px', cursor: 'pointer', ...C.glassSoft, marginBottom: '14px' }}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, color: 'var(--text)' }}><path d="M3 8h15l-3-3M21 16H6l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: '14px', fontWeight: 800 }}>{t('fiat.tab')}</div>
+          <div style={{ fontSize: '12px', color: C.muted, fontWeight: 600 }}>{t('fiat.entryDesc')}</div>
+        </div>
+        <span style={{ color: C.dim, fontSize: '18px' }}>›</span>
+      </div>
+
       {notActivated && <ActivateCard store={store} />}
       {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
 
@@ -286,14 +295,8 @@ export function Markets({ store }: { store: WalletStore }) {
 /* ------------------------------ PROFILE ------------------------------ */
 export function Profile({ store }: { store: WalletStore }) {
   const t = store.t;
-  const enabled = !!store.cosmosPay;
-  const pending = !!store.cosmosPayPending;
-  // CosmosPay: enabled (static) / pending (tap → claim) / off (tap → enable).
-  const cosmosPayRow = enabled
-    ? { icon: '✓', label: t('cosmospay.enabledRow'), onClick: () => {} }
-    : pending
-      ? { icon: '✉', label: t('cosmospay.confirmRow'), onClick: () => store.claimReceiving() }
-      : { icon: '↯', label: t('cosmospay.row'), onClick: () => store.enableReceiving() };
+  // Cosmos Pay is an integration (swaps + BlindPay payments) — tap to manage keys/receiver.
+  const cosmosPayRow = { icon: '◇', label: t('cosmospay.manage'), onClick: () => store.setScreen('cosmospay') };
   const rows = [
     ...(store.meta?.email ? [cosmosPayRow] : []),
     { icon: '⚷', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') },

@@ -21,7 +21,10 @@ import {
   listWallets,
   migrate,
   removeWallet as vaultRemoveWallet,
+  clearCosmosPay,
+  clearReceiver,
   saveCosmosPay,
+  saveDefaultReceiver,
   savePendingCosmosPay,
   updateWalletMeta,
   setActiveId,
@@ -50,14 +53,40 @@ import {
   type PriceInfo,
 } from '@/lib/stellar';
 import {
+  addBankAccount as cpAddBankAccount,
+  addReceiverWallet as cpAddReceiverWallet,
+  authorizePayout as cpAuthorizePayout,
+  blindpayNetwork,
   claimCosmosAccount,
+  createPayLink as cpCreatePayLink,
+  createPayin as cpCreatePayin,
+  createPayout as cpCreatePayout,
+  createReceiver as cpCreateReceiver,
   createSwap as cpCreateSwap,
+  deleteBankAccount as cpDeleteBankAccount,
+  extractUnsignedXdr,
+  getReceiver as cpGetReceiver,
   linkCosmosAccount,
+  listBankAccounts as cpListBankAccounts,
+  listReceivers as cpListReceivers,
+  listReceiverWallets as cpListReceiverWallets,
+  offrampQuote as cpOfframpQuote,
+  onrampQuote as cpOnrampQuote,
   quoteSwap as cpQuoteSwap,
   registerCosmosAccount,
   submitSwap as cpSubmitSwap,
+  uploadKycDoc as cpUploadKycDoc,
   verifyCosmosLink,
   DEFAULT_SLIPPAGE_BPS,
+  type BankAccount,
+  type CreateReceiverInput,
+  type FiatToken,
+  type Payin,
+  type PayinQuote,
+  type PayinQuoteInput,
+  type PayIntent,
+  type PayoutQuote,
+  type Receiver,
   type SwapQuote,
 } from '@/lib/cosmospay';
 import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '@/lib/i18n';
@@ -117,6 +146,12 @@ export type Screen =
   | 'about'
   | 'operations'
   | 'history'
+  | 'paylink'
+  | 'fiat'
+  | 'cosmospay'
+  | 'bankaccount'
+  | 'deposit'
+  | 'withdraw'
   | 'sign-tx'
   | 'add-network'
   | 'add-asset'
@@ -232,6 +267,8 @@ export function useWalletStore() {
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<HistoryOp[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [receivers, setReceivers] = useState<Receiver[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
 
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1116,6 +1153,341 @@ export function useWalletStore() {
     [session, cosmosPay, network, requestSignature, refresh, t, flash],
   );
 
+  /** Create a shareable CosmosPay pay link (SEP-7 pay intent) addressed to this wallet. */
+  const createPayLink = useCallback(
+    async (input: { amount?: string; assetCode?: string; assetIssuer?: string; memo?: string; msg?: string }): Promise<PayIntent | null> => {
+      if (!meta) return null;
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) {
+        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
+        return null;
+      }
+      try {
+        return await cpCreatePayLink(apiKey, { destination: meta.publicKey, ...input });
+      } catch (e) {
+        flash((e as Error).message || t('paylink.error'), 'err');
+        return null;
+      }
+    },
+    [meta, cosmosPay, network, t, flash],
+  );
+
+  /** List the wallet's BlindPay fiat receivers (KYC accounts). */
+  const loadReceivers = useCallback(async () => {
+    const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+    if (!apiKey) return;
+    try {
+      setReceivers(await cpListReceivers(apiKey));
+    } catch {
+      /* best-effort */
+    }
+  }, [cosmosPay, network]);
+
+  /** Upload a KYC document for the BlindPay flow; returns its file_url (null on error). */
+  const uploadKycDoc = useCallback(
+    async (file: Blob, bucket?: string): Promise<string | null> => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) {
+        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
+        return null;
+      }
+      try {
+        const res = await cpUploadKycDoc(apiKey, file, bucket);
+        return res.file_url;
+      } catch (e) {
+        flash((e as Error).message || t('fiat.uploadError'), 'err');
+        return null;
+      }
+    },
+    [cosmosPay, network, t, flash],
+  );
+
+  /** Create a fiat receiver (KYC) and set it as this wallet's default. */
+  const createFiatReceiver = useCallback(
+    async (input: CreateReceiverInput): Promise<Receiver | null> => {
+      if (!meta) return null;
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) {
+        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
+        return null;
+      }
+      setBusy(true);
+      try {
+        const receiver = await cpCreateReceiver(apiKey, input);
+        const list = await saveDefaultReceiver(meta.id, receiver.id);
+        setWallets(list);
+        const entry = list.find((w) => w.id === meta.id);
+        if (entry) setMetaState(entry);
+        setReceivers((prev) => [receiver, ...prev.filter((r) => r.id !== receiver.id)]);
+        flash(t('fiat.receiverCreated'), 'ok');
+        return receiver;
+      } catch (e) {
+        flash((e as Error).message || t('fiat.error'), 'err');
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [meta, cosmosPay, network, t, flash],
+  );
+
+  /** Unlink the CosmosPay integration from this wallet (removes its stored API keys). */
+  const unlinkCosmosPay = useCallback(async () => {
+    if (!meta) return;
+    const list = await clearCosmosPay(meta.id);
+    setWallets(list);
+    const entry = list.find((w) => w.id === meta.id);
+    if (entry) setMetaState(entry);
+    setCosmosPay(null);
+    setCosmosPayPending(null);
+    setCosmosLink(null);
+    flash(t('cosmospay.unlinked'), 'ok');
+  }, [meta, t, flash]);
+
+  /** Unlink just one network's API key (testnet=dev / mainnet=prod), keeping the other. */
+  const unlinkCosmosPayEnv = useCallback(
+    async (env: 'dev' | 'prod') => {
+      if (!session || !meta || !cosmosPay) return;
+      const keys = { ...cosmosPay.keys, [env]: null };
+      if (!keys.dev && !keys.prod) {
+        // nothing left → fully unlink
+        const list = await clearCosmosPay(meta.id);
+        setWallets(list);
+        const entry = list.find((w) => w.id === meta.id);
+        if (entry) setMetaState(entry);
+        setCosmosPay(null);
+      } else {
+        const account: CosmosPayAccount = { ...cosmosPay, keys };
+        const list = await saveCosmosPay(meta.id, account, session.password);
+        setWallets(list);
+        const entry = list.find((w) => w.id === meta.id);
+        if (entry) setMetaState(entry);
+        setCosmosPay(account);
+      }
+      flash(t('cosmospay.unlinkedEnv', { net: env === 'prod' ? 'mainnet' : 'testnet' }), 'ok');
+    },
+    [session, meta, cosmosPay, t, flash],
+  );
+
+  /** Refresh a single receiver from BlindPay (the list can be stale — this re-reads KYC status). */
+  const loadReceiver = useCallback(
+    async (id: string) => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) return;
+      try {
+        const r = await cpGetReceiver(apiKey, id);
+        setReceivers((prev) => [r, ...prev.filter((x) => x.id !== r.id)]);
+      } catch {
+        /* best-effort */
+      }
+    },
+    [cosmosPay, network],
+  );
+
+  /** Load the receiver's payout/deposit bank accounts. */
+  const loadBankAccounts = useCallback(
+    async (receiverId: string) => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) return;
+      try {
+        setBankAccounts(await cpListBankAccounts(apiKey, receiverId));
+      } catch {
+        /* best-effort */
+      }
+    },
+    [cosmosPay, network],
+  );
+
+  /** Add a deposit/payout bank account (per rail/currency) to the receiver. */
+  const addFiatBankAccount = useCallback(
+    async (receiverId: string, body: Record<string, unknown>): Promise<boolean> => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) {
+        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
+        return false;
+      }
+      setBusy(true);
+      try {
+        const acc = await cpAddBankAccount(apiKey, receiverId, body);
+        setBankAccounts((prev) => [acc, ...prev]);
+        flash(t('fiat.accountAdded'), 'ok');
+        return true;
+      } catch (e) {
+        flash((e as Error).message || t('fiat.error'), 'err');
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [cosmosPay, network, t, flash],
+  );
+
+  /** Delete a deposit/payout bank account from the receiver. */
+  const removeFiatBankAccount = useCallback(
+    async (receiverId: string, accountId: string): Promise<boolean> => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) return false;
+      setBusy(true);
+      try {
+        await cpDeleteBankAccount(apiKey, receiverId, accountId);
+        setBankAccounts((prev) => prev.filter((a) => a.id !== accountId));
+        flash(t('fiat.accountDeleted'), 'ok');
+        return true;
+      } catch (e) {
+        flash((e as Error).message || t('fiat.error'), 'err');
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [cosmosPay, network, t, flash],
+  );
+
+  /**
+   * Ensure this wallet's Stellar address is registered as a blockchain wallet on the
+   * receiver and return its LOCAL id (the `blockchain_wallet_id` onramp quotes need).
+   * Reuses an existing matching registration; otherwise registers one (non-secure flow).
+   */
+  const ensureBlockchainWallet = useCallback(
+    async (receiverId: string): Promise<string | null> => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey || !meta) return null;
+      const net = blindpayNetwork(networkEnv(network));
+      try {
+        const existing = await cpListReceiverWallets(apiKey, receiverId);
+        const match = existing.find((w) => w.address === meta.publicKey && (!w.network || w.network === net));
+        if (match) return match.id;
+        const created = await cpAddReceiverWallet(apiKey, receiverId, { name: 'CosmosPay Wallet', network: net, address: meta.publicKey });
+        return created.id;
+      } catch (e) {
+        flash((e as Error).message || t('fiat.error'), 'err');
+        return null;
+      }
+    },
+    [cosmosPay, network, meta, t, flash],
+  );
+
+  /** Onramp step 1: price a deposit. `blockchain_wallet_id` comes from ensureBlockchainWallet. */
+  const quoteDeposit = useCallback(
+    async (input: PayinQuoteInput): Promise<PayinQuote | null> => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) {
+        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
+        return null;
+      }
+      try {
+        return await cpOnrampQuote(apiKey, input);
+      } catch (e) {
+        flash((e as Error).message || t('fiat.error'), 'err');
+        return null;
+      }
+    },
+    [cosmosPay, network, t, flash],
+  );
+
+  /** Onramp step 2: create the payin and return its payment instructions. */
+  const confirmDeposit = useCallback(
+    async (quoteId: string): Promise<Payin | null> => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) return null;
+      setBusy(true);
+      try {
+        const payin = await cpCreatePayin(apiKey, quoteId);
+        flash(t('fiat.depositCreated'), 'ok');
+        return payin;
+      } catch (e) {
+        flash((e as Error).message || t('fiat.error'), 'err');
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [cosmosPay, network, t, flash],
+  );
+
+  /** Offramp step 1: price a withdrawal to a bank account (network injected from the env). */
+  const quoteWithdraw = useCallback(
+    async (input: { bank_account_id: string; request_amount: number; token: FiatToken; cover_fees: boolean; currency_type?: 'sender' | 'receiver'; description?: string }): Promise<PayoutQuote | null> => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) {
+        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
+        return null;
+      }
+      try {
+        return await cpOfframpQuote(apiKey, {
+          bank_account_id: input.bank_account_id,
+          currency_type: input.currency_type ?? 'sender',
+          cover_fees: input.cover_fees,
+          request_amount: input.request_amount,
+          network: blindpayNetwork(networkEnv(network)),
+          token: input.token,
+          description: input.description,
+        });
+      } catch (e) {
+        flash((e as Error).message || t('fiat.error'), 'err');
+        return null;
+      }
+    },
+    [cosmosPay, network, t, flash],
+  );
+
+  /**
+   * Offramp step 2: authorize -> sign the returned XDR locally -> create the payout.
+   * Mirrors the swap signing flow. Lands on the success screen either way.
+   */
+  const confirmWithdraw = useCallback(
+    async (quote: PayoutQuote, token: FiatToken): Promise<boolean> => {
+      if (!session) return false;
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) {
+        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
+        return false;
+      }
+      const okSig = await requestSignature({ title: t('confirmSig.withdrawTitle'), message: t('confirmSig.withdrawMsg') });
+      if (!okSig) return false;
+      setBusy(true);
+      try {
+        const auth = await cpAuthorizePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar' });
+        const xdr = extractUnsignedXdr(auth);
+        if (!xdr) throw new Error(t('fiat.noXdr'));
+        const signed = signXdr(network, session.secret, xdr);
+        const payout = await cpCreatePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar', signed_transaction: signed });
+        const sent = payout.senderAmount ?? (quote.sender_amount != null ? (quote.sender_amount / 100).toFixed(2) : '');
+        const got = payout.receiverAmount ?? (quote.receiver_local_amount != null ? (quote.receiver_local_amount / 100).toFixed(2) : '');
+        setSuccessInfo({
+          kind: 'ok',
+          title: t('fiat.withdrawSuccess'),
+          msg: t('fiat.withdrawSuccessMsg'),
+          rows: [
+            { label: t('fiat.youSend'), val: `${sent} ${token}`.trim() },
+            { label: t('fiat.youReceive'), val: got ? String(got) : '—' },
+          ],
+        });
+        setScreen('success');
+        refresh(true);
+        return true;
+      } catch (e) {
+        setSuccessInfo({ kind: 'err', title: t('fiat.withdrawFailed'), msg: (e as Error).message, rows: [] });
+        setScreen('success');
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [session, cosmosPay, network, requestSignature, refresh, t, flash],
+  );
+
+  /** Unlink the default BlindPay fiat receiver (keeps the CosmosPay keys). */
+  const unlinkReceiver = useCallback(async () => {
+    if (!meta) return;
+    const list = await clearReceiver(meta.id);
+    setWallets(list);
+    const entry = list.find((w) => w.id === meta.id);
+    if (entry) setMetaState(entry);
+    setReceivers([]);
+    flash(t('fiat.receiverUnlinked'), 'ok');
+  }, [meta, t, flash]);
+
   /* ----------------------------- export --------------------------- */
   const checkPassword = useCallback((pwd: string) => verifyPassword(pwd), []);
 
@@ -1218,6 +1590,24 @@ export function useWalletStore() {
     cancelLink,
     quoteSwap,
     submitSwap,
+    createPayLink,
+    receivers,
+    bankAccounts,
+    loadReceivers,
+    loadReceiver,
+    loadBankAccounts,
+    createFiatReceiver,
+    addFiatBankAccount,
+    removeFiatBankAccount,
+    ensureBlockchainWallet,
+    quoteDeposit,
+    confirmDeposit,
+    quoteWithdraw,
+    confirmWithdraw,
+    uploadKycDoc,
+    unlinkCosmosPay,
+    unlinkCosmosPayEnv,
+    unlinkReceiver,
     checkPassword,
   };
 }
