@@ -32,6 +32,15 @@ function resizeToDataUrl(file: File, size = 160): Promise<string> {
 // Stellar-ecosystem assets only (no BTC/ETH/SOL; USDT isn't native to Stellar).
 const MARKET_TOKENS = ['XLM', 'USDC', 'EURC'];
 
+/** Cap a name to `max` chars, cutting back to its last vowel so it reads naturally
+ *  (e.g. "Wolfeschlegelstein" -> "Wolfeschlege"). Short names pass through intact. */
+function shortName(name: string, max = 12): string {
+  if (name.length <= max) return name;
+  const cut = name.slice(0, max);
+  const m = cut.match(/^.*[aeiouáéíóúàèìòùâêîôûäëïöü]/i);
+  return m ? m[0] : cut;
+}
+
 function changeColor(n: number) {
   // green up / red down (tokens --up/--down, theme-aware)
   return n >= 0 ? 'var(--up)' : 'var(--down)';
@@ -83,8 +92,9 @@ export function Home({ store }: { store: WalletStore }) {
     [store.meta?.name, store.meta?.birthdate, store.t, store.meta?.gender],
   );
   const initial = (store.meta?.name || 'C').slice(0, 1).toUpperCase();
-  // Header shows the name big, capped to the first word.
-  const firstName = (store.meta?.name || 'astronauta').trim().split(/\s+/)[0];
+  // Header shows the name big: first word only, and if still too long it's cut at
+  // its LAST VOWEL within the limit so the short form reads naturally.
+  const firstName = shortName((store.meta?.name || 'astronauta').trim().split(/\s+/)[0]);
   // Fiat on/off-ramp is 18+ only (unknown/missing birthdate counts as not eligible).
   const fiatOk = (ageFromBirthdate(store.meta?.birthdate ?? '') ?? 0) >= 18;
   // Assets list caps at 5 rows; starred favorites always float to the top so they
@@ -103,9 +113,11 @@ export function Home({ store }: { store: WalletStore }) {
           <div onClick={() => store.go('profile', 'profile')} className="tap" style={{ width: '42px', height: '42px', borderRadius: '50%', overflow: 'hidden', background: 'var(--glass-soft-bg)', border: '1px solid var(--glass-soft-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 700, color: 'var(--text)', cursor: 'pointer', flexShrink: 0 }}>
             {store.meta?.avatar ? <img src={store.meta.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-            <span style={{ fontSize: '12.5px', color: C.muted, fontWeight: 700 }}>{greeting.salutation}</span>
-            <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-.4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstName} 👋</span>
+          {/* Sized to sit WITHIN the 42px avatar height — never taller, so the header
+              structure holds even in the narrow extension popup. */}
+          <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0, height: '42px', gap: '2px' }}>
+            <span style={{ fontSize: '11.5px', color: C.muted, fontWeight: 700, lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{greeting.salutation}</span>
+            <span style={{ fontSize: '17px', fontWeight: 800, letterSpacing: '-.4px', lineHeight: 1.15, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstName} 👋</span>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
@@ -142,6 +154,14 @@ export function Home({ store }: { store: WalletStore }) {
         </Action>
         <Action label={t('common.receive')} onClick={() => store.setScreen('receive')}>
           <path d="M12 4v13M6 11l6 6 6-6M5 20h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </Action>
+        {/* Central scanner: reads any Stellar QR (address / SEP-7 pay link) and
+            auto-routes to the matching flow (prefilled Send, etc.). */}
+        <Action label={t('scan.short')} onClick={() => store.setScreen('scan')}>
+          <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2" />
+          <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2" />
+          <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2" />
+          <path d="M14 14h3v3M21 14v.01M21 21v-4M14 21h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </Action>
         <Action label={t('home.swap')} onClick={() => store.setScreen('swap')}>
           <path d="M7 7h11l-3-3M17 17H6l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -213,13 +233,28 @@ export function Home({ store }: { store: WalletStore }) {
   );
 }
 
+/** Circular header back button (extension only — phone/web have the bottom bar).
+ *  Returns to the screen the user actually came from (store.back). */
+function BackCircle({ store }: { store: WalletStore }) {
+  return (
+    <div
+      onClick={() => store.back('home')}
+      className="tap"
+      title={store.t('tab.home')}
+      style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text)', flexShrink: 0 }}
+    >
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    </div>
+  );
+}
+
 function Action({ label, onClick, children }: { label: string; onClick: () => void; children: any }) {
   return (
     <div onClick={onClick} className="tap" style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '9px', cursor: 'pointer' }}>
       <div style={{ width: '58px', height: '58px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">{children}</svg>
       </div>
-      <span style={{ fontSize: '11.5px', color: C.muted, fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: '11.5px', color: C.muted, fontWeight: 600, textAlign: 'center', lineHeight: 1.25 }}>{label}</span>
     </div>
   );
 }
@@ -389,6 +424,7 @@ export function Earn({ store }: { store: WalletStore }) {
         <span style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-.8px' }}>{t('earn.title')}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ width: '34px', height: '34px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 700, color: C.muted }}>?</div>
+          {buildKind() === 'ext' && <BackCircle store={store} />}
           <NavMenu store={store} />
         </div>
       </div>
@@ -439,6 +475,7 @@ export function Markets({ store }: { store: WalletStore }) {
         <span style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-.8px' }}>{t('markets.title')}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {store.loading && <Spinner size={16} color="var(--text)" />}
+          {buildKind() === 'ext' && <BackCircle store={store} />}
           <NavMenu store={store} />
         </div>
       </div>
@@ -507,17 +544,8 @@ export function Profile({ store }: { store: WalletStore }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 22px' }}>
         <span style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-.8px' }}>{t('tab.profile')}</span>
         {/* Profile is itself a menu destination, so a hamburger here is pointless —
-            in the extension (no bottom bar) the top-right button goes back home. */}
-        {buildKind() === 'ext' && (
-          <div
-            onClick={() => store.go('home', 'home')}
-            className="tap"
-            title={t('tab.home')}
-            style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text)' }}
-          >
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          </div>
-        )}
+            in the extension (no bottom bar) the top-right button goes back. */}
+        {buildKind() === 'ext' && <BackCircle store={store} />}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '26px' }}>
         <div onClick={() => fileRef.current?.click()} className="tap" title={t('profile.changePhoto')} style={{ position: 'relative', flexShrink: 0, width: '62px', height: '62px', borderRadius: '50%', background: 'var(--glass-soft-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 800, cursor: 'pointer', overflow: 'visible' }}>

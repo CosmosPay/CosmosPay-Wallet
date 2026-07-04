@@ -704,6 +704,7 @@ const T: Record<string, Record<Lang, string>> = {
 
   // ---- QR scanner ----
   'scan.scanQr': { es: 'Escanear QR', en: 'Scan QR', pt: 'Ler QR', de: 'QR scannen', fr: 'Scanner QR' },
+  'scan.short': { es: 'Escanear', en: 'Scan', pt: 'Ler', de: 'Scannen', fr: 'Scanner' },
   'scan.title': { es: 'Escanea un código QR', en: 'Scan a QR code', pt: 'Lê um código QR', de: 'QR-Code scannen', fr: 'Scanne un code QR' },
   'scan.point': { es: 'Apunta la cámara al QR de una dirección Stellar.', en: 'Point the camera at a Stellar address QR.', pt: 'Aponta a câmara ao QR de um endereço Stellar.', de: 'Richte die Kamera auf einen Stellar-Adressen-QR.', fr: 'Pointe la caméra vers un QR d’adresse Stellar.' },
   'scan.denied': { es: 'No se pudo acceder a la cámara. Revisa los permisos.', en: 'Couldn’t access the camera. Check permissions.', pt: 'Não foi possível aceder à câmara. Verifica as permissões.', de: 'Kamerazugriff fehlgeschlagen. Berechtigungen prüfen.', fr: 'Accès à la caméra impossible. Vérifie les autorisations.' },

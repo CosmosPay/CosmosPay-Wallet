@@ -359,7 +359,8 @@ export function ScanQR({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 28px', animation: 'fadeUp .3s ease' }}>
-      <BackBar title={t('scan.title')} onBack={() => store.setScreen('send')} />
+      {/* Back to wherever the scanner was opened from (send, home, operations, drawer…). */}
+      <BackBar title={t('scan.title')} onBack={() => store.back('send')} />
       <div style={{ fontSize: '13.5px', color: C.muted, fontWeight: 600, textAlign: 'center', margin: '12px 0 18px' }}>{t('scan.point')}</div>
       <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', borderRadius: '24px', overflow: 'hidden', ...C.glass, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {error ? (

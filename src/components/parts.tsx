@@ -986,6 +986,8 @@ export function NavMenu({ store }: { store: WalletStore }) {
           </div>
 
           <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', padding: '14px 16px 20px' }} className="scr">
+            {/* Both sections share ONE row style (metrics, weight, trailing ›). The
+                active tab is distinguished by its highlighted background only. */}
             {tabs.map((tb) => {
               const on = tb.key === activeKey;
               return (
@@ -996,18 +998,19 @@ export function NavMenu({ store }: { store: WalletStore }) {
                     if (!on) navGo(store, tb.key);
                   }}
                   className="tap"
-                  style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 16px', borderRadius: '16px', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent', color: 'var(--text)', border: on ? '1px solid var(--glass-soft-border)' : '1px solid transparent' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderRadius: '14px', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent', color: 'var(--text)', border: on ? '1px solid var(--glass-soft-border)' : '1px solid transparent' }}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>{tb.icon}</svg>
-                  <span style={{ flex: 1, fontSize: '16px', fontWeight: 800, letterSpacing: '-.2px' }}>{tb.label}</span>
-                  {on && <span style={{ color: C.accent, fontWeight: 800 }}>✓</span>}
+                  <span style={{ flex: 1, fontSize: '15px', fontWeight: 800, letterSpacing: '-.2px' }}>{tb.label}</span>
+                  <span style={{ color: C.dim, fontSize: '16px' }}>›</span>
                 </div>
               );
             })}
 
             {/* Quick access: settings + the profile shortcuts, so they're one tap away. */}
-            <div style={{ height: '1px', background: 'var(--hairline)', margin: '10px 4px' }} />
+            <div style={{ height: '1px', background: 'var(--hairline)', margin: '10px 4px', flexShrink: 0 }} />
             {[
+              { key: 'scan', label: store.t('scan.scanQr'), glyph: '⛶' },
               ...(store.meta?.email ? [{ key: 'cosmospay', label: store.t('cosmospay.manage'), glyph: '◇' }] : []),
               { key: 'export', label: store.t('profile.exportKeys'), glyph: '⚷' },
               { key: 'receive', label: store.t('profile.receiveAddr'), glyph: '⛁' },
@@ -1023,10 +1026,10 @@ export function NavMenu({ store }: { store: WalletStore }) {
                   store.setScreen(it.key as Parameters<WalletStore['setScreen']>[0]);
                 }}
                 className="tap"
-                style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '13px 16px', borderRadius: '14px', cursor: 'pointer', color: 'var(--text)' }}
+                style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '14px 16px', borderRadius: '14px', cursor: 'pointer', color: 'var(--text)', border: '1px solid transparent' }}
               >
                 <span style={{ width: '20px', textAlign: 'center', fontSize: '16px', color: C.muted, flexShrink: 0 }}>{it.glyph}</span>
-                <span style={{ flex: 1, fontSize: '14.5px', fontWeight: 700 }}>{it.label}</span>
+                <span style={{ flex: 1, fontSize: '15px', fontWeight: 800, letterSpacing: '-.2px' }}>{it.label}</span>
                 <span style={{ color: C.dim, fontSize: '16px' }}>›</span>
               </div>
             ))}
