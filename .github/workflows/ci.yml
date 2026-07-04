@@ -1,0 +1,90 @@
+name: CI
+
+# Build + typecheck + browser tests on every push and PR. Produces the two
+# deploy-ready web artifacts (dist/ for web+native, extension/ for MV3 browsers).
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Typecheck & build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # astro check = TypeScript + Astro diagnostics (must be 0 errors)
+      - name: Typecheck
+        run: npm run check
+
+      # Static site -> dist/ (this is what Capacitor wraps for native, too)
+      - name: Build web (dist/)
+        run: npm run build
+
+      # Post-process dist/ into an MV3 unpacked extension -> extension/
+      - name: Build extension (extension/)
+        run: npm run build:ext
+
+      - name: Upload web build (dist/)
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist
+          if-no-files-found: error
+
+      - name: Upload browser extension (extension/)
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-extension
+          path: extension
+          if-no-files-found: error
+
+  test:
+    name: Browser tests (e2e + responsive)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: Serve dist in background
+        run: |
+          npm run serve:dist &
+          # wait until the static server answers (max ~30s)
+          timeout 30 bash -c 'until curl -sf http://127.0.0.1:4321 >/dev/null; do sleep 1; done'
+
+      # Security-critical path: SEP-5 derivation, AES-GCM vault, unlock/decrypt.
+      - name: E2E wallet smoke test
+        run: npm run test:e2e
+        env:
+          E2E_URL: http://127.0.0.1:4321
+
+      # Device adaptation: no overflow + fluid scaling across phone/tablet/desktop.
+      - name: Responsive layout test
+        run: npm run test:responsive
+        env:
+          E2E_URL: http://127.0.0.1:4321

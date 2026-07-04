@@ -12,8 +12,11 @@
     "astro": "astro",
     "check": "astro check",
     "serve:dist": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/serve-dist.ts",
+    "demo": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/serve-demo.ts",
     "build:ext": "astro build && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build-extension.ts",
+    "build:ext:firefox": "astro build && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build-extension.ts firefox",
     "test:e2e": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/wallet.e2e.ts",
+    "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts",
     "cap:sync": "astro build && cap sync",
     "cap:android": "astro build && cap sync android && cap open android",
     "cap:ios": "astro build && cap sync ios && cap open ios"

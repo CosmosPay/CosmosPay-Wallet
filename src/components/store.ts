@@ -91,6 +91,7 @@ import {
 } from '@/lib/cosmospay';
 import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '@/lib/i18n';
 import { parseStellarQr } from '@/lib/sep7';
+import { buildKind } from '@/lib/platform';
 
 export type Theme = 'dark' | 'light';
 
@@ -230,11 +231,16 @@ function readIncomingSep7(): string | null {
 
 /** Offer this web wallet as the browser handler for `web+stellar:` links (SEP-7). */
 function registerStellarHandler(): void {
+  // ONLY the web build may register. In the browser-extension popup,
+  // navigator.registerProtocolHandler exists (so the typeof check below passes),
+  // but calling it from the tiny action-popup surface crashes the renderer
+  // ("se ha bloqueado"). On native it's meaningless. Restrict to the web build.
+  if (buildKind() !== 'web') return;
   if (typeof navigator === 'undefined' || typeof navigator.registerProtocolHandler !== 'function') return;
   try {
     navigator.registerProtocolHandler('web+stellar', window.location.origin + '/?uri=%s');
   } catch {
-    /* not permitted here (native app / extension / insecure origin) — ignore */
+    /* not permitted here (insecure origin, etc.) — ignore */
   }
 }
 

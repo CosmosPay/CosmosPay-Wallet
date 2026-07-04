@@ -98,7 +98,12 @@ export function Shell({
   return (
     <div
       style={{
-        minHeight: '100vh',
+        // Full-height wrapper. Height comes from --shell-h (default 100vh for web /
+        // native). The extension popup overrides it to a FIXED 600px: an MV3 popup
+        // auto-sizes to its content, and a `100vh` height feeds a viewport-dependent
+        // size back into that measurement, which Chrome rejects as a bad IPC and
+        // kills the renderer ("se ha bloqueado"). A determinate height avoids it.
+        minHeight: 'var(--shell-h, 100vh)',
         display: 'flex',
         alignItems: 'stretch',
         justifyContent: 'center',
@@ -109,8 +114,14 @@ export function Shell({
         style={{
           position: 'relative',
           width: '100%',
-          maxWidth: '440px',
-          height: '100vh',
+          // Device adaptation via a fluid column width (set by media queries in
+          // index.astro): full-width on phones, a wider comfortable column on
+          // tablets/desktop instead of a locked 440px. We deliberately do NOT scale
+          // the whole UI with CSS `zoom` — Chrome 149 crashes its GPU compositor on
+          // a zoomed subtree ("se ha bloqueado" in the extension popup), so widening
+          // the column is the safe way to not stay a fixed size.
+          maxWidth: 'var(--frame-max, 440px)',
+          height: 'var(--shell-h, 100vh)',
           background: C.bg,
           overflow: 'hidden',
           color: 'var(--text)',

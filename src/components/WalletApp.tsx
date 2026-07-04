@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useWalletStore, type WalletStore } from '@/components/store';
+import { buildKind } from '@/lib/platform';
 import { Shell, Spinner, Logo } from '@/components/parts';
 import { Welcome, Backup, Verify, Import, ProfileSetup, PasswordSetup } from '@/components/screens/Onboarding';
 import { Unlock } from '@/components/screens/Unlock';
@@ -152,16 +153,21 @@ export default function WalletApp() {
   const storeRef = useRef(store);
   storeRef.current = store;
 
-  // Splash intro: black screen + logo, then fade away revealing the app.
-  const [intro, setIntro] = useState<'show' | 'reveal' | 'done'>('show');
+  // Splash intro: black screen + logo, then fade away revealing the app. Skipped
+  // in the browser-extension popup: a full-screen `position: fixed` overlay + a
+  // 2s intro is poor UX in a small popup that opens/closes constantly, and keeping
+  // fixed-positioned overlays out of the auto-sizing popup avoids layout surprises.
+  const isExt = buildKind() === 'ext';
+  const [intro, setIntro] = useState<'show' | 'reveal' | 'done'>(isExt ? 'done' : 'show');
   useEffect(() => {
+    if (isExt) return;
     const t1 = setTimeout(() => setIntro('reveal'), 1300);
     const t2 = setTimeout(() => setIntro('done'), 2100);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
     };
-  }, []);
+  }, [isExt]);
 
   // Android hardware back button (native only).
   useEffect(() => {

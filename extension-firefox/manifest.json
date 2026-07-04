@@ -1,0 +1,77 @@
+{
+  "manifest_version": 3,
+  "name": "Cosmos · Stellar Wallet",
+  "version": "1.0.0",
+  "description": "Wallet no custodial de Stellar. Tus claves, tus criptos, en tu navegador.",
+  "action": {
+    "default_popup": "index.html",
+    "default_title": "Cosmos Wallet",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "background": {
+    "scripts": [
+      "sw.js"
+    ]
+  },
+  "permissions": [
+    "storage"
+  ],
+  "omnibox": {
+    "keyword": "pay"
+  },
+  "host_permissions": [
+    "https://horizon.stellar.org/*",
+    "https://horizon-testnet.stellar.org/*",
+    "https://friendbot.stellar.org/*",
+    "https://api.coingecko.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_start",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "inpage.js"
+      ],
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://horizon.stellar.org https://horizon-testnet.stellar.org https://friendbot.stellar.org https://api.coingecko.com"
+  },
+  "protocol_handlers": [
+    {
+      "protocol": "web+stellar",
+      "name": "Cosmos Wallet",
+      "uriTemplate": "index.html?uri=%s"
+    }
+  ],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "cosmos-wallet@cosmospay.app",
+      "strict_min_version": "121.0"
+    }
+  }
+}

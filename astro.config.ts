@@ -18,6 +18,12 @@ export default defineConfig({
   // Static output -> produces dist/ that Capacitor wraps into the native app.
   output: 'static',
   integrations: [react()],
+  // Emit bundled JS/CSS into `assets/` instead of the default `_astro/`. MV3
+  // browser extensions reject any file/dir whose name starts with `_` (reserved),
+  // so the underscore folder made `extension/` fail to load. Renaming it here lets
+  // Vite rewrite every internal reference (chunks, dynamic imports, CSS url()) for
+  // free; web + native builds are unaffected by the folder name.
+  build: { assets: 'assets' },
   // Mobile-first: no trailing-slash surprises inside the WebView.
   trailingSlash: 'ignore',
   // Dev + preview server run on 4500.

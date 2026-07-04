@@ -106,6 +106,34 @@ import WalletApp from '@/components/WalletApp.tsx';
         transition: background-color 0.25s ease, color 0.25s ease;
         /* lock the mobile viewport */
         overscroll-behavior: none;
+        /* never let a rounding overflow introduce a horizontal scrollbar */
+        overflow-x: hidden;
+      }
+
+      /* ---------------- fluid device adaptation ----------------
+         The app is a phone-shaped column. To adapt to the device without locking to
+         a single 440px width, `--frame-max` widens the column on bigger viewports
+         (full-width on phones -> a comfortable wider column on tablets/desktop).
+         NOTE: we intentionally do NOT scale the whole UI with CSS `zoom` — Chrome
+         149 crashes its GPU compositor on a zoomed subtree (the extension popup
+         showed "se ha bloqueado"). Widening the column is GPU-safe. */
+      :root {
+        --frame-max: 440px;
+      }
+      @media (min-width: 680px) {
+        :root {
+          --frame-max: 500px;
+        }
+      }
+      @media (min-width: 1000px) {
+        :root {
+          --frame-max: 560px;
+        }
+      }
+      @media (min-width: 1400px) {
+        :root {
+          --frame-max: 620px;
+        }
       }
       /* all buttons are fully rounded (pill) */
       button {
