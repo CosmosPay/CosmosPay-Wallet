@@ -1,0 +1,202 @@
+/* =====================================================================
+   Cosmos Pay — atomic stylesheet.
+   Progressive migration from React inline styles, view by view.
+   Rules here are the STATIC shells; state-driven values stay inline.
+   Theme tokens + keyframes live in src/pages/index.astro (global).
+   Extension-safe: MV3 only forbids inline SCRIPTS, never stylesheets.
+   ===================================================================== */
+
+/* ------------------------- layout atoms ------------------------- */
+.row { display: flex; align-items: center; }
+.flexr { display: flex; } /* row without centering (children stretch) */
+.t-right { text-align: right; }
+.col { display: flex; flex-direction: column; }
+.center { display: flex; align-items: center; justify-content: center; }
+.between { justify-content: space-between; }
+.f1 { flex: 1; }
+.min0 { min-width: 0; }
+.shrink0 { flex-shrink: 0; }
+.g2 { gap: 2px; }
+.g4 { gap: 4px; }
+.g6 { gap: 6px; }
+.g7 { gap: 7px; }
+.g8 { gap: 8px; }
+.g9 { gap: 9px; }
+.g10 { gap: 10px; }
+.g11 { gap: 11px; }
+.g12 { gap: 12px; }
+.g14 { gap: 14px; }
+
+/* ------------------------- screen shells ------------------------ */
+/* Scrollable screen column. Compose: class="scr screen col pb-104". */
+.screen {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 20px 28px;
+  animation: fadeUp 0.3s ease;
+}
+.pb-24 { padding-bottom: 24px; }
+.pb-30 { padding-bottom: 30px; }
+.pb-40 { padding-bottom: 40px; }
+.pb-104 { padding-bottom: 104px; }
+.pb-110 { padding-bottom: 110px; }
+
+/* ------------------------ glass surfaces ------------------------ */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-border), 0 10px 30px rgba(0, 0, 0, 0.28);
+  animation: glassBreath 8s ease-in-out infinite; /* fidelity with the old C.glass */
+}
+.glass-soft {
+  background: var(--glass-soft-bg);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--glass-soft-border);
+  animation: glassBreath 11s ease-in-out infinite;
+}
+.glass-bright {
+  background: var(--primary-bg);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--primary-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+/* full-width 54px pill input on a glass surface (was C.glass + inputStyle) */
+.input {
+  width: 100%;
+  height: 54px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  padding: 0 20px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  outline: none;
+  background: var(--glass-bg);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 0 1px 0 var(--glass-border), 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+.card { border-radius: 18px; padding: 18px; }
+.card-16 { border-radius: 16px; padding: 14px 16px; }
+
+/* --------------------------- buttons ---------------------------- */
+/* 38px round header/control button (network, surface, menu, back…) */
+.circle-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  color: var(--text);
+}
+.circle-34 { width: 34px; height: 34px; }
+/* full-width 48px pill action (paste pay-URL, scan upload/paste…) */
+.pill-btn {
+  width: 100%;
+  height: 48px;
+  border: none;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+  color: var(--text);
+}
+/* main CTA (was C.glassBright + CONTROL) */
+.btn-primary {
+  width: 100%;
+  height: 54px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  padding: 0 20px;
+  flex-shrink: 0; /* never squashed inside flex-column screens */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary-text);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  background: var(--primary-bg);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--primary-border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+.btn-primary:disabled { cursor: default; opacity: 0.4; }
+/* secondary full-width action (was C.glassSoft + CONTROL) */
+.btn-ghost {
+  width: 100%;
+  height: 54px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  padding: 0 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  background: var(--glass-soft-bg);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  border: 1px solid var(--glass-soft-border);
+}
+
+/* -------------------------- typography -------------------------- */
+.title-30 { font-size: 30px; font-weight: 800; letter-spacing: -0.8px; }
+.title-20 { font-size: 20px; font-weight: 800; letter-spacing: -0.4px; }
+.label-up {
+  font-size: 12px;
+  color: var(--dim);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.t-muted-13 { font-size: 13px; color: var(--muted); font-weight: 600; }
+.t-dim-12 { font-size: 12px; color: var(--dim); font-weight: 600; }
+.t-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* ---------------------- shared components ----------------------- */
+.backbar { display: flex; align-items: center; gap: 14px; padding: 6px 0 8px; }
+.numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
+.numpad > div {
+  height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  border-radius: 999px;
+  cursor: pointer;
+  user-select: none;
+}
+.spinner {
+  display: inline-block;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+}
+
+/* the nav drawer moves as ONE unit — its rows/buttons must not pop in
+   individually (worst when the drawer is restored already-open) */
+.nav-drawer button,
+.nav-drawer input,
+.nav-drawer .tap {
+  animation: none !important;
+}

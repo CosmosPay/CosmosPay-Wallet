@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, Spinner, Logo, inputStyle } from '@/components/parts';
+import { C, PrimaryButton, Spinner, Logo } from '@/components/parts';
 import { LangSelect } from '@/components/flags';
 import { getGreeting } from '@/lib/greeting';
 import { shortAddr } from '@/lib/format';
@@ -26,7 +26,7 @@ export function Unlock({ store }: { store: WalletStore }) {
   };
 
   return (
-    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 26px 32px', animation: 'fadeUp .3s ease' }}>
+    <div className="scr screen col" style={{ padding: '2px 26px 32px' }}>
       {/* language switcher, top-right — same control as the Welcome screen */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px', flexShrink: 0 }}>
         <LangSelect value={store.lang} onChange={store.setLang} />
@@ -46,7 +46,7 @@ export function Unlock({ store }: { store: WalletStore }) {
             placeholder={t('pwd.label')}
             onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
             onKeyDown={(e) => e.key === 'Enter' && submit()}
-            style={{ ...C.glass, ...inputStyle, fontSize: '16px', textAlign: 'center', padding: '0 52px' }}
+            className="input" style={{ fontSize: '16px', textAlign: 'center', padding: '0 52px' }}
           />
           {/* per-field eye toggle, same pattern as the password-setup screen */}
           <button
@@ -71,7 +71,7 @@ export function Unlock({ store }: { store: WalletStore }) {
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div className="col g12">
         <PrimaryButton disabled={!pwd || store.busy} onClick={submit}>
           {store.busy ? <Spinner /> : t('unlock.unlock')}
         </PrimaryButton>
@@ -93,22 +93,22 @@ export function Unlock({ store }: { store: WalletStore }) {
         {/* Multiple wallets: compact dropdown to pick which one to unlock, or remove one. */}
         {multi && (
           <div style={{ position: 'relative' }}>
-            <button onClick={() => setWalletOpen((o) => !o)} style={{ width: '100%', height: '48px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}>
+            <button onClick={() => setWalletOpen((o) => !o)} className="glass-soft" style={{ width: '100%', height: '48px', color: 'var(--text)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}>
               {t('unlock.switchTitle')}
               <span style={{ fontSize: '9px', opacity: 0.7, transform: walletOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▼</span>
             </button>
             {walletOpen && (
               <>
                 <div onClick={() => { setWalletOpen(false); setDeletingId(''); }} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-                <div className="scr" style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0, zIndex: 31, ...C.glass, borderRadius: '16px', padding: '6px', maxHeight: '260px', overflowY: 'auto', animation: 'fadeUp .18s ease' }}>
+                <div className="scr glass" style={{ position: 'absolute', bottom: 'calc(100% + 8px)', left: 0, right: 0, zIndex: 31, borderRadius: '16px', padding: '6px', maxHeight: '260px', overflowY: 'auto', animation: 'fadeUp .18s ease' }}>
                   {store.wallets.map((w) => {
                     const active = w.id === store.meta?.id;
                     if (deletingId === w.id) {
                       return (
                         <div key={w.id} style={{ padding: '10px 10px' }}>
                           <div style={{ fontSize: '12px', color: '#ffb3b3', fontWeight: 600, lineHeight: 1.4, marginBottom: '9px' }}>{t('unlock.removeConfirm', { name: w.name })}</div>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button onClick={() => setDeletingId('')} style={{ flex: 1, height: '38px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}>{t('common.cancel')}</button>
+                          <div className="flexr g8">
+                            <button onClick={() => setDeletingId('')} className="glass-soft" style={{ flex: 1, height: '38px', color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}>{t('common.cancel')}</button>
                             <button onClick={() => { store.removeWalletLocked(w.id); setDeletingId(''); setWalletOpen(false); }} style={{ flex: 1, height: '38px', background: C.danger, color: '#fff', border: 'none', borderRadius: '999px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}>{t('common.delete')}</button>
                           </div>
                         </div>

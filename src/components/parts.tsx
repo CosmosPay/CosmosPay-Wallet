@@ -5,69 +5,11 @@ import type { WalletStore } from '@/components/store';
 import { ASSET_ICONS, STELLAR_MARK } from '@/components/assetIcons';
 import { buildKind } from '@/lib/platform';
 
-// Colours come from CSS variables (see src/pages/index.astro) so the whole UI
-// re-themes instantly when `data-theme` flips between dark and light.
-export const C = {
-  bg: 'var(--bg)',
-  accent: 'var(--accent)',
-  onAccent: 'var(--on-accent)',
-  ink: 'var(--text)',
-  inkSoft: 'var(--text-soft)',
-  muted: 'var(--muted)',
-  dim: 'var(--dim)',
-  dimmer: 'var(--dimmer)',
-  card: 'var(--surface-2)',
-  cardSolid: 'var(--glass-soft-bg)',
-  cardBorder: 'var(--glass-border)',
-  hairline: 'var(--hairline)',
-  surface: 'var(--surface)',
-  danger: '#ff5d5d',
-  // ---- glassmorphism system ----
-  // Standard frosted card: translucent, blurred, hairline border + top highlight.
-  glass: {
-    background: 'var(--glass-bg)',
-    backdropFilter: 'blur(22px) saturate(150%)',
-    WebkitBackdropFilter: 'blur(22px) saturate(150%)',
-    border: '1px solid var(--glass-border)',
-    boxShadow: 'inset 0 1px 0 var(--glass-border), 0 10px 30px rgba(0,0,0,.28)',
-    animation: 'glassBreath 8s ease-in-out infinite',
-  } as CSSProperties,
-  // Lighter glass for chips / circular buttons / keypad / small surfaces.
-  glassSoft: {
-    background: 'var(--glass-soft-bg)',
-    backdropFilter: 'blur(16px) saturate(140%)',
-    WebkitBackdropFilter: 'blur(16px) saturate(140%)',
-    border: '1px solid var(--glass-soft-border)',
-    animation: 'glassBreath 11s ease-in-out infinite',
-  } as CSSProperties,
-  // Solid CTA: white-on-dark (dark theme) / dark-on-white (light theme).
-  glassBright: {
-    background: 'var(--primary-bg)',
-    backdropFilter: 'blur(20px) saturate(160%)',
-    WebkitBackdropFilter: 'blur(20px) saturate(160%)',
-    border: '1px solid var(--primary-border)',
-    boxShadow: 'inset 0 1px 0 rgba(255,255,255,.28), 0 12px 30px rgba(0,0,0,.30)',
-  } as CSSProperties,
-};
-
-// Unified control metrics. Every full-width <input> and <button> shares the same
-// height + pill radius so the form controls line up — mismatched sizes break the UI.
-export const CONTROL_H = 54;
-export const CONTROL: CSSProperties = {
-  height: `${CONTROL_H}px`,
-  boxSizing: 'border-box',
-  borderRadius: '999px',
-  padding: '0 20px',
-};
-/** Spread onto full-width single-line inputs for a pill that matches the buttons. */
-export const inputStyle: CSSProperties = {
-  ...CONTROL,
-  width: '100%',
-  color: 'var(--text)',
-  fontSize: '15px',
-  fontWeight: 600,
-  outline: 'none',
-};
+// Design tokens now live in src/constants/ui.ts (single source of truth).
+// Re-exported here so every existing `import { C } from '@/components/parts'`
+// keeps working unchanged.
+import { C, CONTROL, CONTROL_H, inputStyle } from '@/constants/ui';
+export { C, CONTROL, CONTROL_H, inputStyle };
 
 /** Brand logo (white asset; CSS inverts it to black in light mode). No frame. */
 export function Logo({ size = 72 }: { size?: number }) {
@@ -224,9 +166,9 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
         animation: 'fadeUp .2s ease',
       }}
     >
-      <div style={{ width: '100%', maxWidth: '340px', ...C.glass, borderRadius: '22px', padding: '22px', animation: 'pop .26s ease' }}>
+      <div className="glass" style={{ width: '100%', maxWidth: '340px', borderRadius: '22px', padding: '22px', animation: 'pop .26s ease' }}>
         <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '14px' }}>
-          <div style={{ width: '52px', height: '52px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>✎</div>
+          <div className="glass-soft" style={{ width: '52px', height: '52px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '22px' }}>✎</div>
         </div>
         <div style={{ fontSize: '18px', fontWeight: 800, textAlign: 'center', marginBottom: '6px' }}>{req.title}</div>
         {req.message && <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, textAlign: 'center', lineHeight: 1.5, marginBottom: '16px' }}>{req.message}</div>}
@@ -237,17 +179,17 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
           placeholder={t('pwd.label')}
           onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          style={{ ...C.glass, ...inputStyle, textAlign: 'center', marginBottom: err ? '8px' : '16px' }}
+          className="input" style={{ textAlign: 'center', marginBottom: err ? '8px' : '16px' }}
         />
         {err && <div style={{ fontSize: '12.5px', fontWeight: 700, color: C.danger, textAlign: 'center', marginBottom: '12px' }}>{err}</div>}
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button onClick={() => store.resolveConfirm(false)} style={{ flex: 1, height: '52px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
+        <div className="flexr g10">
+          <button onClick={() => store.resolveConfirm(false)} className="glass-soft" style={{ flex: 1, height: '52px', color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
             {t('common.cancel')}
           </button>
           <button
             onClick={submit}
             disabled={!pwd || busy}
-            style={{ flex: 1, height: '52px', ...C.glassBright, color: 'var(--primary-text)', borderRadius: '999px', fontSize: '15px', fontWeight: 800, cursor: !pwd || busy ? 'default' : 'pointer', opacity: !pwd || busy ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            className="glass-bright" style={{ flex: 1, height: '52px', color: 'var(--primary-text)', borderRadius: '999px', fontSize: '15px', fontWeight: 800, cursor: !pwd || busy ? 'default' : 'pointer', opacity: !pwd || busy ? 0.5 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
             {busy ? <Spinner /> : t('confirmSig.sign')}
           </button>
@@ -422,26 +364,11 @@ export function BackBar({
   closeIcon?: boolean;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '6px 0 8px' }}>
-      <div
-        onClick={onBack}
-        className="tap"
-        style={{
-          width: '38px',
-          height: '38px',
-          borderRadius: '50%',
-          ...C.glassSoft,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: closeIcon ? '17px' : '22px',
-          cursor: 'pointer',
-          flexShrink: 0,
-        }}
-      >
+    <div className="backbar">
+      <div onClick={onBack} className="tap glass-soft circle-btn" style={{ fontSize: closeIcon ? '17px' : '22px' }}>
         {closeIcon ? '✕' : '‹'}
       </div>
-      <span style={{ fontSize: '18px', fontWeight: 700, flex: 1 }}>{title}</span>
+      <span className="f1" style={{ fontSize: '18px', fontWeight: 700 }}>{title}</span>
       {right}
     </div>
   );
@@ -459,25 +386,7 @@ export function PrimaryButton({
   style?: CSSProperties;
 }) {
   return (
-    <button
-      onClick={disabled ? undefined : onClick}
-      style={{
-        width: '100%',
-        ...C.glassBright,
-        ...CONTROL,
-        // Never let a flex-column screen squash the CTA below its 54px height.
-        flexShrink: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: 'var(--primary-text)',
-        fontSize: '16px',
-        fontWeight: 800,
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.4 : 1,
-        ...style,
-      }}
-    >
+    <button onClick={disabled ? undefined : onClick} disabled={disabled} className="btn-primary" style={style}>
       {children}
     </button>
   );
@@ -493,22 +402,7 @@ export function GhostButton({
   style?: CSSProperties;
 }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        width: '100%',
-        ...C.glassSoft,
-        ...CONTROL,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: 'var(--text)',
-        fontSize: '16px',
-        fontWeight: 800,
-        cursor: 'pointer',
-        ...style,
-      }}
-    >
+    <button onClick={onClick} className="btn-ghost" style={style}>
       {children}
     </button>
   );
@@ -518,24 +412,9 @@ export function GhostButton({
 export function NumberPad({ onKey }: { onKey: (k: string) => void }) {
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'];
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: '4px 8px' }}>
+    <div className="numpad">
       {keys.map((k) => (
-        <div
-          key={k}
-          onClick={() => onKey(k)}
-          style={{
-            height: '52px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '24px',
-            fontWeight: 600,
-            borderRadius: '999px',
-            cursor: 'pointer',
-            userSelect: 'none',
-            ...C.glassSoft,
-          }}
-        >
+        <div key={k} onClick={() => onKey(k)} className="glass-soft">
           {k === 'back' ? '⌫' : k}
         </div>
       ))}
@@ -544,20 +423,8 @@ export function NumberPad({ onKey }: { onKey: (k: string) => void }) {
 }
 
 export function Spinner({ size = 18, color = 'var(--primary-text)' }: { size?: number; color?: string }) {
-  return (
-    <span
-      style={{
-        display: 'inline-block',
-        width: `${size}px`,
-        height: `${size}px`,
-        border: `2px solid ${color}`,
-        borderTopColor: 'transparent',
-        borderRadius: '50%',
-        animation: 'spin .7s linear infinite',
-        verticalAlign: 'middle',
-      }}
-    />
-  );
+  // size/color are the dynamic bits; the shell lives in .spinner (app.css)
+  return <span className="spinner" style={{ width: `${size}px`, height: `${size}px`, color }} />;
 }
 
 export function Toast({ toast }: { toast: WalletStore['toast'] }) {
@@ -1055,7 +922,7 @@ export function NetworkDropdown({ store, align = 'left' }: { store: WalletStore;
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-          <div style={{ position: 'absolute', ...(align === 'right' ? { right: 0 } : { left: 0 }), top: 'calc(100% + 6px)', zIndex: 31, minWidth: '200px', ...C.glass, borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
+          <div className="glass" style={{ position: 'absolute', ...(align === 'right' ? { right: 0 } : { left: 0 }), top: 'calc(100% + 6px)', zIndex: 31, minWidth: '200px', borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
             {store.networks.map((n) => {
               const on = n.id === store.network.id;
               return (

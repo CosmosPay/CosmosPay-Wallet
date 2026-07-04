@@ -18,7 +18,7 @@ export function CosmosPay({ store }: { store: WalletStore }) {
   const card = { ...C.glass, borderRadius: '18px', padding: '18px' } as const;
   const Row = ({ label, value }: { label: string; value: string }) => (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '7px 0' }}>
-      <span style={{ fontSize: '13px', color: C.muted, fontWeight: 600 }}>{label}</span>
+      <span className="t-muted-13">{label}</span>
       <span style={{ fontSize: '13.5px', fontWeight: 700, fontFamily: 'monospace' }}>{value}</span>
     </div>
   );
@@ -39,7 +39,7 @@ export function CosmosPay({ store }: { store: WalletStore }) {
   );
 
   return (
-    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 104px', animation: 'fadeUp .3s ease' }}>
+    <div className="scr screen col pb-104">
       <BackBar title="Cosmos Pay" onBack={() => store.back('profile')} />
       <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '4px 2px 4px' }}>{t('cosmospay.integrationDesc')}</div>
 
