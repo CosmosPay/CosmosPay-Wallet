@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode, CSSProperties } from 'react';
 import type { WalletStore } from '@/components/store';
 import { ASSET_ICONS, STELLAR_MARK } from '@/components/assetIcons';
+import { buildKind } from '@/lib/platform';
 
 // Colours come from CSS variables (see src/pages/index.astro) so the whole UI
 // re-themes instantly when `data-theme` flips between dark and light.
@@ -166,7 +167,10 @@ export function Shell({
           {children}
         </div>
 
-        {showNav && store && <BottomNav store={store} />}
+        {/* Phone/web only: bottom tab bar. The extension navigates via <NavMenu/> — a
+            hamburger in each tab screen's header opening a full-view drawer — because
+            a fixed bottom bar wastes vertical space in the popup/side panel. */}
+        {showNav && store && buildKind() !== 'ext' && <BottomNav store={store} />}
         {store && <Toast toast={store.toast} />}
         {store && <ConfirmSign store={store} />}
       </div>
@@ -284,10 +288,10 @@ function Blob(p: {
 
 type NavTab = 'home' | 'earn' | 'markets' | 'profile';
 
-export function BottomNav({ store }: { store: WalletStore }) {
-  const t = store.t;
+/** Main navigation destinations — shared by BottomNav (phone/web) and NavMenuButton (extension). */
+function navTabs(t: WalletStore['t']): { key: string; label: string; icon: ReactNode }[] {
   // Home sits in the centre so the active indicator rests in the middle by default.
-  const tabs: { key: string; label: string; icon: ReactNode }[] = [
+  return [
     {
       key: 'earn',
       label: t('tab.earn'),
@@ -324,10 +328,17 @@ export function BottomNav({ store }: { store: WalletStore }) {
       ),
     },
   ];
-  const activeKey = store.screen === 'swap' ? 'swap' : store.tab;
+}
+
+const navActiveKey = (store: WalletStore) => (store.screen === 'swap' ? 'swap' : store.tab);
+const navGo = (store: WalletStore, key: string) =>
+  key === 'swap' ? store.setScreen('swap') : store.go(key as NavTab, key as NavTab);
+
+export function BottomNav({ store }: { store: WalletStore }) {
+  const tabs = navTabs(store.t);
+  const activeKey = navActiveKey(store);
   const idx = Math.max(0, tabs.findIndex((x) => x.key === activeKey));
-  const go = (key: string) =>
-    key === 'swap' ? store.setScreen('swap') : store.go(key as NavTab, key as NavTab);
+  const go = (key: string) => navGo(store, key);
   const spring = 'cubic-bezier(.34,1.3,.5,1)';
 
   return (
@@ -768,6 +779,96 @@ export function AssetLogo({ code, size = 34 }: { code: string; size?: number }) 
   return <TokenAvatar glyph={m.glyph} color={m.color} size={size} />;
 }
 
+/** Extension-mode navigation: a hamburger button that lives in each tab screen's
+ *  header (next to the profile avatar on Home). Opens a FULL-VIEW drawer that slides
+ *  in from the right edge and slides back out on close. Replaces the phone bottom
+ *  bar, which wastes vertical space in the small popup/side-panel surfaces.
+ *  Renders nothing outside the extension build. */
+export function NavMenu({ store }: { store: WalletStore }) {
+  const [mounted, setMounted] = useState(false); // drawer present in the DOM
+  const [shown, setShown] = useState(false); // slid in (drives the transform)
+  if (buildKind() !== 'ext') return null;
+
+  const tabs = navTabs(store.t);
+  const activeKey = navActiveKey(store);
+  const openDrawer = () => {
+    setMounted(true);
+    // double rAF: let the drawer paint off-screen first so the slide-in transitions
+    requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
+  };
+  const closeDrawer = () => {
+    setShown(false);
+    setTimeout(() => setMounted(false), 340); // matches the transition below
+  };
+
+  return (
+    <>
+      <button
+        onClick={openDrawer}
+        aria-label="Menú"
+        style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+      >
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
+          <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </button>
+
+      {mounted && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 60,
+            display: 'flex',
+            flexDirection: 'column',
+            background: 'var(--nav-bg)',
+            backdropFilter: 'blur(26px) saturate(150%)',
+            WebkitBackdropFilter: 'blur(26px) saturate(150%)',
+            transform: shown ? 'translateX(0)' : 'translateX(100%)',
+            transition: 'transform .34s cubic-bezier(.32,.72,.28,1)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '17px', fontWeight: 800, letterSpacing: '-.3px' }}>
+              <Logo size={22} />Cosmos Pay
+            </div>
+            <button
+              onClick={closeDrawer}
+              aria-label="Cerrar"
+              style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+
+          <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px', padding: '14px 16px 20px' }} className="scr">
+            {tabs.map((tb) => {
+              const on = tb.key === activeKey;
+              return (
+                <div
+                  key={tb.key}
+                  onClick={() => {
+                    closeDrawer();
+                    if (!on) navGo(store, tb.key);
+                  }}
+                  className="tap"
+                  style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '16px 16px', borderRadius: '16px', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent', color: 'var(--text)', border: on ? '1px solid var(--glass-soft-border)' : '1px solid transparent' }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>{tb.icon}</svg>
+                  <span style={{ flex: 1, fontSize: '16px', fontWeight: 800, letterSpacing: '-.2px' }}>{tb.label}</span>
+                  {on && <span style={{ color: C.accent, fontWeight: 800 }}>✓</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** The Stellar wordmark/glyph (monochrome) — used by the network selector. */
 export function StellarMark({ size = 16 }: { size?: number }) {
   return (
@@ -777,23 +878,26 @@ export function StellarMark({ size = 16 }: { size?: number }) {
   );
 }
 
-/** Network selector as a dropdown (lists networks + "add network") — dev fast-access. */
-export function NetworkDropdown({ store }: { store: WalletStore }) {
+/** Network selector as a dropdown (lists networks + "add network") — dev fast-access.
+ *  The trigger is a circular header button (same 38px form as the profile avatar);
+ *  the active network shows as a tooltip and inside the open menu.
+ *  `align="right"` opens the menu right-aligned (for placement in the top-right corner). */
+export function NetworkDropdown({ store, align = 'left' }: { store: WalletStore; align?: 'left' | 'right' }) {
   const [open, setOpen] = useState(false);
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
       <button
         onClick={() => setOpen((o) => !o)}
-        style={{ display: 'flex', alignItems: 'center', gap: '7px', ...C.glassSoft, color: 'var(--text)', borderRadius: '999px', padding: '7px 12px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}
+        title={store.network.label}
+        aria-label={store.network.label}
+        style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
       >
-        <StellarMark size={13} />
-        {store.network.label}
-        <span style={{ fontSize: '9px', opacity: 0.7, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▼</span>
+        <StellarMark size={16} />
       </button>
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-          <div style={{ position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 31, minWidth: '200px', ...C.glass, borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
+          <div style={{ position: 'absolute', ...(align === 'right' ? { right: 0 } : { left: 0 }), top: 'calc(100% + 6px)', zIndex: 31, minWidth: '200px', ...C.glass, borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
             {store.networks.map((n) => {
               const on = n.id === store.network.id;
               return (

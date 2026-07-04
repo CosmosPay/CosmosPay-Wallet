@@ -474,6 +474,23 @@ export function useWalletStore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, network]);
 
+  // Auto-refresh: there is no manual reload button — a silent poll keeps balances
+  // and prices current, plus an immediate refresh whenever the surface becomes
+  // visible again (popup reopened / side panel or tab refocused).
+  useEffect(() => {
+    if (!session) return;
+    const id = setInterval(() => refresh(true), 30_000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') refresh(true);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, network]);
+
   /* --------------------------- onboarding ------------------------- */
   const startCreate = useCallback(async () => {
     const mnemonic = createMnemonic();

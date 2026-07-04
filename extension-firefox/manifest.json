@@ -28,6 +28,12 @@
   "omnibox": {
     "keyword": "pay"
   },
+  "sidebar_action": {
+    "default_panel": "sidepanel.html",
+    "default_title": "Cosmos Wallet",
+    "default_icon": "icons/icon-48.png",
+    "open_at_install": false
+  },
   "host_permissions": [
     "https://horizon.stellar.org/*",
     "https://horizon-testnet.stellar.org/*",

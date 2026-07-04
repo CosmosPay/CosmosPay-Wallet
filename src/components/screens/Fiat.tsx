@@ -3,6 +3,7 @@ import type { CSSProperties, ChangeEvent, ReactNode } from 'react';
 import type { WalletStore } from '@/components/store';
 import { C, PrimaryButton, GhostButton, BackBar, Spinner, inputStyle } from '@/components/parts';
 import { copyText } from '@/lib/clipboard';
+import { ageFromBirthdate } from '@/lib/greeting';
 import type { FiatToken, Payin, PayinMethod, PayinQuote, PayinQuoteInput, PayoutQuote } from '@/lib/cosmospay';
 
 /* BlindPay fiat (on/off-ramp). LatAm-first. Needs a `standard` KYC receiver (photo ID +
@@ -94,11 +95,26 @@ const PAY_METHODS: { method: PayinMethod; label: string; payer?: PayerField[] }[
 
 export function Fiat({ store }: { store: WalletStore }) {
   const receiverId = store.meta?.cosmosPayReceiverId;
+  // 18+ only. The home entry card is already hidden for minors; this guard also
+  // covers the other paths into this screen (CosmosPay manage-receiver, back nav…).
+  const adult = (ageFromBirthdate(store.meta?.birthdate ?? '') ?? 0) >= 18;
 
   useEffect(() => {
-    store.loadReceivers();
+    if (adult) store.loadReceivers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.meta?.id, store.network.id]);
+  }, [store.meta?.id, store.network.id, adult]);
+
+  if (!adult) {
+    return (
+      <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 104px', animation: 'fadeUp .3s ease' }}>
+        <BackBar title={store.t('fiat.tab')} onBack={() => store.go('home', 'home')} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '12px', textAlign: 'center', color: C.muted, padding: '0 16px 50px' }}>
+          <div style={{ fontSize: '40px', opacity: 0.6 }}>🔞</div>
+          <div style={{ fontSize: '14px', fontWeight: 700, lineHeight: 1.6 }}>{store.t('fiat.adultOnly')}</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 104px', animation: 'fadeUp .3s ease' }}>

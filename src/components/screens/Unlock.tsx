@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { C, PrimaryButton, Spinner, Logo, inputStyle } from '@/components/parts';
 import { getGreeting } from '@/lib/greeting';
@@ -10,7 +10,11 @@ export function Unlock({ store }: { store: WalletStore }) {
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [walletOpen, setWalletOpen] = useState(false);
-  const g = getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t);
+  // Memoized: the salutation is random — keep it stable while the user types.
+  const g = useMemo(
+    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t),
+    [store.meta?.name, store.meta?.birthdate, t],
+  );
   const multi = store.wallets.length > 1;
 
   const submit = async () => {

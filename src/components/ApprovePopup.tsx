@@ -149,7 +149,9 @@ export default function ApprovePopup() {
     );
   }
 
-  async function approve() {
+  // Arrow (not a hoisted function declaration) so TS carries the null-narrowing of
+  // req/entry/cfg from the early returns above into this closure.
+  const approve = async () => {
     if (busy) return;
     setBusy(true);
     setErr('');
@@ -197,7 +199,7 @@ export default function ApprovePopup() {
       setErr(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
-  }
+  };
 
   const canApprove = isConnect || (isPay ? !!pay && !!pwd : !!pwd);
 

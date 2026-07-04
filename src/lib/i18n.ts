@@ -150,6 +150,7 @@ const T: Record<string, Record<Lang, string>> = {
   'setup.emailLabel': { es: 'Correo electrónico', en: 'Email', pt: 'E-mail', de: 'E-Mail', fr: 'E-mail' },
   'setup.emailInvalid': { es: 'Introduce un correo válido', en: 'Enter a valid email', pt: 'Introduz um e-mail válido', de: 'Gültige E-Mail eingeben', fr: 'Saisis un e-mail valide' },
   'setup.dobLabel': { es: 'Fecha de nacimiento', en: 'Date of birth', pt: 'Data de nascimento', de: 'Geburtsdatum', fr: 'Date de naissance' },
+  'setup.dobFuture': { es: 'La fecha de nacimiento no puede ser futura', en: 'The date of birth can’t be in the future', pt: 'A data de nascimento não pode ser futura', de: 'Das Geburtsdatum darf nicht in der Zukunft liegen', fr: 'La date de naissance ne peut pas être dans le futur' },
   'setup.dataNote': {
     es: 'Tu correo y fecha de nacimiento se guardan en este dispositivo y solo se usan para vincular tu cuenta a productos de Cosmos cuando tú lo pidas.',
     en: 'Your email and date of birth are stored on this device and only used to link your account to Cosmos products when you ask.',
@@ -204,9 +205,21 @@ const T: Record<string, Record<Lang, string>> = {
   'unlock.yearsOld': { es: '¡{age} años!', en: '{age} years old!', pt: '{age} anos!', de: '{age} Jahre!', fr: '{age} ans !' },
 
   // ---- greeting ----
+  // Each time-of-day has variants; generic "welcome back" lines mix into every pool.
+  // A random one is picked per app-open (see getGreeting).
   'greet.morning': { es: 'Buenos días', en: 'Good morning', pt: 'Bom dia', de: 'Guten Morgen', fr: 'Bonjour' },
+  'greet.morning.2': { es: '¡Arriba, el día es tuyo!', en: 'Rise and shine!', pt: 'Levanta, o dia é teu!', de: 'Auf geht’s, der Tag gehört dir!', fr: 'Debout, la journée est à toi !' },
+  'greet.morning.3': { es: 'Un café y a brillar', en: 'Coffee first, then shine', pt: 'Um café e a brilhar', de: 'Erst Kaffee, dann glänzen', fr: 'Un café et ça brille' },
   'greet.afternoon': { es: 'Buenas tardes', en: 'Good afternoon', pt: 'Boa tarde', de: 'Guten Tag', fr: 'Bon après-midi' },
+  'greet.afternoon.2': { es: 'Qué buena tarde para avanzar', en: 'A fine afternoon to make moves', pt: 'Boa tarde para avançar', de: 'Ein guter Nachmittag, um voranzukommen', fr: 'Un bel après-midi pour avancer' },
+  'greet.afternoon.3': { es: 'Seguimos en órbita', en: 'Still in orbit', pt: 'Continuamos em órbita', de: 'Weiter im Orbit', fr: 'Toujours en orbite' },
   'greet.evening': { es: 'Buenas noches', en: 'Good evening', pt: 'Boa noite', de: 'Guten Abend', fr: 'Bonsoir' },
+  'greet.evening.2': { es: 'Linda noche para revisar tu universo', en: 'A nice night to check your universe', pt: 'Boa noite para rever o teu universo', de: 'Ein schöner Abend für deinen Kosmos', fr: 'Belle soirée pour ton univers' },
+  'greet.evening.3': { es: 'Las estrellas ya salieron', en: 'The stars are out', pt: 'As estrelas já saíram', de: 'Die Sterne sind schon da', fr: 'Les étoiles sont de sortie' },
+  'greet.back.1': { es: '¡Bienvenid@ de nuevo!', en: 'Welcome back!', pt: 'Bem-vind@ de volta!', de: 'Willkommen zurück!', fr: 'Content de te revoir !' },
+  'greet.back.2': { es: 'Te extrañábamos', en: 'We missed you', pt: 'Tivemos saudades tuas', de: 'Wir haben dich vermisst', fr: 'Tu nous as manqué' },
+  'greet.back.3': { es: 'Qué bueno verte por aquí', en: 'Good to see you here', pt: 'Que bom ver-te por aqui', de: 'Schön, dich zu sehen', fr: 'Ravi de te voir ici' },
+  'greet.back.4': { es: '¿List@ para despegar?', en: 'Ready for liftoff?', pt: 'Pront@ para descolar?', de: 'Bereit zum Abheben?', fr: 'Prêt·e au décollage ?' },
   'greet.birthday': { es: '¡Feliz cumpleaños, {name}! 🎉', en: 'Happy birthday, {name}! 🎉', pt: 'Feliz aniversário, {name}! 🎉', de: 'Alles Gute zum Geburtstag, {name}! 🎉', fr: 'Joyeux anniversaire, {name} ! 🎉' },
 
   // ---- tabs ----
@@ -362,6 +375,7 @@ const T: Record<string, Record<Lang, string>> = {
   'history.created': { es: 'Cuenta creada', en: 'Account created', pt: 'Account created', de: 'Account created', fr: 'Account created' },
   'history.other': { es: 'Operación', en: 'Operation', pt: 'Operação', de: 'Vorgang', fr: 'Opération' },
   'history.failed': { es: 'Fallida', en: 'Failed', pt: 'Falhou', de: 'Fehlgeschlagen', fr: 'Échoué' },
+  'history.genesis': { es: 'Inicio de uso de Cosmos Pay', en: 'Started using Cosmos Pay', pt: 'Início de uso do Cosmos Pay', de: 'Start mit Cosmos Pay', fr: 'Début d’utilisation de Cosmos Pay' },
 
   // ---- pay links (CosmosPay) ----
   'paylink.title': { es: 'Link de pago', en: 'Pay link', pt: 'Link de pagamento', de: 'Zahlungslink', fr: 'Lien de paiement' },
@@ -384,6 +398,13 @@ const T: Record<string, Record<Lang, string>> = {
   // ---- fiat (BlindPay on/off-ramp) ----
   'fiat.title': { es: 'Fiat', en: 'Fiat', pt: 'Fiat', de: 'Fiat', fr: 'Fiat' },
   'fiat.tab': { es: 'Cuenta fiat', en: 'Fiat account', pt: 'Conta fiat', de: 'Fiat-Konto', fr: 'Compte fiat' },
+  'fiat.adultOnly': {
+    es: 'El acceso a depósitos y retiros fiat requiere ser mayor de 18 años.',
+    en: 'Access to fiat deposits and withdrawals requires being over 18.',
+    pt: 'O acesso a depósitos e levantamentos fiat requer ter mais de 18 anos.',
+    de: 'Der Zugang zu Fiat-Ein- und Auszahlungen erfordert ein Mindestalter von 18 Jahren.',
+    fr: 'L’accès aux dépôts et retraits fiat nécessite d’avoir plus de 18 ans.',
+  },
   'fiat.entryDesc': { es: 'Depositá y retirá en tu moneda local', en: 'Deposit & withdraw in your local currency', pt: 'Deposit & withdraw in your local currency', de: 'Deposit & withdraw in your local currency', fr: 'Deposit & withdraw in your local currency' },
   'fiat.createDesc': {
     es: 'Para operar con fiat (depositar/retirar) necesitás una cuenta de cobro (KYC) de BlindPay. Creala una vez y queda como predeterminada.',

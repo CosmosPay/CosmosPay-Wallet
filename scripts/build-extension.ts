@@ -62,46 +62,31 @@ async function externaliseInlineScripts(pagePath: string): Promise<string> {
 }
 
 const htmlPath = join(OUT, 'index.html');
-let html = await externaliseInlineScripts(htmlPath);
+const baseHtml = await externaliseInlineScripts(htmlPath);
 
-// GPU-safe rendering ("lite effects"). The MV3 popup renders on the user's real
-// GPU in a tiny surface; stacking many `backdrop-filter: blur()` glass layers over
-// three large animated `filter: blur(90px)` blobs can crash the renderer there —
-// Chrome then shows "se ha bloqueado, haz clic para reiniciar la extensión".
+// Full visual effects stay ON in the extension (glass, blobs, glow, hover, popIn).
+// The old "lite" downgrade is gone: the popup crash was traced (step-by-step bisect)
+// to navigator.registerProtocolHandler running in the store boot — not the GPU —
+// and that call is now web-only (see store.ts registerStellarHandler).
 //
-// We (1) mark <html data-fx="lite"> statically so the rules below apply on the very
-// first paint (before React mounts), and (2) inject the neutralising CSS HERE, in
-// the post-build step, on purpose: Astro's CSS minifier (lightningcss) strips
-// `backdrop-filter: none` from the bundled stylesheet, so the same rules placed in
-// index.astro don't survive the build. Injected inline CSS is left untouched, and
-// MV3's `style-src` allows 'unsafe-inline'. Web/native builds keep the full effects.
-html = html.replace(/<html([^>]*)>/, '<html$1 data-fx="lite">');
-
-const liteStyle =
-  '<style>' +
-  // frost is gone -> make the flat glass legible with a little more opacity
-  '[data-fx="lite"]{--glass-bg:rgba(255,255,255,.12);--glass-soft-bg:rgba(255,255,255,.14);--surface:rgba(255,255,255,.1);--surface-2:rgba(255,255,255,.09);--nav-bg:rgba(12,12,12,.94)}' +
-  '[data-fx="lite"][data-theme="light"]{--glass-bg:rgba(255,255,255,.82);--glass-soft-bg:rgba(255,255,255,.86);--surface:rgba(255,255,255,.78);--surface-2:rgba(255,255,255,.7);--nav-bg:rgba(236,238,241,.95)}' +
-  // kill the two crash-prone ops: every backdrop blur + the big blurred blobs
-  '[data-fx="lite"] *{backdrop-filter:none !important;-webkit-backdrop-filter:none !important}' +
-  '[data-fx="lite"] .cosmos-glow,[data-fx="lite"] .cosmos-blob-a,[data-fx="lite"] .cosmos-blob-b,[data-fx="lite"] .cosmos-blob-c{display:none !important}' +
-  // stop the per-frame glass repaint loop (constant recompositing)
-  '[data-fx="lite"] [style*="glassBreath"]{animation:none !important}' +
-  // drop the entrance animations too (popIn/fadeUp run on every control on mount).
-  // Continuous ambient animations (blobs/glow/glassBreath) are already gone above;
-  // this keeps the popup's paint work minimal. The spinner (a <span>) is untouched.
-  '[data-fx="lite"] button,[data-fx="lite"] input,[data-fx="lite"] textarea,[data-fx="lite"] select,[data-fx="lite"] .tap{animation:none !important}' +
-  '</style>';
-
 // popup sizing: a fixed, comfortable frame for the browser action popup.
 // --shell-h pins the app's full-height layout to a determinate 600px instead of
 // 100vh — an auto-sizing MV3 popup + a viewport-relative height makes Chrome kill
-// the renderer for a bad IPC message (reason 219 → "se ha bloqueado").
+// the renderer for a bad IPC message (reason 219 → "se ha bloqueado"). That one is
+// a real MV3 popup bug (unrelated to effects), so the fixed frame stays.
 const popupStyle =
   '<style>html,body{width:400px;height:600px;overflow:hidden}:root{--shell-h:600px}</style>';
-html = html.replace('</head>', `${liteStyle}${popupStyle}</head>`);
+await writeFile(htmlPath, baseHtml.replace('</head>', `${popupStyle}</head>`), 'utf8');
 
-await writeFile(htmlPath, html, 'utf8');
+// Side panel (Chrome) / sidebar (Firefox): same app, but the panel is a real,
+// user-resizable viewport — full width/height instead of the popup's fixed frame.
+// 100vh is safe here (only the auto-sizing action popup has the IPC issue above).
+// --frame-max:100% makes the app column FILL the panel (no black gutters): the
+// default caps it at 440px and centres it, which reads as wasted space in a
+// sidebar. !important outranks the ≥680px media queries in the bundled CSS.
+const sidepanelStyle =
+  '<style>html,body{width:100%;height:100vh;overflow:hidden}:root{--shell-h:100vh;--frame-max:100% !important}</style>';
+await writeFile(join(OUT, 'sidepanel.html'), baseHtml.replace('</head>', `${sidepanelStyle}</head>`), 'utf8');
 
 // Dapp-approval window (approve/index.html): same CSP externalisation, but none of
 // the popup-only lite/sizing tweaks — it's a normal window with its own light styles.
@@ -131,9 +116,23 @@ const manifest = {
   // Chrome uses `service_worker`; Firefox (MV3) uses an event-page `scripts` list.
   background: TARGET === 'firefox' ? { scripts: ['sw.js'] } : { service_worker: 'sw.js' },
   // storage: SW <-> approval-window public "mirror" (address + network + approved origins).
-  permissions: ['storage'],
+  // sidePanel (Chrome-only permission): the wallet as a persistent side panel.
+  permissions: ['storage', ...(TARGET === 'chrome' ? ['sidePanel'] : [])],
   // Address bar: `pay <web+stellar:…>` hands a SEP-7 link straight to the wallet.
   omnibox: { keyword: 'pay' },
+  // Sidebar mode — same app at full viewport (sidepanel.html). Chrome exposes it in
+  // the side-panel picker / action context menu; Firefox under View → Sidebar.
+  ...(TARGET === 'chrome' ? { side_panel: { default_path: 'sidepanel.html' } } : {}),
+  ...(TARGET === 'firefox'
+    ? {
+        sidebar_action: {
+          default_panel: 'sidepanel.html',
+          default_title: 'Cosmos Wallet',
+          default_icon: 'icons/icon-48.png',
+          open_at_install: false,
+        },
+      }
+    : {}),
   host_permissions: [
     'https://horizon.stellar.org/*',
     'https://horizon-testnet.stellar.org/*',

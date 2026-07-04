@@ -209,8 +209,11 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
   const name = store.draftName;
   const email = store.draftEmail;
   const emailOk = EMAIL_RE.test(email.trim());
-  // Name, email and birthdate are all required.
-  const ok = name.trim().length >= 2 && emailOk && !!store.draftBirthdate;
+  // Local-timezone today in ISO — the birthdate can never be in the future.
+  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const dobFuture = !!store.draftBirthdate && store.draftBirthdate > todayIso;
+  // Name, email and a non-future birthdate are all required.
+  const ok = name.trim().length >= 2 && emailOk && !!store.draftBirthdate && !dobFuture;
   const back = () =>
     store.setScreen(store.draftHasMnemonic && store.draftMnemonic ? 'verify' : 'import');
 
@@ -244,11 +247,14 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
         <input
           type="date"
           value={store.draftBirthdate}
-          max="2099-12-31"
+          max={todayIso}
           onChange={(e) => store.setDraftBirthdate((e.target as HTMLInputElement).value)}
           style={{ ...C.glass, ...inputStyle, colorScheme: store.theme === 'light' ? 'light' : 'dark' }}
         />
       </label>
+      {dobFuture && (
+        <div style={{ fontSize: '12px', fontWeight: 700, color: C.danger, margin: '-8px 2px 12px' }}>{t('setup.dobFuture')}</div>
+      )}
 
       <div style={{ flex: 1 }} />
       <PrimaryButton

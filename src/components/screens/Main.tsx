@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, Logo, NetworkDropdown, EnableReceivingCard } from '@/components/parts';
-import { HistoryRow } from '@/components/screens/Money';
+import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, NetworkDropdown, NavMenu, EnableReceivingCard } from '@/components/parts';
+import { buildKind } from '@/lib/platform';
+import { HistoryRow, GenesisRow } from '@/components/screens/Money';
 import { computePortfolio, type AssetRow } from '@/lib/portfolio';
 import { fmt, splitMoney, trim, pct, shortAddr } from '@/lib/format';
 import { explorerAccountUrl, type PriceInfo } from '@/lib/stellar';
-import { getGreeting } from '@/lib/greeting';
+import { getGreeting, ageFromBirthdate } from '@/lib/greeting';
 import { copyText } from '@/lib/clipboard';
 
 /** Center-crop + downscale an image file to a small JPEG data URL for the avatar. */
@@ -32,56 +33,98 @@ function resizeToDataUrl(file: File, size = 160): Promise<string> {
 const MARKET_TOKENS = ['XLM', 'USDC', 'EURC'];
 
 function changeColor(n: number) {
-  // monochrome: up = text colour, down = muted grey (direction shown by the ↗/↘ arrow)
+  // green up / red down (tokens --up/--down, theme-aware)
   return n >= 0 ? 'var(--up)' : 'var(--down)';
+}
+
+/** Smoothly animates towards `target` (ease-out cubic) so value changes visibly
+ *  tick up/down instead of jumping — the auto-refresh makes this run every ~30s. */
+function useAnimatedNumber(target: number, ms = 800): number {
+  const [val, setVal] = useState(target);
+  const valRef = useRef(target);
+  useEffect(() => {
+    const from = valRef.current;
+    if (Math.abs(target - from) < 1e-9) return;
+    let raf = 0;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min(1, (now - t0) / ms);
+      const eased = 1 - Math.pow(1 - p, 3);
+      const v = from + (target - from) * eased;
+      valRef.current = v;
+      setVal(v);
+      if (p < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return val;
 }
 
 /* ------------------------------- HOME -------------------------------- */
 export function Home({ store }: { store: WalletStore }) {
   const t = store.t;
-  const { total, rows, xlmChange } = computePortfolio(store.account, store.prices);
-  const money = splitMoney(total);
+  const { total, rows, changePct, deltaUsd } = computePortfolio(store.account, store.prices);
+  // Every portfolio number eases towards its live value, so price fluctuations
+  // visibly tick up/down instead of jumping (colors/arrows follow the real target).
+  const money = splitMoney(useAnimatedNumber(total));
+  const shownPct = useAnimatedNumber(changePct);
+  const shownDelta = useAnimatedNumber(deltaUsd);
   const notActivated = store.account && !store.account.exists;
   // Load recent activity for the home preview (refreshes on wallet / network change).
   const loadHistory = store.loadHistory;
   useEffect(() => {
     loadHistory();
   }, [loadHistory, store.meta?.id, store.network.id]);
-  const greeting = getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', store.t);
+  // Memoized: getGreeting picks a random salutation — keep it stable across renders
+  // (a fresh one only on app open / language change).
+  const greeting = useMemo(
+    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', store.t),
+    [store.meta?.name, store.meta?.birthdate, store.t],
+  );
   const initial = (store.meta?.name || 'C').slice(0, 1).toUpperCase();
+  // Header shows the name big, capped to the first word.
+  const firstName = (store.meta?.name || 'astronauta').trim().split(/\s+/)[0];
+  // Fiat on/off-ramp is 18+ only (unknown/missing birthdate counts as not eligible).
+  const fiatOk = (ageFromBirthdate(store.meta?.birthdate ?? '') ?? 0) >= 18;
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 110px', animation: 'fadeUp .3s ease' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '19px', fontWeight: 800, letterSpacing: '-.4px' }}>
-          <Logo size={24} />Cosmos Pay
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div onClick={() => store.refresh()} title="Actualizar" className="tap" style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            {store.loading ? <Spinner size={15} color="var(--text)" /> : (
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M20 11A8 8 0 1 0 18 16M20 5v6h-6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            )}
-          </div>
-          <div onClick={() => store.go('profile', 'profile')} className="tap" style={{ width: '38px', height: '38px', borderRadius: '50%', overflow: 'hidden', background: 'var(--glass-soft-bg)', border: '1px solid var(--glass-soft-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 700, color: 'var(--text)', cursor: 'pointer' }}>
+      {/* Profile-first header: the avatar (→ profile) replaces the brand at the left,
+          with the salutation small on top and the user's first name big below. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '6px 0 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '11px', minWidth: 0 }}>
+          <div onClick={() => store.go('profile', 'profile')} className="tap" style={{ width: '42px', height: '42px', borderRadius: '50%', overflow: 'hidden', background: 'var(--glass-soft-bg)', border: '1px solid var(--glass-soft-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 700, color: 'var(--text)', cursor: 'pointer', flexShrink: 0 }}>
             {store.meta?.avatar ? <img src={store.meta.avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : initial}
           </div>
+          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+            <span style={{ fontSize: '12.5px', color: C.muted, fontWeight: 700 }}>{greeting.salutation}</span>
+            <span style={{ fontSize: '20px', fontWeight: 800, letterSpacing: '-.4px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{firstName} 👋</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+          {/* Refresh is automatic (silent poll in the store); spinner only while loading. */}
+          {store.loading && <Spinner size={15} color="var(--text)" />}
+          <NetworkDropdown store={store} align="right" />
+          <NavMenu store={store} />
         </div>
       </div>
 
-      <div style={{ margin: '0 0 10px' }}>
-        <NetworkDropdown store={store} />
-      </div>
-      <div style={{ fontSize: '14px', color: C.muted, fontWeight: 700, margin: '0 2px 2px' }}>{greeting.line} 👋</div>
 
       <div style={{ textAlign: 'center', padding: '8px 0 6px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', color: C.muted, fontSize: '13px', fontWeight: 600, marginBottom: '8px' }}>
-          {t('home.portfolio')} <span style={{ opacity: 0.6 }}>ⓘ</span>
+        <div style={{ color: C.muted, fontSize: '13px', fontWeight: 600, marginBottom: '8px' }}>
+          {t('home.portfolio')}
         </div>
         <div style={{ fontSize: '46px', fontWeight: 800, letterSpacing: '-1.5px', fontVariantNumeric: 'tabular-nums' }}>
           {money.whole}<span style={{ color: C.dimmer }}>{money.cents}</span>
         </div>
-        <div style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px', color: changeColor(xlmChange), fontSize: '14px', fontWeight: 700 }}>
-          {xlmChange >= 0 ? '↗' : '↘'} {pct(xlmChange)} <span style={{ color: C.dim, fontWeight: 600 }}>· XLM 24h</span>
+        {/* 24h change of the WHOLE portfolio: percentage + USD difference vs yesterday
+            (e.g. "↗ +1.00% · +$10.00"), green when up / red when down. */}
+        <div style={{ marginTop: '8px', display: 'inline-flex', alignItems: 'center', gap: '5px', color: changeColor(changePct), fontSize: '14px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+          {changePct >= 0 ? '↗' : '↘'} {pct(shownPct)}
+          <span style={{ fontWeight: 600, opacity: 0.85 }}>
+            · {deltaUsd >= 0 ? '+' : '−'}${fmt(Math.abs(shownDelta), 2)}
+          </span>
         </div>
       </div>
 
@@ -100,14 +143,17 @@ export function Home({ store }: { store: WalletStore }) {
         </Action>
       </div>
 
-      <div onClick={() => store.setScreen('fiat')} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', borderRadius: '16px', cursor: 'pointer', ...C.glassSoft, marginBottom: '14px' }}>
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, color: 'var(--text)' }}><path d="M3 8h15l-3-3M21 16H6l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: '14px', fontWeight: 800 }}>{t('fiat.tab')}</div>
-          <div style={{ fontSize: '12px', color: C.muted, fontWeight: 600 }}>{t('fiat.entryDesc')}</div>
+      {/* Fiat entry is age-gated: only shown to 18+ users (see fiatOk above). */}
+      {fiatOk && (
+        <div onClick={() => store.setScreen('fiat')} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '14px 16px', borderRadius: '16px', cursor: 'pointer', ...C.glassSoft, marginBottom: '14px' }}>
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, color: 'var(--text)' }}><path d="M3 8h15l-3-3M21 16H6l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: '14px', fontWeight: 800 }}>{t('fiat.tab')}</div>
+            <div style={{ fontSize: '12px', color: C.muted, fontWeight: 600 }}>{t('fiat.entryDesc')}</div>
+          </div>
+          <span style={{ color: C.dim, fontSize: '18px' }}>›</span>
         </div>
-        <span style={{ color: C.dim, fontSize: '18px' }}>›</span>
-      </div>
+      )}
 
       {notActivated && <ActivateCard store={store} />}
       {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
@@ -131,9 +177,13 @@ export function Home({ store }: { store: WalletStore }) {
         )}
       </div>
       {store.history.length === 0 ? (
-        <div style={{ ...C.glass, borderRadius: '16px', padding: '22px', textAlign: 'center', color: C.muted, fontSize: '13px', fontWeight: 600 }}>
-          {store.historyLoading ? <Spinner color="var(--text)" /> : t('history.empty')}
-        </div>
+        // No empty-state box: a fresh wallet shows the visual "started using Cosmos
+        // Pay" marker instead (spinner only during the very first load).
+        store.historyLoading ? (
+          <div style={{ padding: '18px', textAlign: 'center' }}><Spinner color="var(--text)" /></div>
+        ) : (
+          <GenesisRow store={store} />
+        )
       ) : (
         store.history.slice(0, 5).map((it, i) => <HistoryRow key={it.id} item={it} store={store} delay={i * 0.05} />)
       )}
@@ -177,6 +227,7 @@ function ActivateCard({ store }: { store: WalletStore }) {
 
 function AssetListRow({ row, onClick, delay = 0 }: { row: AssetRow; onClick: () => void; delay?: number }) {
   const m = assetMeta(row.code);
+  const shownValue = useAnimatedNumber(row.value ?? 0);
   return (
     <div onClick={onClick} className="tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 12px', borderRadius: '16px', cursor: 'pointer', marginBottom: '2px', animation: 'fadeUp .45s ease backwards', animationDelay: `${delay}s` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -187,7 +238,7 @@ function AssetListRow({ row, onClick, delay = 0 }: { row: AssetRow; onClick: () 
         </div>
       </div>
       <span style={{ fontSize: '15px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-        {row.value !== null ? '$' + fmt(row.value, 2) : '—'}
+        {row.value !== null ? '$' + fmt(shownValue, 2) : '—'}
       </span>
     </div>
   );
@@ -196,6 +247,8 @@ function AssetListRow({ row, onClick, delay = 0 }: { row: AssetRow; onClick: () 
 function MarketRow({ code, price, onClick, delay = 0 }: { code: string; price?: PriceInfo; onClick: () => void; delay?: number }) {
   const m = assetMeta(code);
   const chg = price?.change24h ?? 0;
+  const shownPrice = useAnimatedNumber(price?.usd ?? 0);
+  const shownChg = useAnimatedNumber(chg);
   return (
     <div onClick={onClick} className="tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 2px', cursor: 'pointer', animation: 'fadeUp .45s ease backwards', animationDelay: `${delay}s` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -207,9 +260,9 @@ function MarketRow({ code, price, onClick, delay = 0 }: { code: string; price?: 
       </div>
       <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '2px' }}>
         <span style={{ fontSize: '15px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-          {price ? '$' + fmt(price.usd, price.usd >= 1 ? 2 : 4) : '—'}
+          {price ? '$' + fmt(shownPrice, price.usd >= 1 ? 2 : 4) : '—'}
         </span>
-        <span style={{ fontSize: '12px', color: changeColor(chg), fontWeight: 700 }}>{price ? pct(chg) : ''}</span>
+        <span style={{ fontSize: '12px', color: changeColor(chg), fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{price ? pct(shownChg) : ''}</span>
       </div>
     </div>
   );
@@ -223,7 +276,10 @@ export function Earn({ store }: { store: WalletStore }) {
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 110px', animation: 'fadeUp .3s ease' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 18px' }}>
         <span style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-.8px' }}>{t('earn.title')}</span>
-        <div style={{ width: '34px', height: '34px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 700, color: C.muted }}>?</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ width: '34px', height: '34px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '15px', fontWeight: 700, color: C.muted }}>?</div>
+          <NavMenu store={store} />
+        </div>
       </div>
       <div style={{ position: 'relative', borderRadius: '22px', background: 'linear-gradient(135deg, rgba(255,255,255,.12), rgba(18,18,18,.35))', ...C.glass, padding: '20px', overflow: 'hidden', marginBottom: '26px' }}>
         <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '6px' }}>{t('earn.totalAssets')}</div>
@@ -270,7 +326,10 @@ export function Markets({ store }: { store: WalletStore }) {
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 110px', animation: 'fadeUp .3s ease' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 18px' }}>
         <span style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-.8px' }}>{t('markets.title')}</span>
-        {store.loading && <Spinner size={16} color="var(--text)" />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {store.loading && <Spinner size={16} color="var(--text)" />}
+          <NavMenu store={store} />
+        </div>
       </div>
       <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', fontSize: '13px', fontWeight: 700 }}>
         {tabs.map((tb) => {
@@ -307,7 +366,11 @@ export function Profile({ store }: { store: WalletStore }) {
   const pub = store.meta?.publicKey ?? '';
   const name = store.meta?.name || 'Mi wallet';
   const avatar = store.meta?.avatar;
-  const g = getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t);
+  // Memoized: the salutation is random — keep it stable across re-renders.
+  const g = useMemo(
+    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t),
+    [store.meta?.name, store.meta?.birthdate, t],
+  );
   const fileRef = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -330,7 +393,21 @@ export function Profile({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 110px', animation: 'fadeUp .3s ease' }}>
-      <div style={{ padding: '8px 0 22px' }}><span style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-.8px' }}>{t('tab.profile')}</span></div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 22px' }}>
+        <span style={{ fontSize: '30px', fontWeight: 800, letterSpacing: '-.8px' }}>{t('tab.profile')}</span>
+        {/* Profile is itself a menu destination, so a hamburger here is pointless —
+            in the extension (no bottom bar) the top-right button goes back home. */}
+        {buildKind() === 'ext' && (
+          <div
+            onClick={() => store.go('home', 'home')}
+            className="tap"
+            title={t('tab.home')}
+            style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text)' }}
+          >
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </div>
+        )}
+      </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '26px' }}>
         <div onClick={() => fileRef.current?.click()} className="tap" title={t('profile.changePhoto')} style={{ position: 'relative', flexShrink: 0, width: '62px', height: '62px', borderRadius: '50%', background: 'var(--glass-soft-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px', fontWeight: 800, cursor: 'pointer', overflow: 'visible' }}>
           {avatar ? (
