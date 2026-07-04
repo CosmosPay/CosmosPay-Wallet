@@ -21,3 +21,6 @@ node_modules/
 Thumbs.db
 .vscode/
 .idea/
+
+extension.crx
+extension.pem
