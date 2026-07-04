@@ -237,12 +237,7 @@ export function Home({ store }: { store: WalletStore }) {
  *  Returns to the screen the user actually came from (store.back). */
 function BackCircle({ store }: { store: WalletStore }) {
   return (
-    <div
-      onClick={() => store.back('home')}
-      className="tap"
-      title={store.t('tab.home')}
-      style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--text)', flexShrink: 0 }}
-    >
+    <div onClick={() => store.back('home')} className="tap glass-soft circle-btn" title={store.t('tab.home')}>
       <svg width="17" height="17" viewBox="0 0 24 24" fill="none"><path d="M15 5l-7 7 7 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
     </div>
   );

@@ -434,17 +434,11 @@ export function ScanQR({ store }: { store: WalletStore }) {
       {/* No camera / permission denied? Decode a QR from an image instead — the two
           fallbacks stack full-width so their labels never get cramped. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px', flexShrink: 0 }}>
-        <button
-          onClick={() => fileRef.current?.click()}
-          style={{ width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}
-        >
+        <button onClick={() => fileRef.current?.click()} className="glass-soft pill-btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M3 16l5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="9" cy="8" r="1.6" fill="currentColor" /></svg>
           {t('scan.upload')}
         </button>
-        <button
-          onClick={pasteImage}
-          style={{ width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}
-        >
+        <button onClick={pasteImage} className="glass-soft pill-btn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><rect x="6" y="4" width="12" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="M9 4.5V3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5v1" stroke="currentColor" strokeWidth="1.8" /></svg>
           {t('scan.paste')}
         </button>

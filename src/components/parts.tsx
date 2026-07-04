@@ -881,7 +881,7 @@ export function SurfaceToggle({ store }: { store: WalletStore }) {
       onClick={toggle}
       title={store.t(inSidebar ? 'surface.toPopup' : 'surface.toSidebar')}
       aria-label={store.t(inSidebar ? 'surface.toPopup' : 'surface.toSidebar')}
-      style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+      className="glass-soft circle-btn"
     >
       {inSidebar ? (
         // in the sidebar -> icon shows a small popup window
@@ -941,11 +941,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
 
   return (
     <>
-      <button
-        onClick={openDrawer}
-        aria-label="Menú"
-        style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-      >
+      <button onClick={openDrawer} aria-label="Menú" className="glass-soft circle-btn">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
           <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
         </svg>
@@ -974,11 +970,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '17px', fontWeight: 800, letterSpacing: '-.3px' }}>
               <Logo size={22} />Cosmos Pay
             </div>
-            <button
-              onClick={closeDrawer}
-              aria-label="Cerrar"
-              style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
-            >
+            <button onClick={closeDrawer} aria-label="Cerrar" className="glass-soft circle-btn">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                 <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
               </svg>
@@ -1057,12 +1049,7 @@ export function NetworkDropdown({ store, align = 'left' }: { store: WalletStore;
   const [open, setOpen] = useState(false);
   return (
     <div style={{ position: 'relative', display: 'inline-block' }}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        title={store.network.label}
-        aria-label={store.network.label}
-        style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
-      >
+      <button onClick={() => setOpen((o) => !o)} title={store.network.label} aria-label={store.network.label} className="glass-soft circle-btn">
         <StellarMark size={16} />
       </button>
       {open && (

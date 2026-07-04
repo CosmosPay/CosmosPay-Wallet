@@ -184,7 +184,7 @@ export function Send({ store }: { store: WalletStore }) {
       </div>
       {/* Standard-sized control (48px pill), snug under the address row; the
           validity note only takes space once there's something to validate. */}
-      <button onClick={pastePayUrl} style={{ width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer', marginTop: '8px' }}>
+      <button onClick={pastePayUrl} className="glass-soft pill-btn" style={{ marginTop: '8px' }}>
         ⛓ {t('ops.pastePay')}
       </button>
       {s.to && (
