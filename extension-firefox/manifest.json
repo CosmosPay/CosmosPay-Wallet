@@ -38,7 +38,9 @@
     "https://horizon.stellar.org/*",
     "https://horizon-testnet.stellar.org/*",
     "https://friendbot.stellar.org/*",
-    "https://api.coingecko.com/*"
+    "https://api.coingecko.com/*",
+    "https://cosmospay.lat/*",
+    "https://*.cosmospay.lat/*"
   ],
   "content_scripts": [
     {

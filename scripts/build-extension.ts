@@ -138,6 +138,11 @@ const manifest = {
     'https://horizon-testnet.stellar.org/*',
     'https://friendbot.stellar.org/*',
     'https://api.coingecko.com/*',
+    // Cosmos Pay backends (dev-platform provisioning + APISIX payments gateway).
+    // Host permission => Chrome exempts extension-page fetches from CORS, so the
+    // platform's origin allowlist doesn't need to know the extension's origin.
+    'https://cosmospay.lat/*',
+    'https://*.cosmospay.lat/*',
   ],
   // Inject the provider bridge into every web page so dapps can find window.cosmosWallet.
   content_scripts: [

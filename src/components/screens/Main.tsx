@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, NetworkDropdown, NavMenu, SurfaceToggle, EnableReceivingCard } from '@/components/parts';
+import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, NetworkDropdown, NavMenu, SurfaceToggle, EnableReceivingCard, inputStyle } from '@/components/parts';
 import { buildKind } from '@/lib/platform';
 import { HistoryRow, GenesisRow } from '@/components/screens/Money';
 import { computePortfolio, type AssetRow } from '@/lib/portfolio';
@@ -248,6 +248,75 @@ function ActivateCard({ store }: { store: WalletStore }) {
   );
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Profile email card: shows the wallet's email with inline editing. Cosmos Pay
+ *  account creation & linking use this address, so it must be correct/updatable. */
+function EmailRow({ store }: { store: WalletStore }) {
+  const t = store.t;
+  const current = store.meta?.email ?? '';
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(current);
+  const valid = EMAIL_RE.test(val.trim());
+
+  const start = () => {
+    setVal(current);
+    setEditing(true);
+  };
+  const save = async () => {
+    if (!valid) return;
+    await store.setWalletEmail(val);
+    setEditing(false);
+  };
+
+  return (
+    <div style={{ ...C.glass, borderRadius: '16px', padding: '14px 16px', marginBottom: '20px' }}>
+      <div style={{ fontSize: '11px', color: C.dim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: '7px' }}>{t('setup.emailLabel')}</div>
+      {!editing ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ flex: 1, fontSize: '14px', fontWeight: 700, wordBreak: 'break-all', color: current ? 'var(--text)' : C.dim }}>{current || '—'}</span>
+          <span
+            onClick={start}
+            className="tap"
+            title={t('profile.editEmail')}
+            style={{ width: '34px', height: '34px', borderRadius: '50%', ...C.glassSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, color: 'var(--text)' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 20h4L19 9l-4-4L4 16v4z" stroke="currentColor" strokeWidth="1.9" strokeLinejoin="round" /><path d="M13.5 6.5l4 4" stroke="currentColor" strokeWidth="1.9" /></svg>
+          </span>
+        </div>
+      ) : (
+        <>
+          <input
+            type="email"
+            value={val}
+            autoFocus
+            placeholder="tu@correo.com"
+            onChange={(e) => setVal((e.target as HTMLInputElement).value.trim().slice(0, 80))}
+            onKeyDown={(e) => e.key === 'Enter' && save()}
+            style={{ ...C.glass, ...inputStyle, height: '46px', fontSize: '14px', marginBottom: '8px' }}
+          />
+          {val.length > 0 && !valid && (
+            <div style={{ fontSize: '12px', fontWeight: 700, color: C.danger, margin: '0 2px 8px' }}>{t('setup.emailInvalid')}</div>
+          )}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={() => setEditing(false)} style={{ flex: 1, height: '42px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}>
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={save}
+              disabled={!valid}
+              style={{ flex: 1, height: '42px', ...C.glassBright, color: 'var(--primary-text)', borderRadius: '999px', fontSize: '13px', fontWeight: 800, cursor: valid ? 'pointer' : 'default', opacity: valid ? 1 : 0.5 }}
+            >
+              {t('common.done')}
+            </button>
+          </div>
+        </>
+      )}
+      <div style={{ fontSize: '11.5px', color: C.dim, fontWeight: 600, marginTop: '9px', lineHeight: 1.5 }}>{t('profile.emailNote')}</div>
+    </div>
+  );
+}
+
 function AssetListRow({ row, chg, fav, onFav, onClick, delay = 0 }: { row: AssetRow; chg?: number; fav?: boolean; onFav?: () => void; onClick: () => void; delay?: number }) {
   const m = assetMeta(row.code);
   const shownValue = useAnimatedNumber(row.value ?? 0);
@@ -476,6 +545,9 @@ export function Profile({ store }: { store: WalletStore }) {
           </span>
         </div>
       </div>
+
+      {/* Email — editable: Cosmos Pay registration/linking is tied to it. */}
+      <EmailRow store={store} />
 
       <div style={{ fontSize: '12px', color: C.dim, fontWeight: 700, marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '.5px' }}>
         {t('profile.myWallets')} ({store.wallets.length})

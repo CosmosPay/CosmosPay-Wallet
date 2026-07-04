@@ -77,6 +77,7 @@ export interface CosmosPayPending {
   claimToken: string;
   stellarAddress: string;
   expiresAt: number; // epoch ms (best-effort; server enforces expiry)
+  email?: string; // where the confirmation went — lets the UI flag a mismatch vs the current email
 }
 
 function genId(): string {
@@ -213,10 +214,10 @@ export async function addWallet(
   return entry;
 }
 
-/** Update non-sensitive metadata (name / avatar) for a wallet in the plaintext list. */
+/** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));

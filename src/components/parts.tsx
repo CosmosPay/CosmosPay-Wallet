@@ -699,10 +699,19 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
   }
 
   // Default — enable (create) / confirm-email.
+  // If the pending registration went to a DIFFERENT email than the wallet's current
+  // one (e.g. the user fixed a typo in Profile), surface it and offer a resend.
+  const pendingEmail = store.cosmosPayPending?.email;
+  const emailMismatch = pending && !!pendingEmail && !!store.meta?.email && pendingEmail !== store.meta.email;
   return (
     <div style={cardStyle}>
       <div style={titleStyle}>{pending ? t('cosmospay.pendingTitle') : t('cosmospay.cardTitle')}</div>
       <div style={descStyle}>{pending ? t('cosmospay.pendingDesc') : t('cosmospay.cardDesc')}</div>
+      {emailMismatch && (
+        <div style={{ fontSize: '12.5px', color: '#ffb3b3', fontWeight: 600, lineHeight: 1.5, background: 'rgba(255,93,93,.10)', border: '1px solid rgba(255,93,93,.24)', borderRadius: '12px', padding: '11px 13px', marginBottom: '12px' }}>
+          {t('cosmospay.emailMismatch', { old: pendingEmail!, new: store.meta!.email })}
+        </div>
+      )}
       <button
         onClick={() => (pending ? store.claimReceiving() : store.enableReceiving())}
         disabled={store.busy}
@@ -710,6 +719,11 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
       >
         {store.busy ? <Spinner /> : pending ? t('cosmospay.confirmCta') : t('cosmospay.cta')}
       </button>
+      {pending && (
+        <button onClick={() => store.resendReceiving()} disabled={store.busy} style={cancelBtn}>
+          {t('cosmospay.resend')}
+        </button>
+      )}
     </div>
   );
 }

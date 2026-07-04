@@ -411,6 +411,19 @@ export function useWalletStore() {
     [meta],
   );
 
+  /** Change the active wallet's email — Cosmos Pay registration/linking is tied to it. */
+  const setWalletEmail = useCallback(
+    async (email: string) => {
+      if (!meta) return;
+      const next = await updateWalletMeta(meta.id, { email: email.trim() });
+      setWallets(next);
+      const entry = next.find((w) => w.id === meta.id);
+      if (entry) setMetaState(entry);
+      flash(t('profile.emailUpdated'), 'ok');
+    },
+    [meta, flash, t],
+  );
+
   const resolveConfirm = useCallback((okSig: boolean) => {
     setConfirmReq(null);
     const r = confirmResolver.current;
@@ -952,6 +965,7 @@ export function useWalletStore() {
         claimToken: res.claimToken,
         stellarAddress: meta.publicKey,
         expiresAt: Date.now() + (res.expiresInSeconds || 0) * 1000,
+        email: meta.email, // remember where it went, to flag mismatches later
       };
       await savePendingCosmosPay(meta.id, pending);
       setCosmosPayPending(pending);
@@ -962,6 +976,18 @@ export function useWalletStore() {
       setBusy(false);
     }
   }, [session, meta, requestSignature, t, flash]);
+
+  /**
+   * Re-send the confirmation email: drops the stale pending registration (e.g. it
+   * was created with a previous/incorrect email) and registers again using the
+   * wallet's CURRENT email — so a fresh confirmation lands in the right inbox.
+   */
+  const resendReceiving = useCallback(async () => {
+    if (!meta) return;
+    await clearPendingCosmosPay(meta.id);
+    setCosmosPayPending(null);
+    await enableReceiving();
+  }, [meta, enableReceiving]);
 
   /**
    * Claim the API key for a pending registration once the user confirmed by
@@ -1614,6 +1640,7 @@ export function useWalletStore() {
     setDraftGender,
     setDraftMetricsOptIn,
     setDraftPromoOptIn,
+    setWalletEmail,
     toggleFavorite,
     setSend,
     setSelectedAsset,
@@ -1644,6 +1671,7 @@ export function useWalletStore() {
     fund,
     submitSend,
     enableReceiving,
+    resendReceiving,
     claimReceiving,
     linkReceiving,
     submitLinkCode,
