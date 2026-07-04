@@ -906,21 +906,38 @@ export function SurfaceToggle({ store }: { store: WalletStore }) {
  *  bar, which wastes vertical space in the small popup/side-panel surfaces.
  *  Renders nothing outside the extension build. */
 export function NavMenu({ store }: { store: WalletStore }) {
-  const [mounted, setMounted] = useState(false); // drawer present in the DOM
-  const [shown, setShown] = useState(false); // slid in (drives the transform)
+  // Open-state lives in the STORE (store.navMenuOpen) so it survives navigating to a
+  // drawer shortcut and back — the drawer is already open again on return. Local
+  // state only drives the slide animation (mount + transform phases).
+  const open = store.navMenuOpen;
+  const [mounted, setMounted] = useState(open); // drawer present in the DOM
+  // `shown` also starts from `open`: when returning to a screen with the drawer
+  // already open it renders INSTANTLY in place — the slide-in only plays for
+  // fresh opens (closed -> open while this component is alive).
+  const [shown, setShown] = useState(open);
+  // Mounted with the drawer already open (a restore): kill the transform transition
+  // entirely so there's no motion at all. Re-enabled after the first real close.
+  const restoredRef = useRef(open);
+  useEffect(() => {
+    if (!open) restoredRef.current = false;
+  }, [open]);
+  useEffect(() => {
+    if (open) {
+      setMounted(true);
+      // double rAF: let the drawer paint off-screen first so the slide-in transitions
+      const id = requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
+      return () => cancelAnimationFrame(id);
+    }
+    setShown(false);
+    const tm = setTimeout(() => setMounted(false), 340); // matches the transition below
+    return () => clearTimeout(tm);
+  }, [open]);
   if (buildKind() !== 'ext') return null;
 
   const tabs = navTabs(store.t);
   const activeKey = navActiveKey(store);
-  const openDrawer = () => {
-    setMounted(true);
-    // double rAF: let the drawer paint off-screen first so the slide-in transitions
-    requestAnimationFrame(() => requestAnimationFrame(() => setShown(true)));
-  };
-  const closeDrawer = () => {
-    setShown(false);
-    setTimeout(() => setMounted(false), 340); // matches the transition below
-  };
+  const openDrawer = () => store.setNavMenuOpen(true);
+  const closeDrawer = () => store.setNavMenuOpen(false);
 
   return (
     <>
@@ -936,17 +953,21 @@ export function NavMenu({ store }: { store: WalletStore }) {
 
       {mounted && (
         <div
+          className="nav-drawer"
           style={{
             position: 'fixed',
             inset: 0,
             zIndex: 60,
             display: 'flex',
             flexDirection: 'column',
-            background: 'var(--nav-bg)',
+            // Mostly-opaque surface: the backdrop blur is just a garnish, so its
+            // one-frame late arrival on restore is imperceptible.
+            background: 'color-mix(in srgb, var(--bg) 88%, transparent)',
             backdropFilter: 'blur(26px) saturate(150%)',
             WebkitBackdropFilter: 'blur(26px) saturate(150%)',
             transform: shown ? 'translateX(0)' : 'translateX(100%)',
-            transition: 'transform .34s cubic-bezier(.32,.72,.28,1)',
+            // Restored already-open -> absolutely no motion; fresh opens animate.
+            transition: restoredRef.current ? 'none' : 'transform .34s cubic-bezier(.32,.72,.28,1)',
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 20px 8px' }}>
@@ -996,7 +1017,9 @@ export function NavMenu({ store }: { store: WalletStore }) {
               <div
                 key={it.key}
                 onClick={() => {
-                  closeDrawer();
+                  // Deliberately NOT closing the drawer: its open-state persists in the
+                  // store, so pressing "back" on the destination lands here with the
+                  // menu already open — no need to reopen it.
                   store.setScreen(it.key as Parameters<WalletStore['setScreen']>[0]);
                 }}
                 className="tap"

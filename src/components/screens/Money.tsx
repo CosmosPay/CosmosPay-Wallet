@@ -44,7 +44,7 @@ export function Receive({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 30px', animation: 'fadeUp .3s ease' }}>
-      <BackBar title={t('receive.title')} onBack={() => store.go('home', 'home')} />
+      <BackBar title={t('receive.title')} onBack={() => store.back('home')} />
       <div style={{ textAlign: 'center', color: C.muted, fontSize: '13px', fontWeight: 600, margin: '18px 0 22px' }}>
         {t('receive.desc')}
       </div>
@@ -457,7 +457,12 @@ export function Swap({ store }: { store: WalletStore }) {
             {t('swap.balance')}: {trim(fromBal, 4)} {fromCode}
           </div>
         </div>
-        <button onClick={invert} aria-label="invert" className="tap" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: '44px', height: '44px', borderRadius: '50%', ...C.glassSoft, border: '4px solid var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: 'var(--text)', zIndex: 2, cursor: 'pointer' }}>⇅</button>
+        {/* Zero-height anchor BETWEEN the cards: the button centres on the exact seam
+            (from-card bottom + half the 10px gap) no matter how tall each card is —
+            top:50% of the whole wrapper sat visibly too high. */}
+        <div style={{ position: 'relative', height: 0, zIndex: 2 }}>
+          <button onClick={invert} aria-label="invert" className="tap" style={{ position: 'absolute', left: '50%', top: '5px', transform: 'translate(-50%,-50%)', width: '44px', height: '44px', borderRadius: '50%', ...C.glassSoft, border: '4px solid var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: 'var(--text)', cursor: 'pointer' }}>⇅</button>
+        </div>
         <div style={{ position: 'relative', zIndex: openSel === 'to' ? 3 : undefined, ...C.glass, borderRadius: '20px', padding: '18px', marginTop: '10px' }}>
           <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '14px' }}>{t('swap.receiveEst')}</div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>

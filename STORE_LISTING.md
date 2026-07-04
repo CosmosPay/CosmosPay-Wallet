@@ -121,11 +121,11 @@ No remote code is executed. All JavaScript ships inside the package; network req
 https://cosmospay.lat
 ```
 
-**Support / Privacy policy URL**
+**Support / Terms URL**
 ```
-https://cosmospay.lat/terms
+https://dev.cosmospay.lat/tos
 ```
-(Publish a dedicated privacy policy URL before submitting — the Store requires one for extensions that handle user data.)
+(Terms live there — EN/ES, covering the gateway and the wallet. Publish a dedicated privacy-policy URL as well before submitting; the Store requires one for extensions that handle user data. Section 8 of the ToS can seed it.)
 
 ---
 

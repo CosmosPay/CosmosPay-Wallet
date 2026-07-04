@@ -199,16 +199,15 @@ export function Home({ store }: { store: WalletStore }) {
           <span onClick={() => store.setScreen('history')} style={{ fontSize: '13px', color: C.muted, fontWeight: 700, cursor: 'pointer' }}>{t('home.viewAll')}</span>
         )}
       </div>
-      {store.history.length === 0 ? (
-        // No empty-state box: a fresh wallet shows the visual "started using Cosmos
-        // Pay" marker instead (spinner only during the very first load).
-        store.historyLoading ? (
-          <div style={{ padding: '18px', textAlign: 'center' }}><Spinner color="var(--text)" /></div>
-        ) : (
-          <GenesisRow store={store} />
-        )
+      {store.history.length === 0 && store.historyLoading ? (
+        <div style={{ padding: '18px', textAlign: 'center' }}><Spinner color="var(--text)" /></div>
       ) : (
-        store.history.slice(0, 5).map((it, i) => <HistoryRow key={it.id} item={it} store={store} delay={i * 0.05} />)
+        <>
+          {store.history.slice(0, 5).map((it, i) => <HistoryRow key={it.id} item={it} store={store} delay={i * 0.05} />)}
+          {/* The symbolic "started using Cosmos Pay" marker ALWAYS closes the list —
+              even right after Friendbot funding adds the first real operation. */}
+          <GenesisRow store={store} delay={Math.min(store.history.length, 5) * 0.05} />
+        </>
       )}
     </div>
   );

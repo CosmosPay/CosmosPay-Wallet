@@ -26,7 +26,7 @@ export function Settings({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 40px', animation: 'fadeUp .3s ease' }}>
-      <BackBar title={t('settings.title')} onBack={() => store.go(store.session ? 'profile' : 'home', 'profile')} />
+      <BackBar title={t('settings.title')} onBack={() => store.back(store.session ? 'profile' : 'home')} />
 
       <Section title={t('settings.appearance')}>
         <div style={{ display: 'flex', gap: '8px' }}>
@@ -223,7 +223,7 @@ export function About({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 30px', animation: 'fadeUp .3s ease' }}>
-      <BackBar title={t('about.title')} onBack={() => store.go(store.session ? 'profile' : 'home', 'profile')} />
+      <BackBar title={t('about.title')} onBack={() => store.back(store.session ? 'profile' : 'home')} />
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', margin: '24px 0 26px' }}>
         <Logo size={84} />
         <div style={{ fontSize: '22px', fontWeight: 800, marginTop: '16px' }}>Cosmos Pay</div>
@@ -271,7 +271,7 @@ export function Export({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 30px', animation: 'fadeUp .3s ease' }}>
-      <BackBar title={t('export.title')} onBack={() => store.go(store.session ? 'profile' : 'home', 'profile')} />
+      <BackBar title={t('export.title')} onBack={() => store.back(store.session ? 'profile' : 'home')} />
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', background: 'rgba(255,93,93,.10)', border: '1px solid rgba(255,93,93,.24)', borderRadius: '14px', padding: '14px', margin: '14px 0 20px' }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0, marginTop: '1px' }}><path d="M12 3l9 16H3l9-16z" stroke="#ff7a7a" strokeWidth="1.8" strokeLinejoin="round" /><path d="M12 10v4M12 17h.01" stroke="#ff7a7a" strokeWidth="1.8" strokeLinecap="round" /></svg>

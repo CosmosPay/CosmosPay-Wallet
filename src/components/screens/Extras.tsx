@@ -194,6 +194,10 @@ export function ScanQR({ store }: { store: WalletStore }) {
   const [error, setError] = useState('');
   // Bumping this re-runs the camera effect -> re-triggers the permission prompt.
   const [retry, setRetry] = useState(0);
+  // Available video inputs (populated once permission is granted) + the user's pick.
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [deviceId, setDeviceId] = useState('');
+  const [devOpen, setDevOpen] = useState(false);
 
   /** Shared for camera + uploaded images: parse the QR text and jump to Send. */
   const applyScan = (text: string): boolean => {
@@ -324,7 +328,10 @@ export function ScanQR({ store }: { store: WalletStore }) {
 
     (async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        // Explicit device when the user picked one; otherwise prefer the back camera.
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' },
+        });
         if (stopped) {
           stream.getTracks().forEach((tr) => tr.stop());
           return;
@@ -334,6 +341,13 @@ export function ScanQR({ store }: { store: WalletStore }) {
           await videoRef.current.play();
           raf = requestAnimationFrame(tick);
         }
+        // With permission granted, device labels become readable — offer a picker.
+        try {
+          const all = await navigator.mediaDevices.enumerateDevices();
+          setDevices(all.filter((d) => d.kind === 'videoinput'));
+        } catch {
+          /* enumeration unavailable — keep the default camera */
+        }
       } catch {
         setError(t('scan.denied'));
       }
@@ -341,7 +355,7 @@ export function ScanQR({ store }: { store: WalletStore }) {
 
     return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [retry]);
+  }, [retry, deviceId]);
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 28px', animation: 'fadeUp .3s ease' }}>
@@ -377,21 +391,60 @@ export function ScanQR({ store }: { store: WalletStore }) {
         )}
       </div>
 
-      {/* No camera / permission denied? Decode a QR from an image instead:
-          upload a file or paste one straight from the clipboard (Ctrl+V works too). */}
-      <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexShrink: 0 }}>
+      {/* More than one camera? Fully-styled custom picker (no native <select> —
+          its option list can't be themed), same pattern as the network dropdown. */}
+      {devices.length > 1 && !error && (
+        <div style={{ position: 'relative', marginTop: '12px', flexShrink: 0 }}>
+          <button
+            onClick={() => setDevOpen((o) => !o)}
+            style={{ width: '100%', height: '44px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', padding: '0 18px', fontSize: '13px', fontWeight: 700, cursor: 'pointer' }}
+          >
+            <span style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+              {deviceId
+                ? devices.find((d) => d.deviceId === deviceId)?.label || t('scan.device')
+                : `${t('scan.device')} · auto`}
+            </span>
+            <span style={{ fontSize: '9px', opacity: 0.7, transform: devOpen ? 'rotate(180deg)' : 'none', transition: 'transform .2s', flexShrink: 0 }}>▼</span>
+          </button>
+          {devOpen && (
+            <>
+              <div onClick={() => setDevOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
+              <div style={{ position: 'absolute', left: 0, right: 0, top: 'calc(100% + 6px)', zIndex: 31, background: 'var(--bg)', border: '1px solid var(--glass-border)', boxShadow: '0 18px 50px rgba(0,0,0,.5)', borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
+                {[{ id: '', label: `${t('scan.device')} · auto` }, ...devices.map((d, i) => ({ id: d.deviceId, label: d.label || `${t('scan.device')} ${i + 1}` }))].map((opt) => {
+                  const on = opt.id === deviceId;
+                  return (
+                    <div
+                      key={opt.id || 'auto'}
+                      onClick={() => { setDeviceId(opt.id); setDevOpen(false); }}
+                      className="tap"
+                      style={{ display: 'flex', alignItems: 'center', gap: '9px', padding: '11px 13px', borderRadius: '11px', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent', color: 'var(--text)' }}
+                    >
+                      <span style={{ flex: 1, fontSize: '13px', fontWeight: 700, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{opt.label}</span>
+                      {on && <span style={{ color: C.accent, fontWeight: 800, flexShrink: 0 }}>✓</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* No camera / permission denied? Decode a QR from an image instead — the two
+          fallbacks stack full-width so their labels never get cramped. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '14px', flexShrink: 0 }}>
         <button
           onClick={() => fileRef.current?.click()}
-          style={{ flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}
+          style={{ width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M3 16l5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="9" cy="8" r="1.6" fill="currentColor" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M3 16l5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="9" cy="8" r="1.6" fill="currentColor" /></svg>
           {t('scan.upload')}
         </button>
         <button
           onClick={pasteImage}
-          style={{ flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}
+          style={{ width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="12" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="M9 4.5V3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5v1" stroke="currentColor" strokeWidth="1.8" /></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}><rect x="6" y="4" width="12" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="M9 4.5V3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5v1" stroke="currentColor" strokeWidth="1.8" /></svg>
           {t('scan.paste')}
         </button>
       </div>

@@ -108,8 +108,10 @@ for (const f of ['inpage.js', 'content.js', 'sw.js']) {
 const cameraJs =
   "const s=document.getElementById('st');" +
   'navigator.mediaDevices.getUserMedia({video:true}).then((str)=>{str.getTracks().forEach((t)=>t.stop());' +
-  "s.textContent='\\u2705 Permiso de c\\u00e1mara concedido — ya puedes cerrar esta pesta\\u00f1a y volver a la wallet. / Camera permission granted — you can close this tab.';})" +
-  ".catch((e)=>{s.textContent='\\u274c Permiso denegado ('+e.name+'). Act\\u00edvalo desde el icono de c\\u00e1mara en la barra de direcciones. / Permission denied — enable it from the address-bar camera icon.';});";
+  "s.textContent='\\u2705 Permiso concedido — esta pesta\\u00f1a se cerrar\\u00e1 sola. / Permission granted — this tab will close itself.';" +
+  // Script-opened tab -> it may close itself. No black window left behind.
+  'setTimeout(()=>window.close(),900);})' +
+  ".catch((e)=>{s.textContent='\\u274c Permiso denegado ('+e.name+'). Act\\u00edvalo desde el icono de c\\u00e1mara en la barra de direcciones y cierra esta pesta\\u00f1a. / Permission denied — enable it from the address-bar camera icon, then close this tab.';});";
 const cameraHtml =
   '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Cosmos Pay · Cámara</title>' +
   '<style>body{background:#080808;color:#fff;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;text-align:center;margin:0}p{max-width:520px;line-height:1.6;font-size:15px;font-weight:600}</style>' +

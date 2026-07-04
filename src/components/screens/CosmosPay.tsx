@@ -40,7 +40,7 @@ export function CosmosPay({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 104px', animation: 'fadeUp .3s ease' }}>
-      <BackBar title="Cosmos Pay" onBack={() => store.go('profile', 'profile')} />
+      <BackBar title="Cosmos Pay" onBack={() => store.back('profile')} />
       <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '4px 2px 4px' }}>{t('cosmospay.integrationDesc')}</div>
 
       {/* API keys — per network */}

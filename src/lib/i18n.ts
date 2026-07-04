@@ -713,6 +713,7 @@ const T: Record<string, Record<Lang, string>> = {
   'scan.grant': { es: 'Conceder permiso de cámara', en: 'Grant camera permission', pt: 'Conceder permissão de câmara', de: 'Kameraberechtigung erteilen', fr: 'Accorder l’accès à la caméra' },
   'scan.paste': { es: 'Pegar imagen del portapapeles', en: 'Paste image from clipboard', pt: 'Colar imagem da área de transferência', de: 'Bild aus Zwischenablage einfügen', fr: 'Coller une image du presse-papiers' },
   'scan.noClipImg': { es: 'No hay ninguna imagen en el portapapeles.', en: 'There is no image in the clipboard.', pt: 'Não há nenhuma imagem na área de transferência.', de: 'Kein Bild in der Zwischenablage.', fr: 'Aucune image dans le presse-papiers.' },
+  'scan.device': { es: 'Cámara', en: 'Camera', pt: 'Câmara', de: 'Kamera', fr: 'Caméra' },
 
   // ---- operations hub ----
   'ops.title': { es: 'Operaciones', en: 'Operations', pt: 'Operações', de: 'Operationen', fr: 'Opérations' },

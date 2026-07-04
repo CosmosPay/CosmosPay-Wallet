@@ -345,6 +345,13 @@ import WalletApp from '@/components/WalletApp.tsx';
       .tap {
         animation: popIn 0.36s cubic-bezier(0.2, 0.9, 0.25, 1) !important;
       }
+      /* the nav drawer moves as ONE unit — its rows/buttons must not pop in
+         individually (worst when the drawer is restored already-open) */
+      .nav-drawer button,
+      .nav-drawer input,
+      .nav-drawer .tap {
+        animation: none !important;
+      }
       /* hover + tactile press feedback on buttons and tappable elements */
       button,
       .tap {

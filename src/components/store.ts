@@ -277,6 +277,11 @@ export function useWalletStore() {
   const [receivers, setReceivers] = useState<Receiver[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
 
+  // Extension hamburger drawer open-state. Lives HERE (not in the component) so it
+  // survives navigating to a hub screen and back: leave via a drawer shortcut,
+  // press back, and the drawer is still open — no need to reopen it.
+  const [navMenuOpen, setNavMenuOpen] = useState(false);
+
   const [toast, setToast] = useState<Toast | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const flash = useCallback((msg: string, kind: Toast['kind'] = 'info') => {
@@ -1571,10 +1576,38 @@ export function useWalletStore() {
   const checkPassword = useCallback((pwd: string) => verifyPassword(pwd), []);
 
   /* --------------------------- navigation ------------------------- */
-  const go = useCallback((s: Screen, t?: Tab) => {
-    setScreen(s);
-    if (t) setTab(t);
+  /* ------------------------- back navigation ------------------------- */
+  // Remember where each navigation CAME from, so hub screens reachable from several
+  // places (profile rows, the hamburger drawer, operations) can return to their
+  // actual origin instead of a hardcoded one.
+  const prevScreenRef = useRef<Screen>('home');
+  const navigate = useCallback((s: Screen) => {
+    setScreen((cur) => {
+      if (cur !== s) prevScreenRef.current = cur;
+      return s;
+    });
   }, []);
+
+  const go = useCallback(
+    (s: Screen, t?: Tab) => {
+      navigate(s);
+      if (t) setTab(t);
+    },
+    [navigate],
+  );
+
+  /** Go back to the screen the user navigated from. Falls back to `fallback` when
+   *  the origin isn't a stable container (e.g. a transient flow screen). */
+  const back = useCallback(
+    (fallback: Screen = 'home') => {
+      const containers: Screen[] = ['home', 'earn', 'markets', 'profile', 'swap', 'operations', 'settings', 'fiat', 'receive', 'history', 'cosmospay'];
+      const p = prevScreenRef.current;
+      const target = containers.includes(p) ? p : fallback;
+      navigate(target);
+      if (target === 'home' || target === 'earn' || target === 'markets' || target === 'profile') setTab(target);
+    },
+    [navigate],
+  );
 
   return {
     // state
@@ -1631,7 +1664,10 @@ export function useWalletStore() {
     selectedAsset,
     successInfo,
     // setters used by screens
-    setScreen,
+    setScreen: navigate, // tracked: records the origin so back() can return there
+    back,
+    navMenuOpen,
+    setNavMenuOpen,
     setTab,
     setImportText,
     setDraftName,
