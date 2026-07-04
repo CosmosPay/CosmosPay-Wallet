@@ -101,23 +101,66 @@ for (const f of ['inpage.js', 'content.js', 'sw.js']) {
   await cp(join('extension-src', f), join(OUT, f));
 }
 
+// Camera-permission helper page. Extension POPUPS often can't display the camera
+// prompt (the popup closes on focus loss), so the scanner offers a button that opens
+// this page in a full TAB — there the prompt renders fine, and the grant persists
+// for the whole extension origin (the in-popup scanner works from then on).
+const cameraJs =
+  "const s=document.getElementById('st');" +
+  'navigator.mediaDevices.getUserMedia({video:true}).then((str)=>{str.getTracks().forEach((t)=>t.stop());' +
+  "s.textContent='\\u2705 Permiso de c\\u00e1mara concedido — ya puedes cerrar esta pesta\\u00f1a y volver a la wallet. / Camera permission granted — you can close this tab.';})" +
+  ".catch((e)=>{s.textContent='\\u274c Permiso denegado ('+e.name+'). Act\\u00edvalo desde el icono de c\\u00e1mara en la barra de direcciones. / Permission denied — enable it from the address-bar camera icon.';});";
+const cameraHtml =
+  '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Cosmos Pay · Cámara</title>' +
+  '<style>body{background:#080808;color:#fff;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;text-align:center;margin:0}p{max-width:520px;line-height:1.6;font-size:15px;font-weight:600}</style>' +
+  '</head><body><p id="st">Solicitando permiso de cámara… / Requesting camera permission…</p><script src="camera.js"></script></body></html>';
+await writeFile(join(OUT, 'camera.html'), cameraHtml, 'utf8');
+await writeFile(join(OUT, 'camera.js'), cameraJs, 'utf8');
+
+// Store-localised name/description (__MSG_*__ + _locales) — the browser and the
+// web stores pick the right language automatically. Keep descriptions ≤132 chars.
+const LOCALES: Record<string, string> = {
+  en: 'Non-custodial Stellar wallet: send, receive & swap XLM and assets. Your keys never leave your device.',
+  es: 'Wallet no custodial de Stellar: envía, recibe e intercambia XLM y activos. Tus claves nunca salen de tu dispositivo.',
+  pt: 'Carteira não custodial de Stellar: envia, recebe e troca XLM e ativos. As tuas chaves nunca saem do teu dispositivo.',
+  de: 'Nicht-verwahrende Stellar-Wallet: XLM und Assets senden, empfangen, tauschen. Deine Schlüssel bleiben auf deinem Gerät.',
+  fr: 'Portefeuille Stellar non dépositaire : envoie, reçois et échange XLM et actifs. Tes clés restent sur ton appareil.',
+};
+for (const [code, appDesc] of Object.entries(LOCALES)) {
+  await mkdir(join(OUT, '_locales', code), { recursive: true });
+  await writeFile(
+    join(OUT, '_locales', code, 'messages.json'),
+    JSON.stringify(
+      {
+        appName: { message: 'Cosmos Pay — Stellar Wallet' },
+        appDesc: { message: appDesc },
+      },
+      null,
+      2,
+    ),
+    'utf8',
+  );
+}
+
 // MV3 manifest
 const manifest = {
   manifest_version: 3,
-  name: 'Cosmos · Stellar Wallet',
-  version: '1.0.0',
-  description: 'Wallet no custodial de Stellar. Tus claves, tus criptos, en tu navegador.',
+  name: '__MSG_appName__',
+  version: '1.1.0',
+  description: '__MSG_appDesc__',
+  default_locale: 'en',
   action: {
     default_popup: 'index.html',
-    default_title: 'Cosmos Wallet',
+    default_title: '__MSG_appName__',
     default_icon: { '16': 'icons/icon-16.png', '48': 'icons/icon-48.png', '128': 'icons/icon-128.png' },
   },
   icons: { '16': 'icons/icon-16.png', '48': 'icons/icon-48.png', '128': 'icons/icon-128.png' },
   // Chrome uses `service_worker`; Firefox (MV3) uses an event-page `scripts` list.
   background: TARGET === 'firefox' ? { scripts: ['sw.js'] } : { service_worker: 'sw.js' },
   // storage: SW <-> approval-window public "mirror" (address + network + approved origins).
+  // clipboardRead: paste a QR image straight from the clipboard in the scanner.
   // sidePanel (Chrome-only permission): the wallet as a persistent side panel.
-  permissions: ['storage', ...(TARGET === 'chrome' ? ['sidePanel'] : [])],
+  permissions: ['storage', 'clipboardRead', ...(TARGET === 'chrome' ? ['sidePanel'] : [])],
   // Address bar: `pay <web+stellar:…>` hands a SEP-7 link straight to the wallet.
   omnibox: { keyword: 'pay' },
   // Sidebar mode — same app at full viewport (sidepanel.html). Chrome exposes it in
@@ -127,7 +170,7 @@ const manifest = {
     ? {
         sidebar_action: {
           default_panel: 'sidepanel.html',
-          default_title: 'Cosmos Wallet',
+          default_title: '__MSG_appName__',
           default_icon: 'icons/icon-48.png',
           open_at_install: false,
         },
@@ -169,7 +212,7 @@ const manifest = {
   // which the app already reads (readIncomingSep7).
   ...(TARGET === 'firefox'
     ? {
-        protocol_handlers: [{ protocol: 'web+stellar', name: 'Cosmos Wallet', uriTemplate: 'index.html?uri=%s' }],
+        protocol_handlers: [{ protocol: 'web+stellar', name: 'Cosmos Pay', uriTemplate: 'index.html?uri=%s' }],
         browser_specific_settings: { gecko: { id: 'cosmos-wallet@cosmospay.app', strict_min_version: '121.0' } },
       }
     : {}),

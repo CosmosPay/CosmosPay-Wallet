@@ -7,6 +7,7 @@ import { isValidPublicKey } from '@/lib/wallet';
 import { parseStellarQr } from '@/lib/sep7';
 import { copyText, readText } from '@/lib/clipboard';
 import { inspectXdr, signXdr, submitXdr, resolveAssetIssuer, type TxSummary } from '@/lib/stellar';
+import { buildKind } from '@/lib/platform';
 
 /* --------------------------- ADD NETWORK ---------------------------- */
 export function AddNetwork({ store }: { store: WalletStore }) {
@@ -189,25 +190,109 @@ export function ScanQR({ store }: { store: WalletStore }) {
   const t = store.t;
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const [error, setError] = useState('');
+  // Bumping this re-runs the camera effect -> re-triggers the permission prompt.
+  const [retry, setRetry] = useState(0);
+
+  /** Shared for camera + uploaded images: parse the QR text and jump to Send. */
+  const applyScan = (text: string): boolean => {
+    const parsed = parseStellarQr(text);
+    if (!parsed) return false;
+    store.setSend({
+      ...store.send,
+      to: parsed.destination,
+      ...(parsed.amount ? { amount: parsed.amount } : {}),
+      ...(parsed.memo ? { memo: parsed.memo.slice(0, 28) } : {}),
+    });
+    store.setScreen('send');
+    return true;
+  };
+
+  /** Fallback without camera: decode a QR from any image blob (file or clipboard). */
+  const decodeBlob = async (blob: Blob) => {
+    try {
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      await new Promise((res, rej) => {
+        img.onload = res;
+        img.onerror = rej;
+        img.src = url;
+      });
+      const canvas = document.createElement('canvas');
+      // Cap the working size (perf) while keeping enough pixels for dense codes.
+      const scale = Math.min(1, 1400 / Math.max(img.width, img.height));
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('canvas');
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const res = jsQR(data.data, canvas.width, canvas.height); // default also tries inverted
+      if (!res?.data || !applyScan(res.data)) store.flash(t('scan.noQr'), 'err');
+    } catch {
+      store.flash(t('scan.noQr'), 'err');
+    }
+  };
+  const decodeRef = useRef(decodeBlob);
+  decodeRef.current = decodeBlob;
+
+  const onFile = (e: { target: HTMLInputElement }) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (f) void decodeBlob(f);
+  };
+
+  /** Read an image straight from the clipboard (button; Ctrl+V also works below). */
+  const pasteImage = async () => {
+    try {
+      const items = await navigator.clipboard.read();
+      for (const it of items) {
+        const type = it.types.find((tp) => tp.startsWith('image/'));
+        if (type) {
+          void decodeBlob(await it.getType(type));
+          return;
+        }
+      }
+      store.flash(t('scan.noClipImg'), 'info');
+    } catch {
+      store.flash(t('scan.noClipImg'), 'err');
+    }
+  };
+
+  // Ctrl/Cmd+V anywhere on this screen decodes a pasted image too.
+  useEffect(() => {
+    const onPaste = (ev: ClipboardEvent) => {
+      const item = Array.from(ev.clipboardData?.items ?? []).find((i) => i.type.startsWith('image/'));
+      const f = item?.getAsFile();
+      if (f) {
+        ev.preventDefault();
+        void decodeRef.current(f);
+      }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, []);
+
+  /** Extension popups often can't render the camera prompt — open the helper page
+   *  in a full tab, where it can; the grant persists for the extension origin. */
+  const openGrantTab = () => {
+    const ext = globalThis as unknown as { chrome?: any; browser?: any };
+    const url = (ext.chrome ?? ext.browser)?.runtime?.getURL?.('camera.html');
+    if (url) window.open(url, '_blank');
+  };
 
   useEffect(() => {
     let stream: MediaStream | null = null;
     let raf = 0;
     let stopped = false;
+    setError('');
 
+    // Accept a bare G-address or a SEP-0007 payment URI (web+stellar:pay?…).
     const finish = (text: string) => {
-      // Accept a bare G-address or a SEP-0007 payment URI (web+stellar:pay?destination=G…&amount=…&memo=…)
-      const parsed = parseStellarQr(text);
-      if (!parsed) return false;
-      store.setSend({
-        ...store.send,
-        to: parsed.destination,
-        ...(parsed.amount ? { amount: parsed.amount } : {}),
-        ...(parsed.memo ? { memo: parsed.memo.slice(0, 28) } : {}),
-      });
+      if (!applyScan(text)) return false;
       cleanup();
-      store.setScreen('send');
       return true;
     };
 
@@ -256,7 +341,7 @@ export function ScanQR({ store }: { store: WalletStore }) {
 
     return cleanup;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [retry]);
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 28px', animation: 'fadeUp .3s ease' }}>
@@ -264,7 +349,26 @@ export function ScanQR({ store }: { store: WalletStore }) {
       <div style={{ fontSize: '13.5px', color: C.muted, fontWeight: 600, textAlign: 'center', margin: '12px 0 18px' }}>{t('scan.point')}</div>
       <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', borderRadius: '24px', overflow: 'hidden', ...C.glass, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {error ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: C.muted, fontSize: '13.5px', fontWeight: 600, lineHeight: 1.5 }}>{error}</div>
+          <div style={{ padding: '24px', textAlign: 'center', color: C.muted, fontSize: '13.5px', fontWeight: 600, lineHeight: 1.5 }}>
+            {error}
+            {/* In the extension, the popup can't render the camera prompt — this opens
+                camera.html in a tab where the browser CAN ask explicitly. */}
+            {buildKind() === 'ext' && (
+              <button
+                onClick={openGrantTab}
+                style={{ display: 'block', width: '100%', marginTop: '14px', height: '44px', ...C.glassBright, color: 'var(--primary-text)', border: 'none', borderRadius: '999px', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}
+              >
+                {t('scan.grant')}
+              </button>
+            )}
+            {/* Re-running the effect re-calls getUserMedia -> re-asks for permission. */}
+            <button
+              onClick={() => setRetry((r) => r + 1)}
+              style={{ display: 'block', width: '100%', marginTop: '10px', height: '44px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '13px', fontWeight: 800, cursor: 'pointer' }}
+            >
+              {t('scan.retry')}
+            </button>
+          </div>
         ) : (
           <>
             <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -272,6 +376,27 @@ export function ScanQR({ store }: { store: WalletStore }) {
           </>
         )}
       </div>
+
+      {/* No camera / permission denied? Decode a QR from an image instead:
+          upload a file or paste one straight from the clipboard (Ctrl+V works too). */}
+      <div style={{ display: 'flex', gap: '8px', marginTop: '14px', flexShrink: 0 }}>
+        <button
+          onClick={() => fileRef.current?.click()}
+          style={{ flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M3 16l5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="9" cy="8" r="1.6" fill="currentColor" /></svg>
+          {t('scan.upload')}
+        </button>
+        <button
+          onClick={pasteImage}
+          style={{ flex: 1, height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '12.5px', fontWeight: 800, cursor: 'pointer' }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="6" y="4" width="12" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="M9 4.5V3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5v1" stroke="currentColor" strokeWidth="1.8" /></svg>
+          {t('scan.paste')}
+        </button>
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: 'none' }} />
+
       <canvas ref={canvasRef} style={{ display: 'none' }} />
     </div>
   );
@@ -314,7 +439,9 @@ export function Operations({ store }: { store: WalletStore }) {
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 28px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('ops.title')} onBack={() => store.go('home', 'home')} />
       <div style={{ fontSize: '13.5px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '12px 0 18px' }}>{t('ops.desc')}</div>
-      <div style={{ ...C.glass, borderRadius: '18px', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      {/* flexShrink 0: inside a flex-column scroll container the card would otherwise
+          COMPRESS to fit (squashed rows, nothing to scroll) instead of overflowing. */}
+      <div style={{ ...C.glass, borderRadius: '18px', overflow: 'hidden', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
         {rows.map((r, i) => (
           <div key={r.label} style={{ borderBottom: i < rows.length - 1 ? '1px solid var(--hairline)' : 'none' }}>
             <OpRow glyph={r.glyph} label={r.label} sub={r.sub} onClick={r.onClick} />

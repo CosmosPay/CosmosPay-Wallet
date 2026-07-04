@@ -8,6 +8,7 @@ import { shortAddr } from '@/lib/format';
 export function Unlock({ store }: { store: WalletStore }) {
   const t = store.t;
   const [pwd, setPwd] = useState('');
+  const [showPwd, setShowPwd] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [deletingId, setDeletingId] = useState('');
   const [walletOpen, setWalletOpen] = useState(false);
@@ -37,15 +38,37 @@ export function Unlock({ store }: { store: WalletStore }) {
         <div style={{ fontSize: '14px', color: C.muted, fontWeight: 600, marginBottom: '28px' }}>
           {t('unlock.subtitle')}
         </div>
-        <input
-          type="password"
-          value={pwd}
-          autoFocus
-          placeholder={t('pwd.label')}
-          onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          style={{ ...C.glass, ...inputStyle, fontSize: '16px', textAlign: 'center' }}
-        />
+        <div style={{ position: 'relative', width: '100%' }}>
+          <input
+            type={showPwd ? 'text' : 'password'}
+            value={pwd}
+            autoFocus
+            placeholder={t('pwd.label')}
+            onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            style={{ ...C.glass, ...inputStyle, fontSize: '16px', textAlign: 'center', padding: '0 52px' }}
+          />
+          {/* per-field eye toggle, same pattern as the password-setup screen */}
+          <button
+            type="button"
+            onClick={() => setShowPwd((v) => !v)}
+            aria-label={showPwd ? 'Ocultar' : 'Mostrar'}
+            style={{ position: 'absolute', right: '7px', top: '50%', transform: 'translateY(-50%)', width: '40px', height: '40px', border: 'none', background: 'transparent', color: showPwd ? 'var(--text)' : 'var(--dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          >
+            {showPwd ? (
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
+                <path d="M2 12s3.5-7 10-7c2.2 0 4.1.8 5.6 1.9M22 12s-3.5 7-10 7c-2.2 0-4.1-.8-5.6-1.9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+                <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+              </svg>
+            )}
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

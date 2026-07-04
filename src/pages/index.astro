@@ -16,9 +16,10 @@ import WalletApp from '@/components/WalletApp.tsx';
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <meta
       name="description"
-      content="Cosmos — non-custodial Stellar wallet. Your keys, your crypto."
+      content="Cosmos Pay — non-custodial Stellar wallet. Send, receive and swap XLM and Stellar assets, with fiat on/off-ramp. Your keys never leave your device."
     />
-    <title>Cosmos · Stellar Wallet</title>
+    <meta name="application-name" content="Cosmos Pay" />
+    <title>Cosmos Pay · Stellar Wallet</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -214,6 +215,27 @@ import WalletApp from '@/components/WalletApp.tsx';
       @keyframes spin {
         to {
           transform: rotate(360deg);
+        }
+      }
+      /* extension toasts: bottom sheet slides up, then back down */
+      @keyframes toastUp {
+        from {
+          opacity: 0;
+          transform: translateY(130%);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes toastDown {
+        from {
+          opacity: 1;
+          transform: none;
+        }
+        to {
+          opacity: 0;
+          transform: translateY(130%);
         }
       }
 

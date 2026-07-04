@@ -597,6 +597,39 @@ export function Toast({ toast }: { toast: WalletStore['toast'] }) {
       ? 'rgba(210,64,64,.92)'
       : 'var(--glass-bg)';
   const fg = shown.kind === 'ok' ? 'var(--on-accent)' : shown.kind === 'err' ? '#fff' : 'var(--text)';
+
+  // Extension (popup/side panel): a bottom card that slides up for a moment and
+  // slides back down — less intrusive than a centered overlay in a small surface.
+  // Fixed to the viewport so it never sinks below the visible area.
+  if (buildKind() === 'ext') {
+    return (
+      <div style={{ position: 'fixed', left: '14px', right: '14px', bottom: '14px', zIndex: 80, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
+        <div
+          key={shown.msg}
+          style={{
+            width: '100%',
+            maxWidth: '380px',
+            background: bg,
+            backdropFilter: 'blur(20px) saturate(150%)',
+            WebkitBackdropFilter: 'blur(20px) saturate(150%)',
+            border: '1px solid rgba(255,255,255,.16)',
+            color: fg,
+            borderRadius: '16px',
+            padding: '13px 16px',
+            fontSize: '13.5px',
+            fontWeight: 700,
+            textAlign: 'center',
+            lineHeight: 1.45,
+            boxShadow: '0 14px 40px rgba(0,0,0,.45)',
+            animation: leaving ? 'toastDown .23s ease forwards' : 'toastUp .3s cubic-bezier(.2,.9,.3,1)',
+          }}
+        >
+          {shown.msg}
+        </div>
+      </div>
+    );
+  }
+
   return (
     // Flex-centered overlay so the card is centered from the first frame; only the
     // inner card scales in (animating transform on the card itself would fight the

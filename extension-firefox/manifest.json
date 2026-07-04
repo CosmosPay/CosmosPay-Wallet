@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Cosmos · Stellar Wallet",
-  "version": "1.0.0",
-  "description": "Wallet no custodial de Stellar. Tus claves, tus criptos, en tu navegador.",
+  "name": "__MSG_appName__",
+  "version": "1.1.0",
+  "description": "__MSG_appDesc__",
+  "default_locale": "en",
   "action": {
     "default_popup": "index.html",
-    "default_title": "Cosmos Wallet",
+    "default_title": "__MSG_appName__",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",
@@ -23,14 +24,15 @@
     ]
   },
   "permissions": [
-    "storage"
+    "storage",
+    "clipboardRead"
   ],
   "omnibox": {
     "keyword": "pay"
   },
   "sidebar_action": {
     "default_panel": "sidepanel.html",
-    "default_title": "Cosmos Wallet",
+    "default_title": "__MSG_appName__",
     "default_icon": "icons/icon-48.png",
     "open_at_install": false
   },
@@ -72,7 +74,7 @@
   "protocol_handlers": [
     {
       "protocol": "web+stellar",
-      "name": "Cosmos Wallet",
+      "name": "Cosmos Pay",
       "uriTemplate": "index.html?uri=%s"
     }
   ],

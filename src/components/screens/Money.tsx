@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, GhostButton, BackBar, NumberPad, Spinner, AssetLogo, Logo, inputStyle, EnableReceivingCard } from '@/components/parts';
+import { C, PrimaryButton, GhostButton, BackBar, Spinner, AssetLogo, Logo, inputStyle, EnableReceivingCard } from '@/components/parts';
 import { qrDataUrl } from '@/lib/qr';
 import { buildSep7Pay } from '@/lib/sep7';
 import { copyText, readText } from '@/lib/clipboard';
@@ -8,21 +8,6 @@ import { fmt, trim, shortAddr } from '@/lib/format';
 import { explorerTxUrl, networkEnv, normalizeAmount, type HistoryOp } from '@/lib/stellar';
 import { isValidPublicKey } from '@/lib/wallet';
 import type { SwapQuote, PayIntent } from '@/lib/cosmospay';
-
-/** Numeric keypad editing with Stellar's 7-decimal limit. */
-function editAmount(v: string, d: string): string {
-  let next = v;
-  if (d === 'back') {
-    next = v.length <= 1 ? '0' : v.slice(0, -1);
-  } else if (d === '.') {
-    if (!v.includes('.')) next = v + '.';
-  } else {
-    next = v === '0' ? d : v + d;
-  }
-  if (next.includes('.') && next.split('.')[1].length > 7) return v;
-  if (next.replace('.', '').replace(/^0+/, '').length > 12) return v;
-  return next;
-}
 
 function spendableXlm(store: WalletStore): number {
   const acc = store.account;
@@ -162,7 +147,14 @@ export function Send({ store }: { store: WalletStore }) {
   const ok = addrValid && amtValid;
 
   const setPct = (p: number) => store.setSend({ ...s, amount: String(Math.floor(avail * p * 1e7) / 1e7) });
-  const key = (d: string) => store.setSend({ ...s, amount: editAmount(s.amount, d) });
+  // Direct keyboard editing (no on-screen pad): digits + one dot, 7 decimals max.
+  const editAmountInput = (raw: string) => {
+    let v = raw.replace(',', '.').replace(/[^\d.]/g, '');
+    const dot = v.indexOf('.');
+    if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '').slice(0, 7);
+    if (v.replace('.', '').length > 12) return;
+    store.setSend({ ...s, amount: v });
+  };
   const pastePayUrl = async () => {
     const txt = (await readText())?.trim();
     if (txt && store.applySep7(txt)) return;
@@ -190,21 +182,41 @@ export function Send({ store }: { store: WalletStore }) {
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><path d="M14 14h3v3M21 14v.01M21 21v-4M14 21h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
         </button>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', margin: '6px 2px 4px', minHeight: '20px' }}>
-        <button onClick={pastePayUrl} style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: '6px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', padding: '7px 13px', fontSize: '12px', fontWeight: 800, cursor: 'pointer' }}>
-          ⛓ {t('ops.pastePay')}
-        </button>
-        <span style={{ fontSize: '12px', fontWeight: 700, color: !s.to ? 'transparent' : addrValid ? C.accent : C.danger, textAlign: 'right' }}>
-          {!s.to ? '·' : addrValid ? t('send.validAddr') : t('send.invalidAddr')}
-        </span>
-      </div>
+      {/* Standard-sized control (48px pill), snug under the address row; the
+          validity note only takes space once there's something to validate. */}
+      <button onClick={pastePayUrl} style={{ width: '100%', height: '48px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', ...C.glassSoft, color: 'var(--text)', border: 'none', borderRadius: '999px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer', marginTop: '8px' }}>
+        ⛓ {t('ops.pastePay')}
+      </button>
+      {s.to && (
+        <div style={{ fontSize: '12px', fontWeight: 700, color: addrValid ? C.accent : C.danger, textAlign: 'right', margin: '6px 2px 0' }}>
+          {addrValid ? t('send.validAddr') : t('send.invalidAddr')}
+        </div>
+      )}
 
       <div style={{ textAlign: 'center', padding: '10px 0 4px' }}>
-        {/* asset selector sits right next to the amount for a clear, fast edit */}
+        {/* asset selector sits right next to the amount; the amount is a real input
+            (system keyboard) — no on-screen pad needed on any device */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
-          <div style={{ fontSize: '44px', fontWeight: 800, letterSpacing: '-1.5px', fontVariantNumeric: 'tabular-nums' }}>
-            {s.amount}
-          </div>
+          <input
+            value={s.amount}
+            onChange={(e) => editAmountInput((e.target as HTMLInputElement).value)}
+            inputMode="decimal"
+            placeholder="0"
+            style={{
+              width: `${Math.max(1, s.amount.length || 1)}ch`,
+              maxWidth: '230px',
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              color: 'var(--text)',
+              fontSize: '44px',
+              fontWeight: 800,
+              letterSpacing: '-1.5px',
+              fontVariantNumeric: 'tabular-nums',
+              textAlign: 'center',
+              padding: 0,
+            }}
+          />
           <AssetPicker store={store} />
         </div>
         <div style={{ marginTop: '10px', fontSize: '13px', color: C.dim, fontWeight: 600 }}>
@@ -218,15 +230,15 @@ export function Send({ store }: { store: WalletStore }) {
         ))}
       </div>
 
+      {/* memo: standard input metrics (54px pill, 15px type) like every other field */}
       <input
         value={s.memo}
         onChange={(e) => store.setSend({ ...s, memo: (e.target as HTMLInputElement).value.slice(0, 28) })}
         placeholder={t('send.memo')}
-        style={{ ...C.glass, ...inputStyle, fontSize: '13px', marginBottom: '12px' }}
+        style={{ ...C.glass, ...inputStyle, marginBottom: '12px' }}
       />
 
-      <NumberPad onKey={key} />
-      <div style={{ height: '12px' }} />
+      <div style={{ flex: 1, minHeight: '12px' }} />
       <PrimaryButton disabled={!ok} onClick={() => store.setScreen('confirm')}>
         {amt > avail && amt > 0 ? t('send.insufficient') : t('common.continue')}
       </PrimaryButton>
@@ -260,7 +272,7 @@ export function Confirm({ store }: { store: WalletStore }) {
   if (s.memo) rows.push([t('confirm.memo'), s.memo]);
 
   return (
-    <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '2px 20px 24px', animation: 'fadeUp .3s ease' }}>
+    <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 20px 24px', animation: 'fadeUp .3s ease' }}>
       <BackBar title={t('confirm.title')} onBack={() => store.setScreen('send')} />
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '20px 0 8px' }}>
         <AssetLogo code={code} size={64} />
@@ -268,7 +280,8 @@ export function Confirm({ store }: { store: WalletStore }) {
       <div style={{ textAlign: 'center', fontSize: '30px', fontWeight: 800, letterSpacing: '-1px', marginBottom: '4px' }}>{normalized} {code}</div>
       <div style={{ textAlign: 'center', fontSize: '14px', color: C.dim, fontWeight: 600, marginBottom: '26px' }}>{price > 0 ? `≈ $${fmt(amt * price, 2)}` : ' '}</div>
 
-      <div style={{ ...C.glass, borderRadius: '18px', padding: '6px 18px' }}>
+      {/* flexShrink 0: don't let the details card compress inside the scroll column. */}
+      <div style={{ ...C.glass, borderRadius: '18px', padding: '6px 18px', flexShrink: 0 }}>
         {rows.map((r, i) => (
           <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 0', borderBottom: i < rows.length - 1 ? '1px solid var(--hairline)' : 'none', gap: '12px' }}>
             <span style={{ color: C.muted, fontSize: '14px', fontWeight: 600 }}>{r[0]}</span>
@@ -280,7 +293,7 @@ export function Confirm({ store }: { store: WalletStore }) {
         ))}
       </div>
 
-      <div style={{ flex: 1 }} />
+      <div style={{ flex: 1, minHeight: '14px' }} />
       <PrimaryButton disabled={store.busy} onClick={() => store.submitSend()}>
         {store.busy ? <Spinner /> : t('confirm.cta')}
       </PrimaryButton>
@@ -546,7 +559,10 @@ function SwapTokenSelect({
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-          <div style={{ position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 31, minWidth: '210px', ...C.glass, borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
+          {/* Opaque menu (not translucent glass): the swap cards create their own
+              backdrop-filter stacking contexts, so a see-through menu over them reads
+              as mush — a solid --bg surface + shadow keeps every row legible. */}
+          <div style={{ position: 'absolute', left: 0, top: 'calc(100% + 6px)', zIndex: 31, minWidth: '210px', background: 'var(--bg)', border: '1px solid var(--glass-border)', boxShadow: '0 18px 50px rgba(0,0,0,.5)', borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
             {assets.map((a) => {
               const on = a.code === code;
               return (

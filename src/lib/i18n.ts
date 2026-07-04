@@ -707,6 +707,12 @@ const T: Record<string, Record<Lang, string>> = {
   'scan.title': { es: 'Escanea un código QR', en: 'Scan a QR code', pt: 'Lê um código QR', de: 'QR-Code scannen', fr: 'Scanne un code QR' },
   'scan.point': { es: 'Apunta la cámara al QR de una dirección Stellar.', en: 'Point the camera at a Stellar address QR.', pt: 'Aponta a câmara ao QR de um endereço Stellar.', de: 'Richte die Kamera auf einen Stellar-Adressen-QR.', fr: 'Pointe la caméra vers un QR d’adresse Stellar.' },
   'scan.denied': { es: 'No se pudo acceder a la cámara. Revisa los permisos.', en: 'Couldn’t access the camera. Check permissions.', pt: 'Não foi possível aceder à câmara. Verifica as permissões.', de: 'Kamerazugriff fehlgeschlagen. Berechtigungen prüfen.', fr: 'Accès à la caméra impossible. Vérifie les autorisations.' },
+  'scan.retry': { es: 'Permitir cámara y reintentar', en: 'Allow camera & retry', pt: 'Permitir câmara e tentar de novo', de: 'Kamera erlauben & erneut versuchen', fr: 'Autoriser la caméra et réessayer' },
+  'scan.upload': { es: 'Subir una imagen del QR', en: 'Upload a QR image', pt: 'Carregar uma imagem do QR', de: 'QR-Bild hochladen', fr: 'Importer une image du QR' },
+  'scan.noQr': { es: 'No se encontró un código QR válido en la imagen.', en: 'No valid QR code found in the image.', pt: 'Nenhum código QR válido encontrado na imagem.', de: 'Kein gültiger QR-Code im Bild gefunden.', fr: 'Aucun code QR valide trouvé dans l’image.' },
+  'scan.grant': { es: 'Conceder permiso de cámara', en: 'Grant camera permission', pt: 'Conceder permissão de câmara', de: 'Kameraberechtigung erteilen', fr: 'Accorder l’accès à la caméra' },
+  'scan.paste': { es: 'Pegar imagen del portapapeles', en: 'Paste image from clipboard', pt: 'Colar imagem da área de transferência', de: 'Bild aus Zwischenablage einfügen', fr: 'Coller une image du presse-papiers' },
+  'scan.noClipImg': { es: 'No hay ninguna imagen en el portapapeles.', en: 'There is no image in the clipboard.', pt: 'Não há nenhuma imagem na área de transferência.', de: 'Kein Bild in der Zwischenablage.', fr: 'Aucune image dans le presse-papiers.' },
 
   // ---- operations hub ----
   'ops.title': { es: 'Operaciones', en: 'Operations', pt: 'Operações', de: 'Operationen', fr: 'Opérations' },
