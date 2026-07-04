@@ -31,29 +31,11 @@
  * vars — they ship to the client.
  */
 import { Keypair } from '@stellar/stellar-sdk';
-
-const ENV = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
-
-/**
- * Cosmos Developer Platform base (provisioning). EMPTY by default so requests
- * are same-origin (`/api/...`) and handled by the Vite dev proxy — no CORS.
- * Set PUBLIC_COSMOS_DEV_PLATFORM_URL to an absolute URL for prod / native.
- */
-const DEV_PLATFORM_URL = ENV.PUBLIC_COSMOS_DEV_PLATFORM_URL || '';
-/**
- * APISIX gateway base that fronts the payments API. EMPTY by default so
- * requests are same-origin and proxied in dev (see above).
- */
-const COSMOS_GATEWAY_URL = ENV.PUBLIC_COSMOS_GATEWAY_URL || '';
-/**
- * APISIX exposes the payments API behind an entry prefix (default `/cosmos-api`),
- * which the gateway route strips before forwarding to the community-server. So the
- * real swap paths are `/cosmos-api/v1/swaps/...` — hitting `/v1/...` directly 404s at
- * the gateway. Override the prefix via PUBLIC_COSMOS_GATEWAY_ENTRY if your route differs.
- */
-const GATEWAY_ENTRY = ENV.PUBLIC_COSMOS_GATEWAY_ENTRY || '/cosmos-api';
-/** Full gateway API base, e.g. `/cosmos-api` in dev (proxied to APISIX). */
-const GATEWAY_API = `${COSMOS_GATEWAY_URL}${GATEWAY_ENTRY}`;
+// Endpoint bases (dev-platform + APISIX gateway) live in lib/endpoints: resolved
+// per request as developer-mode override -> PUBLIC_* env -> same-origin default,
+// so a dev can repoint them live from Settings without rebuilding. The gateway
+// still exposes the payments API behind an entry prefix (default `/cosmos-api`).
+import { devPlatformUrl, gatewayApi } from '@/lib/endpoints';
 
 /** Default slippage tolerance for swaps (0.5%). */
 export const DEFAULT_SLIPPAGE_BPS = 50;
@@ -267,7 +249,7 @@ export async function registerCosmosAccount(input: {
   const nonce = makeNonce();
   const signature = signRegistrationMessage(input.secret, input.email, input.stellarAddress, nonce);
   return postJson<RegisterResult>(
-    `${DEV_PLATFORM_URL}/api/wallet/register`,
+    `${devPlatformUrl()}/api/wallet/register`,
     {
       email: input.email,
       name: input.name,
@@ -290,7 +272,7 @@ export async function claimCosmosAccount(input: {
   claimToken: string;
 }): Promise<ClaimResult> {
   return postJson<ClaimResult>(
-    `${DEV_PLATFORM_URL}/api/wallet/claim`,
+    `${devPlatformUrl()}/api/wallet/claim`,
     { stellarAddress: input.stellarAddress, claimToken: input.claimToken },
     {},
     true,
@@ -326,7 +308,7 @@ export async function linkCosmosAccount(input: {
   const nonce = makeNonce();
   const signature = signLinkMessage(input.secret, input.email, input.stellarAddress, nonce);
   return postJson<LinkStartResult>(
-    `${DEV_PLATFORM_URL}/api/wallet/link`,
+    `${devPlatformUrl()}/api/wallet/link`,
     {
       email: input.email,
       name: input.name,
@@ -349,7 +331,7 @@ export async function verifyCosmosLink(input: {
   code: string;
 }): Promise<LinkVerifyResult> {
   return postJson<LinkVerifyResult>(
-    `${DEV_PLATFORM_URL}/api/wallet/link/verify`,
+    `${devPlatformUrl()}/api/wallet/link/verify`,
     { stellarAddress: input.stellarAddress, claimToken: input.claimToken, code: input.code },
     {},
     true,
@@ -363,7 +345,7 @@ function authHeaders(apiKey: string): Record<string, string> {
 /** Quote a swap. The commission is enforced server-side by the org's plan. */
 export async function quoteSwap(apiKey: string, input: QuoteSwapInput): Promise<SwapQuote> {
   return postJson<SwapQuote>(
-    `${GATEWAY_API}/v1/swaps/quote`,
+    `${gatewayApi()}/v1/swaps/quote`,
     input,
     authHeaders(apiKey),
     false,
@@ -372,7 +354,7 @@ export async function quoteSwap(apiKey: string, input: QuoteSwapInput): Promise<
 
 /** Create a swap. The returned Swap carries the unsigned `xdr` to sign locally. */
 export async function createSwap(apiKey: string, input: CreateSwapInput): Promise<Swap> {
-  return postJson<Swap>(`${GATEWAY_API}/v1/swaps`, input, authHeaders(apiKey), false);
+  return postJson<Swap>(`${gatewayApi()}/v1/swaps`, input, authHeaders(apiKey), false);
 }
 
 /** Submit a locally signed XDR for an existing swap. */
@@ -382,7 +364,7 @@ export async function submitSwap(
   signedXdr: string,
 ): Promise<SubmitResult> {
   return postJson<SubmitResult>(
-    `${GATEWAY_API}/v1/swaps/${encodeURIComponent(id)}/submit`,
+    `${gatewayApi()}/v1/swaps/${encodeURIComponent(id)}/submit`,
     { signedXdr },
     authHeaders(apiKey),
     false,
@@ -420,7 +402,7 @@ export interface PayIntent {
  * the payment reconciles, and returns the URI + QR to hand to a friend. Needs `payments:write`.
  */
 export async function createPayLink(apiKey: string, input: PayLinkInput): Promise<PayIntent> {
-  return postJson<PayIntent>(`${GATEWAY_API}/v1/payment-intents/pay`, input, authHeaders(apiKey), false);
+  return postJson<PayIntent>(`${gatewayApi()}/v1/payment-intents/pay`, input, authHeaders(apiKey), false);
 }
 
 /* --------------------------- fiat (BlindPay) --------------------------- */
@@ -494,7 +476,7 @@ export interface CreateReceiverInput {
  *  ID + selfie — upload them first with uploadKycDoc and pass the returned file_urls). */
 export async function createReceiver(apiKey: string, input: CreateReceiverInput): Promise<Receiver> {
   const body = { type: 'individual', kyc_type: 'standard', ...input };
-  return postJson<Receiver>(`${GATEWAY_API}/v1/kyc/receivers`, body, authHeaders(apiKey), false);
+  return postJson<Receiver>(`${gatewayApi()}/v1/kyc/receivers`, body, authHeaders(apiKey), false);
 }
 
 /** Upload a KYC document (multipart) and return its `file_url`. Needs `kyc:write`. */
@@ -503,7 +485,7 @@ export async function uploadKycDoc(apiKey: string, file: Blob, bucket = 'onboard
   form.append('file', file);
   form.append('bucket', bucket);
   // Note: no Content-Type header — the browser sets the multipart boundary itself.
-  const res = await fetch(`${GATEWAY_API}/v1/kyc/upload`, {
+  const res = await fetch(`${gatewayApi()}/v1/kyc/upload`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
@@ -522,18 +504,18 @@ export async function uploadKycDoc(apiKey: string, file: Blob, bucket = 'onboard
 }
 
 export async function listReceivers(apiKey: string): Promise<Receiver[]> {
-  const res = await getJson<Receiver[] | { data?: Receiver[] }>(`${GATEWAY_API}/v1/kyc/receivers`, apiKey);
+  const res = await getJson<Receiver[] | { data?: Receiver[] }>(`${gatewayApi()}/v1/kyc/receivers`, apiKey);
   return Array.isArray(res) ? res : res.data ?? [];
 }
 
 export async function getReceiver(apiKey: string, id: string): Promise<Receiver> {
-  return getJson<Receiver>(`${GATEWAY_API}/v1/kyc/receivers/${encodeURIComponent(id)}`, apiKey);
+  return getJson<Receiver>(`${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(id)}`, apiKey);
 }
 
 /** Message the wallet must sign to prove ownership when registering its Stellar address. */
 export async function receiverSignMessage(apiKey: string, receiverId: string): Promise<{ message: string }> {
   return getJson<{ message: string }>(
-    `${GATEWAY_API}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/wallets/sign-message`,
+    `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/wallets/sign-message`,
     apiKey,
   );
 }
@@ -554,7 +536,7 @@ export async function addReceiverWallet(
   body: { name: string; network: string; address: string; signature_tx_hash?: string },
 ): Promise<RegisteredWallet> {
   return postJson<RegisteredWallet>(
-    `${GATEWAY_API}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/wallets`,
+    `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/wallets`,
     body,
     authHeaders(apiKey),
     false,
@@ -564,7 +546,7 @@ export async function addReceiverWallet(
 /** List the Stellar/blockchain wallets registered to a receiver. */
 export async function listReceiverWallets(apiKey: string, receiverId: string): Promise<RegisteredWallet[]> {
   const res = await getJson<RegisteredWallet[] | { data?: RegisteredWallet[] }>(
-    `${GATEWAY_API}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/wallets`,
+    `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/wallets`,
     apiKey,
   );
   return Array.isArray(res) ? res : res.data ?? [];
@@ -572,7 +554,7 @@ export async function listReceiverWallets(apiKey: string, receiverId: string): P
 
 export async function requestTos(apiKey: string, receiverId: string, redirectUrl: string): Promise<{ url?: string }> {
   return postJson<{ url?: string }>(
-    `${GATEWAY_API}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/tos`,
+    `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/tos`,
     { redirect_url: redirectUrl, channel: 'email' },
     authHeaders(apiKey),
     false,
@@ -581,7 +563,7 @@ export async function requestTos(apiKey: string, receiverId: string, redirectUrl
 
 export async function enableReceiver(apiKey: string, receiverId: string, tosId: string): Promise<Receiver> {
   return postJson<Receiver>(
-    `${GATEWAY_API}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/enable`,
+    `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/enable`,
     { tos_id: tosId },
     authHeaders(apiKey),
     false,
@@ -603,7 +585,7 @@ export interface BankAccount {
 /** Add a payout bank account to a receiver (e.g. PIX in Brazil). */
 export async function addBankAccount(apiKey: string, receiverId: string, body: Record<string, unknown>): Promise<BankAccount> {
   return postJson<BankAccount>(
-    `${GATEWAY_API}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/bank-accounts`,
+    `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/bank-accounts`,
     body,
     authHeaders(apiKey),
     false,
@@ -612,7 +594,7 @@ export async function addBankAccount(apiKey: string, receiverId: string, body: R
 
 export async function listBankAccounts(apiKey: string, receiverId: string): Promise<BankAccount[]> {
   const res = await getJson<BankAccount[] | { data?: BankAccount[] }>(
-    `${GATEWAY_API}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/bank-accounts`,
+    `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/bank-accounts`,
     apiKey,
   );
   return Array.isArray(res) ? res : res.data ?? [];
@@ -621,7 +603,7 @@ export async function listBankAccounts(apiKey: string, receiverId: string): Prom
 /** Delete a payout/deposit bank account from a receiver. */
 export async function deleteBankAccount(apiKey: string, receiverId: string, accountId: string): Promise<void> {
   const res = await fetch(
-    `${GATEWAY_API}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/bank-accounts/${encodeURIComponent(accountId)}`,
+    `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/bank-accounts/${encodeURIComponent(accountId)}`,
     { method: 'DELETE', headers: authHeaders(apiKey) },
   );
   if (!res.ok) {
@@ -699,7 +681,7 @@ export interface PayinQuote {
 }
 
 export async function onrampQuote(apiKey: string, input: PayinQuoteInput): Promise<PayinQuote> {
-  return postJson<PayinQuote>(`${GATEWAY_API}/v1/onramp/quotes`, input, authHeaders(apiKey), false);
+  return postJson<PayinQuote>(`${gatewayApi()}/v1/onramp/quotes`, input, authHeaders(apiKey), false);
 }
 
 /** Payment instructions returned to the payer (only the keys for that rail are present). */
@@ -731,7 +713,7 @@ export interface Payin {
 }
 
 export async function createPayin(apiKey: string, payinQuoteId: string): Promise<Payin> {
-  return postJson<Payin>(`${GATEWAY_API}/v1/onramp/payins`, { payin_quote_id: payinQuoteId }, authHeaders(apiKey), false);
+  return postJson<Payin>(`${gatewayApi()}/v1/onramp/payins`, { payin_quote_id: payinQuoteId }, authHeaders(apiKey), false);
 }
 
 /* ---- offramp (crypto -> fiat) ---- */
@@ -754,7 +736,7 @@ export interface PayoutQuote {
 }
 
 export async function offrampQuote(apiKey: string, input: PayoutQuoteInput): Promise<PayoutQuote> {
-  return postJson<PayoutQuote>(`${GATEWAY_API}/v1/offramp/quotes`, input, authHeaders(apiKey), false);
+  return postJson<PayoutQuote>(`${gatewayApi()}/v1/offramp/quotes`, input, authHeaders(apiKey), false);
 }
 
 /** Build the unsigned Stellar tx for a payout. Pass-through from BlindPay — see extractUnsignedXdr. */
@@ -762,7 +744,7 @@ export async function authorizePayout(
   apiKey: string,
   body: { quote_id: string; sender_wallet_address: string; chain: 'stellar' | 'solana' },
 ): Promise<Record<string, unknown>> {
-  return postJson<Record<string, unknown>>(`${GATEWAY_API}/v1/offramp/payouts/authorize`, body, authHeaders(apiKey), false);
+  return postJson<Record<string, unknown>>(`${gatewayApi()}/v1/offramp/payouts/authorize`, body, authHeaders(apiKey), false);
 }
 
 export interface Payout {
@@ -783,5 +765,5 @@ export async function createPayout(
   apiKey: string,
   body: { quote_id: string; sender_wallet_address: string; chain: 'stellar' | 'solana'; signed_transaction: string },
 ): Promise<Payout> {
-  return postJson<Payout>(`${GATEWAY_API}/v1/offramp/payouts`, body, authHeaders(apiKey), false);
+  return postJson<Payout>(`${gatewayApi()}/v1/offramp/payouts`, body, authHeaders(apiKey), false);
 }

@@ -276,7 +276,8 @@ function AssetListRow({ row, chg, fav, onFav, onClick, delay = 0 }: { row: Asset
             onClick={(e) => { e.stopPropagation(); onFav(); }}
             className="tap"
             title="Favorito"
-            style={{ fontSize: '17px', lineHeight: 1, color: fav ? '#f7c948' : C.dimmer, padding: '4px', cursor: 'pointer' }}
+            // generous 36px hit area — a tiny star is too fiddly to tap
+            style={{ width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '23px', lineHeight: 1, color: fav ? '#f7c948' : C.dimmer, cursor: 'pointer', flexShrink: 0, marginRight: '-6px' }}
           >
             {fav ? '★' : '☆'}
           </span>

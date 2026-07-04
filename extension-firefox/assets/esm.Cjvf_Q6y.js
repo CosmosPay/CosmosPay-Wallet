@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/web.CFUQ_iRB.js","assets/jsx-runtime.Bm5rwPgr.js","assets/react.D3PhkUz-.js"])))=>i.map(i=>d[i]);
+import{Q as e,nt as t}from"./jsx-runtime.Bm5rwPgr.js";var n=t(`Preferences`,{web:()=>e(()=>import(`./web.CFUQ_iRB.js`).then(e=>new e.PreferencesWeb),__vite__mapDeps([0,1,2]))});export{n as Preferences};

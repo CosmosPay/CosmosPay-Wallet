@@ -9,6 +9,7 @@ import { changePassword } from '@/lib/vault';
 import { LANGUAGES } from '@/lib/i18n';
 import { APP_VERSION } from '@/lib/config';
 import { buildKind, platformName } from '@/lib/platform';
+import { ENDPOINT_FIELDS, devModeEnabled, setDevMode, getOverrides, setOverride, resetOverrides, type EndpointOverrides } from '@/lib/endpoints';
 
 export function Settings({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -67,6 +68,8 @@ export function Settings({ store }: { store: WalletStore }) {
         {pwOpen && <ChangePassword store={store} onDone={() => setPwOpen(false)} />}
       </Section>
 
+      <DevModeSection store={store} />
+
       <Section title={t('settings.danger')}>
         {!confirmDelete ? (
           <button onClick={() => setConfirmDelete(true)} style={{ width: '100%', background: 'rgba(255,93,93,.10)', color: C.danger, border: '1px solid rgba(255,93,93,.24)', borderRadius: '14px', padding: '15px', fontSize: '15px', fontWeight: 800, cursor: 'pointer' }}>
@@ -114,6 +117,64 @@ function ChangePassword({ store, onDone }: { store: WalletStore; onDone: () => v
       <Field label={t('settings.newPwd')} value={next} onChange={setNext} type="password" placeholder={t('pwd.min')} />
       <PrimaryButton disabled={!ok} onClick={submit}>{busy ? <Spinner /> : t('settings.savePwd')}</PrimaryButton>
     </div>
+  );
+}
+
+/** Developer mode: live-overridable endpoints (prices API, Developer Platform,
+ *  payments gateway). Persisted in localStorage; getters in lib/endpoints resolve
+ *  per request, so changes apply immediately. Empty field = default value. */
+function DevModeSection({ store }: { store: WalletStore }) {
+  const t = store.t;
+  const [on, setOn] = useState(devModeEnabled());
+  const [vals, setVals] = useState<Record<string, string>>(() => {
+    const ov = getOverrides();
+    return Object.fromEntries(ENDPOINT_FIELDS.map((f) => [f.key, ov[f.key] ?? '']));
+  });
+
+  const toggle = () => {
+    const next = !on;
+    setOn(next);
+    setDevMode(next);
+  };
+  const change = (key: keyof EndpointOverrides, v: string) => {
+    setVals((s) => ({ ...s, [key]: v }));
+    setOverride(key, v);
+  };
+  const reset = () => {
+    resetOverrides();
+    setVals(Object.fromEntries(ENDPOINT_FIELDS.map((f) => [f.key, ''])));
+  };
+
+  return (
+    <Section title={t('settings.devMode')}>
+      <div onClick={toggle} className="tap" style={{ ...C.glass, borderRadius: '14px', padding: '14px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
+        <span style={{ fontSize: '14px', fontWeight: 800 }}>{t('settings.devMode')}</span>
+        <div style={{ width: '44px', height: '26px', borderRadius: '999px', background: on ? C.accent : 'var(--surface)', border: '1px solid var(--glass-border)', position: 'relative', transition: 'background .2s ease', flexShrink: 0 }}>
+          <div style={{ position: 'absolute', top: '2px', left: on ? '20px' : '2px', width: '20px', height: '20px', borderRadius: '50%', background: on ? 'var(--on-accent)' : 'var(--text)', opacity: on ? 1 : 0.5, transition: 'left .2s ease' }} />
+        </div>
+      </div>
+
+      {on && (
+        <div style={{ marginTop: '12px' }}>
+          <div style={{ fontSize: '12.5px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '0 2px 12px' }}>{t('settings.devModeDesc')}</div>
+          {ENDPOINT_FIELDS.map((f) => (
+            <label key={f.key} style={{ display: 'block', marginBottom: '12px' }}>
+              <div style={{ fontSize: '12px', color: C.dim, fontWeight: 700, marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '.5px' }}>{t(f.labelKey)}</div>
+              <input
+                value={vals[f.key] ?? ''}
+                placeholder={f.getDefault() || '(same-origin)'}
+                onChange={(e) => change(f.key, (e.target as HTMLInputElement).value)}
+                spellCheck={false}
+                style={{ ...C.glass, ...inputStyle, height: '46px', fontSize: '13px', fontFamily: 'ui-monospace, Menlo, monospace', fontWeight: 600 }}
+              />
+            </label>
+          ))}
+          <button onClick={reset} style={{ width: '100%', background: C.cardSolid, color: 'var(--text)', border: '1px solid var(--glass-border)', borderRadius: '999px', padding: '13px', fontSize: '13.5px', fontWeight: 800, cursor: 'pointer' }}>
+            {t('settings.devReset')}
+          </button>
+        </div>
+      )}
+    </Section>
   );
 }
 

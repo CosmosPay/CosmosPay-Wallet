@@ -15,6 +15,7 @@ import {
   Operation,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
+import { coingeckoBase } from '@/lib/endpoints';
 
 // A network is identified by an id; built-ins are testnet/public, plus any
 // custom networks the user adds (own Horizon + passphrase).
@@ -495,9 +496,9 @@ export interface PriceInfo {
   change24h: number; // percent
 }
 
-// Stellar-ecosystem assets only.
-const COINGECKO =
-  'https://api.coingecko.com/api/v3/simple/price?ids=stellar,usd-coin,euro-coin,aquarius&vs_currencies=usd&include_24hr_change=true';
+// Stellar-ecosystem assets only. Base is dev-mode-overridable (see lib/endpoints).
+const COINGECKO_PATH =
+  '/api/v3/simple/price?ids=stellar,usd-coin,euro-coin,aquarius&vs_currencies=usd&include_24hr_change=true';
 
 // USDT does not exist as a native Stellar asset — Stellar's fiat stables are USDC & EURC.
 const CG_IDS: Record<string, string> = {
@@ -510,7 +511,7 @@ const CG_IDS: Record<string, string> = {
 /** Best-effort price fetch. Returns {} on failure (offline / rate-limited). */
 export async function getPrices(): Promise<Record<string, PriceInfo>> {
   try {
-    const res = await fetch(COINGECKO, { headers: { accept: 'application/json' } });
+    const res = await fetch(coingeckoBase() + COINGECKO_PATH, { headers: { accept: 'application/json' } });
     if (!res.ok) return {};
     const data = await res.json();
     const out: Record<string, PriceInfo> = {};

@@ -338,6 +338,21 @@ const T: Record<string, Record<Lang, string>> = {
   'settings.newPwd': { es: 'Nueva contraseña', en: 'New password', pt: 'Nova palavra-passe', de: 'Neues Passwort', fr: 'Nouveau mot de passe' },
   'settings.savePwd': { es: 'Guardar contraseña', en: 'Save password', pt: 'Guardar palavra-passe', de: 'Passwort speichern', fr: 'Enregistrer le mot de passe' },
   'settings.pwdUpdated': { es: 'Contraseña actualizada.', en: 'Password updated.', pt: 'Palavra-passe atualizada.', de: 'Passwort aktualisiert.', fr: 'Mot de passe mis à jour.' },
+  // developer mode (endpoint overrides)
+  'settings.devMode': { es: 'Modo desarrollador', en: 'Developer mode', pt: 'Modo de programador', de: 'Entwicklermodus', fr: 'Mode développeur' },
+  'settings.devModeDesc': {
+    es: 'Redirige los endpoints de la app (precios, Developer Platform, gateway de pagos) a otros servidores. Los cambios aplican al instante; vacío = valor por defecto.',
+    en: 'Repoints the app’s endpoints (prices, Developer Platform, payments gateway) to other servers. Changes apply instantly; empty = default value.',
+    pt: 'Redireciona os endpoints da app (preços, Developer Platform, gateway de pagamentos) para outros servidores. As alterações aplicam-se de imediato; vazio = valor padrão.',
+    de: 'Leitet die Endpunkte der App (Preise, Developer Platform, Zahlungs-Gateway) auf andere Server um. Änderungen gelten sofort; leer = Standardwert.',
+    fr: 'Redirige les endpoints de l’app (prix, Developer Platform, passerelle de paiements) vers d’autres serveurs. Effet immédiat ; vide = valeur par défaut.',
+  },
+  'settings.devReset': { es: 'Restablecer endpoints', en: 'Reset endpoints', pt: 'Repor endpoints', de: 'Endpunkte zurücksetzen', fr: 'Réinitialiser les endpoints' },
+  'settings.epCoingecko': { es: 'API de precios (CoinGecko)', en: 'Prices API (CoinGecko)', pt: 'API de preços (CoinGecko)', de: 'Preis-API (CoinGecko)', fr: 'API de prix (CoinGecko)' },
+  'settings.epDevPlatform': { es: 'Developer Platform', en: 'Developer Platform', pt: 'Developer Platform', de: 'Developer Platform', fr: 'Developer Platform' },
+  'settings.epGateway': { es: 'Gateway de pagos (APISIX)', en: 'Payments gateway (APISIX)', pt: 'Gateway de pagamentos (APISIX)', de: 'Zahlungs-Gateway (APISIX)', fr: 'Passerelle de paiements (APISIX)' },
+  'settings.epGatewayEntry': { es: 'Prefijo del gateway', en: 'Gateway entry prefix', pt: 'Prefixo do gateway', de: 'Gateway-Präfix', fr: 'Préfixe de la passerelle' },
+
   'settings.danger': { es: 'Zona de peligro', en: 'Danger zone', pt: 'Zona de perigo', de: 'Gefahrenzone', fr: 'Zone de danger' },
   'settings.deleteThis': { es: 'Borrar esta wallet del dispositivo', en: 'Delete this wallet from the device', pt: 'Apagar esta wallet do dispositivo', de: 'Diese Wallet vom Gerät löschen', fr: 'Supprimer ce portefeuille de l’appareil' },
   'settings.deleteConfirm': {

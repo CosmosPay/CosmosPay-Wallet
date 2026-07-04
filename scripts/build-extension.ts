@@ -152,7 +152,10 @@ const manifest = {
       "img-src 'self' data:",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
-      "connect-src 'self' https://horizon.stellar.org https://horizon-testnet.stellar.org https://friendbot.stellar.org https://api.coingecko.com",
+      // `https:` (any TLS host) on top of the defaults: the wallet supports custom
+      // networks (own Horizon) and developer-mode endpoint overrides — both need to
+      // reach user-configured servers. Scripts remain locked to 'self'.
+      "connect-src 'self' https: https://horizon.stellar.org https://horizon-testnet.stellar.org https://friendbot.stellar.org https://api.coingecko.com",
     ].join('; '),
   },
   // Firefox-only keys. On Chrome these trigger "unrecognised key" warnings and
