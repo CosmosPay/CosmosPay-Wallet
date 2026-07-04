@@ -655,7 +655,11 @@ export function GenesisRow({ store, delay = 0 }: { store: WalletStore; delay?: n
         <div style={{ fontSize: '14.5px', fontWeight: 800 }}>{store.t('history.genesis')}</div>
         <div style={{ fontSize: '12px', color: C.dim, fontWeight: 600 }}>Cosmos Pay</div>
       </div>
-      <div style={{ fontSize: '11px', color: C.dim, fontWeight: 600, flexShrink: 0 }}>{date}</div>
+      {/* no amount here — a heart takes its place */}
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div style={{ fontSize: '15px', lineHeight: 1.2 }}>❤️</div>
+        <div style={{ fontSize: '11px', color: C.dim, fontWeight: 600 }}>{date}</div>
+      </div>
     </div>
   );
 }

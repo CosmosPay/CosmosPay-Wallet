@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, NetworkDropdown, NavMenu, EnableReceivingCard } from '@/components/parts';
+import { C, AssetLogo, TokenAvatar, assetMeta, Spinner, NetworkDropdown, NavMenu, SurfaceToggle, EnableReceivingCard } from '@/components/parts';
 import { buildKind } from '@/lib/platform';
 import { HistoryRow, GenesisRow } from '@/components/screens/Money';
 import { computePortfolio, type AssetRow } from '@/lib/portfolio';
@@ -79,14 +79,20 @@ export function Home({ store }: { store: WalletStore }) {
   // Memoized: getGreeting picks a random salutation — keep it stable across renders
   // (a fresh one only on app open / language change).
   const greeting = useMemo(
-    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', store.t),
-    [store.meta?.name, store.meta?.birthdate, store.t],
+    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', store.t, store.meta?.gender),
+    [store.meta?.name, store.meta?.birthdate, store.t, store.meta?.gender],
   );
   const initial = (store.meta?.name || 'C').slice(0, 1).toUpperCase();
   // Header shows the name big, capped to the first word.
   const firstName = (store.meta?.name || 'astronauta').trim().split(/\s+/)[0];
   // Fiat on/off-ramp is 18+ only (unknown/missing birthdate counts as not eligible).
   const fiatOk = (ageFromBirthdate(store.meta?.birthdate ?? '') ?? 0) >= 18;
+  // Assets list caps at 5 rows; starred favorites always float to the top so they
+  // stay visible among those 5. "Ver todo" expands the full list inline.
+  const [showAllAssets, setShowAllAssets] = useState(false);
+  const favSet = new Set(store.favorites);
+  const sortedRows = [...rows].sort((a, b) => (favSet.has(b.code) ? 1 : 0) - (favSet.has(a.code) ? 1 : 0));
+  const visibleRows = showAllAssets ? sortedRows : sortedRows.slice(0, 5);
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 110px', animation: 'fadeUp .3s ease' }}>
@@ -106,6 +112,8 @@ export function Home({ store }: { store: WalletStore }) {
           {/* Refresh is automatic (silent poll in the store); spinner only while loading. */}
           {store.loading && <Spinner size={15} color="var(--text)" />}
           <NetworkDropdown store={store} align="right" />
+          {/* popup <-> sidebar toggle (preference persists across reopenings) */}
+          <SurfaceToggle store={store} />
           <NavMenu store={store} />
         </div>
       </div>
@@ -159,9 +167,24 @@ export function Home({ store }: { store: WalletStore }) {
       {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
 
       <div style={{ marginBottom: '8px' }}>
-        <div style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '-.3px', margin: '6px 2px 12px' }}>{t('home.assets')}</div>
-        {rows.map((r, i) => (
-          <AssetListRow key={r.code} row={r} delay={i * 0.05} onClick={() => { store.setSelectedAsset(r.code); store.setScreen('asset'); }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '6px 2px 12px' }}>
+          <span style={{ fontSize: '15px', fontWeight: 800, letterSpacing: '-.3px' }}>{t('home.assets')}</span>
+          {rows.length > 5 && (
+            <span onClick={() => setShowAllAssets((v) => !v)} className="tap" style={{ fontSize: '13px', color: C.muted, fontWeight: 700, cursor: 'pointer' }}>
+              {showAllAssets ? t('home.showLess') : t('home.viewAll')}
+            </span>
+          )}
+        </div>
+        {visibleRows.map((r, i) => (
+          <AssetListRow
+            key={r.code}
+            row={r}
+            chg={store.prices[r.code]?.change24h}
+            fav={store.favorites.includes(r.code)}
+            onFav={() => store.toggleFavorite(r.code)}
+            delay={i * 0.05}
+            onClick={() => { store.setSelectedAsset(r.code); store.setScreen('asset'); }}
+          />
         ))}
         <div onClick={() => store.setScreen('add-asset')} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px', borderRadius: '16px', cursor: 'pointer', color: C.accent, marginTop: '2px' }}>
           <div style={{ width: '34px', height: '34px', borderRadius: '50%', border: '1px dashed var(--glass-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px' }}>+</div>
@@ -225,21 +248,40 @@ function ActivateCard({ store }: { store: WalletStore }) {
   );
 }
 
-function AssetListRow({ row, onClick, delay = 0 }: { row: AssetRow; onClick: () => void; delay?: number }) {
+function AssetListRow({ row, chg, fav, onFav, onClick, delay = 0 }: { row: AssetRow; chg?: number; fav?: boolean; onFav?: () => void; onClick: () => void; delay?: number }) {
   const m = assetMeta(row.code);
   const shownValue = useAnimatedNumber(row.value ?? 0);
+  const shownChg = useAnimatedNumber(chg ?? 0);
   return (
-    <div onClick={onClick} className="tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '13px 12px', borderRadius: '16px', cursor: 'pointer', marginBottom: '2px', animation: 'fadeUp .45s ease backwards', animationDelay: `${delay}s` }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+    <div onClick={onClick} className="tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', padding: '13px 12px', borderRadius: '16px', cursor: 'pointer', marginBottom: '2px', animation: 'fadeUp .45s ease backwards', animationDelay: `${delay}s` }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: 0 }}>
         <AssetLogo code={row.code} size={34} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '15px', fontWeight: 700 }}>{m.name}</span>
           <span style={{ fontSize: '12px', color: C.dim, fontWeight: 600 }}>{trim(row.amount, 4)} {row.code}</span>
         </div>
       </div>
-      <span style={{ fontSize: '15px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-        {row.value !== null ? '$' + fmt(shownValue, 2) : '—'}
-      </span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '15px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+            {row.value !== null ? '$' + fmt(shownValue, 2) : '—'}
+          </span>
+          {/* 24h price change of the asset — green up / red down */}
+          {chg !== undefined && (
+            <span style={{ fontSize: '11.5px', fontWeight: 700, color: changeColor(chg), fontVariantNumeric: 'tabular-nums' }}>{pct(shownChg)}</span>
+          )}
+        </div>
+        {onFav && (
+          <span
+            onClick={(e) => { e.stopPropagation(); onFav(); }}
+            className="tap"
+            title="Favorito"
+            style={{ fontSize: '17px', lineHeight: 1, color: fav ? '#f7c948' : C.dimmer, padding: '4px', cursor: 'pointer' }}
+          >
+            {fav ? '★' : '☆'}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -368,8 +410,8 @@ export function Profile({ store }: { store: WalletStore }) {
   const avatar = store.meta?.avatar;
   // Memoized: the salutation is random — keep it stable across re-renders.
   const g = useMemo(
-    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t),
-    [store.meta?.name, store.meta?.birthdate, t],
+    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t, store.meta?.gender),
+    [store.meta?.name, store.meta?.birthdate, t, store.meta?.gender],
   );
   const fileRef = useRef<HTMLInputElement>(null);
   const [copied, setCopied] = useState(false);

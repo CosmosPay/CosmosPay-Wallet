@@ -12,7 +12,6 @@ import {
 import {
   addWallet as vaultAddWallet,
   clearPendingCosmosPay,
-  destroyAll,
   getActiveEntry,
   getCosmosPay,
   getPendingCosmosPay,
@@ -34,8 +33,10 @@ import {
   verifyPassword,
   type CosmosPayAccount,
   type CosmosPayPending,
+  type Gender,
   type WalletEntry,
 } from '@/lib/vault';
+import { storageGet, storageSet } from '@/lib/storage';
 import {
   addTrustline as stellarAddTrustline,
   allNetworks,
@@ -343,6 +344,10 @@ export function useWalletStore() {
   const [draftName, setDraftName] = useState('');
   const [draftBirthdate, setDraftBirthdate] = useState('');
   const [draftEmail, setDraftEmail] = useState('');
+  const [draftGender, setDraftGender] = useState<Gender | ''>('');
+  // Optional consents asked at signup (both default OFF).
+  const [draftMetricsOptIn, setDraftMetricsOptIn] = useState(false);
+  const [draftPromoOptIn, setDraftPromoOptIn] = useState(false);
 
   // verify-phrase state
   const [verifyTargets, setVerifyTargets] = useState<VerifyTarget[]>([]);
@@ -474,6 +479,33 @@ export function useWalletStore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, network]);
 
+  /* --------------------------- favorite assets -------------------------- */
+  // Starred asset codes (always visible among the home top-5). Per wallet,
+  // plaintext (non-sensitive), persisted under cosmos.favs.<walletId>.
+  const [favorites, setFavorites] = useState<string[]>([]);
+  useEffect(() => {
+    (async () => {
+      if (!meta?.id) return setFavorites([]);
+      const raw = await storageGet(`cosmos.favs.${meta.id}`);
+      try {
+        setFavorites(raw ? (JSON.parse(raw) as string[]) : []);
+      } catch {
+        setFavorites([]);
+      }
+    })();
+  }, [meta?.id]);
+  const toggleFavorite = useCallback(
+    (code: string) => {
+      if (!meta?.id) return;
+      setFavorites((f) => {
+        const next = f.includes(code) ? f.filter((c) => c !== code) : [...f, code];
+        void storageSet(`cosmos.favs.${meta.id}`, JSON.stringify(next));
+        return next;
+      });
+    },
+    [meta?.id],
+  );
+
   // Auto-refresh: there is no manual reload button — a silent poll keeps balances
   // and prices current, plus an immediate refresh whenever the surface becomes
   // visible again (popup reopened / side panel or tab refocused).
@@ -574,7 +606,15 @@ export function useWalletStore() {
       try {
         const entry = await vaultAddWallet(
           { secret: draftAccount.secret, mnemonic: draftHasMnemonic ? draftMnemonic : null },
-          { publicKey: draftAccount.publicKey, name: draftName.trim() || 'astronauta', birthdate: draftBirthdate, email: draftEmail.trim() },
+          {
+            publicKey: draftAccount.publicKey,
+            name: draftName.trim() || 'astronauta',
+            birthdate: draftBirthdate,
+            email: draftEmail.trim(),
+            gender: draftGender || 'x',
+            metricsOptIn: draftMetricsOptIn,
+            promoOptIn: draftPromoOptIn,
+          },
           pwd,
         );
         setMetaState(entry);
@@ -606,7 +646,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, draftEmail, addingWallet, session, t, flash],
+    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, draftEmail, draftGender, draftMetricsOptIn, draftPromoOptIn, addingWallet, session, t, flash],
   );
 
   /* ----------------------------- unlock --------------------------- */
@@ -644,19 +684,6 @@ export function useWalletStore() {
   }, []);
 
   /** Wipe EVERY wallet (used by "forgot password" — nothing can be decrypted). */
-  const deleteWallet = useCallback(async () => {
-    await destroyAll();
-    setSession(null);
-    setAccount(null);
-    setCosmosPay(null);
-    setCosmosPayPending(null);
-    setMetaState(null);
-    setWallets([]);
-    setDraftAccount(null);
-    setDraftMnemonic('');
-    setScreen('welcome');
-  }, []);
-
   /** Lock screen: choose which wallet to unlock (no decryption — just sets it active). */
   const selectWalletForUnlock = useCallback(
     async (id: string) => {
@@ -1566,6 +1593,10 @@ export function useWalletStore() {
     draftName,
     draftBirthdate,
     draftEmail,
+    draftGender,
+    draftMetricsOptIn,
+    draftPromoOptIn,
+    favorites,
     verifyTargets,
     verifyFilled,
     verifyBank,
@@ -1580,6 +1611,10 @@ export function useWalletStore() {
     setDraftName,
     setDraftBirthdate,
     setDraftEmail,
+    setDraftGender,
+    setDraftMetricsOptIn,
+    setDraftPromoOptIn,
+    toggleFavorite,
     setSend,
     setSelectedAsset,
     setSuccessInfo,
@@ -1596,7 +1631,6 @@ export function useWalletStore() {
     finishOnboarding,
     unlock,
     lock,
-    deleteWallet,
     selectWalletForUnlock,
     removeWalletLocked,
     startAddWallet,

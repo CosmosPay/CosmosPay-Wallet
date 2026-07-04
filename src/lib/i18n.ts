@@ -103,6 +103,21 @@ const T: Record<string, Record<Lang, string>> = {
     de: 'Ich habe meine Wiederherstellungsphrase sicher gespeichert.',
     fr: 'J’ai sauvegardé ma phrase de récupération en lieu sûr.',
   },
+  // Split so the T&C part renders as a link (see Backup): prefix + <a>termsLink</a>.
+  'backup.terms': {
+    es: 'Entiendo que mis fondos quedan bajo mi única y exclusiva responsabilidad, y acepto los ',
+    en: 'I understand my funds are my sole responsibility, and I accept the ',
+    pt: 'Entendo que os meus fundos ficam sob a minha exclusiva responsabilidade e aceito os ',
+    de: 'Ich verstehe, dass meine Gelder in meiner alleinigen Verantwortung liegen, und akzeptiere die ',
+    fr: 'Je comprends que mes fonds relèvent de ma seule responsabilité et j’accepte les ',
+  },
+  'backup.termsLink': {
+    es: 'Términos y Condiciones de uso',
+    en: 'Terms and Conditions of use',
+    pt: 'Termos e Condições de uso',
+    de: 'Nutzungsbedingungen',
+    fr: 'Conditions Générales d’Utilisation',
+  },
 
   // ---- verify ----
   'verify.title': { es: 'Verifica tu frase', en: 'Verify your phrase', pt: 'Verifica a tua frase', de: 'Phrase bestätigen', fr: 'Vérifie ta phrase' },
@@ -127,7 +142,7 @@ const T: Record<string, Record<Lang, string>> = {
   },
   'import.cta': { es: 'Importar wallet', en: 'Import wallet', pt: 'Importar wallet', de: 'Wallet importieren', fr: 'Importer le portefeuille' },
   'import.paste': { es: 'Pegar del portapapeles', en: 'Paste from clipboard', pt: 'Colar da área de transferência', de: 'Aus Zwischenablage einfügen', fr: 'Coller depuis le presse-papiers' },
-  'import.valid': { es: '✓ Frase o clave válida', en: '✓ Valid phrase or key', pt: '✓ Frase ou chave válida', de: '✓ Gültige Phrase oder Schlüssel', fr: '✓ Phrase ou clé valide' },
+  'import.valid': { es: 'Frase o clave válida', en: 'Valid phrase or key', pt: 'Frase ou chave válida', de: 'Gültige Phrase oder Schlüssel', fr: 'Phrase ou clé valide' },
   'import.invalid': {
     es: 'Comprueba tu frase de 12/24 palabras o tu clave secreta (S…)',
     en: 'Check your 12/24-word phrase or your secret key (S…)',
@@ -151,6 +166,25 @@ const T: Record<string, Record<Lang, string>> = {
   'setup.emailInvalid': { es: 'Introduce un correo válido', en: 'Enter a valid email', pt: 'Introduz um e-mail válido', de: 'Gültige E-Mail eingeben', fr: 'Saisis un e-mail valide' },
   'setup.dobLabel': { es: 'Fecha de nacimiento', en: 'Date of birth', pt: 'Data de nascimento', de: 'Geburtsdatum', fr: 'Date de naissance' },
   'setup.dobFuture': { es: 'La fecha de nacimiento no puede ser futura', en: 'The date of birth can’t be in the future', pt: 'A data de nascimento não pode ser futura', de: 'Das Geburtsdatum darf nicht in der Zukunft liegen', fr: 'La date de naissance ne peut pas être dans le futur' },
+  'setup.genderLabel': { es: 'Género', en: 'Gender', pt: 'Género', de: 'Geschlecht', fr: 'Genre' },
+  'setup.genderM': { es: 'Masculino', en: 'Male', pt: 'Masculino', de: 'Männlich', fr: 'Masculin' },
+  'setup.genderF': { es: 'Femenino', en: 'Female', pt: 'Feminino', de: 'Weiblich', fr: 'Féminin' },
+  'setup.genderX': { es: 'Prefiero no decir', en: 'Prefer not to say', pt: 'Prefiro não dizer', de: 'Keine Angabe', fr: 'Je préfère ne pas le dire' },
+  'setup.tooYoung': { es: 'Debes tener al menos 13 años para usar Cosmos Pay.', en: 'You must be at least 13 years old to use Cosmos Pay.', pt: 'Tens de ter pelo menos 13 anos para usar o Cosmos Pay.', de: 'Du musst mindestens 13 Jahre alt sein, um Cosmos Pay zu nutzen.', fr: 'Tu dois avoir au moins 13 ans pour utiliser Cosmos Pay.' },
+  'setup.metricsOptIn': {
+    es: 'Acepto compartir métricas de uso anónimas para mejorar el producto (opcional).',
+    en: 'I agree to share anonymous usage metrics to improve the product (optional).',
+    pt: 'Aceito partilhar métricas de uso anónimas para melhorar o produto (opcional).',
+    de: 'Ich stimme zu, anonyme Nutzungsdaten zur Produktverbesserung zu teilen (optional).',
+    fr: 'J’accepte de partager des statistiques d’usage anonymes pour améliorer le produit (facultatif).',
+  },
+  'setup.promoOptIn': {
+    es: 'Quiero recibir novedades, promociones y ofertas (opcional).',
+    en: 'I’d like to receive news, promotions and offers (optional).',
+    pt: 'Quero receber novidades, promoções e ofertas (opcional).',
+    de: 'Ich möchte Neuigkeiten, Aktionen und Angebote erhalten (optional).',
+    fr: 'Je souhaite recevoir des nouveautés, promotions et offres (facultatif).',
+  },
   'setup.dataNote': {
     es: 'Tu correo y fecha de nacimiento se guardan en este dispositivo y solo se usan para vincular tu cuenta a productos de Cosmos cuando tú lo pidas.',
     en: 'Your email and date of birth are stored on this device and only used to link your account to Cosmos products when you ask.',
@@ -183,6 +217,12 @@ const T: Record<string, Record<Lang, string>> = {
   'pwd.lenOk': { es: '✓ Longitud suficiente', en: '✓ Long enough', pt: '✓ Comprimento suficiente', de: '✓ Lang genug', fr: '✓ Assez long' },
   'pwd.lenErr': { es: 'La contraseña debe tener al menos 8 caracteres', en: 'The password must be at least 8 characters', pt: 'A palavra-passe deve ter pelo menos 8 caracteres', de: 'Das Passwort muss mindestens 8 Zeichen haben', fr: 'Le mot de passe doit comporter au moins 8 caractères' },
   'pwd.mismatch': { es: 'Las contraseñas no coinciden', en: 'The passwords don’t match', pt: 'As palavras-passe não coincidem', de: 'Die Passwörter stimmen nicht überein', fr: 'Les mots de passe ne correspondent pas' },
+  // live password criteria (PasswordSetup checklist)
+  'pwd.critLen': { es: 'Mínimo 8 caracteres', en: 'At least 8 characters', pt: 'Mínimo de 8 caracteres', de: 'Mindestens 8 Zeichen', fr: 'Au moins 8 caractères' },
+  'pwd.critUpper': { es: 'Al menos una mayúscula (A-Z)', en: 'At least one uppercase letter (A-Z)', pt: 'Pelo menos uma maiúscula (A-Z)', de: 'Mindestens ein Großbuchstabe (A-Z)', fr: 'Au moins une majuscule (A-Z)' },
+  'pwd.critDigit': { es: 'Al menos un número (0-9)', en: 'At least one number (0-9)', pt: 'Pelo menos um número (0-9)', de: 'Mindestens eine Zahl (0-9)', fr: 'Au moins un chiffre (0-9)' },
+  'pwd.critLower': { es: 'Al menos una letra minúscula (a-z)', en: 'At least one lowercase letter (a-z)', pt: 'Pelo menos uma letra minúscula (a-z)', de: 'Mindestens ein Kleinbuchstabe (a-z)', fr: 'Au moins une lettre minuscule (a-z)' },
+  'pwd.critMatch': { es: 'Ambas contraseñas coinciden', en: 'Both passwords match', pt: 'As palavras-passe coincidem', de: 'Beide Passwörter stimmen überein', fr: 'Les deux mots de passe correspondent' },
   'pwd.create': { es: 'Crear wallet', en: 'Create wallet', pt: 'Criar wallet', de: 'Wallet erstellen', fr: 'Créer le portefeuille' },
 
   // ---- unlock ----
@@ -216,10 +256,15 @@ const T: Record<string, Record<Lang, string>> = {
   'greet.evening': { es: 'Buenas noches', en: 'Good evening', pt: 'Boa noite', de: 'Guten Abend', fr: 'Bonsoir' },
   'greet.evening.2': { es: 'Linda noche para revisar tu universo', en: 'A nice night to check your universe', pt: 'Boa noite para rever o teu universo', de: 'Ein schöner Abend für deinen Kosmos', fr: 'Belle soirée pour ton univers' },
   'greet.evening.3': { es: 'Las estrellas ya salieron', en: 'The stars are out', pt: 'As estrelas já saíram', de: 'Die Sterne sind schon da', fr: 'Les étoiles sont de sortie' },
-  'greet.back.1': { es: '¡Bienvenid@ de nuevo!', en: 'Welcome back!', pt: 'Bem-vind@ de volta!', de: 'Willkommen zurück!', fr: 'Content de te revoir !' },
+  // Gendered "welcome back" lines: .m / .f / .x picked by the user's gender.
+  'greet.back.1.m': { es: '¡Bienvenido de nuevo!', en: 'Welcome back!', pt: 'Bem-vindo de volta!', de: 'Willkommen zurück!', fr: 'Content de te revoir !' },
+  'greet.back.1.f': { es: '¡Bienvenida de nuevo!', en: 'Welcome back!', pt: 'Bem-vinda de volta!', de: 'Willkommen zurück!', fr: 'Contente de te revoir !' },
+  'greet.back.1.x': { es: '¡Bienvenidx de nuevo!', en: 'Welcome back!', pt: 'Bem-vinde de volta!', de: 'Willkommen zurück!', fr: 'Content·e de te revoir !' },
   'greet.back.2': { es: 'Te extrañábamos', en: 'We missed you', pt: 'Tivemos saudades tuas', de: 'Wir haben dich vermisst', fr: 'Tu nous as manqué' },
   'greet.back.3': { es: 'Qué bueno verte por aquí', en: 'Good to see you here', pt: 'Que bom ver-te por aqui', de: 'Schön, dich zu sehen', fr: 'Ravi de te voir ici' },
-  'greet.back.4': { es: '¿List@ para despegar?', en: 'Ready for liftoff?', pt: 'Pront@ para descolar?', de: 'Bereit zum Abheben?', fr: 'Prêt·e au décollage ?' },
+  'greet.back.4.m': { es: '¿Listo para despegar?', en: 'Ready for liftoff?', pt: 'Pronto para descolar?', de: 'Bereit zum Abheben?', fr: 'Prêt au décollage ?' },
+  'greet.back.4.f': { es: '¿Lista para despegar?', en: 'Ready for liftoff?', pt: 'Pronta para descolar?', de: 'Bereit zum Abheben?', fr: 'Prête au décollage ?' },
+  'greet.back.4.x': { es: '¿Listx para despegar?', en: 'Ready for liftoff?', pt: 'Pronte para descolar?', de: 'Bereit zum Abheben?', fr: 'Prêt·e au décollage ?' },
   'greet.birthday': { es: '¡Feliz cumpleaños, {name}! 🎉', en: 'Happy birthday, {name}! 🎉', pt: 'Feliz aniversário, {name}! 🎉', de: 'Alles Gute zum Geburtstag, {name}! 🎉', fr: 'Joyeux anniversaire, {name} ! 🎉' },
 
   // ---- tabs ----
@@ -235,6 +280,10 @@ const T: Record<string, Record<Lang, string>> = {
   'home.assets': { es: 'Tus activos', en: 'Your assets', pt: 'Os teus ativos', de: 'Deine Assets', fr: 'Tes actifs' },
   'home.markets': { es: 'Mercados', en: 'Markets', pt: 'Mercados', de: 'Märkte', fr: 'Marchés' },
   'home.viewAll': { es: 'Ver todo ›', en: 'View all ›', pt: 'Ver tudo ›', de: 'Alle ›', fr: 'Tout voir ›' },
+  'home.showLess': { es: 'Ver menos', en: 'Show less', pt: 'Ver menos', de: 'Weniger anzeigen', fr: 'Voir moins' },
+  // extension surface toggle (popup <-> side panel), preference persists
+  'surface.toSidebar': { es: 'Fijar en la barra lateral', en: 'Pin to the sidebar', pt: 'Fixar na barra lateral', de: 'An Seitenleiste anheften', fr: 'Épingler à la barre latérale' },
+  'surface.toPopup': { es: 'Usar como ventana emergente', en: 'Use as popup', pt: 'Usar como janela pop-up', de: 'Als Pop-up verwenden', fr: 'Utiliser en pop-up' },
   'home.loading': { es: 'Cargando saldos…', en: 'Loading balances…', pt: 'A carregar saldos…', de: 'Guthaben werden geladen…', fr: 'Chargement des soldes…' },
   'home.noAssets': { es: 'Aún no hay activos.', en: 'No assets yet.', pt: 'Ainda não há ativos.', de: 'Noch keine Assets.', fr: 'Aucun actif pour le moment.' },
   'home.activate': { es: 'Activa tu cuenta', en: 'Activate your account', pt: 'Ativa a tua conta', de: 'Konto aktivieren', fr: 'Active ton compte' },

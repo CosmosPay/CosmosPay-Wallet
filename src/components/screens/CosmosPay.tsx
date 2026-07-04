@@ -1,5 +1,6 @@
 import type { WalletStore } from '@/components/store';
 import { C, PrimaryButton, GhostButton, BackBar, EnableReceivingCard } from '@/components/parts';
+import { ageFromBirthdate } from '@/lib/greeting';
 
 /* Cosmos Pay integration manager: link / unlink the API keys per network (testnet/mainnet)
    and the BlindPay fiat receiver. Cosmos Pay is an integration — not "receiving payments". */
@@ -10,6 +11,8 @@ export function CosmosPay({ store }: { store: WalletStore }) {
   const receiverId = store.meta?.cosmosPayReceiverId;
   // While a connect / re-link flow is running, show its card even if some keys already exist.
   const flowActive = !!store.cosmosLink || !!store.cosmosPayPending;
+  // Fiat (BlindPay receiver) is 18+ only — minors don't get the option at all.
+  const adult = (ageFromBirthdate(store.meta?.birthdate ?? '') ?? 0) >= 18;
 
   const sectionLabel = { fontSize: '13px', fontWeight: 800, letterSpacing: '-.2px', margin: '20px 2px 10px' } as const;
   const card = { ...C.glass, borderRadius: '18px', padding: '18px' } as const;
@@ -53,9 +56,9 @@ export function CosmosPay({ store }: { store: WalletStore }) {
         </div>
       )}
 
-      {/* Receiver (fiat / BlindPay) */}
-      <div style={sectionLabel}>{t('cosmospay.receiverSection')}</div>
-      {receiverId ? (
+      {/* Receiver (fiat / BlindPay) — hidden entirely for minors (18+ only). */}
+      {adult && <div style={sectionLabel}>{t('cosmospay.receiverSection')}</div>}
+      {!adult ? null : receiverId ? (
         <div style={card}>
           <Row label={t('fiat.account')} value={receiverId.slice(0, 12) + '…'} />
           <div style={{ display: 'flex', gap: '10px', marginTop: '12px' }}>

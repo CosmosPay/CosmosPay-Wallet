@@ -465,6 +465,8 @@ export function PrimaryButton({
         width: '100%',
         ...C.glassBright,
         ...CONTROL,
+        // Never let a flex-column screen squash the CTA below its 54px height.
+        flexShrink: 0,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -779,6 +781,78 @@ export function AssetLogo({ code, size = 34 }: { code: string; size?: number }) 
   return <TokenAvatar glyph={m.glyph} color={m.color} size={size} />;
 }
 
+/** Extension-only: toggle between popup and side-panel as the wallet's surface.
+ *  The choice PERSISTS: on Chrome, sidePanel.setPanelBehavior() rewires the toolbar
+ *  icon itself (browser-remembered across restarts), so reopening the wallet lands
+ *  on the preferred surface without re-picking. Renders nothing outside the extension. */
+export function SurfaceToggle({ store }: { store: WalletStore }) {
+  if (buildKind() !== 'ext') return null;
+  const inSidebar = typeof location !== 'undefined' && location.pathname.includes('sidepanel');
+  const ext = (globalThis as unknown as { chrome?: any; browser?: any });
+  const api = ext.chrome ?? ext.browser;
+
+  const toggle = async () => {
+    try {
+      localStorage.setItem('cosmos.surface', inSidebar ? 'popup' : 'sidebar');
+    } catch {
+      /* ignore */
+    }
+    if (!inSidebar) {
+      // -> sidebar mode: the action icon now opens the side panel (persists), and we
+      // open it right away (still inside the click's user gesture), closing the popup.
+      try {
+        await api?.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true });
+        const win = await api?.windows?.getCurrent?.();
+        await api?.sidePanel?.open?.({ windowId: win?.id });
+      } catch {
+        // Firefox: no sidePanel API — open its sidebar instead (user gesture required).
+        try {
+          await ext.browser?.sidebarAction?.open?.();
+        } catch {
+          /* ignore */
+        }
+      }
+      window.close();
+    } else {
+      // -> popup mode: the action icon opens the popup again; close this panel.
+      try {
+        await api?.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: false });
+      } catch {
+        /* Firefox — nothing to rewire */
+      }
+      try {
+        await ext.browser?.sidebarAction?.close?.();
+      } catch {
+        /* ignore */
+      }
+      window.close();
+    }
+  };
+
+  return (
+    <button
+      onClick={toggle}
+      title={store.t(inSidebar ? 'surface.toPopup' : 'surface.toSidebar')}
+      aria-label={store.t(inSidebar ? 'surface.toPopup' : 'surface.toSidebar')}
+      style={{ width: '38px', height: '38px', borderRadius: '50%', ...C.glassSoft, color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}
+    >
+      {inSidebar ? (
+        // in the sidebar -> icon shows a small popup window
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8" />
+          <rect x="11" y="6" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+      ) : (
+        // in the popup -> icon shows a right side panel
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8" />
+          <path d="M15 3v18" stroke="currentColor" strokeWidth="1.8" />
+        </svg>
+      )}
+    </button>
+  );
+}
+
 /** Extension-mode navigation: a hamburger button that lives in each tab screen's
  *  header (next to the profile avatar on Home). Opens a FULL-VIEW drawer that slides
  *  in from the right edge and slides back out on close. Replaces the phone bottom
@@ -862,6 +936,30 @@ export function NavMenu({ store }: { store: WalletStore }) {
                 </div>
               );
             })}
+
+            {/* Quick access: settings + the profile shortcuts, so they're one tap away. */}
+            <div style={{ height: '1px', background: 'var(--hairline)', margin: '10px 4px' }} />
+            {[
+              ...(store.meta?.email ? [{ key: 'cosmospay', label: store.t('cosmospay.manage'), glyph: '◇' }] : []),
+              { key: 'export', label: store.t('profile.exportKeys'), glyph: '⚷' },
+              { key: 'receive', label: store.t('profile.receiveAddr'), glyph: '⛁' },
+              { key: 'settings', label: store.t('profile.settings'), glyph: '⚙' },
+              { key: 'about', label: store.t('profile.about'), glyph: '?' },
+            ].map((it) => (
+              <div
+                key={it.key}
+                onClick={() => {
+                  closeDrawer();
+                  store.setScreen(it.key as Parameters<WalletStore['setScreen']>[0]);
+                }}
+                className="tap"
+                style={{ display: 'flex', alignItems: 'center', gap: '14px', padding: '13px 16px', borderRadius: '14px', cursor: 'pointer', color: 'var(--text)' }}
+              >
+                <span style={{ width: '20px', textAlign: 'center', fontSize: '16px', color: C.muted, flexShrink: 0 }}>{it.glyph}</span>
+                <span style={{ flex: 1, fontSize: '14.5px', fontWeight: 700 }}>{it.label}</span>
+                <span style={{ color: C.dim, fontSize: '16px' }}>›</span>
+              </div>
+            ))}
           </div>
         </div>
       )}

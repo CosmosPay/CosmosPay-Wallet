@@ -1,5 +1,6 @@
 /** Friendly, localized greeting built from the user's name + birthdate. */
 import type { TFn } from '@/lib/i18n';
+import type { Gender } from '@/lib/vault';
 
 export interface Greeting {
   line: string; // e.g. "Good evening, Alex"
@@ -23,8 +24,9 @@ export function ageFromBirthdate(birthdate: string): number | null {
   return age;
 }
 
-/** birthdate is ISO "YYYY-MM-DD" or ''. */
-export function getGreeting(name: string, birthdate: string, t: TFn): Greeting {
+/** birthdate is ISO "YYYY-MM-DD" or ''. `gender` picks the right gendered copy
+ *  (bienvenido/bienvenida/bienvenidx); missing (legacy wallets) falls back to 'x'. */
+export function getGreeting(name: string, birthdate: string, t: TFn, gender?: Gender): Greeting {
   const who = name?.trim() || 'astronauta';
   let isBirthday = false;
   const age = ageFromBirthdate(birthdate);
@@ -42,7 +44,8 @@ export function getGreeting(name: string, birthdate: string, t: TFn): Greeting {
   // Random salutation, always coherent with the hour: the time-of-day variants plus
   // the generic "welcome back" lines. Callers memoize per mount so it doesn't
   // flicker between renders (a new one appears on each app open).
-  const pool = [t(key), t(`${key}.2`), t(`${key}.3`), t('greet.back.1'), t('greet.back.2'), t('greet.back.3'), t('greet.back.4')];
+  const g: Gender = gender === 'm' || gender === 'f' ? gender : 'x';
+  const pool = [t(key), t(`${key}.2`), t(`${key}.3`), t(`greet.back.1.${g}`), t('greet.back.2'), t('greet.back.3'), t(`greet.back.4.${g}`)];
   const picked = pool[Math.floor(Math.random() * pool.length)];
   const line = isBirthday ? t('greet.birthday', { name: who }) : `${picked}, ${who}`;
   // Salutation without the name (the header shows the name separately, big).

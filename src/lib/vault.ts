@@ -40,12 +40,19 @@ export interface VaultSecret {
   mnemonic: string | null; // 12 words, or null when imported from a raw secret
 }
 
+/** Self-reported gender — drives gendered copy ("bienvenido/bienvenida/bienvenidx").
+ *  'x' covers non-binary and prefer-not-to-say. */
+export type Gender = 'm' | 'f' | 'x';
+
 export interface WalletEntry {
   id: string;
   publicKey: string; // G...
   name: string; // user name / nickname
   birthdate: string; // ISO "YYYY-MM-DD" (required at signup)
   email: string; // for opt-in linking to Cosmos products (required at signup)
+  gender?: Gender; // asked at signup; missing on legacy wallets -> treated as 'x'
+  metricsOptIn?: boolean; // optional consent: anonymous usage metrics
+  promoOptIn?: boolean; // optional consent: promotional news & offers
   avatar?: string; // optional profile picture (small data URL)
   createdAt: number;
   // CosmosPay (non-sensitive flags; the API keys themselves are sealed separately).
@@ -177,7 +184,7 @@ export async function migrate(): Promise<void> {
 /** Seal a new wallet under `password`, append it, and make it active. */
 export async function addWallet(
   secret: VaultSecret,
-  info: { publicKey: string; name: string; birthdate: string; email: string },
+  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean },
   password: string,
 ): Promise<WalletEntry> {
   const list = await listWallets();
@@ -196,6 +203,9 @@ export async function addWallet(
     name: info.name,
     birthdate: info.birthdate,
     email: info.email,
+    gender: info.gender,
+    metricsOptIn: info.metricsOptIn,
+    promoOptIn: info.promoOptIn,
     createdAt: Date.now(),
   };
   await writeWallets([...list, entry]);

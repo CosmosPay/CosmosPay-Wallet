@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { C, PrimaryButton, Spinner, Logo, inputStyle } from '@/components/parts';
+import { LangSelect } from '@/components/flags';
 import { getGreeting } from '@/lib/greeting';
 import { shortAddr } from '@/lib/format';
 
@@ -12,8 +13,8 @@ export function Unlock({ store }: { store: WalletStore }) {
   const [walletOpen, setWalletOpen] = useState(false);
   // Memoized: the salutation is random — keep it stable while the user types.
   const g = useMemo(
-    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t),
-    [store.meta?.name, store.meta?.birthdate, t],
+    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t, store.meta?.gender),
+    [store.meta?.name, store.meta?.birthdate, t, store.meta?.gender],
   );
   const multi = store.wallets.length > 1;
 
@@ -25,6 +26,10 @@ export function Unlock({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '2px 26px 32px', animation: 'fadeUp .3s ease' }}>
+      {/* language switcher, top-right — same control as the Welcome screen */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '8px', flexShrink: 0 }}>
+        <LangSelect value={store.lang} onChange={store.setLang} />
+      </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', minHeight: 0 }}>
         <div style={{ marginBottom: '24px' }}><Logo size={92} /></div>
         {g.isBirthday && <div style={{ fontSize: '13px', fontWeight: 800, color: C.accent, marginBottom: '8px', letterSpacing: '.3px' }}>🎂 {g.age !== null ? t('unlock.yearsOld', { age: g.age }) : t('unlock.happyDay')}</div>}
@@ -54,7 +59,9 @@ export function Unlock({ store }: { store: WalletStore }) {
         ) : (
           <div style={{ textAlign: 'center', fontSize: '12.5px', color: C.muted, fontWeight: 600, lineHeight: 1.5, padding: '4px 8px' }}>
             {t('unlock.forgotDesc')}
-            <div onClick={() => store.deleteWallet()} className="tap" style={{ color: C.danger, fontWeight: 800, marginTop: '10px', cursor: 'pointer' }}>
+            {/* Removes ONLY the active wallet (the one whose password was forgotten) —
+                other wallets on this device are untouched. */}
+            <div onClick={() => store.meta && store.removeWalletLocked(store.meta.id)} className="tap" style={{ color: C.danger, fontWeight: 800, marginTop: '10px', cursor: 'pointer' }}>
               {t('unlock.deleteRestore')}
             </div>
           </div>

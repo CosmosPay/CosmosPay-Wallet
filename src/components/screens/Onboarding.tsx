@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import type { ReactNode, CSSProperties } from 'react';
 import type { WalletStore } from '@/components/store';
 import { C, PrimaryButton, GhostButton, BackBar, Spinner, Logo, inputStyle } from '@/components/parts';
 import { LangSelect } from '@/components/flags';
 import { copyText, readText } from '@/lib/clipboard';
 import { isValidMnemonic, isValidSecret } from '@/lib/wallet';
-import { APP_VERSION } from '@/lib/config';
+import { ageFromBirthdate } from '@/lib/greeting';
+import { APP_VERSION, TERMS_URL } from '@/lib/config';
 
 export function Welcome({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -42,9 +44,24 @@ export function Welcome({ store }: { store: WalletStore }) {
   );
 }
 
+/** Checkbox row in the app's style (used by Backup consents + optional opt-ins). */
+function CheckRow({ on, onToggle, children, style }: { on: boolean; onToggle: () => void; children: ReactNode; style?: CSSProperties }) {
+  return (
+    <div onClick={onToggle} className="tap" style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer', padding: '2px', ...style }}>
+      <div style={{ width: '24px', height: '24px', borderRadius: '7px', background: on ? C.accent : 'transparent', color: 'var(--on-accent)', border: `2px solid ${on ? C.accent : 'var(--glass-border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ opacity: on ? 1 : 0 }}>
+          <path d="M5 13l4 4 10-11" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      <span style={{ fontSize: '13.5px', fontWeight: 600, color: C.inkSoft, lineHeight: 1.45 }}>{children}</span>
+    </div>
+  );
+}
+
 export function Backup({ store }: { store: WalletStore }) {
   const t = store.t;
   const [saved, setSaved] = useState(false);
+  const [terms, setTerms] = useState(false);
   const [copied, setCopied] = useState(false);
   const words = store.draftMnemonic.split(' ');
 
@@ -87,15 +104,25 @@ export function Backup({ store }: { store: WalletStore }) {
         </svg>
         {copied ? t('common.copied') : t('backup.copy')}
       </button>
-      <div onClick={() => setSaved((s) => !s)} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', marginBottom: '20px', padding: '2px' }}>
-        <div style={{ width: '24px', height: '24px', borderRadius: '7px', background: saved ? C.accent : 'transparent', color: 'var(--on-accent)', border: `2px solid ${saved ? C.accent : 'var(--glass-border)'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style={{ opacity: saved ? 1 : 0 }}>
-            <path d="M5 13l4 4 10-11" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
-        <span style={{ fontSize: '14px', fontWeight: 600, color: C.inkSoft, lineHeight: 1.4 }}>{t('backup.saved')}</span>
-      </div>
-      <PrimaryButton disabled={!saved} onClick={() => store.beginVerify()}>
+      <CheckRow on={saved} onToggle={() => setSaved((s) => !s)} style={{ marginBottom: '12px' }}>
+        {t('backup.saved')}
+      </CheckRow>
+      {/* Sole-responsibility + Terms acceptance — required before continuing.
+          The T&C part is a real link (opens in a new tab, doesn't toggle the box). */}
+      <CheckRow on={terms} onToggle={() => setTerms((s) => !s)} style={{ marginBottom: '20px' }}>
+        {t('backup.terms')}
+        <a
+          href={TERMS_URL}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => e.stopPropagation()}
+          style={{ color: C.accent, fontWeight: 800, textDecoration: 'underline' }}
+        >
+          {t('backup.termsLink')}
+        </a>
+        .
+      </CheckRow>
+      <PrimaryButton disabled={!saved || !terms} onClick={() => store.beginVerify()}>
         {t('common.continue')}
       </PrimaryButton>
     </div>
@@ -167,7 +194,6 @@ export function Import({ store }: { store: WalletStore }) {
   const t = store.t;
   const txt = store.importText.trim();
   const valid = txt.length > 0 && (isValidMnemonic(txt) || isValidSecret(txt));
-  const hint = txt.length === 0 ? '' : valid ? t('import.valid') : t('import.invalid');
 
   return (
     <div className="scr" style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 20px 28px', animation: 'fadeUp .3s ease' }}>
@@ -182,9 +208,13 @@ export function Import({ store }: { store: WalletStore }) {
         rows={4}
         style={{ width: '100%', ...C.glass, borderRadius: '16px', padding: '16px', color: 'var(--text)', fontSize: '15px', fontWeight: 600, resize: 'none', outline: 'none', lineHeight: 1.7, marginBottom: '8px' }}
       />
-      {hint && (
-        <div style={{ fontSize: '12.5px', fontWeight: 700, color: valid ? C.accent : C.dim, marginBottom: '12px' }}>{hint}</div>
-      )}
+      {/* Live validity criterion (same pattern as the password checklist):
+          grey while empty, green ✓ when valid, red ✗ when invalid. */}
+      <div style={{ margin: '2px 2px 12px' }}>
+        <Criterion met={valid} bad={txt.length > 0 && !valid}>
+          {txt.length > 0 && !valid ? t('import.invalid') : t('import.valid')}
+        </Criterion>
+      </div>
       <button
         onClick={async () => store.setImportText(await readText())}
         style={{ width: '100%', height: '54px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '9px', ...C.glassSoft, border: 'none', borderRadius: '999px', fontSize: '14px', fontWeight: 800, cursor: 'pointer', color: 'var(--text)', marginTop: '6px', marginBottom: '22px' }}
@@ -212,8 +242,10 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
   // Local-timezone today in ISO — the birthdate can never be in the future.
   const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
   const dobFuture = !!store.draftBirthdate && store.draftBirthdate > todayIso;
-  // Name, email and a non-future birthdate are all required.
-  const ok = name.trim().length >= 2 && emailOk && !!store.draftBirthdate && !dobFuture;
+  // Minimum age to use the app: 13 (fiat has its own 18+ gate later).
+  const tooYoung = !!store.draftBirthdate && !dobFuture && (ageFromBirthdate(store.draftBirthdate) ?? 0) < 13;
+  // Name, email, a valid 13+ birthdate and a gender pick are all required.
+  const ok = name.trim().length >= 2 && emailOk && !!store.draftBirthdate && !dobFuture && !tooYoung && !!store.draftGender;
   const back = () =>
     store.setScreen(store.draftHasMnemonic && store.draftMnemonic ? 'verify' : 'import');
 
@@ -255,8 +287,47 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
       {dobFuture && (
         <div style={{ fontSize: '12px', fontWeight: 700, color: C.danger, margin: '-8px 2px 12px' }}>{t('setup.dobFuture')}</div>
       )}
+      {tooYoung && (
+        <div style={{ fontSize: '12px', fontWeight: 700, color: C.danger, margin: '-8px 2px 12px' }}>{t('setup.tooYoung')}</div>
+      )}
 
-      <div style={{ flex: 1 }} />
+      {/* Gender: drives gendered copy ("bienvenido/bienvenida/bienvenidx") so the
+          app never misgenders anyone. 'x' = non-binary / prefer not to say. */}
+      <div style={{ fontSize: '12px', color: C.dim, fontWeight: 700, marginBottom: '7px', textTransform: 'uppercase', letterSpacing: '.5px' }}>{t('setup.genderLabel')}</div>
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+        {(['m', 'f', 'x'] as const).map((g) => {
+          const on = store.draftGender === g;
+          return (
+            <button
+              key={g}
+              onClick={() => store.setDraftGender(g)}
+              style={{
+                flex: 1,
+                height: '44px',
+                borderRadius: '999px',
+                fontSize: '12.5px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                ...(on
+                  ? { background: 'var(--primary-bg)', color: 'var(--primary-text)', border: '1px solid var(--primary-border)' }
+                  : { ...C.glassSoft, color: 'var(--text)' }),
+              }}
+            >
+              {t(g === 'm' ? 'setup.genderM' : g === 'f' ? 'setup.genderF' : 'setup.genderX')}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Optional consents — both default OFF and never block the flow. */}
+      <CheckRow on={store.draftMetricsOptIn} onToggle={() => store.setDraftMetricsOptIn(!store.draftMetricsOptIn)} style={{ marginBottom: '10px' }}>
+        {t('setup.metricsOptIn')}
+      </CheckRow>
+      <CheckRow on={store.draftPromoOptIn} onToggle={() => store.setDraftPromoOptIn(!store.draftPromoOptIn)} style={{ marginBottom: '14px' }}>
+        {t('setup.promoOptIn')}
+      </CheckRow>
+
+      <div style={{ flex: 1, minHeight: '14px' }} />
       <PrimaryButton
         disabled={!ok || store.busy}
         onClick={() => (store.addingWallet ? store.finishOnboarding() : store.setScreen('password'))}
@@ -267,14 +338,87 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
   );
 }
 
+/** Password input with its OWN eye toggle (each field shows/hides independently). */
+function PasswordField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <label style={{ display: 'block', marginBottom: '14px' }}>
+      <div style={{ fontSize: '12px', color: C.dim, fontWeight: 700, marginBottom: '7px', textTransform: 'uppercase', letterSpacing: '.5px' }}>{label}</div>
+      <div style={{ position: 'relative' }}>
+        <input
+          type={show ? 'text' : 'password'}
+          value={value}
+          placeholder={placeholder}
+          onChange={(e) => onChange((e.target as HTMLInputElement).value)}
+          style={{ ...C.glass, ...inputStyle, paddingRight: '52px' }}
+        />
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            setShow((s) => !s);
+          }}
+          aria-label={show ? 'Ocultar' : 'Mostrar'}
+          style={{ position: 'absolute', right: '7px', top: '50%', transform: 'translateY(-50%)', width: '40px', height: '40px', border: 'none', background: 'transparent', color: show ? 'var(--text)' : 'var(--dim)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+        >
+          {show ? (
+            // eye-off: hidden again on tap
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
+              <path d="M2 12s3.5-7 10-7c2.2 0 4.1.8 5.6 1.9M22 12s-3.5 7-10 7c-2.2 0-4.1-.8-5.6-1.9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+              <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          ) : (
+            // eye: tap to reveal
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+              <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+            </svg>
+          )}
+        </button>
+      </div>
+    </label>
+  );
+}
+
+/** One live-criterion row: grey until met (green ✓); `bad` shows a red ✗ state. */
+function Criterion({ met, bad = false, children }: { met: boolean; bad?: boolean; children: ReactNode }) {
+  const color = met ? 'var(--up)' : bad ? 'var(--down)' : C.dim;
+  const border = met ? 'var(--up)' : bad ? 'var(--down)' : 'var(--glass-border)';
+  const tint = met
+    ? 'color-mix(in srgb, var(--up) 18%, transparent)'
+    : bad
+      ? 'color-mix(in srgb, var(--down) 18%, transparent)'
+      : 'transparent';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '9px', fontSize: '12.5px', fontWeight: 700, color, transition: 'color .2s ease', lineHeight: 1.4 }}>
+      <div style={{ width: '17px', height: '17px', borderRadius: '50%', border: `1.5px solid ${border}`, background: tint, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .2s ease', flexShrink: 0 }}>
+        {bad && !met ? (
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none">
+            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" />
+          </svg>
+        ) : (
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" style={{ opacity: met ? 1 : 0.35 }}>
+            <path d="M5 13l4 4 10-11" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </div>
+      {children}
+    </div>
+  );
+}
+
 export function PasswordSetup({ store }: { store: WalletStore }) {
   const t = store.t;
   const [pwd, setPwd] = useState('');
   const [confirm, setConfirm] = useState('');
-  const [show, setShow] = useState(false);
-  const strong = pwd.length >= 8;
+  // Live criteria — each row below flips to green as it's satisfied.
+  const lenOk = pwd.length >= 8;
+  const upperOk = /[A-Z]/.test(pwd);
+  const digitOk = /\d/.test(pwd);
+  const lowerOk = /[a-z]/.test(pwd);
   const match = pwd === confirm && confirm.length > 0;
-  const ok = strong && match && !store.busy;
+  const ok = lenOk && upperOk && digitOk && lowerOk && match && !store.busy;
 
   const back = () => store.setScreen('profile-setup');
 
@@ -285,22 +429,19 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
         {t('pwd.desc')}
       </div>
 
-      <Field label={t('pwd.label')} value={pwd} onChange={setPwd} type={show ? 'text' : 'password'} placeholder={t('pwd.min')} />
-      <Field label={t('pwd.repeat')} value={confirm} onChange={setConfirm} type={show ? 'text' : 'password'} placeholder={t('pwd.repeat')} />
+      <PasswordField label={t('pwd.label')} value={pwd} onChange={setPwd} placeholder={t('pwd.min')} />
+      <PasswordField label={t('pwd.repeat')} value={confirm} onChange={setConfirm} placeholder={t('pwd.repeat')} />
 
-      <div onClick={() => setShow((s) => !s)} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', margin: '4px 0 8px', fontSize: '13px', color: C.muted, fontWeight: 600 }}>
-        <div style={{ width: '20px', height: '20px', borderRadius: '6px', background: show ? C.accent : 'transparent', border: `2px solid ${show ? C.accent : 'var(--glass-border)'}` }} />
-        {t('pwd.show')}
+      {/* criteria checklist — states update live as the user types */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', margin: '6px 2px 12px' }}>
+        <Criterion met={lenOk}>{t('pwd.critLen')}</Criterion>
+        <Criterion met={upperOk}>{t('pwd.critUpper')}</Criterion>
+        <Criterion met={digitOk}>{t('pwd.critDigit')}</Criterion>
+        <Criterion met={lowerOk}>{t('pwd.critLower')}</Criterion>
+        <Criterion met={match}>{t('pwd.critMatch')}</Criterion>
       </div>
 
-      <div style={{ fontSize: '12.5px', fontWeight: 700, marginTop: '6px', color: !pwd ? C.dim : strong ? C.accent : C.danger }}>
-        {!pwd ? '' : strong ? t('pwd.lenOk') : t('pwd.lenErr')}
-      </div>
-      {confirm.length > 0 && !match && (
-        <div style={{ fontSize: '12.5px', fontWeight: 700, color: C.danger, marginTop: '4px' }}>{t('pwd.mismatch')}</div>
-      )}
-
-      <div style={{ flex: 1 }} />
+      <div style={{ flex: 1, minHeight: '14px' }} />
       <PrimaryButton disabled={!ok} onClick={() => store.finishOnboarding(pwd)}>
         {store.busy ? <Spinner /> : t('pwd.create')}
       </PrimaryButton>
