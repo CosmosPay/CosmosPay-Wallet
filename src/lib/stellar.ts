@@ -97,16 +97,21 @@ export async function getAccountState(
   const server = getServer(cfg);
   try {
     const acc = await server.loadAccount(publicKey);
-    const balances: TokenBalance[] = acc.balances.map((b: any) => {
-      const isNative = b.asset_type === 'native';
-      return {
-        code: isNative ? 'XLM' : b.asset_code,
-        issuer: isNative ? null : b.asset_issuer,
-        balance: b.balance,
-        isNative,
-        buyingLiabilities: b.buying_liabilities,
-      };
-    });
+    const balances: TokenBalance[] = acc.balances
+      // Only spendable tokens: native XLM + credit assets. Liquidity-pool-share balances
+      // (`liquidity_pool_shares`) have NO asset_code — they'd surface as an undefined
+      // `code` and crash the asset list, and they aren't a token you can send anyway.
+      .filter((b: any) => b.asset_type === 'native' || b.asset_type === 'credit_alphanum4' || b.asset_type === 'credit_alphanum12')
+      .map((b: any) => {
+        const isNative = b.asset_type === 'native';
+        return {
+          code: isNative ? 'XLM' : b.asset_code,
+          issuer: isNative ? null : b.asset_issuer,
+          balance: b.balance,
+          isNative,
+          buyingLiabilities: b.buying_liabilities,
+        };
+      });
     const native = balances.find((b) => b.isNative);
     return {
       exists: true,
@@ -423,7 +428,7 @@ export function explorerAccountUrl(cfg: NetConfig, pub: string): string {
 /** A single money movement for an account, normalized for display. Newest first. */
 export interface HistoryOp {
   id: string;
-  kind: 'sent' | 'received' | 'swap' | 'create' | 'other';
+  kind: 'sent' | 'received' | 'swap' | 'create' | 'other' | 'fee';
   createdAt: string; // ISO
   code: string; // primary (received/sent) asset code
   amount: string;
@@ -442,10 +447,16 @@ function assetCodeOf(type?: string, code?: string): string {
 function normalizeHistoryOp(r: any, pub: string): HistoryOp | null {
   // With includeFailed, ops carry `transaction_successful`; false = the tx was rejected.
   const base = { id: String(r.id), createdAt: r.created_at, hash: r.transaction_hash, failed: r.transaction_successful === false };
+  // Commission/fee payments (e.g. the swap fee) carry a memo like "Cosmos Liquidity Pool".
+  // The memo rides along when the payments query joins the transaction (see getHistory);
+  // if it isn't present the text is '' and nothing is relabelled (safe fallback).
+  const txObj = r.transaction ?? r.transaction_attr;
+  const memoText = txObj && typeof txObj === 'object' && txObj.memo != null ? String(txObj.memo) : '';
+  const isFee = /liquidity pool|comisi[oó]n/i.test(memoText);
   switch (r.type) {
     case 'payment': {
       const sent = r.from === pub;
-      return { ...base, kind: sent ? 'sent' : 'received', code: assetCodeOf(r.asset_type, r.asset_code), amount: r.amount, counterparty: sent ? r.to : r.from };
+      return { ...base, kind: isFee ? 'fee' : sent ? 'sent' : 'received', code: assetCodeOf(r.asset_type, r.asset_code), amount: r.amount, counterparty: sent ? r.to : r.from };
     }
     case 'create_account': {
       const sent = r.funder === pub;
@@ -459,7 +470,7 @@ function normalizeHistoryOp(r: any, pub: string): HistoryOp | null {
         return { ...base, kind: 'swap', code: destCode, amount: r.amount, fromCode: srcCode, fromAmount: r.source_amount, counterparty: null };
       }
       const sent = r.from === pub;
-      return { ...base, kind: sent ? 'sent' : 'received', code: sent ? srcCode : destCode, amount: sent ? (r.source_amount ?? r.amount) : r.amount, counterparty: sent ? r.to : r.from };
+      return { ...base, kind: isFee ? 'fee' : sent ? 'sent' : 'received', code: sent ? srcCode : destCode, amount: sent ? (r.source_amount ?? r.amount) : r.amount, counterparty: sent ? r.to : r.from };
     }
     case 'account_merge':
       return { ...base, kind: 'other', code: 'XLM', amount: '', counterparty: r.into ?? null };
@@ -476,7 +487,9 @@ export async function getHistory(cfg: NetConfig, pub: string, limit = 40): Promi
   try {
     const server = getServer(cfg);
     // includeFailed surfaces operations whose transaction was rejected on submit.
-    const res: any = await server.payments().forAccount(pub).includeFailed(true).order('desc').limit(limit).call();
+    // join('transactions') embeds each op's transaction so we can read its memo
+    // (used to flag commission/"Cosmos Liquidity Pool" fee payments).
+    const res: any = await server.payments().forAccount(pub).includeFailed(true).join('transactions').order('desc').limit(limit).call();
     const recs: any[] = res.records ?? [];
     const out: HistoryOp[] = [];
     for (const r of recs) {

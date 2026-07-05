@@ -4,7 +4,9 @@ import { TokenAvatar } from './TokenAvatar';
 import '@/styles/components/asset-logo.css';
 
 export function assetMeta(code: string) {
-  return ASSET_META[code] || { name: code, glyph: code.slice(0, 1), color: AV };
+  // Defensive: an unknown/empty code (e.g. a liquidity-pool balance with no asset_code)
+  // must not crash on .slice — fall back to a neutral glyph.
+  return ASSET_META[code] || { name: code || '?', glyph: (code || '?').slice(0, 1), color: AV };
 }
 
 /** Official monochrome asset logo (falls back to a glyph circle for unknown codes). */

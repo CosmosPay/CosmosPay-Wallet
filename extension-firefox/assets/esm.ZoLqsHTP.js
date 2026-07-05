@@ -1,0 +1,2 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["assets/web.CTeDCdmm.js","assets/jsx-runtime.BeBSed-k.js","assets/react.D3PhkUz-.js"])))=>i.map(i=>d[i]);
+import{et as e,it as t}from"./jsx-runtime.BeBSed-k.js";var n=t(`Preferences`,{web:()=>e(()=>import(`./web.CTeDCdmm.js`).then(e=>new e.PreferencesWeb),__vite__mapDeps([0,1,2]))});export{n as Preferences};

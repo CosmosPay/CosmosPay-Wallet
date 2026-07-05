@@ -9,17 +9,19 @@ export function HistoryRow({ item, store, delay = 0 }: { item: HistoryOp; store:
   const t = store.t;
   const url = explorerTxUrl(store.network, item.hash);
   const date = new Date(item.createdAt).toLocaleDateString(store.locale, { day: 'numeric', month: 'short', year: 'numeric' });
-  const icon = item.kind === 'swap' ? '⇅' : item.kind === 'received' || item.kind === 'create' ? '↓' : item.kind === 'sent' ? '↑' : '•';
+  const icon = item.kind === 'swap' ? '⇅' : item.kind === 'fee' ? '%' : item.kind === 'received' || item.kind === 'create' ? '↓' : item.kind === 'sent' ? '↑' : '•';
   const title =
     item.kind === 'sent' ? t('history.sent')
     : item.kind === 'received' ? t('history.received')
     : item.kind === 'swap' ? t('history.swap')
     : item.kind === 'create' ? t('history.created')
+    : item.kind === 'fee' ? t('history.fee')
     : t('history.other');
   const sub = item.kind === 'swap'
     ? `${trim(parseFloat(item.fromAmount || '0'), 4)} ${item.fromCode} → ${trim(parseFloat(item.amount || '0'), 4)} ${item.code}`
     : item.counterparty ? shortAddr(item.counterparty) : '';
-  const sign = item.kind === 'sent' ? '−' : item.kind === 'received' || item.kind === 'create' ? '+' : '';
+  // Fees are money out, so they carry the same '−' sign as a send.
+  const sign = item.kind === 'sent' || item.kind === 'fee' ? '−' : item.kind === 'received' || item.kind === 'create' ? '+' : '';
   const amountText = item.kind === 'swap'
     ? `+${trim(parseFloat(item.amount || '0'), 4)} ${item.code}`
     : item.amount ? `${sign}${trim(parseFloat(item.amount), 4)} ${item.code}` : '';

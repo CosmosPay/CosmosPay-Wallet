@@ -452,6 +452,7 @@ const T: Record<string, Record<Lang, string>> = {
   'history.swap': { es: 'Intercambio', en: 'Swap', pt: 'Troca', de: 'Tausch', fr: 'Échange' },
   'history.created': { es: 'Cuenta creada', en: 'Account created', pt: 'Account created', de: 'Account created', fr: 'Account created' },
   'history.other': { es: 'Operación', en: 'Operation', pt: 'Operação', de: 'Vorgang', fr: 'Opération' },
+  'history.fee': { es: 'Comisión', en: 'Fee', pt: 'Taxa', de: 'Gebühr', fr: 'Frais' },
   'history.failed': { es: 'Fallida', en: 'Failed', pt: 'Falhou', de: 'Fehlgeschlagen', fr: 'Échoué' },
   'history.genesis': { es: 'Inicio de uso de Cosmos Pay', en: 'Started using Cosmos Pay', pt: 'Início de uso do Cosmos Pay', de: 'Start mit Cosmos Pay', fr: 'Début d’utilisation de Cosmos Pay' },
 

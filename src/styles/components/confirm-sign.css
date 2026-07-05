@@ -7,9 +7,9 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(0, 0, 0, 0.55);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  /* Strong opaque scrim (backdrop-filter blur doesn't composite in this app's shell,
+     so we darken the background hard instead to clearly separate the dialog). */
+  background: rgba(0, 0, 0, 0.72);
   animation: fadeUp 0.2s ease;
 }
 .confirm-sign-card {
@@ -18,10 +18,17 @@
   border-radius: 22px;
   padding: 22px;
 }
-/* compound selector so the pop entrance beats `.glass`'s glassBreath animation
-   regardless of stylesheet order (was an inline style before) */
+/* SOLID, elevated card — NOT translucent glass, so it stands out from the scrim even
+   without a working backdrop-filter. The gradient composites the glass tint OVER the
+   opaque --bg to get an opaque surface a shade lighter than the background. The compound
+   selector also beats `.glass`'s glassBreath animation regardless of stylesheet order. */
 .glass.confirm-sign-card {
   animation: pop 0.26s ease;
+  background: linear-gradient(var(--glass-soft-bg), var(--glass-soft-bg)), var(--bg);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }
 .confirm-sign-icon-row {
   display: flex;
