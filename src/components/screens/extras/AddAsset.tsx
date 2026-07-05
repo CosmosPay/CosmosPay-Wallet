@@ -64,7 +64,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen pb-40">
-      <BackBar title={t('addAsset.title')} onBack={() => store.go('home', 'home')} />
+      <BackBar title={t('addAsset.title')} onBack={() => store.back('home')} />
       <div className="add-asset-desc">
         {t('addAsset.desc')}
       </div>

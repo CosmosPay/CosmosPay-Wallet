@@ -38,7 +38,7 @@ export function Send({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-24">
-      <BackBar title={t('send.title')} onBack={() => store.go('home', 'home')} />
+      <BackBar title={t('send.title')} onBack={() => store.back('home')} />
 
       <div className="label-up send-to-label">{t('send.to')}</div>
       <div className="flexr g8">
@@ -64,6 +64,7 @@ export function Send({ store }: { store: WalletStore }) {
       </button>
       {s.to && (
         <div className={addrValid ? 'send-addr-note is-valid' : 'send-addr-note is-invalid'}>
+          <span className="send-addr-dot">{addrValid ? '✓' : '✕'}</span>
           {addrValid ? t('send.validAddr') : t('send.invalidAddr')}
         </div>
       )}

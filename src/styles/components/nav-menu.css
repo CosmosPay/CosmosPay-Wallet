@@ -8,11 +8,10 @@
   z-index: 60;
   display: flex;
   flex-direction: column;
-  /* Mostly-opaque surface: the backdrop blur is just a garnish, so its
-     one-frame late arrival on restore is imperceptible. */
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(26px) saturate(150%);
-  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  /* SOLID surface (no backdrop-filter): the frosted blur does not composite inside the
+     app's shell in Chrome OR Firefox, so a translucent drawer would just bleed the app
+     content through. A solid --bg drawer is a clean full-screen panel everywhere. */
+  background: var(--bg);
 }
 .nav-menu-header {
   padding: 16px 20px 8px;

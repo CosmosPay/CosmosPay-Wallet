@@ -15,9 +15,13 @@
 .send-addr-input { flex: 1; width: auto; min-width: 0; font-size: 14px; font-family: monospace; } /* on .input */
 .send-scan-btn { flex-shrink: 0; width: 54px; height: 54px; border: none; border-radius: 999px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text); } /* on .glass-soft */
 .send-paste-btn { margin-top: 8px; } /* on .glass-soft.pill-btn */
-.send-addr-note { font-size: 12px; font-weight: 700; text-align: right; margin: 6px 2px 0; }
-.send-addr-note.is-valid { color: var(--accent); }
+/* address validity — green/red like the password criteria, with a filled ✓/✕ badge */
+.send-addr-note { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 12px; font-weight: 700; margin: 6px 2px 0; }
+.send-addr-note.is-valid { color: var(--up); }
 .send-addr-note.is-invalid { color: #ff5d5d; }
+.send-addr-dot { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 900; color: #fff; flex-shrink: 0; }
+.send-addr-note.is-valid .send-addr-dot { background: var(--up); }
+.send-addr-note.is-invalid .send-addr-dot { background: #ff5d5d; }
 .send-amount { text-align: center; padding: 10px 0 4px; }
 /* the amount input width is content-sized (chars) → stays inline */
 .send-amount-input { max-width: 230px; background: transparent; border: none; outline: none; color: var(--text); font-size: 44px; font-weight: 800; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; text-align: center; padding: 0; }

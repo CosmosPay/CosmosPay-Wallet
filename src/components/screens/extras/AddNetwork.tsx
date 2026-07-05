@@ -25,7 +25,7 @@ export function AddNetwork({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('net.addTitle')} onBack={() => store.go(store.session ? 'home' : 'home', 'home')} />
+      <BackBar title={t('net.addTitle')} onBack={() => store.back('home')} />
       <div className="add-network-desc">
         {t('settings.networkDesc')}
       </div>

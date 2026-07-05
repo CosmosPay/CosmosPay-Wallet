@@ -1603,10 +1603,15 @@ export function useWalletStore() {
       const containers: Screen[] = ['home', 'earn', 'markets', 'profile', 'swap', 'operations', 'settings', 'fiat', 'receive', 'history', 'cosmospay'];
       const p = prevScreenRef.current;
       const target = containers.includes(p) ? p : fallback;
-      navigate(target);
+      // Reset the origin to home BEFORE navigating (and use the raw setter, not
+      // navigate(), so it isn't overwritten with the screen we're leaving). Otherwise
+      // back would record the current screen as the new "previous" and a second back
+      // would ping-pong straight back to it (e.g. cosmospay -> profile -> cosmospay).
+      prevScreenRef.current = 'home';
+      setScreen(target);
       if (target === 'home' || target === 'earn' || target === 'markets' || target === 'profile') setTab(target);
     },
-    [navigate],
+    [],
   );
 
   return {

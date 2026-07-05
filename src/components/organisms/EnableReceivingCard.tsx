@@ -14,10 +14,21 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
   const pending = !!store.cosmosPayPending;
   const link = store.cosmosLink;
   const [code, setCode] = useState('');
+  // LOCAL busy: only this card's own actions spin its buttons — an unrelated global
+  // action (e.g. Home's "activate account" / Friendbot funding) must not.
+  const [busy, setBusy] = useState(false);
+  const run = async (fn: () => unknown) => {
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Link flow — enter the emailed access code.
   if (link?.stage === 'sent') {
-    const ready = code.length === 6 && !store.busy;
+    const ready = code.length === 6 && !busy;
     return (
       <div className="glass card enable-receiving-card">
         <div className="enable-receiving-title">{t('cosmospay.codeTitle')}</div>
@@ -31,14 +42,13 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
           className="enable-receiving-code"
         />
         <button
-          onClick={() => store.submitLinkCode(code)}
+          onClick={() => run(() => store.submitLinkCode(code))}
           disabled={!ready}
           className="enable-receiving-cta"
-          style={{ opacity: ready ? 1 : 0.5 }}
         >
-          {store.busy ? <Spinner /> : t('cosmospay.linkVerifyCta')}
+          {busy ? <Spinner /> : t('cosmospay.linkVerifyCta')}
         </button>
-        <button onClick={() => { setCode(''); store.cancelLink(); }} disabled={store.busy} className="enable-receiving-cancel">
+        <button onClick={() => { setCode(''); store.cancelLink(); }} disabled={busy} className="enable-receiving-cancel">
           {t('common.cancel')}
         </button>
       </div>
@@ -51,10 +61,10 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
       <div className="glass card enable-receiving-card">
         <div className="enable-receiving-title">{t('cosmospay.existsLinkTitle')}</div>
         <div className="enable-receiving-desc">{t('cosmospay.existsLinkDesc')}</div>
-        <button onClick={() => store.linkReceiving()} disabled={store.busy} className="enable-receiving-cta">
-          {store.busy ? <Spinner /> : t('cosmospay.linkCta')}
+        <button onClick={() => run(() => store.linkReceiving())} disabled={busy} className="enable-receiving-cta">
+          {busy ? <Spinner /> : t('cosmospay.linkCta')}
         </button>
-        <button onClick={() => store.cancelLink()} disabled={store.busy} className="enable-receiving-cancel">
+        <button onClick={() => store.cancelLink()} disabled={busy} className="enable-receiving-cancel">
           {t('common.cancel')}
         </button>
       </div>
@@ -76,14 +86,14 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
         </div>
       )}
       <button
-        onClick={() => (pending ? store.claimReceiving() : store.enableReceiving())}
-        disabled={store.busy}
+        onClick={() => run(() => (pending ? store.claimReceiving() : store.enableReceiving()))}
+        disabled={busy}
         className="enable-receiving-cta"
       >
-        {store.busy ? <Spinner /> : pending ? t('cosmospay.confirmCta') : t('cosmospay.cta')}
+        {busy ? <Spinner /> : pending ? t('cosmospay.confirmCta') : t('cosmospay.cta')}
       </button>
       {pending && (
-        <button onClick={() => store.resendReceiving()} disabled={store.busy} className="enable-receiving-cancel">
+        <button onClick={() => run(() => store.resendReceiving())} disabled={busy} className="enable-receiving-cancel">
           {t('cosmospay.resend')}
         </button>
       )}

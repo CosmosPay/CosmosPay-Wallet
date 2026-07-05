@@ -119,7 +119,7 @@ export function Swap({ store }: { store: WalletStore }) {
             (from-card bottom + half the 10px gap) no matter how tall each card is —
             top:50% of the whole wrapper sat visibly too high. */}
         <div className="swap-seam">
-          <button onClick={invert} aria-label="invert" className="tap glass-soft swap-invert">⇅</button>
+          <button onClick={invert} aria-label="invert" className="swap-invert">⇅</button>
         </div>
         <div className={openSel === 'to' ? 'glass swap-card swap-card--to is-active' : 'glass swap-card swap-card--to'}>
           <div className="swap-label">{t('swap.receiveEst')}</div>
