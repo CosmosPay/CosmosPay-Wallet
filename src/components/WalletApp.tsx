@@ -11,6 +11,7 @@ import { Receive, Send, Confirm, Success, Swap, History, PayLink } from '@/compo
 import { Settings, Export, About } from '@/components/screens/Settings';
 import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from '@/components/screens/Extras';
 import { Fiat, BankAccount, Deposit, Withdraw } from '@/components/screens/Fiat';
+import { Liquidity, LpDeposit, LpWithdraw } from '@/components/screens/Liquidity';
 import { CosmosPay } from '@/components/screens/CosmosPay';
 
 /** Map the Android hardware back button to a sensible in-app navigation. */
@@ -63,6 +64,11 @@ function handleBack(store: WalletStore, exitApp: () => void) {
       return store.go('home', 'home');
     case 'scan':
       return store.setScreen('send');
+    case 'liquidity':
+      return store.go('earn', 'earn');
+    case 'lp-deposit':
+    case 'lp-withdraw':
+      return store.setScreen('liquidity');
     case 'success':
       return store.session ? store.go('home', 'home') : store.setScreen('unlock');
     case 'earn':
@@ -95,6 +101,12 @@ function renderScreen(screen: WalletStore['screen'], store: WalletStore) {
       return <Home store={store} />;
     case 'earn':
       return <Earn store={store} />;
+    case 'liquidity':
+      return <Liquidity store={store} />;
+    case 'lp-deposit':
+      return <LpDeposit store={store} />;
+    case 'lp-withdraw':
+      return <LpWithdraw store={store} />;
     case 'markets':
       return <Markets store={store} />;
     case 'profile':

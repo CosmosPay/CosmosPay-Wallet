@@ -447,12 +447,19 @@ function assetCodeOf(type?: string, code?: string): string {
 function normalizeHistoryOp(r: any, pub: string): HistoryOp | null {
   // With includeFailed, ops carry `transaction_successful`; false = the tx was rejected.
   const base = { id: String(r.id), createdAt: r.created_at, hash: r.transaction_hash, failed: r.transaction_successful === false };
-  // Commission/fee payments (e.g. the swap fee) carry a memo like "Cosmos Liquidity Pool".
-  // The memo rides along when the payments query joins the transaction (see getHistory);
-  // if it isn't present the text is '' and nothing is relabelled (safe fallback).
-  const txObj = r.transaction ?? r.transaction_attr;
-  const memoText = txObj && typeof txObj === 'object' && txObj.memo != null ? String(txObj.memo) : '';
-  const isFee = /liquidity pool|comisi[oó]n/i.test(memoText);
+  // Commission/fee payments carry a TEXT memo like "Cosmos Liquidity Commission" or
+  // "Cosmos Swap Commission". The memo rides along when the payments query joins the
+  // transaction (see getHistory); if it isn't present the text is '' and nothing is
+  // relabelled (safe fallback).
+  // The SDK renames the joined transaction to `transaction_attr` (a plain object) and
+  // keeps `transaction` as a lazy-loader FUNCTION — so read the memo from _attr first.
+  const txObj = r.transaction_attr && typeof r.transaction_attr === 'object'
+    ? r.transaction_attr
+    : typeof r.transaction === 'object' && r.transaction
+      ? r.transaction
+      : null;
+  const memoText = txObj && txObj.memo != null ? String(txObj.memo) : '';
+  const isFee = /commission|comisi[oó]n/i.test(memoText);
   switch (r.type) {
     case 'payment': {
       const sent = r.from === pub;

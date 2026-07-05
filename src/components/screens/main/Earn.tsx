@@ -16,7 +16,6 @@ export function Earn({ store }: { store: WalletStore }) {
       <div className="main-head">
         <span className="title-30">{t('earn.title')}</span>
         <div className="row g10">
-          <div className="glass-soft circle-btn circle-34 main-help">?</div>
           {buildKind() === 'ext' && <BackCircle store={store} />}
           <NavMenu store={store} />
         </div>
@@ -29,7 +28,7 @@ export function Earn({ store }: { store: WalletStore }) {
       </div>
 
       <div className="title-20 earn-generate">{t('earn.generate')}</div>
-      <div className="glass card earn-lp">
+      <div className="glass card earn-lp tap" onClick={() => store.go('liquidity')}>
         <div className="row g12 earn-lp-head">
           <TokenAvatar glyph="◇" color="rgba(255,255,255,.10)" size={36} />
           <div>
@@ -40,7 +39,7 @@ export function Earn({ store }: { store: WalletStore }) {
         <div className="earn-lp-desc">
           {t('earn.lpDesc')}
         </div>
-        <div className="earn-soon">{t('earn.soon')}</div>
+        <div className="earn-lp-cta">{t('lp.open')} →</div>
       </div>
       <div className="earn-note">
         {t('earn.note')}

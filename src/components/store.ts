@@ -65,23 +65,31 @@ import {
   createReceiver as cpCreateReceiver,
   createSwap as cpCreateSwap,
   deleteBankAccount as cpDeleteBankAccount,
+  depositLiquidity as cpDepositLiquidity,
   extractUnsignedXdr,
   getReceiver as cpGetReceiver,
   linkCosmosAccount,
   listBankAccounts as cpListBankAccounts,
+  listLiquidityPools as cpListLiquidityPools,
+  liquidityPositions as cpLiquidityPositions,
   listReceivers as cpListReceivers,
   listReceiverWallets as cpListReceiverWallets,
   offrampQuote as cpOfframpQuote,
   onrampQuote as cpOnrampQuote,
   quoteSwap as cpQuoteSwap,
   registerCosmosAccount,
+  submitLiquidity as cpSubmitLiquidity,
   submitSwap as cpSubmitSwap,
   uploadKycDoc as cpUploadKycDoc,
   verifyCosmosLink,
+  withdrawLiquidity as cpWithdrawLiquidity,
   DEFAULT_SLIPPAGE_BPS,
   type BankAccount,
   type CreateReceiverInput,
   type FiatToken,
+  type ListPoolsInput,
+  type LiquidityPool,
+  type LiquidityPosition,
   type Payin,
   type PayinQuote,
   type PayinQuoteInput,
@@ -134,6 +142,9 @@ export type Screen =
   | 'unlock'
   | 'home'
   | 'earn'
+  | 'liquidity'
+  | 'lp-deposit'
+  | 'lp-withdraw'
   | 'markets'
   | 'profile'
   | 'asset'
@@ -196,6 +207,12 @@ export interface SwapAsset {
   code: string;
   issuer: string | null;
 }
+
+/** What the liquidity deposit/withdraw form is working on. `deposit` may preset the
+ *  pair (e.g. picked from the pool explorer); `withdraw` always carries the position. */
+export type LpTarget =
+  | { mode: 'deposit'; presetA?: SwapAsset; presetB?: SwapAsset }
+  | { mode: 'withdraw'; position: LiquidityPosition };
 
 export interface VerifyTarget {
   index: number;
@@ -364,6 +381,8 @@ export function useWalletStore() {
   const [send, setSend] = useState<SendDraft>({ to: '', amount: '0', memo: '', asset: 'XLM' });
   const [selectedAsset, setSelectedAsset] = useState<string>('XLM');
   const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
+  // Liquidity-pool form target (deposit preset or the position being withdrawn).
+  const [lpTarget, setLpTarget] = useState<LpTarget | null>(null);
 
   // SEP-7 payment links (web+stellar:pay?…) — pasted, scanned, or arriving via URL.
   const pendingSep7 = useRef<string | null>(null);
@@ -1253,6 +1272,149 @@ export function useWalletStore() {
     [session, cosmosPay, network, requestSignature, refresh, t, flash],
   );
 
+  /* ------------------------- liquidity pools ---------------------- */
+
+  /** The CosmosPay key for the wallet's current network, or null (flashes a hint). */
+  const cosmosApiKey = useCallback((): string | null => {
+    const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+    if (!apiKey) flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
+    return apiKey;
+  }, [cosmosPay, network, t, flash]);
+
+  /** Browse on-chain liquidity pools (Horizon proxy). Returns [] on error / not enabled. */
+  const listPools = useCallback(
+    async (input: ListPoolsInput = {}): Promise<LiquidityPool[]> => {
+      const apiKey = cosmosApiKey();
+      if (!apiKey) return [];
+      try {
+        return (await cpListLiquidityPools(apiKey, input)).data;
+      } catch (e) {
+        flash((e as Error).message || t('lp.loadError'), 'err');
+        return [];
+      }
+    },
+    [cosmosApiKey, t, flash],
+  );
+
+  /** This wallet's pool share positions (with redeemable amounts). [] on error. */
+  const liquidityPositions = useCallback(async (): Promise<LiquidityPosition[]> => {
+    if (!meta) return [];
+    const apiKey = cosmosApiKey();
+    if (!apiKey) return [];
+    try {
+      return (await cpLiquidityPositions(apiKey, meta.publicKey)).data;
+    } catch (e) {
+      flash((e as Error).message || t('lp.loadError'), 'err');
+      return [];
+    }
+  }, [meta, cosmosApiKey, t, flash]);
+
+  /**
+   * Full deposit flow: build (server prices it + builds the XDR) -> sign locally
+   * -> submit (server relays it to Horizon). Mirrors submitSwap; lands on success.
+   */
+  const submitDeposit = useCallback(
+    async (input: { assetA: SwapAsset; assetB: SwapAsset; maxAmountA: string; maxAmountB?: string }) => {
+      if (!session) return;
+      const apiKey = cosmosApiKey();
+      if (!apiKey) return;
+      const okSig = await requestSignature({
+        title: t('confirmSig.lpDepositTitle'),
+        message: t('confirmSig.lpDepositMsg', { a: input.assetA.code, b: input.assetB.code }),
+      });
+      if (!okSig) return;
+      setBusy(true);
+      try {
+        const op = await cpDepositLiquidity(apiKey, {
+          source: session.publicKey,
+          assetACode: input.assetA.code,
+          assetAIssuer: input.assetA.issuer ?? undefined,
+          assetBCode: input.assetB.code,
+          assetBIssuer: input.assetB.issuer ?? undefined,
+          maxAmountA: input.maxAmountA,
+          maxAmountB: input.maxAmountB,
+          slippageBps: DEFAULT_SLIPPAGE_BPS,
+        });
+        const signedXdr = signXdr(network, session.secret, op.xdr);
+        const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
+        if (res.submitted) {
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('lp.depositSuccess'),
+            msg: t('lp.depositSuccessMsg'),
+            rows: [
+              { label: t('lp.assetA'), val: `${op.amountA} ${op.assetA === 'native' ? 'XLM' : op.assetA}` },
+              { label: t('lp.assetB'), val: `${op.amountB} ${op.assetB === 'native' ? 'XLM' : op.assetB}` },
+            ],
+            hash: res.txHash ?? undefined,
+          });
+          setScreen('success');
+          refresh(true);
+        } else {
+          const codes = res.resultCodes ? JSON.stringify(res.resultCodes) : '';
+          setSuccessInfo({ kind: 'err', title: t('lp.depositFailed'), msg: res.reason || codes || t('lp.depositFailed'), rows: [] });
+          setScreen('success');
+        }
+      } catch (e) {
+        setSuccessInfo({ kind: 'err', title: t('lp.depositFailed'), msg: (e as Error).message, rows: [] });
+        setScreen('success');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [session, cosmosApiKey, network, requestSignature, refresh, t],
+  );
+
+  /** Full withdraw flow: build -> sign locally -> submit. Mirrors submitDeposit. */
+  const submitWithdraw = useCallback(
+    async (input: { poolId: string; shares: string }) => {
+      if (!session) return;
+      const apiKey = cosmosApiKey();
+      if (!apiKey) return;
+      const okSig = await requestSignature({
+        title: t('confirmSig.lpWithdrawTitle'),
+        message: t('confirmSig.lpWithdrawMsg', { shares: input.shares }),
+      });
+      if (!okSig) return;
+      setBusy(true);
+      try {
+        const op = await cpWithdrawLiquidity(apiKey, {
+          source: session.publicKey,
+          poolId: input.poolId,
+          shares: input.shares,
+          slippageBps: DEFAULT_SLIPPAGE_BPS,
+        });
+        const signedXdr = signXdr(network, session.secret, op.xdr);
+        const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
+        if (res.submitted) {
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('lp.withdrawSuccess'),
+            msg: t('lp.withdrawSuccessMsg'),
+            rows: [
+              { label: t('lp.shares'), val: op.shares ?? input.shares },
+              { label: t('lp.assetA'), val: `≥ ${op.amountA} ${op.assetA === 'native' ? 'XLM' : op.assetA}` },
+              { label: t('lp.assetB'), val: `≥ ${op.amountB} ${op.assetB === 'native' ? 'XLM' : op.assetB}` },
+            ],
+            hash: res.txHash ?? undefined,
+          });
+          setScreen('success');
+          refresh(true);
+        } else {
+          const codes = res.resultCodes ? JSON.stringify(res.resultCodes) : '';
+          setSuccessInfo({ kind: 'err', title: t('lp.withdrawFailed'), msg: res.reason || codes || t('lp.withdrawFailed'), rows: [] });
+          setScreen('success');
+        }
+      } catch (e) {
+        setSuccessInfo({ kind: 'err', title: t('lp.withdrawFailed'), msg: (e as Error).message, rows: [] });
+        setScreen('success');
+      } finally {
+        setBusy(false);
+      }
+    },
+    [session, cosmosApiKey, network, requestSignature, refresh, t],
+  );
+
   /** Create a shareable CosmosPay pay link (SEP-7 pay intent) addressed to this wallet. */
   const createPayLink = useCallback(
     async (input: { amount?: string; assetCode?: string; assetIssuer?: string; memo?: string; msg?: string }): Promise<PayIntent | null> => {
@@ -1615,6 +1777,24 @@ export function useWalletStore() {
     [navigate],
   );
 
+  /** Open the liquidity deposit form, optionally preset with a pair (e.g. from the explorer). */
+  const openDeposit = useCallback(
+    (presetA?: SwapAsset, presetB?: SwapAsset) => {
+      setLpTarget({ mode: 'deposit', presetA, presetB });
+      navigate('lp-deposit');
+    },
+    [navigate],
+  );
+
+  /** Open the liquidity withdraw form for a specific position. */
+  const openWithdraw = useCallback(
+    (position: LiquidityPosition) => {
+      setLpTarget({ mode: 'withdraw', position });
+      navigate('lp-withdraw');
+    },
+    [navigate],
+  );
+
   /** Go back to the screen the user navigated from. Falls back to `fallback` when
    *  the origin isn't a stable container (e.g. a transient flow screen). */
   const back = useCallback(
@@ -1739,6 +1919,14 @@ export function useWalletStore() {
     cancelLink,
     quoteSwap,
     submitSwap,
+    // liquidity pools
+    lpTarget,
+    listPools,
+    liquidityPositions,
+    submitDeposit,
+    submitWithdraw,
+    openDeposit,
+    openWithdraw,
     createPayLink,
     receivers,
     bankAccounts,

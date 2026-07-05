@@ -371,6 +371,170 @@ export async function submitSwap(
   );
 }
 
+/* --------------------------- liquidity pools --------------------------- */
+/*
+ * Stellar AMM liquidity pools — the non-custodial twin of swaps. The gateway
+ * prices a deposit/withdraw against the pool's on-chain reserves and returns an
+ * unsigned XDR; the wallet signs it locally (signXdr) and hands it back via
+ * submitLiquidity, which relays it to Horizon (hash-verified). Funds never pass
+ * through Cosmos Pay. The plan commission is enforced server-side (the org's
+ * plan), never a request field — same as swaps. Endpoints: `/v1/liquidity-pools`.
+ */
+
+/** One side of a pool (or a holder's stake): an asset and its amount. */
+export interface LiquidityReserve {
+  asset: string; // asset code, or "native"
+  issuer: string | null;
+  amount: string;
+}
+
+/** An on-chain liquidity pool (proxied from Horizon; nothing persisted). */
+export interface LiquidityPool {
+  id: string;
+  network: string;
+  feeBp: number; // pool fee in basis points (30 = 0.3%)
+  totalTrustlines: string;
+  totalShares: string;
+  reserves: LiquidityReserve[];
+}
+
+export interface LiquidityPoolList {
+  data: LiquidityPool[];
+  cursor: string | null;
+}
+
+/** An account's stake in one pool, with its proportionally redeemable amounts. */
+export interface LiquidityPosition {
+  poolId: string;
+  shares: string;
+  totalShares: string;
+  shareOfPoolBps: number; // 112 = 1.12%
+  reserves: LiquidityReserve[];
+  redeemable: LiquidityReserve[]; // what the shares redeem to (pre-slippage)
+}
+
+export interface LiquidityPositionList {
+  account: string;
+  network: string;
+  data: LiquidityPosition[];
+}
+
+/** A persisted liquidity pool operation (deposit/withdraw) + its derived QR. */
+export interface LiquidityOperation {
+  id: string;
+  kind: 'DEPOSIT' | 'WITHDRAW';
+  status: string;
+  network: string;
+  source: string;
+  poolId: string;
+  assetA: string;
+  assetAIssuer: string | null;
+  assetB: string;
+  assetBIssuer: string | null;
+  amountA: string; // deposit: maxAmountA cap · withdraw: min received of A
+  amountB: string;
+  shares: string | null; // shares burned (withdraw only)
+  minPrice: string | null;
+  maxPrice: string | null;
+  slippageBps: number;
+  feeBps: number;
+  feeAmountA: string;
+  feeAmountB: string;
+  feeWallet: string | null;
+  commissionMemo: string | null;
+  xdr: string; // unsigned envelope to sign locally
+  uri: string;
+  txHash: string;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LiquiditySubmitResult {
+  submitted: boolean;
+  status: string;
+  txHash?: string;
+  reason?: string;
+  resultCodes?: string[];
+  operation: LiquidityOperation;
+}
+
+/** Query for browsing pools. Any filter is optional; omit for the newest pools. */
+export interface ListPoolsInput {
+  assetACode?: string;
+  assetAIssuer?: string;
+  assetBCode?: string;
+  assetBIssuer?: string;
+  account?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+export interface DepositLiquidityInput {
+  source: string;
+  assetACode?: string;
+  assetAIssuer?: string;
+  assetBCode?: string;
+  assetBIssuer?: string;
+  maxAmountA: string;
+  maxAmountB?: string; // derived from the pool ratio when omitted (funded pools)
+  slippageBps?: number;
+  memo?: string;
+}
+
+export interface WithdrawLiquidityInput {
+  source: string;
+  poolId: string;
+  shares: string;
+  slippageBps?: number;
+  memo?: string;
+}
+
+/** Append the defined entries of `params` to a URL's query string. */
+function withQuery(url: string, params: Record<string, string | number | undefined>): string {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') qs.append(k, String(v));
+  }
+  const s = qs.toString();
+  return s ? `${url}?${s}` : url;
+}
+
+/** Browse on-chain liquidity pools (Horizon proxy). */
+export async function listLiquidityPools(apiKey: string, input: ListPoolsInput = {}): Promise<LiquidityPoolList> {
+  return getJson<LiquidityPoolList>(withQuery(`${gatewayApi()}/v1/liquidity-pools`, { ...input }), apiKey);
+}
+
+/** Get a single liquidity pool by its 64-char hex id. */
+export async function getLiquidityPool(apiKey: string, poolId: string): Promise<LiquidityPool> {
+  return getJson<LiquidityPool>(`${gatewayApi()}/v1/liquidity-pools/${encodeURIComponent(poolId)}`, apiKey);
+}
+
+/** An account's pool share positions with redeemable amounts. */
+export async function liquidityPositions(apiKey: string, account: string): Promise<LiquidityPositionList> {
+  return getJson<LiquidityPositionList>(withQuery(`${gatewayApi()}/v1/liquidity-pools/positions`, { account }), apiKey);
+}
+
+/** Build a pool deposit. The returned operation carries the unsigned `xdr` to sign. */
+export async function depositLiquidity(apiKey: string, input: DepositLiquidityInput): Promise<LiquidityOperation> {
+  return postJson<LiquidityOperation>(`${gatewayApi()}/v1/liquidity-pools/deposit`, input, authHeaders(apiKey), false);
+}
+
+/** Build a pool withdrawal (burn shares). Returns the unsigned `xdr` to sign. */
+export async function withdrawLiquidity(apiKey: string, input: WithdrawLiquidityInput): Promise<LiquidityOperation> {
+  return postJson<LiquidityOperation>(`${gatewayApi()}/v1/liquidity-pools/withdraw`, input, authHeaders(apiKey), false);
+}
+
+/** Submit a locally signed XDR for an existing liquidity operation. */
+export async function submitLiquidity(apiKey: string, id: string, signedXdr: string): Promise<LiquiditySubmitResult> {
+  return postJson<LiquiditySubmitResult>(
+    `${gatewayApi()}/v1/liquidity-pools/operations/${encodeURIComponent(id)}/submit`,
+    { signedXdr },
+    authHeaders(apiKey),
+    false,
+  );
+}
+
 /* ----------------------------- pay links ------------------------------- */
 
 export interface PayLinkInput {
