@@ -15,7 +15,7 @@ export function HistoryRow({ item, store, delay = 0 }: { item: HistoryOp; store:
     : item.kind === 'received' ? t('history.received')
     : item.kind === 'swap' ? t('history.swap')
     : item.kind === 'create' ? t('history.created')
-    : item.kind === 'fee' ? t('history.fee')
+    : item.kind === 'fee' ? (item.feeKind === 'liquidity' ? t('history.feeLiquidity') : item.feeKind === 'swap' ? t('history.feeSwap') : t('history.fee'))
     : t('history.other');
   const sub = item.kind === 'swap'
     ? `${trim(parseFloat(item.fromAmount || '0'), 4)} ${item.fromCode} → ${trim(parseFloat(item.amount || '0'), 4)} ${item.code}`

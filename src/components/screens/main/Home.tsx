@@ -175,10 +175,11 @@ export function Home({ store }: { store: WalletStore }) {
         <div className="home-history-loading"><Spinner color="var(--text)" /></div>
       ) : (
         <>
-          {store.history.slice(0, 5).map((it, i) => <HistoryRow key={it.id} item={it} store={store} delay={i * 0.05} />)}
-          {/* The symbolic "started using Cosmos Pay" marker ALWAYS closes the list —
-              even right after Friendbot funding adds the first real operation. */}
-          <GenesisRow store={store} delay={Math.min(store.history.length, 5) * 0.05} />
+          {store.history.slice(0, 10).map((it, i) => <HistoryRow key={it.id} item={it} store={store} delay={i * 0.05} />)}
+          {/* The "started using Cosmos Pay" marker closes the list only when the home
+              preview reaches the actual end (≤10 ops). With more than 10 it lives past
+              the shown window, so it's not rendered here — see the full History screen. */}
+          {store.history.length <= 10 && <GenesisRow store={store} delay={store.history.length * 0.05} />}
         </>
       )}
     </div>

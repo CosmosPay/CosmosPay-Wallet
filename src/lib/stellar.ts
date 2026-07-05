@@ -437,6 +437,7 @@ export interface HistoryOp {
   counterparty: string | null; // the other account (null for self-swaps)
   hash: string;
   failed: boolean; // the operation's transaction failed on submit
+  feeKind?: 'swap' | 'liquidity'; // when kind === 'fee': what the commission is for
 }
 
 function assetCodeOf(type?: string, code?: string): string {
@@ -445,8 +446,6 @@ function assetCodeOf(type?: string, code?: string): string {
 
 /** Normalize a Horizon payment record into a HistoryOp (null for ones we don't show). */
 function normalizeHistoryOp(r: any, pub: string): HistoryOp | null {
-  // With includeFailed, ops carry `transaction_successful`; false = the tx was rejected.
-  const base = { id: String(r.id), createdAt: r.created_at, hash: r.transaction_hash, failed: r.transaction_successful === false };
   // Commission/fee payments carry a TEXT memo like "Cosmos Liquidity Commission" or
   // "Cosmos Swap Commission". The memo rides along when the payments query joins the
   // transaction (see getHistory); if it isn't present the text is '' and nothing is
@@ -460,6 +459,12 @@ function normalizeHistoryOp(r: any, pub: string): HistoryOp | null {
       : null;
   const memoText = txObj && txObj.memo != null ? String(txObj.memo) : '';
   const isFee = /commission|comisi[oó]n/i.test(memoText);
+  // Distinguish the commission kind so the row can say "Comisión de swap/liquidez".
+  const feeKind: HistoryOp['feeKind'] = isFee
+    ? /liquid/i.test(memoText) ? 'liquidity' : /swap/i.test(memoText) ? 'swap' : undefined
+    : undefined;
+  // With includeFailed, ops carry `transaction_successful`; false = the tx was rejected.
+  const base = { id: String(r.id), createdAt: r.created_at, hash: r.transaction_hash, failed: r.transaction_successful === false, feeKind };
   switch (r.type) {
     case 'payment': {
       const sent = r.from === pub;
