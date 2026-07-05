@@ -1,34 +1,11 @@
 import type { WalletStore } from '@/components/store';
-import { C, AssetLogo, assetMeta, Spinner, NavMenu } from '@/components/parts';
+import { Spinner, NavMenu } from '@/components/parts';
 import { buildKind } from '@/lib/platform';
-import { fmt, pct } from '@/lib/format';
-import type { PriceInfo } from '@/lib/stellar';
 import { MARKET_TOKENS } from '@/constants/markets';
-import { BackCircle, changeColor, useAnimatedNumber } from './shared';
-
-function MarketRow({ code, price, onClick, delay = 0 }: { code: string; price?: PriceInfo; onClick: () => void; delay?: number }) {
-  const m = assetMeta(code);
-  const chg = price?.change24h ?? 0;
-  const shownPrice = useAnimatedNumber(price?.usd ?? 0);
-  const shownChg = useAnimatedNumber(chg);
-  return (
-    <div onClick={onClick} className="tap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 2px', cursor: 'pointer', animation: 'fadeUp .45s ease backwards', animationDelay: `${delay}s` }}>
-      <div className="row g12">
-        <AssetLogo code={code} size={38} />
-        <div className="col g2">
-          <span style={{ fontSize: '15px', fontWeight: 700 }}>{m.name}</span>
-          <span className="t-dim-12">{code}</span>
-        </div>
-      </div>
-      <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-        <span style={{ fontSize: '15px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-          {price ? '$' + fmt(shownPrice, price.usd >= 1 ? 2 : 4) : '—'}
-        </span>
-        <span style={{ fontSize: '12px', color: changeColor(chg), fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{price ? pct(shownChg) : ''}</span>
-      </div>
-    </div>
-  );
-}
+import { MarketRow } from '@/components/molecules/main/MarketRow';
+import { BackCircle } from './shared';
+import '@/styles/screens/main/shared.css';
+import '@/styles/screens/main/markets.css';
 
 /* ------------------------------ MARKETS ------------------------------ */
 export function Markets({ store }: { store: WalletStore }) {
@@ -45,7 +22,7 @@ export function Markets({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen pb-110">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0 18px' }}>
+      <div className="main-head">
         <span className="title-30">{t('markets.title')}</span>
         <div className="row g10">
           {store.loading && <Spinner size={16} color="var(--text)" />}
@@ -53,19 +30,16 @@ export function Markets({ store }: { store: WalletStore }) {
           <NavMenu store={store} />
         </div>
       </div>
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '18px', fontSize: '13px', fontWeight: 700 }}>
-        {tabs.map((tb) => {
-          const on = tab === tb.k;
-          return (
-            <span key={tb.k} onClick={() => store.setSelectedAsset('mkt:' + tb.k)} className="tap" style={{ padding: '8px 14px', borderRadius: '11px', background: on ? C.accent : C.cardSolid, color: on ? 'var(--on-accent)' : C.muted, cursor: 'pointer' }}>{tb.l}</span>
-          );
-        })}
+      <div className="flexr g8 market-tabs">
+        {tabs.map((tb) => (
+          <span key={tb.k} onClick={() => store.setSelectedAsset('mkt:' + tb.k)} className={tab === tb.k ? 'tap market-tab is-on' : 'tap market-tab'}>{tb.l}</span>
+        ))}
       </div>
       {list.map((code, i) => (
         <MarketRow key={code} code={code} price={store.prices[code]} delay={i * 0.05} onClick={() => { store.setSelectedAsset(code); store.setScreen('asset'); }} />
       ))}
       {!Object.keys(store.prices).length && (
-        <div style={{ textAlign: 'center', color: C.dim, fontSize: '13px', fontWeight: 600, padding: '24px' }}>
+        <div className="market-empty">
           {store.loading ? t('markets.loading') : t('markets.fail')}
         </div>
       )}

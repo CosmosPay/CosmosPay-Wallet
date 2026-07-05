@@ -1,0 +1,45 @@
+/* =====================================================================
+   Onboarding — Welcome (landing). Prefix: .welcome-
+   ===================================================================== */
+.welcome-screen {
+  flex: 1;
+  min-height: 0;
+  padding: 2px 26px 32px;
+  animation: fadeUp 0.3s ease;
+}
+/* top bar: right-aligned by default; space-between while adding a wallet (.is-adding) */
+.welcome-topbar { min-height: 34px; margin-bottom: 2px; justify-content: flex-end; }
+.welcome-topbar.is-adding { justify-content: space-between; }
+/* create-wallet CTA: a touch more padding than the default primary button */
+.welcome-create { padding: 18px; }
+.welcome-cancel {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 4px;
+}
+.welcome-cancel-arrow { font-size: 20px; }
+.welcome-hero { text-align: center; }
+.welcome-logo { margin-bottom: 24px; }
+.welcome-title {
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: -1.2px;
+  margin-bottom: 12px;
+}
+.welcome-sub {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 500;
+  line-height: 1.5;
+  max-width: 270px;
+}
+.welcome-footer {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--dim);
+  font-weight: 600;
+  margin-top: 8px;
+  letter-spacing: 0.2px;
+}

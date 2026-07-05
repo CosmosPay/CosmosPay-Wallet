@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, BackBar, Spinner } from '@/components/parts';
+import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { RAILS } from '@/constants/fiat';
-import { Field, Select } from './shared';
+import { Field, Select } from '@/components/molecules/fiat';
+import '@/styles/screens/fiat/bank-account.css';
 
 /* --------------------------- deposit account ------------------------- */
 /** Create a deposit/payout bank account for a currency/rail (LatAm-first). */
@@ -44,7 +45,7 @@ export function BankAccount({ store }: { store: WalletStore }) {
   return (
     <div className="scr screen col pb-104">
       <BackBar title={t('fiat.addAccount')} onBack={() => store.setScreen('fiat')} />
-      <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '4px 2px 16px' }}>{t('fiat.accountDesc')}</div>
+      <div className="fiat-desc bank-desc">{t('fiat.accountDesc')}</div>
       <Select label={t('fiat.currency')} value={railType} onChange={changeRail}>
         {RAILS.map((r) => <option key={r.type} value={r.type}>{r.label}</option>)}
       </Select>
@@ -58,7 +59,7 @@ export function BankAccount({ store }: { store: WalletStore }) {
           <Field key={f.k} label={f.label} value={vals[f.k] ?? ''} onChange={(v) => set(f.k, v)} />
         ),
       )}
-      <div style={{ flex: 1, minHeight: '12px' }} />
+      <div className="fiat-spacer" />
       <PrimaryButton disabled={!ok || store.busy} onClick={submit}>{store.busy ? <Spinner /> : t('fiat.addAccount')}</PrimaryButton>
     </div>
   );

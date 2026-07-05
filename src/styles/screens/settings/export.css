@@ -1,0 +1,85 @@
+/* Export (secret phrase / key) screen (src/components/screens/settings/Export.tsx).
+   Static shells only — the copied colour stays inline (state-driven). */
+
+/* red warning banner at the top */
+.export-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(255, 93, 93, 0.1);
+  border: 1px solid rgba(255, 93, 93, 0.24);
+  border-radius: 14px;
+  padding: 14px;
+  margin: 14px 0 20px;
+}
+.export-warning-icon { flex-shrink: 0; margin-top: 1px; }
+.export-warning-text {
+  font-size: 12.5px;
+  color: #ffb3b3;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+/* password gate */
+.export-hint {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+.export-pwd-input { margin-bottom: 18px; } /* composes .input */
+
+/* revealed state */
+.export-nophrase {
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.export-compat {
+  font-size: 12px;
+  color: var(--dim);
+  font-weight: 600;
+  line-height: 1.5;
+  margin-top: 4px;
+}
+
+/* reveal block (phrase grid or secret box) */
+.export-reveal { margin-bottom: 18px; }
+.export-reveal-title { margin-bottom: 8px; } /* composes .label-up */
+.export-word-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.export-word { border-radius: 11px; padding: 10px 12px; } /* composes .glass .row .g8 */
+.export-word-num { font-size: 11px; color: var(--accent); font-weight: 700; width: 14px; }
+.export-word-text { font-size: 14px; font-weight: 700; }
+.export-value-box {
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 13px;
+  font-weight: 600;
+  word-break: break-all;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+.export-mono { font-family: monospace; }
+/* copied colour → .is-copied; compound: border none must beat .glass-soft's border */
+.export-copy-btn,
+.glass-soft.export-copy-btn {
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  color: var(--text);
+}
+.export-copy-btn.is-copied { color: var(--accent); }

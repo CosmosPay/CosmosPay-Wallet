@@ -1,0 +1,19 @@
+/* About screen (src/components/screens/settings/About.tsx). */
+.about-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin: 24px 0 26px;
+}
+.about-title { font-size: 22px; font-weight: 800; margin-top: 16px; }
+.about-tagline { font-size: 13.5px; color: var(--muted); font-weight: 600; margin-top: 4px; }
+.about-card { border-radius: 18px; padding: 6px 18px; } /* on .glass */
+.about-row { display: flex; justify-content: space-between; padding: 15px 0; border-bottom: 1px solid var(--hairline); }
+.about-row:last-child { border-bottom: none; }
+.about-row-label { color: var(--muted); font-size: 14px; font-weight: 600; }
+.about-row-value { font-size: 14px; font-weight: 700; }
+.about-row-value--cap { text-transform: capitalize; }
+.about-desc { font-size: 12.5px; color: var(--dim); font-weight: 600; line-height: 1.55; margin-top: 16px; text-align: center; }
+.about-spacer { flex: 1; min-height: 20px; }
+.about-footer { text-align: center; font-size: 11.5px; color: var(--dim); font-weight: 600; }

@@ -4,4 +4,4 @@ export { Verify } from './onboarding/Verify';
 export { Import } from './onboarding/Import';
 export { ProfileSetup } from './onboarding/ProfileSetup';
 export { PasswordSetup } from './onboarding/PasswordSetup';
-export { Field } from './onboarding/shared';
+export { Field } from '@/components/molecules/onboarding';

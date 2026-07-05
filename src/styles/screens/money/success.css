@@ -1,0 +1,18 @@
+/* Success / error result screen (src/components/screens/money/Success.tsx). */
+.success-screen { flex: 1; min-height: 0; padding: 2px 20px 24px; } /* on .col */
+.success-hero { text-align: center; } /* on .f1.col.center */
+.success-ring-wrap { position: relative; width: 96px; height: 96px; margin-bottom: 26px; }
+.success-ring { position: absolute; inset: 0; border-radius: 50%; animation: ring 1.6s ease-out infinite; }
+.success-ring--ok { background: #23c552; }
+.success-ring--err { background: #ff5d5d; }
+.success-badge { position: relative; width: 96px; height: 96px; border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; animation: pop 0.5s ease; }
+.success-badge--ok { background: #23c552; box-shadow: 0 12px 34px #23c55255; }
+.success-badge--err { background: #ff5d5d; box-shadow: 0 12px 34px #ff5d5d55; }
+.success-title { font-size: 26px; font-weight: 800; margin-bottom: 10px; }
+.success-msg { font-size: 14px; color: var(--muted); font-weight: 600; max-width: 270px; }
+.success-rows { border-radius: 18px; padding: 6px 18px; margin-bottom: 14px; } /* on .glass */
+.success-row { display: flex; align-items: center; justify-content: space-between; padding: 15px 0; border-bottom: 1px solid var(--hairline); }
+.success-row:last-child { border-bottom: none; }
+.success-row-label { color: var(--muted); font-size: 14px; font-weight: 600; }
+.success-row-val { font-size: 14.5px; font-weight: 700; }
+.success-tx { display: block; text-align: center; color: var(--muted); font-size: 13px; font-weight: 700; padding: 10px; text-decoration: none; margin-bottom: 4px; }

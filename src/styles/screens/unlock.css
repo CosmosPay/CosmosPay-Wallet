@@ -1,0 +1,41 @@
+/* Unlock screen (src/components/screens/Unlock.tsx). */
+.unlock-screen { padding: 2px 26px 32px; } /* on .scr.screen.col */
+.unlock-langbar { display: flex; justify-content: flex-end; padding-top: 8px; flex-shrink: 0; }
+.unlock-hero { text-align: center; min-height: 0; } /* on .f1.col.center */
+.unlock-logo { margin-bottom: 24px; }
+.unlock-birthday { font-size: 13px; font-weight: 800; color: var(--accent); margin-bottom: 8px; letter-spacing: 0.3px; }
+.unlock-line { font-size: 27px; font-weight: 800; letter-spacing: -0.7px; margin-bottom: 12px; line-height: 1.2; }
+.unlock-subtitle { font-size: 14px; color: var(--muted); font-weight: 600; margin-bottom: 28px; }
+
+/* password field + eye toggle (colour flips via .is-shown) */
+.unlock-pwd-wrap { position: relative; width: 100%; }
+.unlock-pwd-input { font-size: 16px; text-align: center; padding: 0 52px; } /* on .input */
+.unlock-eye { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--dim); }
+.unlock-eye.is-shown { color: var(--text); }
+
+/* footer: forgot-password + wipe */
+.unlock-forgot { text-align: center; color: var(--dim); font-size: 13px; font-weight: 700; padding: 10px; cursor: pointer; }
+.unlock-wipe { text-align: center; font-size: 12.5px; color: var(--muted); font-weight: 600; line-height: 1.5; padding: 4px 8px; }
+.unlock-wipe-delete { color: #ff5d5d; font-weight: 800; margin-top: 10px; cursor: pointer; }
+
+/* multi-wallet switcher dropdown */
+.unlock-switch { position: relative; }
+.unlock-switch-btn { width: 100%; height: 48px; border: none; border-radius: 999px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13.5px; font-weight: 800; cursor: pointer; color: var(--text); } /* on .glass-soft */
+.unlock-switch-caret { font-size: 9px; opacity: 0.7; transition: transform 0.2s; }
+.unlock-switch-caret.is-open { transform: rotate(180deg); }
+.unlock-switch-overlay { position: fixed; inset: 0; z-index: 30; }
+.unlock-switch-menu { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 31; border-radius: 16px; padding: 6px; max-height: 260px; overflow-y: auto; animation: fadeUp 0.18s ease; } /* on .scr.glass */
+.unlock-del { padding: 10px; }
+.unlock-del-text { font-size: 12px; color: #ffb3b3; font-weight: 600; line-height: 1.4; margin-bottom: 9px; }
+.unlock-del-btn { flex: 1; height: 38px; border: none; border-radius: 999px; font-size: 12.5px; font-weight: 800; cursor: pointer; color: var(--text); } /* on .glass-soft (cancel) */
+.unlock-del-btn--danger { background: #ff5d5d; color: #fff; }
+.unlock-wallet-row { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border-radius: 12px; background: transparent; }
+.unlock-wallet-row.is-active { background: var(--surface); }
+.unlock-wallet-main { cursor: pointer; } /* on .tap.f1.row.g10.min0 */
+.unlock-wallet-avatar { flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%; overflow: hidden; background: var(--glass-soft-bg); border: 1px solid var(--glass-soft-border); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12.5px; }
+.unlock-wallet-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.unlock-wallet-meta { min-width: 0; text-align: left; }
+.unlock-wallet-name { font-size: 13.5px; font-weight: 700; }
+.unlock-wallet-addr { font-size: 11px; color: var(--dim); font-weight: 600; font-family: monospace; }
+.unlock-wallet-check { flex-shrink: 0; color: var(--accent); font-weight: 800; font-size: 13px; }
+.unlock-wallet-del { flex-shrink: 0; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--muted); cursor: pointer; }

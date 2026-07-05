@@ -1,0 +1,111 @@
+/* =====================================================================
+   Onboarding — shared atoms (onboarding/shared.tsx). Prefix: .ob-
+   State-driven colors (checked / met / bad) stay inline in the tsx.
+   ===================================================================== */
+
+/* muted intro paragraph under the BackBar; screens override margin-bottom
+   with a compound selector (.ob-desc.<screen>-desc) */
+.ob-desc {
+  font-size: 14px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 14px 0 18px;
+}
+
+/* checkbox row (CheckRow) — box fill/border follow the .is-on modifier */
+.ob-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  padding: 2px;
+}
+.ob-check-box {
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  color: var(--on-accent);
+  border-width: 2px;
+  border-style: solid;
+  border-color: var(--glass-border);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ob-check-box.is-on { background: var(--accent); border-color: var(--accent); }
+.ob-check-tick { opacity: 0; }
+.ob-check-box.is-on .ob-check-tick { opacity: 1; }
+.ob-check-text {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+/* live-criterion row (Criterion) — color/border/tint follow .is-met / .is-bad */
+.ob-crit {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  font-weight: 700;
+  transition: color 0.2s ease;
+  line-height: 1.4;
+  color: var(--dim);
+}
+.ob-crit.is-met { color: var(--up); }
+.ob-crit.is-bad { color: var(--down); }
+.ob-crit-dot {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  border-width: 1.5px;
+  border-style: solid;
+  border-color: var(--glass-border);
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+.ob-crit.is-met .ob-crit-dot { border-color: var(--up); background: color-mix(in srgb, var(--up) 18%, transparent); }
+.ob-crit.is-bad .ob-crit-dot { border-color: var(--down); background: color-mix(in srgb, var(--down) 18%, transparent); }
+.ob-crit-tick { opacity: 0.35; }
+.ob-crit.is-met .ob-crit-tick { opacity: 1; }
+
+/* labelled pill-input field (Field / PasswordField / date field) */
+.ob-field { display: block; margin-bottom: 14px; }
+.ob-field-label { margin-bottom: 7px; }
+
+/* numbered seed-word grid + cell (Backup reveal, Verify slots) */
+.ob-word-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.ob-word-cell {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 13px;
+  padding: 12px 13px;
+}
+.ob-word-num {
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 700;
+  width: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.ob-word-text {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+/* flexible gap pushing the CTA to the bottom of column screens */
+.ob-spacer { flex: 1; min-height: 14px; }

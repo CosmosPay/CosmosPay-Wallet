@@ -1,0 +1,65 @@
+/* NavMenu — extension-mode full-view navigation drawer.
+   The slide transform + its transition are state-driven (open/restore) and
+   stay inline in NavMenu.tsx. The `.nav-drawer` companion rule in app.css
+   suppresses per-child pop-in so the drawer moves as ONE unit. */
+.nav-menu-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  /* Mostly-opaque surface: the backdrop blur is just a garnish, so its
+     one-frame late arrival on restore is imperceptible. */
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+}
+.nav-menu-header {
+  padding: 16px 20px 8px;
+}
+.nav-menu-brand {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+.nav-menu-list {
+  min-height: 0;
+  overflow-y: auto;
+  gap: 6px;
+  padding: 14px 16px 20px;
+}
+/* Both sections share ONE row style (metrics, weight, trailing ›). The
+   active tab is distinguished by its highlighted background only (inline). */
+.nav-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+}
+.nav-menu-item-label {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+.nav-menu-chevron {
+  color: var(--dim);
+  font-size: 16px;
+}
+.nav-menu-glyph {
+  width: 20px;
+  text-align: center;
+  font-size: 16px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.nav-menu-divider {
+  height: 1px;
+  background: var(--hairline);
+  margin: 10px 4px;
+  flex-shrink: 0;
+}

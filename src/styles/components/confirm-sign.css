@@ -1,0 +1,86 @@
+/* ConfirmSign — password gate shown before any signing action. */
+.confirm-sign-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: fadeUp 0.2s ease;
+}
+.confirm-sign-card {
+  width: 100%;
+  max-width: 340px;
+  border-radius: 22px;
+  padding: 22px;
+}
+/* compound selector so the pop entrance beats `.glass`'s glassBreath animation
+   regardless of stylesheet order (was an inline style before) */
+.glass.confirm-sign-card {
+  animation: pop 0.26s ease;
+}
+.confirm-sign-icon-row {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 14px;
+}
+.confirm-sign-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  font-size: 22px;
+}
+.confirm-sign-title {
+  font-size: 18px;
+  font-weight: 800;
+  text-align: center;
+  margin-bottom: 6px;
+}
+.confirm-sign-msg {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.confirm-sign-input {
+  text-align: center;
+}
+.confirm-sign-err {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #ff5d5d; /* C.danger (no CSS variable exists for danger) */
+  text-align: center;
+  margin-bottom: 12px;
+}
+.confirm-sign-cancel {
+  flex: 1;
+  height: 52px;
+  color: var(--text);
+  border: none;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.confirm-sign-submit {
+  flex: 1;
+  height: 52px;
+  color: var(--primary-text);
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.confirm-sign-submit:disabled {
+  cursor: default;
+  opacity: 0.5;
+}

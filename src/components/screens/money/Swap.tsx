@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, BackBar, Spinner, EnableReceivingCard } from '@/components/parts';
+import { PrimaryButton, BackBar, Spinner, EnableReceivingCard } from '@/components/parts';
 import { trim } from '@/lib/format';
 import { networkEnv } from '@/lib/stellar';
 import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
 import type { SwapQuote } from '@/lib/cosmospay';
 import { spendableXlm, sendableAssets, SwapTokenSelect } from './shared';
+import '@/styles/screens/money/swap.css';
 
 /* ------------------------------- SWAP ------------------------------- */
 // Auto-quote cadence: re-price this long after the last input change (debounce),
@@ -103,31 +104,31 @@ export function Swap({ store }: { store: WalletStore }) {
     <div className="scr screen col pb-104">
       <BackBar title={t('swap.title')} onBack={() => store.go('home', 'home')} />
 
-      <div style={{ position: 'relative', marginTop: '6px', zIndex: openSel ? 50 : undefined }}>
-        <div className="glass" style={{ position: 'relative', zIndex: openSel === 'from' ? 3 : undefined, borderRadius: '20px', padding: '18px' }}>
-          <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '14px' }}>{t('swap.pay')}</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+      <div className={openSel ? 'swap-stack is-open' : 'swap-stack'}>
+        <div className={openSel === 'from' ? 'glass swap-card is-active' : 'glass swap-card'}>
+          <div className="swap-label">{t('swap.pay')}</div>
+          <div className="row between g10">
             <SwapTokenSelect assets={assets} code={fromCode} onPick={setFromCode} open={openSel === 'from'} onToggle={(n) => setOpenSel(n ? 'from' : null)} />
-            <input value={pay} onChange={(e) => setPay((e.target as HTMLInputElement).value)} inputMode="decimal" style={{ flex: 1, minWidth: 0, background: 'transparent', border: 'none', textAlign: 'right', color: 'var(--text)', fontSize: '28px', fontWeight: 800, outline: 'none', fontVariantNumeric: 'tabular-nums' }} />
+            <input value={pay} onChange={(e) => setPay((e.target as HTMLInputElement).value)} inputMode="decimal" className="swap-input" />
           </div>
-          <div style={{ marginTop: '10px', color: C.dim, fontSize: '12px', fontWeight: 600 }}>
+          <div className="swap-balance">
             {t('swap.balance')}: {trim(fromBal, 4)} {fromCode}
           </div>
         </div>
         {/* Zero-height anchor BETWEEN the cards: the button centres on the exact seam
             (from-card bottom + half the 10px gap) no matter how tall each card is —
             top:50% of the whole wrapper sat visibly too high. */}
-        <div style={{ position: 'relative', height: 0, zIndex: 2 }}>
-          <button onClick={invert} aria-label="invert" className="tap glass-soft" style={{ position: 'absolute', left: '50%', top: '5px', transform: 'translate(-50%,-50%)', width: '44px', height: '44px', borderRadius: '50%', border: '4px solid var(--bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', color: 'var(--text)', cursor: 'pointer' }}>⇅</button>
+        <div className="swap-seam">
+          <button onClick={invert} aria-label="invert" className="tap glass-soft swap-invert">⇅</button>
         </div>
-        <div className="glass" style={{ position: 'relative', zIndex: openSel === 'to' ? 3 : undefined, borderRadius: '20px', padding: '18px', marginTop: '10px' }}>
-          <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, marginBottom: '14px' }}>{t('swap.receiveEst')}</div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+        <div className={openSel === 'to' ? 'glass swap-card swap-card--to is-active' : 'glass swap-card swap-card--to'}>
+          <div className="swap-label">{t('swap.receiveEst')}</div>
+          <div className="row between g10">
             <SwapTokenSelect assets={assets} code={toCode} onPick={setToCode} open={openSel === 'to'} onToggle={(n) => setOpenSel(n ? 'to' : null)} />
-            <div style={{ fontSize: '28px', fontWeight: 800, fontVariantNumeric: 'tabular-nums', color: quote ? 'var(--text)' : C.dim }}>{quote ? trim(receive, 4) : '—'}</div>
+            <div className={quote ? 'swap-receive' : 'swap-receive is-empty'}>{quote ? trim(receive, 4) : '—'}</div>
           </div>
           {rate !== null && (
-            <div style={{ textAlign: 'right', marginTop: '10px', color: C.dim, fontSize: '12px', fontWeight: 600 }}>
+            <div className="swap-rate">
               1 {fromCode} ≈ {trim(rate, rate < 1 ? 6 : 4)} {toCode}
             </div>
           )}
@@ -136,35 +137,35 @@ export function Swap({ store }: { store: WalletStore }) {
 
       {/* Same-asset guard. */}
       {enabled && sameAsset && (
-        <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '12.5px', color: C.muted, fontWeight: 600 }}>{t('swap.sameAsset')}</div>
+        <div className="swap-guard">{t('swap.sameAsset')}</div>
       )}
 
       {/* Insufficient-balance guard (reserve-aware for XLM). */}
       {enabled && !sameAsset && insufficient && (
-        <div style={{ textAlign: 'center', marginTop: '12px', fontSize: '12.5px', color: C.danger, fontWeight: 600 }}>
+        <div className="swap-guard swap-guard--danger">
           {t('swap.insufficient', { avail: trim(availFrom, 4), code: fromCode })}
         </div>
       )}
 
       {/* Quotes refresh automatically — show a subtle indicator while re-pricing. */}
       {enabled && quoting && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginTop: '14px', fontSize: '12px', color: C.dim, fontWeight: 600 }}>
+        <div className="center g8 swap-quoting">
           <Spinner color="var(--dim)" /> {t('swap.quoting')}
         </div>
       )}
 
       {/* Quote breakdown: commission RATE + amount + min, so the cost is transparent. */}
       {quote && (
-        <div className="glass" style={{ borderRadius: '16px', padding: '6px 16px', marginTop: '12px' }}>
+        <div className="glass swap-quote">
           {[
             [t('swap.feeRate'), feePct !== null ? `${trim(feePct, 2)}%` : '—'],
             [t('swap.fee'), `${trim(parseFloat(quote.fee.amount) || 0, 4)} ${quote.fee.asset}`],
             [t('swap.receiveEst'), `${trim(parseFloat(quote.destination.estimated) || 0, 4)} ${quote.destination.asset}`],
             [t('swap.minReceived'), `${trim(parseFloat(quote.destination.minimum) || 0, 4)} ${quote.destination.asset}`],
-          ].map(([label, val], i, arr) => (
-            <div key={label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--hairline)' : 'none' }}>
-              <span style={{ color: C.muted, fontSize: '13px', fontWeight: 600 }}>{label}</span>
-              <span style={{ fontSize: '13.5px', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>{val}</span>
+          ].map(([label, val]) => (
+            <div key={label} className="swap-quote-row">
+              <span className="swap-quote-label">{label}</span>
+              <span className="swap-quote-val">{val}</span>
             </div>
           ))}
         </div>
@@ -172,12 +173,12 @@ export function Swap({ store }: { store: WalletStore }) {
 
       {/* When enabled, a short note; otherwise the CosmosPay card below explains the step. */}
       {enabled && (
-        <div className="glass" style={{ borderRadius: '14px', padding: '14px', marginTop: '12px', fontSize: '12.5px', color: C.muted, fontWeight: 600, lineHeight: 1.55 }}>
+        <div className="glass swap-note">
           {t('swap.note2')}
         </div>
       )}
 
-      <div style={{ flex: 1, minHeight: '12px' }} />
+      <div className="swap-spacer" />
       {enabled ? (
         <PrimaryButton disabled={store.busy || !canSwap} onClick={() => from && to && store.submitSwap(pay, asSwapAsset(from), asSwapAsset(to))}>
           {store.busy ? <Spinner /> : t('swap.cta')}

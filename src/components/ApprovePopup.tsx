@@ -1,5 +1,9 @@
+// Self-contained stylesheet: approve.astro does not load app.css nor the theme
+// CSS variables, so this sheet uses literal colors only (see its header).
+import '@/styles/components/approve-popup.css';
 import { useEffect, useState } from 'react';
 import { Keypair } from '@stellar/stellar-sdk';
+import { DAPP_MIRROR_KEY, APPROVE_TITLES } from '@/constants/app';
 import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type WalletEntry } from '@/lib/vault';
 import { resolveNetwork, signXdr, sendPayment, type NetConfig } from '@/lib/stellar';
 import { parseStellarQr, type ParsedQr } from '@/lib/sep7';
@@ -29,8 +33,6 @@ interface DappReq {
   params: { xdr?: string; message?: string; uri?: string; networkPassphrase?: string };
 }
 
-const MIRROR_KEY = 'cosmos.dapp';
-
 function hasChrome(): boolean {
   return typeof chrome !== 'undefined' && !!chrome.runtime && !!chrome.storage;
 }
@@ -45,11 +47,11 @@ async function loadReq(id: string): Promise<DappReq | null> {
 /** Keep the SW's read-only mirror in sync (public address + network + approved origins). */
 async function writeMirror(patch: { address: string; cfg: NetConfig; addOrigin?: string }) {
   if (!hasChrome()) return;
-  const cur = (await chrome.storage.local.get(MIRROR_KEY))[MIRROR_KEY] || {};
+  const cur = (await chrome.storage.local.get(DAPP_MIRROR_KEY))[DAPP_MIRROR_KEY] || {};
   const approvedOrigins: string[] = Array.isArray(cur.approvedOrigins) ? cur.approvedOrigins : [];
   if (patch.addOrigin && !approvedOrigins.includes(patch.addOrigin)) approvedOrigins.push(patch.addOrigin);
   await chrome.storage.local.set({
-    [MIRROR_KEY]: {
+    [DAPP_MIRROR_KEY]: {
       address: patch.address,
       networkId: patch.cfg.id,
       networkPassphrase: patch.cfg.passphrase,
@@ -70,18 +72,6 @@ function respond(id: string, ok: boolean, result?: unknown, error?: string, keep
   // Address-bar requests have no page waiting: keep the window open to show the result.
   if (!keepOpen) setTimeout(() => window.close(), 120);
 }
-
-const C = {
-  bg: '#080808', card: 'rgba(255,255,255,.06)', border: 'rgba(255,255,255,.12)',
-  text: '#fff', muted: '#9aa19d', green: '#6ad08a', red: '#ff6b6b',
-};
-
-const TITLES: Record<Method, string> = {
-  getAddress: 'Conectar tu wallet',
-  signTransaction: 'Firmar transacción',
-  signMessage: 'Firmar mensaje',
-  requestPayment: 'Enviar pago',
-};
 
 export default function ApprovePopup() {
   const [req, setReq] = useState<DappReq | null>(null);
@@ -117,13 +107,13 @@ export default function ApprovePopup() {
     })();
   }, []);
 
-  if (!loaded) return <Frame><p style={{ color: C.muted }}>Cargando…</p></Frame>;
-  if (!req) return <Frame><Title>Solicitud no encontrada</Title><p style={{ color: C.muted }}>La solicitud caducó o ya se resolvió. Puedes cerrar esta ventana.</p></Frame>;
+  if (!loaded) return <Frame><p className="approve-muted">Cargando…</p></Frame>;
+  if (!req) return <Frame><Title>Solicitud no encontrada</Title><p className="approve-muted">La solicitud caducó o ya se resolvió. Puedes cerrar esta ventana.</p></Frame>;
   if (!entry || !cfg) {
     return (
       <Frame>
         <Title>No hay wallet</Title>
-        <p style={{ color: C.muted }}>Abre Cosmos Wallet y crea o importa una wallet antes de conectar con una web.</p>
+        <p className="approve-muted">Abre Cosmos Wallet y crea o importa una wallet antes de conectar con una web.</p>
         <Btn kind="reject" onClick={() => respond(req.id, false, undefined, 'No hay wallet en este dispositivo.')}>Cerrar</Btn>
       </Frame>
     );
@@ -139,11 +129,11 @@ export default function ApprovePopup() {
     return (
       <Frame>
         <Title>Pago enviado ✓</Title>
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, fontSize: 13, lineHeight: 1.6 }}>
+        <div className="approve-card">
           <Row label="Hash" value={short(doneHash, 12)} mono />
           <Row label="Red" value={cfg.label} />
         </div>
-        <p style={{ color: C.green, fontSize: 12.5, margin: 0 }}>La transacción se firmó en tu dispositivo y se envió a la red.</p>
+        <p className="approve-success">La transacción se firmó en tu dispositivo y se envió a la red.</p>
         <Btn kind="approve" onClick={() => window.close()}>Cerrar</Btn>
       </Frame>
     );
@@ -205,33 +195,33 @@ export default function ApprovePopup() {
 
   return (
     <Frame>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'center' }}>
-        <div style={{ fontSize: 12, color: C.muted }}>Solicitud de</div>
-        <div style={{ fontSize: 15, fontWeight: 800, wordBreak: 'break-all' }}>{originLabel}</div>
+      <div className="approve-origin">
+        <div className="approve-origin-label">Solicitud de</div>
+        <div className="approve-origin-host">{originLabel}</div>
       </div>
 
-      <Title>{TITLES[req.method]}</Title>
+      <Title>{APPROVE_TITLES[req.method]}</Title>
 
-      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 14, fontSize: 13, lineHeight: 1.6 }}>
+      <div className="approve-card">
         <Row label="Wallet" value={entry.name || 'astronauta'} />
         <Row label="Tu dirección" value={short(entry.publicKey)} mono />
         <Row label="Red" value={cfg.label} />
 
         {isPay && pay && (
           <>
-            <div style={{ height: 1, background: C.border, margin: '10px 0' }} />
+            <div className="approve-divider" />
             <Row label="Enviar a" value={short(pay.destination)} mono />
             <Row label="Importe" value={`${pay.amount || '—'} ${payAsset}`} />
             {pay.memo && <Row label="Memo" value={pay.memo} />}
           </>
         )}
-        {isPay && payErr && <div style={{ color: C.red, fontSize: 12.5, marginTop: 8 }}>{payErr}</div>}
+        {isPay && payErr && <div className="approve-pay-error">{payErr}</div>}
 
         {req.method === 'signMessage' && <Row label="Mensaje" value={short(String(req.params.message || ''), 40)} />}
         {req.method === 'signTransaction' && <Row label="Transacción (XDR)" value={short(String(req.params.xdr || ''), 14)} mono />}
       </div>
 
-      <p style={{ color: C.muted, fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+      <p className="approve-note">
         {isConnect
           ? 'Se compartirá tu dirección pública con esta web. No se expone ninguna clave.'
           : isPay
@@ -247,16 +237,13 @@ export default function ApprovePopup() {
           placeholder="Contraseña de la wallet"
           onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => e.key === 'Enter' && canApprove && approve()}
-          style={{
-            height: 48, borderRadius: 999, padding: '0 18px', width: '100%', boxSizing: 'border-box',
-            background: C.card, border: `1px solid ${C.border}`, color: C.text, fontSize: 15, outline: 'none',
-          }}
+          className="approve-input"
         />
       )}
 
-      {err && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 700 }}>{err}</div>}
+      {err && <div className="approve-error">{err}</div>}
 
-      <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+      <div className="approve-actions">
         <Btn kind="reject" onClick={() => respond(req.id, false, undefined, 'Rechazado por el usuario.')}>Rechazar</Btn>
         <Btn kind="approve" onClick={approve} disabled={busy || !canApprove}>
           {busy ? (isPay ? 'Enviando…' : 'Firmando…') : isConnect ? 'Conectar' : isPay ? 'Enviar' : 'Aprobar'}
@@ -267,41 +254,22 @@ export default function ApprovePopup() {
 }
 
 function Frame({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        minHeight: '100vh', boxSizing: 'border-box', background: C.bg, color: C.text,
-        display: 'flex', flexDirection: 'column', gap: 14, padding: 22,
-        fontFamily: 'system-ui, -apple-system, sans-serif',
-      }}
-    >
-      {children}
-    </div>
-  );
+  return <div className="approve-frame">{children}</div>;
 }
 function Title({ children }: { children: React.ReactNode }) {
-  return <h1 style={{ fontSize: 19, fontWeight: 800, margin: 0, textAlign: 'center' }}>{children}</h1>;
+  return <h1 className="approve-title">{children}</h1>;
 }
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-      <span style={{ color: C.muted }}>{label}</span>
-      <span style={{ fontWeight: 600, textAlign: 'right', fontFamily: mono ? 'ui-monospace, Menlo, monospace' : 'inherit' }}>{value}</span>
+    <div className="approve-row">
+      <span className="approve-row-label">{label}</span>
+      <span className={`approve-row-value${mono ? ' approve-mono' : ''}`}>{value}</span>
     </div>
   );
 }
 function Btn({ children, onClick, kind, disabled }: { children: React.ReactNode; onClick: () => void; kind: 'approve' | 'reject'; disabled?: boolean }) {
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      style={{
-        flex: 1, height: 50, borderRadius: 999, border: 'none', fontSize: 15, fontWeight: 800,
-        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
-        background: kind === 'approve' ? '#fff' : 'rgba(255,255,255,.08)',
-        color: kind === 'approve' ? '#0a0c0b' : '#fff',
-      }}
-    >
+    <button onClick={onClick} disabled={disabled} className={`approve-btn approve-btn-${kind}`}>
       {children}
     </button>
   );

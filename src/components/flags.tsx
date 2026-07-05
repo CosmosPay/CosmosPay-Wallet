@@ -3,6 +3,7 @@
  * Windows/Chrome, so we use real SVGs. Per request: Spanish→Argentina,
  * English→USA, Portuguese→Brazil.
  */
+import '@/styles/components/flags.css';
 import { useEffect, useRef, useState } from 'react';
 import AR from 'country-flag-icons/react/3x2/AR';
 import US from 'country-flag-icons/react/3x2/US';
@@ -16,11 +17,7 @@ const MAP: Record<Lang, typeof AR> = { es: AR, en: US, pt: BR, de: DE, fr: FR };
 
 export function LangFlag({ code, size = 22 }: { code: Lang; size?: number }) {
   const Flag = MAP[code];
-  return (
-    <Flag
-      style={{ width: `${size}px`, height: 'auto', borderRadius: '3px', display: 'block', flexShrink: 0, boxShadow: '0 0 0 1px rgba(255,255,255,.12)' }}
-    />
-  );
+  return <Flag className="shrink0 flag-img" style={{ width: `${size}px` }} />;
 }
 
 /**
@@ -49,57 +46,19 @@ export function LangSelect({
   }, [open]);
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          background: C.cardSolid,
-          color: C.ink,
-          border: `1px solid ${C.cardBorder}`,
-          padding: '7px 12px 7px 9px',
-          fontSize: '13px',
-          fontWeight: 700,
-          cursor: 'pointer',
-          lineHeight: 1,
-        }}
-      >
+    <div ref={ref} className="flag-select">
+      <button onClick={() => setOpen((o) => !o)} className="row g8 flag-select-btn">
         <LangFlag code={current.code} size={20} />
         <span>{current.name}</span>
         <span
-          style={{
-            fontSize: '9px',
-            opacity: 0.7,
-            transform: open ? 'rotate(180deg)' : 'none',
-            transition: 'transform .18s ease',
-          }}
+          className="flag-select-caret"
+          style={{ transform: open ? 'rotate(180deg)' : 'none' }}
         >
           ▼
         </span>
       </button>
       {open && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 6px)',
-            right: 0,
-            zIndex: 50,
-            minWidth: '168px',
-            padding: '6px',
-            background: 'var(--glass-bg)',
-            backdropFilter: 'blur(22px) saturate(150%)',
-            WebkitBackdropFilter: 'blur(22px) saturate(150%)',
-            border: `1px solid ${C.cardBorder}`,
-            borderRadius: '16px',
-            boxShadow: '0 18px 50px rgba(0,0,0,.5)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '2px',
-            animation: 'fadeUp .16s ease',
-          }}
-        >
+        <div className="col g2 flag-select-menu">
           {LANGUAGES.map((l) => {
             const on = l.code === value;
             return (
@@ -109,24 +68,12 @@ export function LangSelect({
                   onChange(l.code);
                   setOpen(false);
                 }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  width: '100%',
-                  background: on ? C.cardSolid : 'transparent',
-                  color: C.ink,
-                  border: 'none',
-                  padding: '9px 12px',
-                  fontSize: '13.5px',
-                  fontWeight: on ? 800 : 600,
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
+                className="row g10 flag-select-opt"
+                style={{ background: on ? C.cardSolid : 'transparent', fontWeight: on ? 800 : 600 }}
               >
                 <LangFlag code={l.code} size={20} />
-                <span style={{ flex: 1 }}>{l.name}</span>
-                {on && <span style={{ fontSize: '12px' }}>✓</span>}
+                <span className="f1">{l.name}</span>
+                {on && <span className="flag-select-check">✓</span>}
               </button>
             );
           })}

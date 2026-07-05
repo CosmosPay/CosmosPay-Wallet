@@ -1,0 +1,5 @@
+/* BackBar — screen header with back/close button (shell lives in .backbar). */
+.back-bar-title {
+  font-size: 18px;
+  font-weight: 700;
+}

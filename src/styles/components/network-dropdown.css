@@ -1,0 +1,61 @@
+/* NetworkDropdown — network selector menu; left/right alignment (align prop)
+   and the active-row highlight stay inline. */
+.network-dd {
+  position: relative;
+  display: inline-block;
+}
+/* click-away scrim behind the open menu */
+.network-dd-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+}
+.network-dd-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 31;
+  min-width: 200px;
+  border-radius: 16px;
+  padding: 6px;
+}
+/* compound selector so the fadeUp entrance beats `.glass`'s glassBreath
+   animation regardless of stylesheet order (was an inline style before) */
+.glass.network-dd-menu {
+  animation: fadeUp 0.18s ease;
+}
+.network-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+}
+.network-dd-label {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.network-dd-check {
+  color: var(--accent);
+  font-weight: 800;
+}
+.network-dd-add {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 800;
+  font-size: 13.5px;
+  border-top: 1px solid var(--hairline);
+  margin-top: 2px;
+}
+.network-dd-plus {
+  width: 14px;
+  text-align: center;
+  font-size: 16px;
+}

@@ -1,4 +1,6 @@
+import '@/styles/components/wallet-app.css';
 import { useEffect, useRef, useState } from 'react';
+import { NAV_SCREENS, SPLASH_REVEAL_MS, SPLASH_DONE_MS } from '@/constants/app';
 import { useWalletStore, type WalletStore } from '@/components/store';
 import { buildKind } from '@/lib/platform';
 import { Shell, Spinner, Logo } from '@/components/parts';
@@ -10,8 +12,6 @@ import { Settings, Export, About } from '@/components/screens/Settings';
 import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from '@/components/screens/Extras';
 import { Fiat, BankAccount, Deposit, Withdraw } from '@/components/screens/Fiat';
 import { CosmosPay } from '@/components/screens/CosmosPay';
-
-const NAV_SCREENS = ['home', 'earn', 'markets', 'profile', 'swap'];
 
 /** Map the Android hardware back button to a sensible in-app navigation. */
 function handleBack(store: WalletStore, exitApp: () => void) {
@@ -161,8 +161,8 @@ export default function WalletApp() {
   const [intro, setIntro] = useState<'show' | 'reveal' | 'done'>(isExt ? 'done' : 'show');
   useEffect(() => {
     if (isExt) return;
-    const t1 = setTimeout(() => setIntro('reveal'), 1300);
-    const t2 = setTimeout(() => setIntro('done'), 2100);
+    const t1 = setTimeout(() => setIntro('reveal'), SPLASH_REVEAL_MS);
+    const t2 = setTimeout(() => setIntro('done'), SPLASH_DONE_MS);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -189,10 +189,10 @@ export default function WalletApp() {
   return (
     <>
       <div
+        className="wallet-app-intro"
         style={{
           opacity: intro === 'show' ? 0 : 1,
           transform: intro === 'show' ? 'scale(1.05)' : 'none',
-          transition: 'opacity .8s ease, transform .8s ease',
         }}
       >
         <Shell showGlow showNav={showNav} store={store}>
@@ -200,7 +200,7 @@ export default function WalletApp() {
             <Boot />
           ) : (
             // key={screen} remounts on every navigation so the entrance animation replays
-            <div key={screen} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+            <div key={screen} className="col f1 wallet-app-screen">
               {renderScreen(screen, store)}
             </div>
           )}
@@ -215,16 +215,9 @@ export default function WalletApp() {
 function Splash({ fading }: { fading: boolean }) {
   return (
     <div
+      className="center splash-overlay"
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
-        background: 'var(--bg)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
         opacity: fading ? 0 : 1,
-        transition: 'opacity .75s ease',
         pointerEvents: fading ? 'none' : 'auto',
       }}
     >
@@ -237,7 +230,7 @@ function Splash({ fading }: { fading: boolean }) {
 
 function Boot() {
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '22px' }}>
+    <div className="col center f1 boot-screen">
       <Logo size={84} />
       <Spinner color="var(--text)" />
     </div>

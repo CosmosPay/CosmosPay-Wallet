@@ -6,6 +6,11 @@
    Extension-safe: MV3 only forbids inline SCRIPTS, never stylesheets.
    ===================================================================== */
 
+/* native controls (date pickers, scrollbars) follow the app theme, so a
+   date <input> no longer needs an inline color-scheme */
+:root[data-theme='light'] { color-scheme: light; }
+:root[data-theme='dark'] { color-scheme: dark; }
+
 /* ------------------------- layout atoms ------------------------- */
 .row { display: flex; align-items: center; }
 .flexr { display: flex; } /* row without centering (children stretch) */

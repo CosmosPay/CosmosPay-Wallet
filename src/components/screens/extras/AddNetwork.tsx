@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, BackBar, Spinner } from '@/components/parts';
+import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { Field } from '@/components/screens/Onboarding';
+import '@/styles/screens/extras/add-network.css';
 
 /* --------------------------- ADD NETWORK ---------------------------- */
 export function AddNetwork({ store }: { store: WalletStore }) {
@@ -25,13 +26,13 @@ export function AddNetwork({ store }: { store: WalletStore }) {
   return (
     <div className="scr screen col">
       <BackBar title={t('net.addTitle')} onBack={() => store.go(store.session ? 'home' : 'home', 'home')} />
-      <div style={{ fontSize: '13.5px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '12px 0 18px' }}>
+      <div className="add-network-desc">
         {t('settings.networkDesc')}
       </div>
       <Field label={t('net.name')} value={name} onChange={setName} placeholder="Futurenet" />
       <Field label={t('net.horizon')} value={horizon} onChange={setHorizon} placeholder="https://horizon-futurenet.stellar.org" />
       <Field label={t('net.passphrase')} value={passphrase} onChange={setPassphrase} placeholder="Test SDF Future Network ; October 2022" />
-      <div style={{ flex: 1 }} />
+      <div className="f1" />
       <PrimaryButton disabled={!ok} onClick={save}>{busy ? <Spinner /> : t('net.save')}</PrimaryButton>
     </div>
   );

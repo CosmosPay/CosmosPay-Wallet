@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, GhostButton, BackBar, Spinner } from '@/components/parts';
+import { PrimaryButton, GhostButton, BackBar, Spinner } from '@/components/parts';
 import { railLabel, railCurrency } from '@/constants/fiat';
 import type { FiatToken, PayoutQuote } from '@/lib/cosmospay';
-import { fmtMinor, fmtFiat, toMinor, stableTokens, Field, Select, SCR_STYLE, quoteCardStyle, QuoteRow } from './shared';
+import { fmtMinor, fmtFiat, toMinor, stableTokens } from '@/lib/fiatFormat';
+import { Field, Select, QuoteRow } from '@/components/molecules/fiat';
+import '@/styles/screens/fiat/withdraw.css';
 
 /** Withdraw crypto → fiat. Quote → authorize → sign locally → create payout. */
 export function Withdraw({ store }: { store: WalletStore }) {
@@ -39,26 +41,26 @@ export function Withdraw({ store }: { store: WalletStore }) {
 
   if (!accounts.length) {
     return (
-      <div className="scr" style={SCR_STYLE}>
+      <div className="scr screen col pb-104">
         <BackBar title={t('fiat.withdrawTitle')} onBack={() => store.setScreen('fiat')} />
-        <div className="glass" style={{ borderRadius: '16px', padding: '18px', fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, marginBottom: '12px' }}>{t('fiat.needBankAccount')}</div>
+        <div className="glass fiat-note-card fiat-note-card-gap">{t('fiat.needBankAccount')}</div>
         <PrimaryButton onClick={() => store.setScreen('bankaccount')}>{t('fiat.addAccount')}</PrimaryButton>
       </div>
     );
   }
   if (!tokens.length) {
     return (
-      <div className="scr" style={SCR_STYLE}>
+      <div className="scr screen col pb-104">
         <BackBar title={t('fiat.withdrawTitle')} onBack={() => store.setScreen('fiat')} />
-        <div className="glass" style={{ borderRadius: '16px', padding: '18px', fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5 }}>{t('fiat.noTokenBalance')}</div>
+        <div className="glass fiat-note-card">{t('fiat.noTokenBalance')}</div>
       </div>
     );
   }
 
   return (
-    <div className="scr" style={SCR_STYLE}>
+    <div className="scr screen col pb-104">
       <BackBar title={t('fiat.withdrawTitle')} onBack={() => store.setScreen('fiat')} />
-      <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '2px 2px 14px' }}>{t('fiat.withdrawDesc')}</div>
+      <div className="fiat-desc withdraw-desc">{t('fiat.withdrawDesc')}</div>
 
       <Select label={t('fiat.bankAccount')} value={bankId} onChange={(v) => { setBankId(v); setQuote(null); }}>
         {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} · {railLabel(a.rail ?? a.type)}</option>)}
@@ -67,35 +69,35 @@ export function Withdraw({ store }: { store: WalletStore }) {
         {tokens.map((x) => <option key={x.code} value={x.code}>{x.code} · {x.balance.toFixed(2)}</option>)}
       </Select>
       <Field label={t('fiat.sendAmount')} value={amount} onChange={(v) => { setAmount(v); setQuote(null); }} placeholder="0.00" />
-      <div style={{ fontSize: '11.5px', color: insufficient ? C.danger : C.dim, fontWeight: 700, margin: '-4px 2px 12px' }}>
+      <div className={insufficient ? 'withdraw-balance is-insufficient' : 'withdraw-balance'}>
         {t('fiat.balance')}: {bal.toFixed(2)} {token}
       </div>
 
-      <div onClick={() => { setCoverFees((v) => !v); setQuote(null); }} className="tap glass" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: '14px', padding: '14px 16px', marginBottom: '12px', cursor: 'pointer' }}>
-        <span style={{ fontSize: '13px', fontWeight: 700 }}>{t('fiat.coverFees')}</span>
-        <span style={{ width: '44px', height: '26px', borderRadius: '999px', background: coverFees ? C.accent : 'var(--surface)', position: 'relative', transition: 'background .2s', flexShrink: 0 }}>
-          <span style={{ position: 'absolute', top: '3px', left: coverFees ? '21px' : '3px', width: '20px', height: '20px', borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+      <div onClick={() => { setCoverFees((v) => !v); setQuote(null); }} className="tap glass row between withdraw-cover">
+        <span className="withdraw-cover-label">{t('fiat.coverFees')}</span>
+        <span className={coverFees ? 'withdraw-switch is-on' : 'withdraw-switch'}>
+          <span className="withdraw-switch-knob" />
         </span>
       </div>
 
       {quote && (
-        <div style={quoteCardStyle}>
+        <div className="glass fiat-quote-card">
           <QuoteRow label={t('fiat.youSend')} val={`${fmtMinor(quote.sender_amount)} ${token}`} />
           <QuoteRow label={t('fiat.youReceive')} val={`${fmtFiat(quote.receiver_local_amount || quote.receiver_amount)}${ccy ? ` ${ccy}` : ''}`} last />
         </div>
       )}
 
-      <div style={{ flex: 1, minHeight: '12px' }} />
+      <div className="fiat-spacer" />
       {quote ? (
         <>
           <PrimaryButton disabled={store.busy} onClick={confirm}>{store.busy ? <Spinner /> : t('fiat.confirmWithdraw')}</PrimaryButton>
-          <div style={{ height: '8px' }} />
+          <div className="fiat-gap-8" />
           <GhostButton onClick={() => setQuote(null)}>{t('fiat.editQuote')}</GhostButton>
         </>
       ) : (
         <PrimaryButton disabled={!canQuote} onClick={getQuote}>{store.busy ? <Spinner /> : t('fiat.getQuote')}</PrimaryButton>
       )}
-      <div style={{ fontSize: '11.5px', color: C.dim, fontWeight: 600, textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>{t('fiat.withdrawSignNote')}</div>
+      <div className="fiat-footnote">{t('fiat.withdrawSignNote')}</div>
     </div>
   );
 }

@@ -1,45 +1,13 @@
-import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, BackBar, AssetLogo } from '@/components/parts';
+import { PrimaryButton, BackBar } from '@/components/parts';
 import { readText } from '@/lib/clipboard';
 import { fmt, trim } from '@/lib/format';
 import { isValidPublicKey } from '@/lib/wallet';
-import { spendableXlm, sendableAssets } from './shared';
+import { AssetPicker } from '@/components/molecules/money/AssetPicker';
+import { spendableXlm } from './shared';
+import '@/styles/screens/money/send.css';
 
 /* ------------------------------- SEND ------------------------------- */
-/** Pill dropdown to choose which asset to send. */
-function AssetPicker({ store }: { store: WalletStore }) {
-  const [open, setOpen] = useState(false);
-  const assets = sendableAssets(store);
-  const code = store.send.asset || 'XLM';
-  return (
-    <div style={{ position: 'relative' }}>
-      <button onClick={() => setOpen((o) => !o)} className="glass-soft" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text)', border: 'none', borderRadius: '999px', padding: '7px 14px 7px 7px', fontSize: '14px', fontWeight: 800, cursor: 'pointer' }}>
-        <AssetLogo code={code} size={26} />
-        {code}
-        <span style={{ fontSize: '9px', opacity: 0.7, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .2s' }}>▼</span>
-      </button>
-      {open && (
-        <>
-          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 30 }} />
-          <div className="glass" style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 31, minWidth: '210px', borderRadius: '16px', padding: '6px', animation: 'fadeUp .18s ease' }}>
-            {assets.map((a) => {
-              const on = a.code === code;
-              return (
-                <div key={a.code + (a.issuer ?? '')} onClick={() => { store.setSend({ ...store.send, asset: a.code, amount: '0' }); setOpen(false); }} className="tap" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px', borderRadius: '11px', cursor: 'pointer', background: on ? 'var(--surface)' : 'transparent' }}>
-                  <AssetLogo code={a.code} size={26} />
-                  <span style={{ flex: 1, fontSize: '13.5px', fontWeight: 700 }}>{a.code}</span>
-                  <span className="t-dim-12">{trim(parseFloat(a.balance) || 0, 4)}</span>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 export function Send({ store }: { store: WalletStore }) {
   const t = store.t;
   const s = store.send;
@@ -72,7 +40,7 @@ export function Send({ store }: { store: WalletStore }) {
     <div className="scr screen col pb-24">
       <BackBar title={t('send.title')} onBack={() => store.go('home', 'home')} />
 
-      <div style={{ marginTop: '8px', marginBottom: '6px', fontSize: '12px', color: C.dim, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.5px' }}>{t('send.to')}</div>
+      <div className="label-up send-to-label">{t('send.to')}</div>
       <div className="flexr g8">
         <input
           value={s.to}
@@ -83,57 +51,45 @@ export function Send({ store }: { store: WalletStore }) {
             store.setSend({ ...s, to: v });
           }}
           placeholder={t('send.dest')}
-          className="input" style={{ flex: 1, width: 'auto', minWidth: 0, fontSize: '14px', fontFamily: 'monospace' }}
+          className="input send-addr-input"
         />
-        <button onClick={() => store.setScreen('scan')} title={t('scan.scanQr')} className="glass-soft" style={{ flexShrink: 0, width: '54px', height: '54px', color: 'var(--text)', border: 'none', borderRadius: '999px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+        <button onClick={() => store.setScreen('scan')} title={t('scan.scanQr')} className="glass-soft send-scan-btn">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><path d="M14 14h3v3M21 14v.01M21 21v-4M14 21h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
         </button>
       </div>
       {/* Standard-sized control (48px pill), snug under the address row; the
           validity note only takes space once there's something to validate. */}
-      <button onClick={pastePayUrl} className="glass-soft pill-btn" style={{ marginTop: '8px' }}>
+      <button onClick={pastePayUrl} className="glass-soft pill-btn send-paste-btn">
         ⛓ {t('ops.pastePay')}
       </button>
       {s.to && (
-        <div style={{ fontSize: '12px', fontWeight: 700, color: addrValid ? C.accent : C.danger, textAlign: 'right', margin: '6px 2px 0' }}>
+        <div className={addrValid ? 'send-addr-note is-valid' : 'send-addr-note is-invalid'}>
           {addrValid ? t('send.validAddr') : t('send.invalidAddr')}
         </div>
       )}
 
-      <div style={{ textAlign: 'center', padding: '10px 0 4px' }}>
+      <div className="send-amount">
         {/* asset selector sits right next to the amount; the amount is a real input
             (system keyboard) — no on-screen pad needed on any device */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
+        <div className="center g12">
           <input
             value={s.amount}
             onChange={(e) => editAmountInput((e.target as HTMLInputElement).value)}
             inputMode="decimal"
             placeholder="0"
-            style={{
-              width: `${Math.max(1, s.amount.length || 1)}ch`,
-              maxWidth: '230px',
-              background: 'transparent',
-              border: 'none',
-              outline: 'none',
-              color: 'var(--text)',
-              fontSize: '44px',
-              fontWeight: 800,
-              letterSpacing: '-1.5px',
-              fontVariantNumeric: 'tabular-nums',
-              textAlign: 'center',
-              padding: 0,
-            }}
+            className="send-amount-input"
+            style={{ width: `${Math.max(1, s.amount.length || 1)}ch` }}
           />
           <AssetPicker store={store} />
         </div>
-        <div style={{ marginTop: '10px', fontSize: '13px', color: C.dim, fontWeight: 600 }}>
+        <div className="send-avail">
           {price > 0 ? `≈ $${fmt(amt * price, 2)} · ` : ''}{t('send.available')}: {trim(avail, 4)} {code}
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', margin: '10px 0 12px' }}>
+      <div className="flexr g8 send-pct">
         {([['25%', 0.25], ['50%', 0.5], ['Máx', 1]] as [string, number][]).map(([l, p]) => (
-          <span key={l} onClick={() => setPct(p)} className="tap glass-soft" style={{ flex: 1, textAlign: 'center', fontSize: '13px', fontWeight: 700, color: C.muted, padding: '11px', borderRadius: '999px', cursor: 'pointer' }}>{l}</span>
+          <span key={l} onClick={() => setPct(p)} className="tap glass-soft send-pct-btn">{l}</span>
         ))}
       </div>
 
@@ -142,10 +98,10 @@ export function Send({ store }: { store: WalletStore }) {
         value={s.memo}
         onChange={(e) => store.setSend({ ...s, memo: (e.target as HTMLInputElement).value.slice(0, 28) })}
         placeholder={t('send.memo')}
-        className="input" style={{ marginBottom: '12px' }}
+        className="input send-memo"
       />
 
-      <div style={{ flex: 1, minHeight: '12px' }} />
+      <div className="send-spacer" />
       <PrimaryButton disabled={!ok} onClick={() => store.setScreen('confirm')}>
         {amt > avail && amt > 0 ? t('send.insufficient') : t('common.continue')}
       </PrimaryButton>

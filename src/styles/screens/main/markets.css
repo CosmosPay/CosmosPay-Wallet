@@ -1,0 +1,16 @@
+/* Markets screen (src/components/screens/main/Markets.tsx). */
+/* filter tabs */
+.market-tabs { margin-bottom: 18px; font-size: 13px; font-weight: 700; } /* on .flexr.g8 */
+.market-tab { padding: 8px 14px; border-radius: 11px; background: var(--glass-soft-bg); color: var(--muted); cursor: pointer; }
+.market-tab.is-on { background: var(--accent); color: var(--on-accent); }
+
+/* one market row (animation-delay is per-index → stays inline) */
+.market-row { padding: 12px 2px; cursor: pointer; animation: fadeUp 0.45s ease backwards; } /* on .tap.row.between */
+.market-name { font-size: 15px; font-weight: 700; }
+.market-right { text-align: right; } /* on .col.g2 */
+.market-price { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.market-chg { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.market-chg.is-up { color: var(--up); }
+.market-chg.is-down { color: var(--down); }
+
+.market-empty { text-align: center; color: var(--dim); font-size: 13px; font-weight: 600; padding: 24px; }

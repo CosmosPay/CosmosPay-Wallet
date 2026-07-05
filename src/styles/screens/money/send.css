@@ -1,0 +1,28 @@
+/* Send screen (src/components/screens/money/Send.tsx) + AssetPicker. */
+/* asset picker dropdown */
+.send-picker { position: relative; }
+.send-picker-btn { display: flex; align-items: center; gap: 8px; color: var(--text); border: none; border-radius: 999px; padding: 7px 14px 7px 7px; font-size: 14px; font-weight: 800; cursor: pointer; } /* on .glass-soft */
+.send-picker-caret { font-size: 9px; opacity: 0.7; transition: transform 0.2s; }
+.send-picker-caret.is-open { transform: rotate(180deg); }
+.send-picker-overlay { position: fixed; inset: 0; z-index: 30; }
+.send-picker-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 31; min-width: 210px; border-radius: 16px; padding: 6px; animation: fadeUp 0.18s ease; } /* on .glass */
+.send-picker-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px; cursor: pointer; background: transparent; }
+.send-picker-item.is-on { background: var(--surface); }
+.send-picker-item-code { flex: 1; font-size: 13.5px; font-weight: 700; }
+
+/* destination + amount + shortcuts */
+.send-to-label { margin: 8px 0 6px; } /* on .label-up */
+.send-addr-input { flex: 1; width: auto; min-width: 0; font-size: 14px; font-family: monospace; } /* on .input */
+.send-scan-btn { flex-shrink: 0; width: 54px; height: 54px; border: none; border-radius: 999px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text); } /* on .glass-soft */
+.send-paste-btn { margin-top: 8px; } /* on .glass-soft.pill-btn */
+.send-addr-note { font-size: 12px; font-weight: 700; text-align: right; margin: 6px 2px 0; }
+.send-addr-note.is-valid { color: var(--accent); }
+.send-addr-note.is-invalid { color: #ff5d5d; }
+.send-amount { text-align: center; padding: 10px 0 4px; }
+/* the amount input width is content-sized (chars) → stays inline */
+.send-amount-input { max-width: 230px; background: transparent; border: none; outline: none; color: var(--text); font-size: 44px; font-weight: 800; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; text-align: center; padding: 0; }
+.send-avail { margin-top: 10px; font-size: 13px; color: var(--dim); font-weight: 600; }
+.send-pct { margin: 10px 0 12px; } /* on .flexr.g8 */
+.send-pct-btn { flex: 1; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); padding: 11px; border-radius: 999px; cursor: pointer; } /* on .tap.glass-soft */
+.send-memo { margin-bottom: 12px; } /* on .input */
+.send-spacer { flex: 1; min-height: 12px; }

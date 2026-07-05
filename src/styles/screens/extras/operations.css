@@ -1,0 +1,24 @@
+/* Operations hub screen (src/components/screens/extras/Operations.tsx). */
+
+.operations-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 12px 0 18px;
+}
+
+.operations-card { border-radius: 18px; overflow: hidden; }
+/* hairline between rows (the row wrappers are the card's only children) */
+.operations-card > div:not(:last-child) { border-bottom: 1px solid var(--hairline); }
+
+.operations-row { padding: 15px 16px; cursor: pointer; }
+/* 38px round glyph badge (compose with .glass-soft .center .shrink0) */
+.operations-glyph {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  font-size: 17px;
+}
+.operations-row-label { font-size: 15px; font-weight: 700; }
+.operations-chevron { color: #4f5754; font-size: 18px; } /* exact legacy hex, not a token */

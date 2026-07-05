@@ -1,0 +1,71 @@
+/* =====================================================================
+   flags.tsx — language flag icon + compact language dropdown.
+   Used only inside the main app (Welcome / Unlock / Settings), so app.css
+   utilities and the theme variables from index.astro are available here.
+   ===================================================================== */
+
+/* flag SVG (the width comes from the `size` prop -> stays inline).
+   Ring is a literal (not var(--glass-border)): identical in both themes. */
+.flag-img {
+  height: auto;
+  border-radius: 3px;
+  display: block;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+/* dropdown anchor */
+.flag-select {
+  position: relative;
+}
+
+/* trigger pill: active flag + name. Compose with .row .g8. */
+.flag-select-btn {
+  background: var(--glass-soft-bg);
+  color: var(--text);
+  border: 1px solid var(--glass-border);
+  padding: 7px 12px 7px 9px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+}
+
+/* caret: the open-state rotation stays inline */
+.flag-select-caret {
+  font-size: 9px;
+  opacity: 0.7;
+  transition: transform 0.18s ease;
+}
+
+/* floating menu. Compose with .col .g2. */
+.flag-select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 50;
+  min-width: 168px;
+  padding: 6px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  border: 1px solid var(--glass-border);
+  border-radius: 16px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  animation: fadeUp 0.16s ease;
+}
+
+/* menu option. Compose with .row .g10; the active-state background and
+   font-weight stay inline. */
+.flag-select-opt {
+  width: 100%;
+  color: var(--text);
+  border: none;
+  padding: 9px 12px;
+  font-size: 13.5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.flag-select-check {
+  font-size: 12px;
+}

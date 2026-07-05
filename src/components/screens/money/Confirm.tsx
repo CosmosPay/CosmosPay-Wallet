@@ -1,7 +1,8 @@
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, BackBar, Spinner, AssetLogo } from '@/components/parts';
+import { PrimaryButton, BackBar, Spinner, AssetLogo } from '@/components/parts';
 import { fmt, shortAddr } from '@/lib/format';
 import { normalizeAmount } from '@/lib/stellar';
+import '@/styles/screens/money/confirm.css';
 
 /* ----------------------------- CONFIRM ------------------------------ */
 export function Confirm({ store }: { store: WalletStore }) {
@@ -31,26 +32,26 @@ export function Confirm({ store }: { store: WalletStore }) {
   return (
     <div className="scr screen col pb-24">
       <BackBar title={t('confirm.title')} onBack={() => store.setScreen('send')} />
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', margin: '20px 0 8px' }}>
+      <div className="center confirm-logo">
         <AssetLogo code={code} size={64} />
       </div>
-      <div style={{ textAlign: 'center', fontSize: '30px', fontWeight: 800, letterSpacing: '-1px', marginBottom: '4px' }}>{normalized} {code}</div>
-      <div style={{ textAlign: 'center', fontSize: '14px', color: C.dim, fontWeight: 600, marginBottom: '26px' }}>{price > 0 ? `≈ $${fmt(amt * price, 2)}` : ' '}</div>
+      <div className="confirm-amount">{normalized} {code}</div>
+      <div className="confirm-fiat">{price > 0 ? `≈ $${fmt(amt * price, 2)}` : ' '}</div>
 
-      {/* flexShrink 0: don't let the details card compress inside the scroll column. */}
-      <div className="glass" style={{ borderRadius: '18px', padding: '6px 18px', flexShrink: 0 }}>
+      {/* flex-shrink 0: don't let the details card compress inside the scroll column. */}
+      <div className="glass confirm-card">
         {rows.map((r, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '15px 0', borderBottom: i < rows.length - 1 ? '1px solid var(--hairline)' : 'none', gap: '12px' }}>
-            <span style={{ color: C.muted, fontSize: '14px', fontWeight: 600 }}>{r[0]}</span>
-            <div style={{ textAlign: 'right', minWidth: 0 }}>
-              <div style={{ fontSize: '14.5px', fontWeight: 700, fontFamily: r[1].includes('…') ? 'monospace' : 'inherit' }}>{r[1]}</div>
+          <div key={i} className="confirm-row">
+            <span className="confirm-row-label">{r[0]}</span>
+            <div className="confirm-row-right">
+              <div className={r[1].includes('…') ? 'confirm-row-val is-mono' : 'confirm-row-val'}>{r[1]}</div>
               {r[2] && <div className="t-dim-12">{r[2]}</div>}
             </div>
           </div>
         ))}
       </div>
 
-      <div style={{ flex: 1, minHeight: '14px' }} />
+      <div className="confirm-spacer" />
       <PrimaryButton disabled={store.busy} onClick={() => store.submitSend()}>
         {store.busy ? <Spinner /> : t('confirm.cta')}
       </PrimaryButton>

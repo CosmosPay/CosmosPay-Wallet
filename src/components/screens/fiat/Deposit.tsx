@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { C, PrimaryButton, GhostButton, BackBar, Spinner } from '@/components/parts';
-import { copyText } from '@/lib/clipboard';
+import { PrimaryButton, GhostButton, BackBar, Spinner } from '@/components/parts';
 import { railCurrency, PAY_METHODS } from '@/constants/fiat';
 import type { FiatToken, Payin, PayinMethod, PayinQuote, PayinQuoteInput } from '@/lib/cosmospay';
-import { fmtMinor, fmtFiat, toMinor, stableTokens, Field, Select, SCR_STYLE, quoteCardStyle, QuoteRow } from './shared';
+import { fmtMinor, fmtFiat, toMinor, stableTokens } from '@/lib/fiatFormat';
+import { Field, Select, QuoteRow } from '@/components/molecules/fiat';
+import { DepositInstructions } from '@/components/organisms/fiat/DepositInstructions';
+import '@/styles/screens/fiat/deposit.css';
 
 /** Deposit fiat → crypto. Quote → create payin → show the payer's funding instructions. */
 export function Deposit({ store }: { store: WalletStore }) {
@@ -60,18 +62,18 @@ export function Deposit({ store }: { store: WalletStore }) {
 
   if (!tokens.length) {
     return (
-      <div className="scr" style={SCR_STYLE}>
+      <div className="scr screen col pb-104">
         <BackBar title={t('fiat.depositTitle')} onBack={() => store.setScreen('fiat')} />
-        <div className="glass" style={{ borderRadius: '16px', padding: '18px', fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, marginBottom: '12px' }}>{t('fiat.noTrustedToken')}</div>
+        <div className="glass fiat-note-card fiat-note-card-gap">{t('fiat.noTrustedToken')}</div>
         <PrimaryButton onClick={() => store.setScreen('add-asset')}>{t('fiat.addTrustline')}</PrimaryButton>
       </div>
     );
   }
 
   return (
-    <div className="scr" style={SCR_STYLE}>
+    <div className="scr screen col pb-104">
       <BackBar title={t('fiat.depositTitle')} onBack={() => store.setScreen('fiat')} />
-      <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '2px 2px 14px' }}>{t('fiat.depositDesc')}</div>
+      <div className="fiat-desc deposit-desc">{t('fiat.depositDesc')}</div>
 
       <Select label={t('fiat.method')} value={method} onChange={changeMethod}>
         {PAY_METHODS.map((m) => <option key={m.method} value={m.method}>{m.label}</option>)}
@@ -91,75 +93,23 @@ export function Deposit({ store }: { store: WalletStore }) {
       )}
 
       {quote && (
-        <div style={quoteCardStyle}>
+        <div className="glass fiat-quote-card">
           <QuoteRow label={t('fiat.youPay')} val={`${fmtFiat(quote.sender_amount)}${railCurrency(method) ? ` ${railCurrency(method)}` : ''}`} />
           <QuoteRow label={t('fiat.youReceive')} val={`${fmtMinor(quote.receiver_amount)} ${token}`} last />
         </div>
       )}
 
-      <div style={{ flex: 1, minHeight: '12px' }} />
+      <div className="fiat-spacer" />
       {quote ? (
         <>
           <PrimaryButton disabled={store.busy} onClick={confirm}>{store.busy ? <Spinner /> : t('fiat.confirmDeposit')}</PrimaryButton>
-          <div style={{ height: '8px' }} />
+          <div className="fiat-gap-8" />
           <GhostButton onClick={() => setQuote(null)}>{t('fiat.editQuote')}</GhostButton>
         </>
       ) : (
         <PrimaryButton disabled={!canQuote} onClick={getQuote}>{store.busy ? <Spinner /> : t('fiat.getQuote')}</PrimaryButton>
       )}
-      <div style={{ fontSize: '11.5px', color: C.dim, fontWeight: 600, textAlign: 'center', marginTop: '10px', lineHeight: 1.5 }}>{t('fiat.quoteNote')}</div>
-    </div>
-  );
-}
-
-/** Funding instructions for a created payin (PIX code, CLABE, CBU, memo + bank details, PSE link). */
-function DepositInstructions({ store, payin, onDone }: { store: WalletStore; payin: Payin; onDone: () => void }) {
-  const t = store.t;
-  const ins = payin.instructions ?? {};
-  const rows: { label: string; value: string }[] = [];
-  const push = (label: string, v: unknown) => { if (typeof v === 'string' && v) rows.push({ label, value: v }); };
-  push(t('fiat.ins.pixCode'), ins.pix_code);
-  push(t('fiat.ins.clabe'), ins.clabe);
-  push(t('fiat.ins.cbu'), ins.cbu);
-  push(t('fiat.ins.memoCode'), ins.memo_code);
-  push(t('fiat.ins.pseLink'), ins.pse_payment_link);
-  const bank = ins.blindpay_bank_details && typeof ins.blindpay_bank_details === 'object' ? (ins.blindpay_bank_details as Record<string, unknown>) : null;
-
-  const copy = async (v: string) => { await copyText(v); store.flash(t('fiat.copied'), 'ok'); };
-
-  return (
-    <div className="scr" style={SCR_STYLE}>
-      <BackBar title={t('fiat.depositInstructions')} onBack={onDone} />
-      <div style={{ fontSize: '13px', color: C.muted, fontWeight: 600, lineHeight: 1.5, margin: '2px 2px 14px' }}>{t('fiat.depositInstructionsDesc')}</div>
-      <div className="glass" style={{ borderRadius: '14px', padding: '12px 16px', marginBottom: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: '12px', color: C.muted, fontWeight: 700 }}>{t('fiat.status')}</span>
-        <span style={{ fontSize: '13px', fontWeight: 800, textTransform: 'uppercase' }}>{payin.status ?? '—'}</span>
-      </div>
-      {rows.length === 0 && !bank && (
-        <div className="glass" style={{ borderRadius: '16px', padding: '18px', fontSize: '12.5px', color: C.muted, fontWeight: 600, textAlign: 'center' }}>{t('fiat.insPending')}</div>
-      )}
-      {rows.map((r) => (
-        <div key={r.label} className="glass" style={{ borderRadius: '14px', padding: '12px 14px', marginBottom: '8px' }}>
-          <div style={{ fontSize: '11.5px', color: C.muted, fontWeight: 700, marginBottom: '4px' }}>{r.label}</div>
-          <div className="row g10">
-            <span style={{ flex: 1, minWidth: 0, fontSize: '13px', fontWeight: 700, wordBreak: 'break-all', fontFamily: 'monospace' }}>{r.value}</span>
-            <button onClick={() => copy(r.value)} className="tap glass-soft" style={{ border: 'none', borderRadius: '999px', padding: '7px 12px', fontSize: '12px', fontWeight: 800, color: 'var(--text)', cursor: 'pointer', flexShrink: 0 }}>{t('fiat.copy')}</button>
-          </div>
-        </div>
-      ))}
-      {bank && (
-        <div className="glass" style={{ borderRadius: '14px', padding: '12px 14px', marginBottom: '8px' }}>
-          <div style={{ fontSize: '11.5px', color: C.muted, fontWeight: 700, marginBottom: '6px' }}>{t('fiat.ins.bankDetails')}</div>
-          {Object.entries(bank).map(([k, v]) => (
-            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '3px 0', fontSize: '12.5px' }}>
-              <span style={{ color: C.dim, fontWeight: 600 }}>{k}</span>
-              <span style={{ fontWeight: 700, wordBreak: 'break-all', textAlign: 'right' }}>{String(v)}</span>
-            </div>
-          ))}
-        </div>
-      )}
-      <div style={{ flex: 1, minHeight: '12px' }} />
-      <PrimaryButton onClick={onDone}>{t('common.done')}</PrimaryButton>
+      <div className="fiat-footnote">{t('fiat.quoteNote')}</div>
     </div>
   );
 }

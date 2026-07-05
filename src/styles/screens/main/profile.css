@@ -1,0 +1,79 @@
+/* Profile screen (src/components/screens/main/Profile.tsx) + EmailRow organism. */
+.profile-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 22px; }
+
+/* identity block: avatar + name/address */
+.profile-id { margin-bottom: 26px; } /* on .row.g14 */
+.profile-avatar {
+  position: relative;
+  flex-shrink: 0;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: var(--glass-soft-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 800;
+  cursor: pointer;
+  overflow: visible;
+}
+.profile-avatar-img { width: 62px; height: 62px; border-radius: 50%; object-fit: cover; }
+.profile-avatar-cam {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--bg);
+}
+.profile-idcol { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.profile-name { font-size: 18px; font-weight: 800; }
+.profile-addr { font-size: 13px; color: var(--dim); font-weight: 600; font-family: monospace; }
+.profile-copy { display: flex; color: var(--muted); cursor: pointer; }
+.profile-copy.is-copied { color: var(--accent); }
+.profile-meta { font-size: 11.5px; color: var(--accent); font-weight: 700; }
+
+/* email card (EmailRow) */
+.profile-email-card { margin-bottom: 20px; } /* on .glass.card-16 */
+.profile-email-label { font-size: 11px; color: var(--dim); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 7px; }
+.profile-email-value { flex: 1; font-size: 14px; font-weight: 700; word-break: break-all; color: var(--text); }
+.profile-email-value.is-empty { color: var(--dim); }
+.profile-email-edit { width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; color: var(--text); } /* on .glass-soft */
+.profile-email-input { height: 46px; font-size: 14px; margin-bottom: 8px; } /* on .input */
+.profile-email-err { font-size: 12px; font-weight: 700; color: #ff5d5d; margin: 0 2px 8px; }
+.profile-email-cancel { flex: 1; height: 42px; color: var(--text); border: none; border-radius: 999px; font-size: 13px; font-weight: 800; cursor: pointer; } /* on .glass-soft */
+.profile-email-save { flex: 1; height: 42px; color: var(--primary-text); border-radius: 999px; font-size: 13px; font-weight: 800; cursor: pointer; } /* on .glass-bright */
+.profile-email-save:disabled { opacity: 0.5; cursor: default; }
+.profile-email-note { font-size: 11.5px; color: var(--dim); font-weight: 600; margin-top: 9px; line-height: 1.5; }
+
+/* wallets list */
+.profile-wallets-label { margin-bottom: 10px; } /* on .label-up */
+.profile-list { border-radius: 18px; overflow: hidden; margin-bottom: 20px; } /* on .glass */
+.profile-wallet-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--hairline); cursor: pointer; }
+.profile-wallet-row.is-active { cursor: default; }
+.profile-wallet-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--glass-soft-bg); border: 1px solid var(--glass-soft-border); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+.profile-wallet-name { font-size: 14.5px; font-weight: 700; }
+.profile-wallet-addr { font-size: 11.5px; color: var(--dim); font-weight: 600; font-family: monospace; }
+.profile-wallet-active { font-size: 11px; font-weight: 800; color: var(--on-accent); background: var(--accent); padding: 3px 10px; border-radius: 999px; }
+.profile-wallet-switch { color: var(--muted); font-size: 13px; font-weight: 700; }
+.profile-add-wallet { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; color: var(--accent); }
+.profile-add-icon { width: 34px; height: 34px; border-radius: 50%; border: 1px dashed var(--glass-border); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.profile-add-label { font-size: 14.5px; font-weight: 800; }
+
+/* action menu */
+.profile-menu { border-radius: 18px; overflow: hidden; margin-bottom: 20px; } /* on .glass */
+.profile-menu-row { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--hairline); cursor: pointer; }
+.profile-menu-row:last-child { border-bottom: none; }
+.profile-menu-icon { width: 34px; height: 34px; border-radius: 11px; background: var(--surface); display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.profile-menu-label { flex: 1; font-size: 15px; font-weight: 700; }
+.profile-menu-chev { color: #4f5754; font-size: 18px; }
+
+.profile-lock { text-align: center; color: #ff5d5d; font-size: 15px; font-weight: 700; padding: 14px; cursor: pointer; }
+.hidden-input { display: none; }
