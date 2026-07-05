@@ -157,6 +157,7 @@ export type Screen =
   | 'sign-tx'
   | 'add-network'
   | 'add-asset'
+  | 'edit-profile'
   | 'scan';
 
 export type Tab = 'home' | 'earn' | 'markets' | 'profile';
@@ -425,6 +426,24 @@ export function useWalletStore() {
       const entry = next.find((w) => w.id === meta.id);
       if (entry) setMetaState(entry);
       flash(t('profile.emailUpdated'), 'ok');
+    },
+    [meta, flash, t],
+  );
+
+  /** Update the editable profile fields at once (name, email, gender). The birthdate
+   *  is deliberately NOT editable — age gates (13+, 18+ fiat) must stay trustworthy. */
+  const saveProfile = useCallback(
+    async (fields: { name: string; email: string; gender: Gender }) => {
+      if (!meta) return;
+      const next = await updateWalletMeta(meta.id, {
+        name: fields.name.trim() || 'astronauta',
+        email: fields.email.trim(),
+        gender: fields.gender,
+      });
+      setWallets(next);
+      const entry = next.find((w) => w.id === meta.id);
+      if (entry) setMetaState(entry);
+      flash(t('profile.saved'), 'ok');
     },
     [meta, flash, t],
   );
@@ -1682,6 +1701,7 @@ export function useWalletStore() {
     setDraftMetricsOptIn,
     setDraftPromoOptIn,
     setWalletEmail,
+    saveProfile,
     toggleFavorite,
     setSend,
     setSelectedAsset,

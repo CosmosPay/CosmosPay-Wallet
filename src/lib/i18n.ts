@@ -60,6 +60,7 @@ const T: Record<string, Record<Lang, string>> = {
   'common.continue': { es: 'Continuar', en: 'Continue', pt: 'Continuar', de: 'Weiter', fr: 'Continuer' },
   'common.done': { es: 'Listo', en: 'Done', pt: 'Concluído', de: 'Fertig', fr: 'Terminé' },
   'common.cancel': { es: 'Cancelar', en: 'Cancel', pt: 'Cancelar', de: 'Abbrechen', fr: 'Annuler' },
+  'common.save': { es: 'Guardar', en: 'Save', pt: 'Salvar', de: 'Speichern', fr: 'Enregistrer' },
   'common.copy': { es: 'Copiar', en: 'Copy', pt: 'Copiar', de: 'Kopieren', fr: 'Copier' },
   'common.copied': { es: 'Copiado ✓', en: 'Copied ✓', pt: 'Copiado ✓', de: 'Kopiert ✓', fr: 'Copié ✓' },
   'common.share': { es: 'Compartir', en: 'Share', pt: 'Partilhar', de: 'Teilen', fr: 'Partager' },
@@ -311,6 +312,10 @@ const T: Record<string, Record<Lang, string>> = {
   'profile.changePhoto': { es: 'Cambiar foto', en: 'Change photo', pt: 'Mudar foto', de: 'Foto ändern', fr: 'Changer la photo' },
   'profile.editEmail': { es: 'Cambiar correo', en: 'Change email', pt: 'Mudar e-mail', de: 'E-Mail ändern', fr: 'Changer l’e-mail' },
   'profile.emailUpdated': { es: 'Correo actualizado.', en: 'Email updated.', pt: 'E-mail atualizado.', de: 'E-Mail aktualisiert.', fr: 'E-mail mis à jour.' },
+  'profile.editProfile': { es: 'Editar perfil', en: 'Edit profile', pt: 'Editar perfil', de: 'Profil bearbeiten', fr: 'Modifier le profil' },
+  'profile.saved': { es: 'Perfil actualizado.', en: 'Profile updated.', pt: 'Perfil atualizado.', de: 'Profil aktualisiert.', fr: 'Profil mis à jour.' },
+  'editProfile.title': { es: 'Editar perfil', en: 'Edit profile', pt: 'Editar perfil', de: 'Profil bearbeiten', fr: 'Modifier le profil' },
+  'editProfile.dobLocked': { es: 'La fecha de nacimiento no puede modificarse.', en: 'Your date of birth can’t be changed.', pt: 'A data de nascimento não pode ser alterada.', de: 'Das Geburtsdatum kann nicht geändert werden.', fr: 'La date de naissance ne peut pas être modifiée.' },
   'profile.emailNote': {
     es: 'Este correo se usa para crear y vincular tu cuenta de Cosmos Pay.',
     en: 'This email is used to create and link your Cosmos Pay account.',

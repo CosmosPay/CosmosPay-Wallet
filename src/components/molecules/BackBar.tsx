@@ -14,11 +14,13 @@ export function BackBar({
 }) {
   return (
     <div className="backbar">
-      <div onClick={onBack} className="tap glass-soft circle-btn" style={{ fontSize: closeIcon ? '17px' : '22px' }}>
-        {closeIcon ? '✕' : '‹'}
-      </div>
       <span className="f1 back-bar-title">{title}</span>
       {right}
+      {/* Exit button pinned top-RIGHT for consistency with the tab screens' header
+          control — the same position across every view keeps the muscle memory. */}
+      <div onClick={onBack} className={closeIcon ? 'tap glass-soft circle-btn back-bar-btn is-close' : 'tap glass-soft circle-btn back-bar-btn'}>
+        {closeIcon ? '✕' : '‹'}
+      </div>
     </div>
   );
 }

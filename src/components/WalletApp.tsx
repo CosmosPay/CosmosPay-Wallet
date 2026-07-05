@@ -6,7 +6,7 @@ import { buildKind } from '@/lib/platform';
 import { Shell, Spinner, Logo } from '@/components/parts';
 import { Welcome, Backup, Verify, Import, ProfileSetup, PasswordSetup } from '@/components/screens/Onboarding';
 import { Unlock } from '@/components/screens/Unlock';
-import { Home, Earn, Markets, Profile, Asset } from '@/components/screens/Main';
+import { Home, Earn, Markets, Profile, Asset, EditProfile } from '@/components/screens/Main';
 import { Receive, Send, Confirm, Success, Swap, History, PayLink } from '@/components/screens/Money';
 import { Settings, Export, About } from '@/components/screens/Settings';
 import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from '@/components/screens/Extras';
@@ -50,6 +50,7 @@ function handleBack(store: WalletStore, exitApp: () => void) {
     case 'fiat':
       return store.go('home', 'home');
     case 'cosmospay':
+    case 'edit-profile':
       return store.go('profile', 'profile');
     case 'bankaccount':
     case 'deposit':
@@ -126,6 +127,8 @@ function renderScreen(screen: WalletStore['screen'], store: WalletStore) {
       return <Fiat store={store} />;
     case 'cosmospay':
       return <CosmosPay store={store} />;
+    case 'edit-profile':
+      return <EditProfile store={store} />;
     case 'bankaccount':
       return <BankAccount store={store} />;
     case 'deposit':

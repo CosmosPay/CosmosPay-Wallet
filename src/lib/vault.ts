@@ -217,7 +217,7 @@ export async function addWallet(
 /** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));

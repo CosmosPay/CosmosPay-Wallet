@@ -4,7 +4,6 @@ import { buildKind } from '@/lib/platform';
 import { shortAddr } from '@/lib/format';
 import { getGreeting } from '@/lib/greeting';
 import { copyText } from '@/lib/clipboard';
-import { EmailRow } from '@/components/organisms/main/EmailRow';
 import { BackCircle } from './shared';
 import '@/styles/screens/main/profile.css';
 
@@ -34,6 +33,7 @@ export function Profile({ store }: { store: WalletStore }) {
   // Cosmos Pay is an integration (swaps + BlindPay payments) — tap to manage keys/receiver.
   const cosmosPayRow = { icon: '◇', label: t('cosmospay.manage'), onClick: () => store.setScreen('cosmospay') };
   const rows = [
+    { icon: '✎', label: t('profile.editProfile'), onClick: () => store.setScreen('edit-profile') },
     ...(store.meta?.email ? [cosmosPayRow] : []),
     { icon: '⚷', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') },
     { icon: '⛁', label: t('profile.receiveAddr'), onClick: () => store.setScreen('receive') },
@@ -99,11 +99,9 @@ export function Profile({ store }: { store: WalletStore }) {
           <span className="profile-meta">
             {store.network.label}{g.age !== null ? ` · ${g.age} ${t('profile.years')}` : ''}
           </span>
+          {store.meta?.email && <span className="profile-email-line" title={store.meta.email}>{store.meta.email}</span>}
         </div>
       </div>
-
-      {/* Email — editable: Cosmos Pay registration/linking is tied to it. */}
-      <EmailRow store={store} />
 
       <div className="label-up profile-wallets-label">
         {t('profile.myWallets')} ({store.wallets.length})
