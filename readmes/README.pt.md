@@ -1,6 +1,6 @@
 # Cosmos Pay · Carteira Stellar não custodial
 
-[English](README.md) · [Español](README.es.md) · **Português** · [Deutsch](README.de.md) · [Français](README.fr.md)
+[English](../README.md) · [Español](README.es.md) · **Português** · [Deutsch](README.de.md) · [Français](README.fr.md)
 
 Carteira **não custodial** para a rede **Stellar**, construída com **Astro + Vite + React (TSX)**.
 Distribui-se como **extensão de navegador** (MV3 · Chrome / Edge / Firefox — popup **e** painel
@@ -56,7 +56,7 @@ npm run build:ext:firefox    # -> extension-firefox/  (Firefox)
 - **Chrome / Edge:** `chrome://extensions` → modo de programador → *Load unpacked* → `extension/`.
 - **Firefox:** `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* → `extension-firefox/manifest.json`.
 
-Texto para a loja: [STORE_LISTING.md](STORE_LISTING.md).
+Texto para a loja: [STORE_LISTING.md](../STORE_LISTING.md).
 
 ## ⚠️ Aviso
 

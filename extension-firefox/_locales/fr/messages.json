@@ -2,7 +2,13 @@
   "appName": {
     "message": "Cosmos Pay — Stellar Wallet"
   },
+  "appShortName": {
+    "message": "Cosmos Pay"
+  },
   "appDesc": {
-    "message": "Portefeuille Stellar non dépositaire : envoie, reçois et échange XLM et actifs. Tes clés restent sur ton appareil."
+    "message": "Portefeuille Stellar non dépositaire : envoyez, recevez et échangez XLM et actifs. Vos clés restent chiffrées sur l'appareil."
+  },
+  "actionTitle": {
+    "message": "Ouvrir votre portefeuille Stellar Cosmos Pay"
   }
 }

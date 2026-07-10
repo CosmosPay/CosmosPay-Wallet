@@ -1,6 +1,6 @@
 # Cosmos Pay · Wallet no custodial de Stellar
 
-[English](README.md) · **Español** · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
+[English](../README.md) · **Español** · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
 Wallet **no custodial** para la red **Stellar**, construida con **Astro + Vite + React (TSX)**.
 Se distribuye como **extensión de navegador** (MV3 · Chrome / Edge / Firefox — popup **y** panel
@@ -75,7 +75,7 @@ Arquitectura: el popup/panel ejecutan la app completa; un content script inyecta
 que abre la **ventana de aprobación** (`approve/`) donde el usuario desbloquea y firma en local.
 Los scripts inline se externalizan en build para cumplir `script-src 'self'`; el manifest está
 localizado (`_locales/`, EN/ES/PT/DE/FR). El texto para la Store está en
-[STORE_LISTING.md](STORE_LISTING.md).
+[STORE_LISTING.md](../STORE_LISTING.md).
 
 ## 📱 Móvil (Capacitor)
 

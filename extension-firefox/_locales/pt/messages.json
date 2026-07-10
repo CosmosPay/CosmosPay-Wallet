@@ -2,7 +2,13 @@
   "appName": {
     "message": "Cosmos Pay — Stellar Wallet"
   },
+  "appShortName": {
+    "message": "Cosmos Pay"
+  },
   "appDesc": {
-    "message": "Carteira não custodial de Stellar: envia, recebe e troca XLM e ativos. As tuas chaves nunca saem do teu dispositivo."
+    "message": "Carteira não custodial de Stellar: envie, receba e troque XLM e ativos. Suas chaves são cifradas no dispositivo e nunca saem."
+  },
+  "actionTitle": {
+    "message": "Abra sua carteira Stellar da Cosmos Pay"
   }
 }

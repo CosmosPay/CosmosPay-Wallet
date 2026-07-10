@@ -1,6 +1,6 @@
 # Cosmos Pay · Non-custodial Stellar Wallet
 
-**English** · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
+**English** · [Español](readmes/README.es.md) · [Português](readmes/README.pt.md) · [Deutsch](readmes/README.de.md) · [Français](readmes/README.fr.md)
 
 A **non-custodial** wallet for the **Stellar** network, built with **Astro + Vite + React (TSX)**.
 Ships as a **browser extension** (MV3 · Chrome / Edge / Firefox — popup **and** side panel), a

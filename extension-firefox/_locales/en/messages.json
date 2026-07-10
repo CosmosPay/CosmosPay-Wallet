@@ -2,7 +2,13 @@
   "appName": {
     "message": "Cosmos Pay — Stellar Wallet"
   },
+  "appShortName": {
+    "message": "Cosmos Pay"
+  },
   "appDesc": {
-    "message": "Non-custodial Stellar wallet: send, receive & swap XLM and assets. Your keys never leave your device."
+    "message": "Non-custodial Stellar wallet: send, receive and swap XLM & assets. Your keys are encrypted on-device and never leave it."
+  },
+  "actionTitle": {
+    "message": "Open your Cosmos Pay Stellar wallet"
   }
 }

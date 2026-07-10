@@ -19,6 +19,24 @@ import { cp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const DIST = 'dist';
+
+// Single source of truth for the version: package.json. The release workflow bumps
+// package.json (conventional commits) before this runs, so the manifest tracks it
+// automatically instead of drifting from a hardcoded literal.
+//
+// Chrome's manifest `version` must be 1–4 dot-separated integers with NO suffix, so
+// a semver prerelease like `1.2.0-dev.7` (used for dev builds) is coerced to a valid
+// 4-part numeric `1.2.0.7`. A plain `1.2.0` passes through unchanged.
+const pkg = JSON.parse(await readFile('package.json', 'utf8')) as { version: string };
+function toManifestVersion(v: string): string {
+  const [core, pre = ''] = v.split('-');
+  const nums = core.split('.').map((n) => parseInt(n, 10) || 0);
+  const preNum = pre.match(/\d+/)?.[0];
+  if (preNum) nums.push(parseInt(preNum, 10));
+  return nums.slice(0, 4).join('.');
+}
+const VERSION = toManifestVersion(pkg.version);
+
 // Target: `chrome` (default) -> extension/ ; `firefox` -> extension-firefox/.
 // Chrome and Firefox need different manifests (background service_worker vs event-page
 // scripts; protocol_handlers is Firefox-only), so we emit one folder per target to
@@ -119,23 +137,52 @@ const cameraHtml =
 await writeFile(join(OUT, 'camera.html'), cameraHtml, 'utf8');
 await writeFile(join(OUT, 'camera.js'), cameraJs, 'utf8');
 
-// Store-localised name/description (__MSG_*__ + _locales) — the browser and the
-// web stores pick the right language automatically. Keep descriptions ≤132 chars.
-const LOCALES: Record<string, string> = {
-  en: 'Non-custodial Stellar wallet: send, receive & swap XLM and assets. Your keys never leave your device.',
-  es: 'Wallet no custodial de Stellar: envía, recibe e intercambia XLM y activos. Tus claves nunca salen de tu dispositivo.',
-  pt: 'Carteira não custodial de Stellar: envia, recebe e troca XLM e ativos. As tuas chaves nunca saem do teu dispositivo.',
-  de: 'Nicht-verwahrende Stellar-Wallet: XLM und Assets senden, empfangen, tauschen. Deine Schlüssel bleiben auf deinem Gerät.',
-  fr: 'Portefeuille Stellar non dépositaire : envoie, reçois et échange XLM et actifs. Tes clés restent sur ton appareil.',
+// Store-localised strings (__MSG_*__ + _locales). Chrome/Edge/Firefox and the web
+// stores pick the language from the browser UI locale automatically. Keys:
+//   appName      — extension name (brand, identical in every locale)
+//   appShortName — short_name, shown where space is tight (Chrome limit ≤12 chars)
+//   appDesc      — store + chrome://extensions description (HARD Chrome limit ≤132)
+//   actionTitle  — toolbar-icon tooltip (localised, more descriptive than the name)
+// default_locale is `en`, so `en` MUST define every key referenced by the manifest.
+const APP_NAME = 'Cosmos Pay — Stellar Wallet';
+const APP_SHORT = 'Cosmos Pay';
+type Locale = { desc: string; tooltip: string };
+const LOCALES: Record<string, Locale> = {
+  en: {
+    desc: 'Non-custodial Stellar wallet: send, receive and swap XLM & assets. Your keys are encrypted on-device and never leave it.',
+    tooltip: 'Open your Cosmos Pay Stellar wallet',
+  },
+  es: {
+    desc: 'Wallet no custodial de Stellar: envía, recibe e intercambia XLM y activos. Tus claves se cifran en tu dispositivo y nunca salen.',
+    tooltip: 'Abre tu wallet Stellar de Cosmos Pay',
+  },
+  pt: {
+    desc: 'Carteira não custodial de Stellar: envie, receba e troque XLM e ativos. Suas chaves são cifradas no dispositivo e nunca saem.',
+    tooltip: 'Abra sua carteira Stellar da Cosmos Pay',
+  },
+  de: {
+    desc: 'Nicht-verwahrende Stellar-Wallet: XLM & Assets senden, empfangen und tauschen. Schlüssel werden auf dem Gerät verschlüsselt.',
+    tooltip: 'Cosmos Pay – deine Stellar-Wallet öffnen',
+  },
+  fr: {
+    desc: "Portefeuille Stellar non dépositaire : envoyez, recevez et échangez XLM et actifs. Vos clés restent chiffrées sur l'appareil.",
+    tooltip: 'Ouvrir votre portefeuille Stellar Cosmos Pay',
+  },
 };
-for (const [code, appDesc] of Object.entries(LOCALES)) {
+const DESC_LIMIT = 132; // Chrome rejects a manifest `description` longer than this.
+for (const [code, l] of Object.entries(LOCALES)) {
+  if (l.desc.length > DESC_LIMIT) {
+    throw new Error(`_locales/${code}: appDesc is ${l.desc.length} chars (Chrome limit ${DESC_LIMIT}). Shorten it.`);
+  }
   await mkdir(join(OUT, '_locales', code), { recursive: true });
   await writeFile(
     join(OUT, '_locales', code, 'messages.json'),
     JSON.stringify(
       {
-        appName: { message: 'Cosmos Pay — Stellar Wallet' },
-        appDesc: { message: appDesc },
+        appName: { message: APP_NAME },
+        appShortName: { message: APP_SHORT },
+        appDesc: { message: l.desc },
+        actionTitle: { message: l.tooltip },
       },
       null,
       2,
@@ -148,12 +195,13 @@ for (const [code, appDesc] of Object.entries(LOCALES)) {
 const manifest = {
   manifest_version: 3,
   name: '__MSG_appName__',
-  version: '1.1.0',
+  short_name: '__MSG_appShortName__',
+  version: VERSION,
   description: '__MSG_appDesc__',
   default_locale: 'en',
   action: {
     default_popup: 'index.html',
-    default_title: '__MSG_appName__',
+    default_title: '__MSG_actionTitle__',
     default_icon: { '16': 'icons/icon-16.png', '48': 'icons/icon-48.png', '128': 'icons/icon-128.png' },
   },
   icons: { '16': 'icons/icon-16.png', '48': 'icons/icon-48.png', '128': 'icons/icon-128.png' },

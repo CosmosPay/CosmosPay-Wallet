@@ -1,6 +1,6 @@
 # Cosmos Pay · Portefeuille Stellar non dépositaire
 
-[English](README.md) · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · **Français**
+[English](../README.md) · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · **Français**
 
 Portefeuille **non dépositaire** pour le réseau **Stellar**, construit avec **Astro + Vite +
 React (TSX)**. Disponible comme **extension de navigateur** (MV3 · Chrome / Edge / Firefox —
@@ -58,7 +58,7 @@ npm run build:ext:firefox    # -> extension-firefox/  (Firefox)
 - **Chrome / Edge :** `chrome://extensions` → mode développeur → *Charger l’extension non empaquetée* → `extension/`.
 - **Firefox :** `about:debugging#/runtime/this-firefox` → *Charger un module temporaire* → `extension-firefox/manifest.json`.
 
-Textes pour la boutique : [STORE_LISTING.md](STORE_LISTING.md).
+Textes pour la boutique : [STORE_LISTING.md](../STORE_LISTING.md).
 
 ## ⚠️ Avertissement
 

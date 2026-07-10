@@ -1,6 +1,6 @@
 # Cosmos Pay · Nicht-verwahrende Stellar-Wallet
 
-[English](README.md) · [Español](README.es.md) · [Português](README.pt.md) · **Deutsch** · [Français](README.fr.md)
+[English](../README.md) · [Español](README.es.md) · [Português](README.pt.md) · **Deutsch** · [Français](README.fr.md)
 
 **Nicht-verwahrende** Wallet für das **Stellar**-Netzwerk, gebaut mit **Astro + Vite + React (TSX)**.
 Erhältlich als **Browser-Erweiterung** (MV3 · Chrome / Edge / Firefox — Popup **und** Seitenleiste),
@@ -57,7 +57,7 @@ npm run build:ext:firefox    # -> extension-firefox/  (Firefox)
 - **Chrome / Edge:** `chrome://extensions` → Entwicklermodus → *Entpackt laden* → `extension/`.
 - **Firefox:** `about:debugging#/runtime/this-firefox` → *Temporäres Add-on laden* → `extension-firefox/manifest.json`.
 
-Store-Texte: [STORE_LISTING.md](STORE_LISTING.md).
+Store-Texte: [STORE_LISTING.md](../STORE_LISTING.md).
 
 ## ⚠️ Hinweis
 

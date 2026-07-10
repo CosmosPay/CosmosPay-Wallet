@@ -2,7 +2,13 @@
   "appName": {
     "message": "Cosmos Pay — Stellar Wallet"
   },
+  "appShortName": {
+    "message": "Cosmos Pay"
+  },
   "appDesc": {
-    "message": "Nicht-verwahrende Stellar-Wallet: XLM und Assets senden, empfangen, tauschen. Deine Schlüssel bleiben auf deinem Gerät."
+    "message": "Nicht-verwahrende Stellar-Wallet: XLM & Assets senden, empfangen und tauschen. Schlüssel werden auf dem Gerät verschlüsselt."
+  },
+  "actionTitle": {
+    "message": "Cosmos Pay – deine Stellar-Wallet öffnen"
   }
 }

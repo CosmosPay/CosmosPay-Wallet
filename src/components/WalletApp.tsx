@@ -210,7 +210,7 @@ export default function WalletApp() {
           transform: intro === 'show' ? 'scale(1.05)' : 'none',
         }}
       >
-        <Shell showGlow showNav={showNav} store={store}>
+        <Shell showNav={showNav} store={store}>
           {screen === 'boot' ? (
             <Boot />
           ) : (

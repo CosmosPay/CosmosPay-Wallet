@@ -1,4 +1,4 @@
-/* Shell — the phone column with the signature glow + blurred blobs. */
+/* Shell — the phone column that hosts the app. */
 
 /* Full-height wrapper. Height comes from --shell-h (default 100vh for web /
    native). The extension popup overrides it to a FIXED 600px: an MV3 popup
@@ -29,31 +29,6 @@
   color: var(--text);
   display: flex;
   flex-direction: column;
-}
-
-.shell-glow {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 300px;
-  background: radial-gradient(120% 90% at 50% -12%, var(--glow), transparent 72%);
-  pointer-events: none;
-  z-index: 0;
-}
-
-.shell-blobs {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-/* Blob shell — position offsets, size, color and blur are per-instance props. */
-.shell-blob {
-  position: absolute;
-  border-radius: 50%;
 }
 
 .shell-content {

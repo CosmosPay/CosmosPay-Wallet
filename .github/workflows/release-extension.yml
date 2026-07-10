@@ -1,0 +1,152 @@
+name: Release extension (.zip)
+
+# Auto-versioned, packaged browser-extension releases.
+#
+# On every push to main/dev this:
+#   1. Reads the pushed commits and picks a semver bump (Conventional Commits:
+#      feat -> minor, fix/anything -> patch, `!:` or `BREAKING CHANGE` -> major).
+#   2. Bumps the version accordingly (package.json is the single source of truth;
+#      build-extension.ts copies it into the manifest).
+#        - main: stable version X.Y.Z, committed back to the repo + tagged.
+#        - dev:  prerelease X.Y.Z-dev.<run_number> (NOT committed — ephemeral).
+#   3. Builds both the Chrome and Firefox MV3 extensions.
+#   4. Zips each one (manifest at the zip root, ready to load/upload).
+#   5. Publishes a GitHub Release with the .zip files attached, so testers just
+#      download the package and load it — no build step on their side.
+#
+# The bump commit on main carries `[skip ci]`, which GitHub honours to avoid an
+# infinite release loop.
+on:
+  push:
+    branches: [main, dev]
+  workflow_dispatch:
+
+# Queue runs on the same branch (do NOT cancel): each push must produce its own
+# version + release, and cancelling mid-push/tag could leave a partial release.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # commit the bump (main), push tags, create releases
+
+jobs:
+  release:
+    name: Version, package & release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history: needed to diff the pushed commit range
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # ---- 1. Decide the semver bump from the pushed commit messages ----
+      - name: Determine version bump
+        id: bump
+        run: |
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.sha }}"
+          # First push to a branch / manual dispatch / rewritten history: the
+          # `before` SHA is missing or unreachable, so just look at HEAD.
+          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            MSGS="$(git log -1 --format=%B "$AFTER")"
+          else
+            MSGS="$(git log --format=%B "${BEFORE}..${AFTER}")"
+          fi
+          echo "Analyzing commits:"; echo "$MSGS"
+          if echo "$MSGS" | grep -qE '(^|[[:space:]])BREAKING CHANGE|^[a-z]+(\(.+\))?!:'; then
+            BUMP=major
+          elif echo "$MSGS" | grep -qiE '^feat(\(.+\))?:'; then
+            BUMP=minor
+          else
+            BUMP=patch
+          fi
+          echo "Selected bump: $BUMP"
+          echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+
+      # ---- 2. Compute the new version (writes package.json in the workspace) ----
+      - name: Compute version
+        id: ver
+        run: |
+          # Bump the numeric core (strips any existing prerelease suffix first so a
+          # previous dev version can't leak into a stable bump).
+          npm version --no-git-tag-version --allow-same-version "$(node -p "require('./package.json').version.split('-')[0]")" >/dev/null
+          npm version --no-git-tag-version "${{ steps.bump.outputs.bump }}" >/dev/null
+          CORE="$(node -p "require('./package.json').version")"
+          if [ "${{ github.ref_name }}" = "dev" ]; then
+            VERSION="${CORE}-dev.${{ github.run_number }}"
+            npm pkg set "version=${VERSION}" >/dev/null   # workspace only, not committed
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            VERSION="$CORE"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # ---- 3. Build web + both extensions (manifest version comes from package.json) ----
+      - name: Build web (dist/)
+        run: npm run build
+
+      - name: Build Chrome extension (extension/)
+        run: node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build-extension.ts
+
+      - name: Build Firefox extension (extension-firefox/)
+        run: node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build-extension.ts firefox
+
+      # ---- 4. Zip each extension (manifest.json at the archive root) ----
+      - name: Package .zip artifacts
+        id: zip
+        run: |
+          V="${{ steps.ver.outputs.version }}"
+          mkdir -p release
+          ( cd extension && zip -qr "../release/cosmos-pay-chrome-v${V}.zip" . )
+          ( cd extension-firefox && zip -qr "../release/cosmos-pay-firefox-v${V}.zip" . )
+          echo "Packaged:"; ls -lh release
+
+      # ---- 5a. On main only: commit the bump back + tag ----
+      - name: Commit version bump (main)
+        if: github.ref_name == 'main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json package-lock.json
+          git commit -m "chore(release): v${{ steps.ver.outputs.version }} [skip ci]"
+          git tag "v${{ steps.ver.outputs.version }}"
+          git push origin "HEAD:${{ github.ref_name }}"
+          git push origin "v${{ steps.ver.outputs.version }}"
+
+      # ---- 5b. On dev: tag the current commit (no bump commit, ephemeral prerelease) ----
+      - name: Tag prerelease (dev)
+        if: github.ref_name == 'dev'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "v${{ steps.ver.outputs.version }}"
+          git push origin "v${{ steps.ver.outputs.version }}"
+
+      # ---- 5c. Publish the release with the .zip files attached ----
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Cosmos Pay v${{ steps.ver.outputs.version }}
+          prerelease: ${{ steps.ver.outputs.prerelease }}
+          fail_on_unmatched_files: true
+          body: |
+            Extensión empaquetada de Cosmos Pay **v${{ steps.ver.outputs.version }}**.
+
+            **Cómo probar (carga sin firmar):**
+            - **Chrome / Edge:** descargá `cosmos-pay-chrome-v${{ steps.ver.outputs.version }}.zip`, descomprimí, y en `chrome://extensions` → activá *Modo desarrollador* → *Cargar descomprimida* → elegí la carpeta.
+            - **Firefox:** descargá `cosmos-pay-firefox-v${{ steps.ver.outputs.version }}.zip` y en `about:debugging` → *Este Firefox* → *Cargar complemento temporal* → elegí el `manifest.json` dentro del zip.
+
+            El .zip también sirve para subirlo tal cual a la Chrome Web Store / Firefox AMO.
+          files: |
+            release/cosmos-pay-chrome-v${{ steps.ver.outputs.version }}.zip
+            release/cosmos-pay-firefox-v${{ steps.ver.outputs.version }}.zip
