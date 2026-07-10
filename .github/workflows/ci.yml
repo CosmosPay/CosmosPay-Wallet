@@ -1,7 +1,7 @@
-name: CI
+name: Integración continua (CI)
 
-# Build + typecheck + browser tests on every push and PR. Produces the two
-# deploy-ready web artifacts (dist/ for web+native, extension/ for MV3 browsers).
+# Build + typecheck + tests de navegador en cada push y PR. Produce los dos
+# artefactos web listos para deploy (dist/ para web+nativo, extension/ para navegadores MV3).
 on:
   push:
     branches: [main, dev]
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   build:
-    name: Typecheck & build
+    name: Typecheck y build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,26 +26,26 @@ jobs:
 
       - run: npm ci
 
-      # astro check = TypeScript + Astro diagnostics (must be 0 errors)
+      # astro check = diagnósticos de TypeScript + Astro (deben ser 0 errores)
       - name: Typecheck
         run: npm run check
 
-      # Static site -> dist/ (this is what Capacitor wraps for native, too)
-      - name: Build web (dist/)
+      # Sitio estático -> dist/ (esto es lo que Capacitor envuelve para nativo, también)
+      - name: Buildear web (dist/)
         run: npm run build
 
-      # Post-process dist/ into an MV3 unpacked extension -> extension/
-      - name: Build extension (extension/)
+      # Post-procesa dist/ en una extensión MV3 descomprimida -> extension/
+      - name: Buildear extensión (extension/)
         run: npm run build:ext
 
-      - name: Upload web build (dist/)
+      - name: Subir build web (dist/)
         uses: actions/upload-artifact@v4
         with:
           name: web-dist
           path: dist
           if-no-files-found: error
 
-      - name: Upload browser extension (extension/)
+      - name: Subir extensión de navegador (extension/)
         uses: actions/upload-artifact@v4
         with:
           name: browser-extension
@@ -53,7 +53,7 @@ jobs:
           if-no-files-found: error
 
   test:
-    name: Browser tests (e2e + responsive)
+    name: Tests de navegador (e2e + responsive)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -65,26 +65,26 @@ jobs:
 
       - run: npm ci
 
-      - name: Install Playwright Chromium
+      - name: Instalar Playwright Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Build
         run: npm run build
 
-      - name: Serve dist in background
+      - name: Servir dist en segundo plano
         run: |
           npm run serve:dist &
-          # wait until the static server answers (max ~30s)
+          # esperar hasta que el servidor estático responda (máx ~30s)
           timeout 30 bash -c 'until curl -sf http://127.0.0.1:4321 >/dev/null; do sleep 1; done'
 
-      # Security-critical path: SEP-5 derivation, AES-GCM vault, unlock/decrypt.
-      - name: E2E wallet smoke test
+      # Ruta crítica de seguridad: derivación SEP-5, vault AES-GCM, unlock/descifrado.
+      - name: Smoke test e2e de la wallet
         run: npm run test:e2e
         env:
           E2E_URL: http://127.0.0.1:4321
 
-      # Device adaptation: no overflow + fluid scaling across phone/tablet/desktop.
-      - name: Responsive layout test
+      # Adaptación a dispositivos: sin overflow + escalado fluido en teléfono/tablet/escritorio.
+      - name: Test de layout responsive
         run: npm run test:responsive
         env:
           E2E_URL: http://127.0.0.1:4321

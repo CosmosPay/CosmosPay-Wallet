@@ -43,7 +43,9 @@ try {
 
     const m = await page.evaluate(() => {
       const de = document.documentElement;
-      const frame = document.querySelector('[style*="max-width"]') as HTMLElement | null;
+      // The phone column: `.shell-frame` caps its width at `--frame-max` (set by the
+      // media queries in index.astro; the value lives in shell.css, not an inline style).
+      const frame = document.querySelector('.shell-frame') as HTMLElement | null;
       const r = frame?.getBoundingClientRect();
       return {
         frameMax: getComputedStyle(de).getPropertyValue('--frame-max').trim(),

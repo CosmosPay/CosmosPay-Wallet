@@ -11,7 +11,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 > **Truly non-custodial:** keys are generated and encrypted on your device. Neither the recovery
 > phrase nor the secret key ever leaves it. Servers only receive locally-signed transactions.
 
-## ✨ Features
+## Features
 
 | Feature | Detail |
 |---|---|
@@ -30,7 +30,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 
 Key derivation is verified against the official **SEP-5 test vector**.
 
-## 🔐 Security model
+## Security model
 
 1. On create/import you choose a **password**; an AES key is derived with `PBKDF2(password, salt, 210 000, SHA-256)`.
 2. Phrase + secret key are sealed with `AES-256-GCM` (random IV) and stored encrypted
@@ -39,15 +39,15 @@ Key derivation is verified against the official **SEP-5 test vector**.
 4. Signing actions can require the password again (toggle in Settings). The dapp approval window
    signs locally — no secret ever reaches a page or server.
 
-> ⚠️ The password is **unrecoverable**. If forgotten, remove that wallet from the device and
+> The password is **unrecoverable**. If forgotten, remove that wallet from the device and
 > restore it with its recovery phrase (other wallets on the device are not affected).
 
-## 🧱 Stack
+## Stack
 
 **Astro 7** + **Vite** · **React 19 (TSX)** · **@stellar/stellar-sdk** · **bip39** +
 **ed25519-hd-key** · Web Crypto (PBKDF2/AES-GCM) · **qrcode** · **Capacitor 8** · Playwright (e2e).
 
-## 🚀 Development
+## Development
 
 Requires **Node ≥ 18**.
 
@@ -59,7 +59,7 @@ npm run test:e2e     # Playwright e2e (see tests/)
 npm run demo         # dapp demo for the provider (http://127.0.0.1:4399)
 ```
 
-## 🧩 Browser extension (MV3)
+## Browser extension (MV3)
 
 ```bash
 npm run build:ext            # -> extension/          (Chrome / Edge)
@@ -76,7 +76,7 @@ Inline scripts are externalised at build time to satisfy `script-src 'self'`; th
 localized (`_locales/`, EN/ES/PT/DE/FR). Store submission copy lives in
 [STORE_LISTING.md](STORE_LISTING.md).
 
-## 📱 Mobile (Capacitor)
+## Mobile (Capacitor)
 
 ```bash
 npm run build
@@ -84,13 +84,13 @@ npx cap add android   # once (Android Studio)  |  npx cap add ios (macOS + Xcode
 npm run cap:android   # build + sync + open    |  npm run cap:ios
 ```
 
-## 🌐 Networks
+## Networks
 
 **Testnet** (default — free XLM via Friendbot) ⇄ **Mainnet** from the circular network selector
 in the header; custom networks (own Horizon + passphrase) can be added. The same phrase derives
 the same account on every network. New Mainnet accounts need ≥ **1 XLM** (base reserve).
 
-## 📂 Layout
+## Layout
 
 ```
 src/pages/            index (app) · approve (dapp approval) · sidepanel via build
@@ -103,7 +103,7 @@ scripts/              build-extension.ts (chrome|firefox) · serve-dist · serve
 demo/                 dapp-demo.html · pay.html (web+stellar bridge page)
 ```
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 Audit the code and test thoroughly on **Testnet** before handling real funds on Mainnet.
 Always keep your recovery phrase offline. Fiat features require being of legal age (18+).

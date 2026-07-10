@@ -12,7 +12,7 @@ Passwort und ein Dapp-Provider (`window.cosmosWallet`) für Zahlungen und Signat
 > die Wiederherstellungsphrase noch der geheime Schlüssel verlassen es. Server erhalten nur
 > lokal signierte Transaktionen.
 
-## ✨ Funktionen
+## Funktionen
 
 | Funktion | Detail |
 |---|---|
@@ -31,7 +31,7 @@ Passwort und ein Dapp-Provider (`window.cosmosWallet`) für Zahlungen und Signat
 
 Die Schlüsselableitung ist gegen den offiziellen **SEP-5-Testvektor** verifiziert.
 
-## 🔐 Sicherheitsmodell
+## Sicherheitsmodell
 
 1. Beim Erstellen/Import wählst du ein **Passwort**; der AES-Schlüssel kommt aus `PBKDF2(Passwort, Salt, 210 000, SHA-256)`.
 2. Phrase + geheimer Schlüssel werden mit `AES-256-GCM` (zufälliger IV) versiegelt und
@@ -40,10 +40,10 @@ Die Schlüsselableitung ist gegen den offiziellen **SEP-5-Testvektor** verifizie
 4. Signaturen können erneut das Passwort verlangen (Einstellung). Das Dapp-Freigabefenster
    signiert lokal — kein Geheimnis erreicht je eine Seite oder einen Server.
 
-> ⚠️ Das Passwort ist **nicht wiederherstellbar**. Falls vergessen: diese Wallet vom Gerät
+> Das Passwort ist **nicht wiederherstellbar**. Falls vergessen: diese Wallet vom Gerät
 > entfernen und mit ihrer Phrase wiederherstellen (andere Wallets bleiben unberührt).
 
-## 🚀 Entwicklung
+## Entwicklung
 
 Benötigt **Node ≥ 18**.
 
@@ -59,7 +59,7 @@ npm run build:ext:firefox    # -> extension-firefox/  (Firefox)
 
 Store-Texte: [STORE_LISTING.md](../STORE_LISTING.md).
 
-## ⚠️ Hinweis
+## Hinweis
 
 Code prüfen und gründlich im **Testnet** testen, bevor echte Mittel bewegt werden. Die
 Wiederherstellungsphrase immer offline aufbewahren. Fiat-Funktionen erfordern Volljährigkeit (18+).

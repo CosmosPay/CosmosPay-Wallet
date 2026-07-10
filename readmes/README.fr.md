@@ -13,7 +13,7 @@ autodétection), multi-portefeuille sous un seul mot de passe et provider dapps
 > phrase de récupération ni la clé secrète n’en sortent. Les serveurs ne reçoivent que des
 > transactions déjà signées localement.
 
-## ✨ Fonctionnalités
+## Fonctionnalités
 
 | Fonction | Détail |
 |---|---|
@@ -32,7 +32,7 @@ autodétection), multi-portefeuille sous un seul mot de passe et provider dapps
 
 La dérivation des clés est vérifiée contre le **vecteur de test officiel SEP-5**.
 
-## 🔐 Modèle de sécurité
+## Modèle de sécurité
 
 1. À la création/import tu choisis un **mot de passe** ; la clé AES vient de `PBKDF2(mot de passe, sel, 210 000, SHA-256)`.
 2. Phrase + clé secrète sont scellées en `AES-256-GCM` (IV aléatoire) et stockées chiffrées
@@ -41,10 +41,10 @@ La dérivation des clés est vérifiée contre le **vecteur de test officiel SEP
 4. Les signatures peuvent redemander le mot de passe (réglage). La fenêtre d’approbation dapps
    signe en local — aucun secret n’atteint une page ou un serveur.
 
-> ⚠️ Le mot de passe est **irrécupérable**. En cas d’oubli : supprime ce portefeuille de
+> Le mot de passe est **irrécupérable**. En cas d’oubli : supprime ce portefeuille de
 > l’appareil et restaure-le avec sa phrase (les autres portefeuilles ne sont pas affectés).
 
-## 🚀 Développement
+## Développement
 
 Nécessite **Node ≥ 18**.
 
@@ -60,7 +60,7 @@ npm run build:ext:firefox    # -> extension-firefox/  (Firefox)
 
 Textes pour la boutique : [STORE_LISTING.md](../STORE_LISTING.md).
 
-## ⚠️ Avertissement
+## Avertissement
 
 Audite le code et teste à fond sur **Testnet** avant de manipuler des fonds réels. Garde toujours
 ta phrase de récupération hors ligne. Les fonctions fiat exigent la majorité (18+).

@@ -12,7 +12,7 @@ contraseña y proveedor para dapps (`window.cosmosWallet`) para que las webs pid
 > recuperación ni la clave secreta salen nunca de él. Los servidores solo reciben transacciones
 > ya firmadas localmente.
 
-## ✨ Funciones
+## Funciones
 
 | Función | Detalle |
 |---|---|
@@ -31,7 +31,7 @@ contraseña y proveedor para dapps (`window.cosmosWallet`) para que las webs pid
 
 La derivación de claves está verificada contra el **vector de prueba oficial SEP-5**.
 
-## 🔐 Modelo de seguridad
+## Modelo de seguridad
 
 1. Al crear/importar eliges una **contraseña**; la clave AES se deriva con `PBKDF2(contraseña, salt, 210 000, SHA-256)`.
 2. Frase + clave secreta se sellan con `AES-256-GCM` (IV aleatorio) y se guardan cifradas
@@ -40,15 +40,15 @@ La derivación de claves está verificada contra el **vector de prueba oficial S
 4. Las firmas pueden exigir la contraseña de nuevo (toggle en Ajustes). La ventana de aprobación
    de dapps firma en local — ningún secreto llega a una página o servidor.
 
-> ⚠️ La contraseña **no se puede recuperar**. Si se olvida, borra esa wallet del dispositivo y
+> La contraseña **no se puede recuperar**. Si se olvida, borra esa wallet del dispositivo y
 > restáurala con su frase (las demás wallets del dispositivo no se ven afectadas).
 
-## 🧱 Stack
+## Stack
 
 **Astro 7** + **Vite** · **React 19 (TSX)** · **@stellar/stellar-sdk** · **bip39** +
 **ed25519-hd-key** · Web Crypto (PBKDF2/AES-GCM) · **qrcode** · **Capacitor 8** · Playwright (e2e).
 
-## 🚀 Desarrollo
+## Desarrollo
 
 Requiere **Node ≥ 18**.
 
@@ -60,7 +60,7 @@ npm run test:e2e     # e2e con Playwright (ver tests/)
 npm run demo         # demo de dapp para el proveedor (http://127.0.0.1:4399)
 ```
 
-## 🧩 Extensión de navegador (MV3)
+## Extensión de navegador (MV3)
 
 ```bash
 npm run build:ext            # -> extension/          (Chrome / Edge)
@@ -77,7 +77,7 @@ Los scripts inline se externalizan en build para cumplir `script-src 'self'`; el
 localizado (`_locales/`, EN/ES/PT/DE/FR). El texto para la Store está en
 [STORE_LISTING.md](../STORE_LISTING.md).
 
-## 📱 Móvil (Capacitor)
+## Móvil (Capacitor)
 
 ```bash
 npm run build
@@ -85,13 +85,13 @@ npx cap add android   # una vez (Android Studio)  |  npx cap add ios (macOS + Xc
 npm run cap:android   # build + sync + abrir      |  npm run cap:ios
 ```
 
-## 🌐 Redes
+## Redes
 
 **Testnet** (por defecto — XLM gratis vía Friendbot) ⇄ **Mainnet** desde el selector circular de
 red del header; se pueden añadir redes personalizadas (Horizon + passphrase propios). La misma
 frase deriva la misma cuenta en todas las redes. Una cuenta nueva en Mainnet necesita ≥ **1 XLM**.
 
-## ⚠️ Aviso
+## Aviso
 
 Audita el código y prueba a fondo en **Testnet** antes de manejar fondos reales. Guarda siempre
 tu frase de recuperación fuera del dispositivo. Las funciones fiat requieren ser mayor de edad (18+).

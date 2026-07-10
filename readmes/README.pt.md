@@ -11,7 +11,7 @@ palavra-passe e provider para dapps (`window.cosmosWallet`) para pagamentos e as
 > **Não custodial a sério:** as chaves são geradas e cifradas no teu dispositivo. Nem a frase de
 > recuperação nem a chave secreta saem dele. Os servidores só recebem transações já assinadas.
 
-## ✨ Funcionalidades
+## Funcionalidades
 
 | Função | Detalhe |
 |---|---|
@@ -30,7 +30,7 @@ palavra-passe e provider para dapps (`window.cosmosWallet`) para pagamentos e as
 
 A derivação de chaves está verificada contra o **vetor de teste oficial SEP-5**.
 
-## 🔐 Modelo de segurança
+## Modelo de segurança
 
 1. Ao criar/importar escolhes uma **palavra-passe**; a chave AES deriva de `PBKDF2(palavra-passe, salt, 210 000, SHA-256)`.
 2. Frase + chave secreta são seladas com `AES-256-GCM` (IV aleatório) e guardadas cifradas
@@ -39,10 +39,10 @@ A derivação de chaves está verificada contra o **vetor de teste oficial SEP-5
 4. As assinaturas podem exigir a palavra-passe de novo (toggle nas Definições). A janela de
    aprovação de dapps assina localmente — nenhum segredo chega a páginas ou servidores.
 
-> ⚠️ A palavra-passe **não é recuperável**. Se a esqueceres, remove essa carteira do dispositivo
+> A palavra-passe **não é recuperável**. Se a esqueceres, remove essa carteira do dispositivo
 > e restaura-a com a frase (as outras carteiras não são afetadas).
 
-## 🚀 Desenvolvimento
+## Desenvolvimento
 
 Requer **Node ≥ 18**.
 
@@ -58,7 +58,7 @@ npm run build:ext:firefox    # -> extension-firefox/  (Firefox)
 
 Texto para a loja: [STORE_LISTING.md](../STORE_LISTING.md).
 
-## ⚠️ Aviso
+## Aviso
 
 Audita o código e testa a fundo na **Testnet** antes de usar fundos reais. Guarda a frase de
 recuperação fora do dispositivo. As funções fiat exigem maioridade (18+).

@@ -3,6 +3,11 @@ dist/
 extension/
 extension-firefox/
 .astro/
+# packaged release artifacts (produced by the release workflow / local build:ext)
+release/
+cosmos-pay-*.zip
+*.apk
+*.aab
 
 # dependencies
 node_modules/
