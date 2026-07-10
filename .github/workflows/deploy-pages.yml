@@ -1,15 +1,15 @@
 name: Deploy web (GitHub Pages)
 
-# Despliegue continuo del build web a GitHub Pages.
+# Continuous deployment of the web build to GitHub Pages.
 #
-# NOTA SOBRE RUTAS: la app referencia assets en la raíz del dominio (ej. /logo-white.png,
-# /favicon.svg) desde React del lado del cliente, así que debe servirse desde la raíz de un
-# dominio — un *dominio propio* o un sitio Pages de *usuario/organización* (https://<user>.github.io).
-# Un subpath de proyecto (https://<user>.github.io/<repo>/) daría 404 en esos assets.
+# NOTE ON PATHS: the app references assets at the domain root (e.g. /logo-white.png,
+# /favicon.svg) from client-side React, so it must be served from the root of a
+# domain — a *custom domain* or a *user/org* Pages site (https://<user>.github.io).
+# A project subpath (https://<user>.github.io/<repo>/) would 404 those assets.
 #
-# Las URLs de backend se leen en tiempo de BUILD desde Variables del repositorio (Settings ->
-# Secrets and variables -> Actions -> Variables). Dejalas sin definir para publicar solo el
-# núcleo de la wallet (Horizon/CoinGecko funcionan; el provisioning/swap de CosmosPay las necesitan).
+# Backend URLs are read at BUILD time from repository Variables (Settings ->
+# Secrets and variables -> Actions -> Variables). Leave them unset to ship the
+# wallet core only (Horizon/CoinGecko work; CosmosPay provisioning/swap need them).
 on:
   push:
     branches: [main]
@@ -53,6 +53,6 @@ jobs:
         with:
           path: dist
 
-      - name: Desplegar a GitHub Pages
+      - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
