@@ -55,6 +55,31 @@ export default defineConfig({
         globals: { Buffer: true, global: true, process: true },
         protocolImports: false,
       }),
+      // Supply-chain guard: the `elliptic` chain (crypto-browserify -> browserify-sign
+      // / create-ecdh -> elliptic) carries an UNPATCHED advisory (GHSA-848j-6mx2-7j84)
+      // and is pulled in transitively by vite-plugin-node-polyfills. The wallet is
+      // ed25519 + Web Crypto, so it's tree-shaken out today. This inspects every EMITTED
+      // chunk (post tree-shaking) and fails the build if that code ever survives into the
+      // shipped bundle — so a known-vulnerable dep can never reach users, even if a
+      // future import or an `npm audit fix --force` reshuffles the tree.
+      {
+        name: 'cosmos:forbid-elliptic-in-bundle',
+        generateBundle(_options, bundle) {
+          const leaked: string[] = [];
+          for (const [file, chunk] of Object.entries(bundle)) {
+            if ((chunk as { type?: string }).type !== 'chunk') continue;
+            const mods = (chunk as { modules?: Record<string, unknown> }).modules ?? {};
+            for (const id of Object.keys(mods)) {
+              if (/[\\/](elliptic|browserify-sign|create-ecdh)[\\/]/.test(id)) leaked.push(`${id} -> ${file}`);
+            }
+          }
+          if (leaked.length) {
+            throw new Error(
+              'Vulnerable elliptic chain reached the client bundle (must stay tree-shaken out):\n  ' + leaked.join('\n  '),
+            );
+          }
+        },
+      },
     ],
     build: {
       // A single WebView app: a slightly larger chunk is fine, avoid noisy warnings.
