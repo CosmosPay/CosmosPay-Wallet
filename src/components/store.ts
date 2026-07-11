@@ -257,7 +257,12 @@ function registerStellarHandler(): void {
   if (buildKind() !== 'web') return;
   if (typeof navigator === 'undefined' || typeof navigator.registerProtocolHandler !== 'function') return;
   try {
-    navigator.registerProtocolHandler('web+stellar', window.location.origin + '/?uri=%s');
+    // BASE_URL already ends with '/', so it works at the domain root ('/') and on
+    // a Pages project subpath ('/<repo>/') alike.
+    navigator.registerProtocolHandler(
+      'web+stellar',
+      window.location.origin + import.meta.env.BASE_URL + '?uri=%s',
+    );
   } catch {
     /* not permitted here (insecure origin, etc.) — ignore */
   }
