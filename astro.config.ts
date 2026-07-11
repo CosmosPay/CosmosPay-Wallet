@@ -17,6 +17,12 @@ const GATEWAY_TARGET = env.COSMOS_GATEWAY_PROXY || 'http://localhost:9080';
 export default defineConfig({
   // Static output -> produces dist/web/ that Capacitor wraps into the native app.
   output: 'static',
+  // Public base path. Defaults to '/' so native (Capacitor) and extension builds
+  // keep serving from the root, exactly as before. The GitHub Pages web build runs
+  // on a *project subpath* (https://<org>.github.io/<repo>/), so its workflow sets
+  // PAGES_BASE=/<repo>/ — Astro then prefixes every generated asset (/assets/*),
+  // page route and `import.meta.env.BASE_URL` reference with it, killing the 404s.
+  base: process.env.PAGES_BASE || '/',
   // All build artifacts live under dist/ (web here, extensions in dist/extension*,
   // zips in dist/release) so builds never clutter the source root. outDir is dist/web
   // (not dist/) on purpose: `astro build` wipes its own outDir on every run, so keeping
