@@ -1,0 +1,148 @@
+/* =====================================================================
+   ApprovePopup — dapp-approval window (rendered on src/pages/approve.astro).
+   That page is deliberately lightweight (system font, no effects, no store)
+   to avoid dragging in the popup crash: it does NOT import app.css and
+   defines NO theme CSS variables. This sheet must therefore stay fully
+   self-contained — literal colors on purpose (dark-only window); do not
+   swap them for var(--…) tokens or app.css utility classes.
+   ===================================================================== */
+
+.approve-frame {
+  min-height: 100vh;
+  box-sizing: border-box;
+  background: #080808;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.approve-title {
+  font-size: 19px;
+  font-weight: 800;
+  margin: 0;
+  text-align: center;
+}
+
+/* muted body copy (loading / not-found / no-wallet) */
+.approve-muted {
+  color: #9aa19d;
+}
+
+/* "Solicitud de <origin>" header */
+.approve-origin {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+}
+.approve-origin-label {
+  font-size: 12px;
+  color: #9aa19d;
+}
+.approve-origin-host {
+  font-size: 15px;
+  font-weight: 800;
+  word-break: break-all;
+}
+
+/* request-details card */
+.approve-card {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.approve-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 10px 0;
+}
+
+/* label/value rows inside the card */
+.approve-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.approve-row-label {
+  color: #9aa19d;
+}
+.approve-row-value {
+  font-weight: 600;
+  text-align: right;
+}
+.approve-mono {
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+/* helper copy under the card */
+.approve-note {
+  color: #9aa19d;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 0;
+}
+/* signed-and-sent confirmation (address-bar payments keep the window open) */
+.approve-success {
+  color: #6ad08a;
+  font-size: 12.5px;
+  margin: 0;
+}
+.approve-error {
+  color: #ff6b6b;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.approve-pay-error {
+  color: #ff6b6b;
+  font-size: 12.5px;
+  margin-top: 8px;
+}
+
+/* wallet-password input */
+.approve-input {
+  height: 48px;
+  border-radius: 999px;
+  padding: 0 18px;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 15px;
+  outline: none;
+}
+
+/* bottom action row + buttons */
+.approve-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+.approve-btn {
+  flex: 1;
+  height: 50px;
+  border-radius: 999px;
+  border: none;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  opacity: 1;
+}
+.approve-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.approve-btn-approve {
+  background: #fff;
+  color: #0a0c0b;
+}
+.approve-btn-reject {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}

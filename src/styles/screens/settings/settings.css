@@ -1,0 +1,169 @@
+/* Settings screen (src/components/screens/settings/Settings.tsx).
+   Static shells only — state-driven values (on/off colours, knob position,
+   copied colour) stay inline in the component. */
+
+/* section block: uppercase label + content */
+.settings-section { margin-top: 22px; }
+.settings-section-title { margin-bottom: 10px; } /* composes .label-up */
+
+/* theme picker (dark / light) — active look via .is-on */
+.settings-theme-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: none;
+  border-radius: 14px;
+  padding: 14px;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  background: var(--glass-soft-bg);
+  color: var(--text);
+}
+.settings-theme-btn.is-on { background: var(--accent); color: var(--on-accent); }
+
+/* language chips — active look via .is-on; composes .flexr .g8 / .row .g8 */
+.settings-lang-wrap { flex-wrap: wrap; }
+.settings-lang-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 16px 9px 11px;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+  background: var(--glass-soft-bg);
+  color: var(--text);
+}
+.settings-lang-btn.is-on { background: var(--accent); color: var(--on-accent); }
+
+/* tappable glass tile (my-address row, dev-mode toggle row); composes .glass .row .between */
+.settings-tile {
+  border-radius: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+}
+.settings-addr-text { font-size: 13px; font-weight: 600; font-family: monospace; }
+.settings-addr-copy { font-size: 12px; font-weight: 800; color: var(--muted); } /* → accent via .is-copied */
+.settings-addr-copy.is-copied { color: var(--accent); }
+
+/* list items (Row / ToggleRow) share the same glass-card metrics */
+.settings-item {
+  border-radius: 14px;
+  padding: 15px 16px;
+  margin-bottom: 10px;
+}
+.settings-item-last { margin-bottom: 0; }
+.settings-item-label { font-size: 15px; font-weight: 700; }
+.settings-item-desc {
+  font-size: 12px;
+  color: var(--dim);
+  font-weight: 600;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+.settings-row-chev { color: #4f5754; font-size: 18px; }
+
+/* pill switch (ToggleRow + dev-mode tile); track/knob colour + knob position
+   follow the .is-on modifier. The compound .tap selector keeps the background
+   transition winning over .tap's transform/filter transition. */
+.settings-switch,
+.tap.settings-switch {
+  position: relative;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  background: var(--surface);
+}
+.settings-switch.is-on { background: var(--accent); }
+.settings-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: left 0.2s ease;
+}
+.settings-switch.is-on .settings-switch-knob { left: 20px; background: var(--on-accent); }
+.settings-switch-sm { width: 44px; height: 26px; }
+.settings-switch-sm .settings-switch-knob { width: 20px; height: 20px; opacity: 0.5; }
+.settings-switch-sm.is-on .settings-switch-knob { opacity: 1; }
+.settings-devmode-label { font-size: 14px; font-weight: 800; }
+
+/* expandable sub-forms (change password, dev-mode endpoint fields) */
+.settings-subform { margin-top: 12px; }
+.settings-dev-desc {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0 2px 12px;
+}
+.settings-dev-field { display: block; margin-bottom: 12px; }
+.settings-dev-field-label { margin-bottom: 6px; } /* composes .label-up */
+/* compact mono variant of the shared .input pill (compound selector so it
+   always overrides .input regardless of stylesheet order) */
+.input.settings-dev-input {
+  height: 46px;
+  font-size: 13px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-weight: 600;
+}
+.settings-dev-reset {
+  width: 100%;
+  background: var(--glass-soft-bg);
+  color: var(--text);
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  padding: 13px;
+  font-size: 13.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* danger zone */
+.settings-danger-btn {
+  width: 100%;
+  background: rgba(255, 93, 93, 0.1);
+  color: #ff5d5d;
+  border: 1px solid rgba(255, 93, 93, 0.24);
+  border-radius: 14px;
+  padding: 15px;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.settings-danger-box {
+  background: rgba(255, 93, 93, 0.08);
+  border: 1px solid rgba(255, 93, 93, 0.24);
+  border-radius: 16px;
+  padding: 16px;
+}
+.settings-danger-text {
+  font-size: 13px;
+  color: #ffb3b3;
+  font-weight: 600;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.settings-confirm-btn,
+.glass-soft.settings-confirm-btn { /* compound: border none must beat .glass-soft's border */
+  flex: 1;
+  color: var(--text);
+  border: none;
+  border-radius: 12px;
+  padding: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.settings-confirm-danger {
+  background: #ff5d5d; /* C.danger */
+  color: #fff;
+}

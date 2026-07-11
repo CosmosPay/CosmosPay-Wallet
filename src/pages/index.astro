@@ -1,5 +1,7 @@
 ---
-import WalletApp from '../components/WalletApp.tsx';
+import WalletApp from '@/components/WalletApp.tsx';
+// Atomic stylesheet (static shells migrated out of React inline styles).
+import '@/styles/app.css';
 ---
 
 <!doctype html>
@@ -16,9 +18,10 @@ import WalletApp from '../components/WalletApp.tsx';
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <meta
       name="description"
-      content="Cosmos — non-custodial Stellar wallet. Your keys, your crypto."
+      content="Cosmos Pay — non-custodial Stellar wallet. Send, receive and swap XLM and Stellar assets, with fiat on/off-ramp. Your keys never leave your device."
     />
-    <title>Cosmos · Stellar Wallet</title>
+    <meta name="application-name" content="Cosmos Pay" />
+    <title>Cosmos Pay · Stellar Wallet</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -51,13 +54,11 @@ import WalletApp from '../components/WalletApp.tsx';
         --surface-2: rgba(255, 255, 255, 0.045);
         --hairline: rgba(255, 255, 255, 0.08);
         --nav-bg: rgba(10, 10, 10, 0.55);
-        --blob: rgba(255, 255, 255, 0.12);
-        --glow: rgba(255, 255, 255, 0.16);
         --avatar-bg: rgba(255, 255, 255, 0.09);
         --avatar-brand: rgba(255, 255, 255, 0.16);
         --avatar-text: #ffffff;
-        --up: #ffffff;
-        --down: #7c8480;
+        --up: #4ade80;
+        --down: #ff6b6b;
         --gb-bg-a: rgba(255, 255, 255, 0.05);
         --gb-bg-b: rgba(255, 255, 255, 0.085);
         --gb-bd-a: rgba(255, 255, 255, 0.08);
@@ -83,13 +84,11 @@ import WalletApp from '../components/WalletApp.tsx';
         --surface-2: rgba(255, 255, 255, 0.4);
         --hairline: rgba(0, 0, 0, 0.08);
         --nav-bg: rgba(236, 238, 241, 0.62);
-        --blob: rgba(120, 150, 185, 0.3);
-        --glow: rgba(120, 150, 190, 0.22);
         --avatar-bg: rgba(0, 0, 0, 0.06);
         --avatar-brand: rgba(0, 0, 0, 0.1);
         --avatar-text: #0e1311;
-        --up: #0e1311;
-        --down: #8b938e;
+        --up: #16a34a;
+        --down: #dc2626;
         --gb-bg-a: rgba(255, 255, 255, 0.42);
         --gb-bg-b: rgba(255, 255, 255, 0.62);
         --gb-bd-a: rgba(255, 255, 255, 0.5);
@@ -106,6 +105,34 @@ import WalletApp from '../components/WalletApp.tsx';
         transition: background-color 0.25s ease, color 0.25s ease;
         /* lock the mobile viewport */
         overscroll-behavior: none;
+        /* never let a rounding overflow introduce a horizontal scrollbar */
+        overflow-x: hidden;
+      }
+
+      /* ---------------- fluid device adaptation ----------------
+         The app is a phone-shaped column. To adapt to the device without locking to
+         a single 440px width, `--frame-max` widens the column on bigger viewports
+         (full-width on phones -> a comfortable wider column on tablets/desktop).
+         NOTE: we intentionally do NOT scale the whole UI with CSS `zoom` — Chrome
+         149 crashes its GPU compositor on a zoomed subtree (the extension popup
+         showed "se ha bloqueado"). Widening the column is GPU-safe. */
+      :root {
+        --frame-max: 440px;
+      }
+      @media (min-width: 680px) {
+        :root {
+          --frame-max: 500px;
+        }
+      }
+      @media (min-width: 1000px) {
+        :root {
+          --frame-max: 560px;
+        }
+      }
+      @media (min-width: 1400px) {
+        :root {
+          --frame-max: 620px;
+        }
       }
       /* all buttons are fully rounded (pill) */
       button {
@@ -145,6 +172,16 @@ import WalletApp from '../components/WalletApp.tsx';
           opacity: 1;
         }
       }
+      @keyframes popOut {
+        0% {
+          transform: scale(1);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(0.86);
+          opacity: 0;
+        }
+      }
       @keyframes fadeUp {
         from {
           opacity: 0;
@@ -178,47 +215,28 @@ import WalletApp from '../components/WalletApp.tsx';
           transform: rotate(360deg);
         }
       }
-
-      /* ---- ambient fluidity: drifting background blobs ---- */
-      @keyframes floatA {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
+      /* extension toasts: bottom sheet slides up, then back down */
+      @keyframes toastUp {
+        from {
+          opacity: 0;
+          transform: translateY(130%);
         }
-        50% {
-          transform: translate(34px, 44px) scale(1.14);
-        }
-      }
-      @keyframes floatB {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(-46px, -26px) scale(1.16);
-        }
-      }
-      @keyframes floatC {
-        0%,
-        100% {
-          transform: translate(0, 0) scale(1);
-        }
-        50% {
-          transform: translate(28px, -34px) scale(1.1);
-        }
-      }
-      /* breathing top glow */
-      @keyframes glowBreath {
-        0%,
-        100% {
-          opacity: 0.55;
-          transform: scale(1);
-        }
-        50% {
+        to {
           opacity: 1;
-          transform: scale(1.08);
+          transform: none;
         }
       }
+      @keyframes toastDown {
+        from {
+          opacity: 1;
+          transform: none;
+        }
+        to {
+          opacity: 0;
+          transform: translateY(130%);
+        }
+      }
+
       /* breathing glass: the frosted edge + frost density gently pulse */
       @keyframes glassBreath {
         0%,
@@ -230,22 +248,6 @@ import WalletApp from '../components/WalletApp.tsx';
           border-color: var(--gb-bd-b);
           background-color: var(--gb-bg-b);
         }
-      }
-      .cosmos-glow {
-        animation: glowBreath 9s ease-in-out infinite;
-        will-change: opacity, transform;
-      }
-      .cosmos-blob-a {
-        animation: floatA 22s ease-in-out infinite;
-        will-change: transform;
-      }
-      .cosmos-blob-b {
-        animation: floatB 28s ease-in-out infinite;
-        will-change: transform;
-      }
-      .cosmos-blob-c {
-        animation: floatC 25s ease-in-out infinite;
-        will-change: transform;
       }
       /* intro splash logo */
       @keyframes splashIn {
@@ -285,6 +287,7 @@ import WalletApp from '../components/WalletApp.tsx';
       .tap {
         animation: popIn 0.36s cubic-bezier(0.2, 0.9, 0.25, 1) !important;
       }
+      /* (utility classes live in src/styles/app.css, imported above) */
       /* hover + tactile press feedback on buttons and tappable elements */
       button,
       .tap {
@@ -313,10 +316,6 @@ import WalletApp from '../components/WalletApp.tsx';
 
       /* respect users who prefer less motion */
       @media (prefers-reduced-motion: reduce) {
-        .cosmos-glow,
-        .cosmos-blob-a,
-        .cosmos-blob-b,
-        .cosmos-blob-c,
         .splash-logo,
         [style*='glassBreath'] {
           animation: none !important;

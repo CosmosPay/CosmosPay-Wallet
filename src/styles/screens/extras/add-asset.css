@@ -1,0 +1,87 @@
+/* AddAsset screen (src/components/screens/extras/AddAsset.tsx). Static shells only;
+   busy-state opacity on the "+" button and the issuer-validity colour stay inline. */
+
+.add-asset-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 12px 0 18px;
+}
+/* section label spacing (compose with .label-up) */
+.add-asset-label { margin-bottom: 10px; }
+
+.add-asset-loading {
+  border-radius: 18px;
+  padding: 26px;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* common-assets list card + rows */
+.add-asset-list { border-radius: 18px; overflow: hidden; margin-bottom: 18px; }
+.add-asset-row { padding: 12px 14px; }
+.add-asset-row:not(:last-child) { border-bottom: 1px solid var(--hairline); }
+.add-asset-code { font-size: 14.5px; font-weight: 700; }
+.add-asset-issuer {
+  font-size: 11.5px;
+  color: var(--dim);
+  font-weight: 600;
+  font-family: monospace;
+}
+.add-asset-held { font-size: 12px; font-weight: 800; color: var(--accent); }
+/* 40px round "+" trustline button */
+.add-asset-plus {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  color: var(--text);
+  border: none;
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.add-asset-plus:disabled { cursor: default; }
+
+.add-asset-none {
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 18px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.55;
+}
+
+/* "add custom asset" reveal button */
+.add-asset-custom-btn {
+  width: 100%;
+  height: 54px;
+  color: var(--text);
+  border: none;
+  border-radius: 999px;
+  font-size: 14.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* manual issuer field */
+.add-asset-issuer-field { display: block; margin-bottom: 6px; }
+.add-asset-issuer-label { margin-bottom: 7px; }
+.add-asset-issuer-input { font-size: 13px; font-family: monospace; }
+.add-asset-valid {
+  font-size: 12px;
+  font-weight: 700;
+  min-height: 15px;
+  margin-bottom: 14px;
+}
+
+/* add button dimmed while another preset is being added (was inline opacity) */
+.add-asset-plus.is-dim { opacity: 0.4; }
+/* manual-issuer validity hint colour (was inline) */
+.add-asset-valid--none { color: transparent; }
+.add-asset-valid--ok { color: var(--accent); }
+.add-asset-valid--bad { color: #ff5d5d; }

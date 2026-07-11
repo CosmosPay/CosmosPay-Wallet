@@ -1,0 +1,6 @@
+/* =====================================================================
+   Main tab screens — shared header + helpers (Home / Markets / Earn / Profile).
+   ===================================================================== */
+.main-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 18px; }
+/* round "?" help badge — compose with .glass-soft .circle-btn .circle-34 */
+.main-help { font-size: 15px; font-weight: 700; color: var(--muted); }

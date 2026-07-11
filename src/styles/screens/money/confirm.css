@@ -1,0 +1,12 @@
+/* Confirm send screen (src/components/screens/money/Confirm.tsx). */
+.confirm-logo { margin: 20px 0 8px; } /* on .center */
+.confirm-amount { text-align: center; font-size: 30px; font-weight: 800; letter-spacing: -1px; margin-bottom: 4px; }
+.confirm-fiat { text-align: center; font-size: 14px; color: var(--dim); font-weight: 600; margin-bottom: 26px; }
+.confirm-card { border-radius: 18px; padding: 6px 18px; flex-shrink: 0; } /* on .glass */
+.confirm-row { display: flex; align-items: center; justify-content: space-between; padding: 15px 0; border-bottom: 1px solid var(--hairline); gap: 12px; }
+.confirm-row:last-child { border-bottom: none; }
+.confirm-row-label { color: var(--muted); font-size: 14px; font-weight: 600; }
+.confirm-row-right { text-align: right; min-width: 0; }
+.confirm-row-val { font-size: 14.5px; font-weight: 700; }
+.confirm-row-val.is-mono { font-family: monospace; }
+.confirm-spacer { flex: 1; min-height: 14px; }

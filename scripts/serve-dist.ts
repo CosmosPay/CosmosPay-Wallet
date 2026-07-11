@@ -1,5 +1,5 @@
 /**
- * Minimal static file server for the production build in dist/.
+ * Minimal static file server for the production build in dist/web/.
  * Useful for previewing the exact bundle that ships to the mobile WebView.
  *
  *   npm run build && npm run serve:dist   ->  http://127.0.0.1:4321
@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 
-const ROOT = join(process.cwd(), 'dist');
+const ROOT = join(process.cwd(), 'dist', 'web');
 const PORT = Number(process.env.PORT) || 4321;
 const TYPES: Record<string, string> = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',

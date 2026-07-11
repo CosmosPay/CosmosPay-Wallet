@@ -1,0 +1,29 @@
+---
+// Ventana de aprobación de dapps (chrome-extension://…/approve/index.html?req=<id>).
+// La abre el service worker cuando una web llama a window.cosmosWallet.* y hace falta
+// el usuario. Página propia y ligera (fuente del sistema, sin efectos) para no arrastrar
+// el crash del popup ni el store completo.
+import ApprovePopup from '@/components/ApprovePopup.tsx';
+---
+
+<!doctype html>
+<html lang="es" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Cosmos Wallet · Aprobar</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #080808;
+        color: #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <ApprovePopup client:only="react" />
+  </body>
+</html>

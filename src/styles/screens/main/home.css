@@ -1,0 +1,66 @@
+/* Home screen (src/components/screens/main/Home.tsx) + Action / ActivateCard / AssetListRow. */
+
+/* header: avatar + greeting on the left, controls on the right */
+.home-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0 16px; }
+.home-head-left { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.home-avatar {
+  width: 42px; height: 42px; border-radius: 50%; overflow: hidden;
+  background: var(--glass-soft-bg); border: 1px solid var(--glass-soft-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 15px; font-weight: 700; color: var(--text); cursor: pointer; flex-shrink: 0;
+}
+.home-avatar-img { width: 100%; height: 100%; object-fit: cover; }
+.home-greet-col { display: flex; flex-direction: column; justify-content: center; min-width: 0; height: 42px; gap: 2px; }
+.home-salutation { font-size: 11.5px; color: var(--muted); font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.home-firstname { font-size: 17px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* portfolio total + 24h change */
+.home-portfolio { text-align: center; padding: 8px 0 6px; }
+.home-portfolio-label { color: var(--muted); font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.home-total { font-size: 46px; font-weight: 800; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; }
+.home-cents { color: var(--dimmer); }
+.home-change { margin-top: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.home-change.is-up { color: var(--up); }
+.home-change.is-down { color: var(--down); }
+.home-change-delta { font-weight: 600; opacity: 0.85; }
+
+/* quick actions row (Action) */
+.home-actions { display: flex; justify-content: space-between; gap: 8px; margin: 22px 0 26px; }
+.home-action { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 9px; cursor: pointer; }
+.home-action-icon { width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; } /* on .glass-soft */
+.home-action-label { font-size: 11.5px; color: var(--muted); font-weight: 600; text-align: center; line-height: 1.25; }
+
+/* fiat entry card */
+.home-fiat { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; cursor: pointer; margin-bottom: 14px; } /* on .tap.glass-soft */
+.home-fiat-icon { flex-shrink: 0; color: var(--text); }
+.home-fiat-title { font-size: 14px; font-weight: 800; }
+.home-fiat-desc { font-size: 12px; color: var(--muted); font-weight: 600; }
+.home-fiat-chev { color: var(--dim); font-size: 18px; }
+
+/* assets + history section heads */
+.home-assets { margin-bottom: 8px; }
+.home-assets-head { margin: 6px 2px 12px; } /* on .row.between */
+.home-history-head { margin: 18px 0 6px; } /* on .row.between */
+.home-assets-title { font-size: 15px; font-weight: 800; letter-spacing: -0.3px; }
+.home-viewall { font-size: 13px; color: var(--muted); font-weight: 700; cursor: pointer; }
+.home-add-asset { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; cursor: pointer; color: var(--accent); margin-top: 2px; }
+.home-add-icon { width: 34px; height: 34px; border-radius: 50%; border: 1px dashed var(--glass-border); display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.home-add-label { font-size: 14.5px; font-weight: 800; }
+.home-history-loading { padding: 18px; text-align: center; }
+
+/* one asset row (AssetListRow) — animation-delay is per-index → stays inline */
+.home-asset-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 12px; border-radius: 16px; cursor: pointer; margin-bottom: 2px; animation: fadeUp 0.45s ease backwards; }
+.home-asset-name { font-size: 15px; font-weight: 700; }
+.home-asset-values { text-align: right; } /* on .col.g2 */
+.home-asset-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.home-asset-chg { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.home-asset-chg.is-up { color: var(--up); }
+.home-asset-chg.is-down { color: var(--down); }
+.home-asset-fav { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 23px; line-height: 1; cursor: pointer; flex-shrink: 0; margin-right: -6px; color: var(--dimmer); }
+.home-asset-fav.is-fav { color: #f7c948; }
+
+/* activation card (ActivateCard) */
+.home-activate { margin-bottom: 22px; } /* on .glass.card */
+.home-activate-title { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
+.home-activate-desc { font-size: 13px; color: var(--muted); font-weight: 600; line-height: 1.5; margin-bottom: 14px; }
+.home-activate-btn { width: 100%; height: 54px; background: var(--accent); color: var(--on-accent); border: none; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; cursor: pointer; }

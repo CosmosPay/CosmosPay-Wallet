@@ -1,0 +1,6 @@
+/* AssetLogo — official monochrome asset logo (size prop drives the svg attrs). */
+.asset-logo {
+  display: block;
+  flex-shrink: 0;
+  color: var(--text);
+}

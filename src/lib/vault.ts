@@ -12,14 +12,24 @@
  * list + names are plaintext (non-sensitive) so the user can be greeted while
  * still locked and can see how many wallets exist.
  */
-import { open, seal, type SealedBox } from './crypto';
-import { storageGet, storageRemove, storageSet } from './storage';
-import type { NetConfig } from './stellar';
+import { open, seal, type SealedBox } from '@/lib/crypto';
+import { storageGet, storageRemove, storageSet } from '@/lib/storage';
+import type { NetConfig } from '@/lib/stellar';
 
 const WALLETS_KEY = 'cosmos.wallets';
 const ACTIVE_KEY = 'cosmos.active';
 const NETWORK_KEY = 'cosmos.network';
 const vaultKey = (id: string) => `cosmos.w.${id}`;
+// CosmosPay account (provisioned via the dev platform). The API key is a bearer
+// credential, so it's sealed at rest with the SAME app password as the wallet
+// secret (see crypto.ts) — i.e. encrypted, never plaintext in storage. Only the
+// non-sensitive org id / environment flags live on the plaintext WalletEntry.
+const cosmosPayKey = (id: string) => `cosmos.pay.${id}`;
+// Pending registration (awaiting email confirmation). Stored in PLAINTEXT: the
+// claim token is single-use, expires server-side, and is useless without (a)
+// the user confirming via the emailed link and (b) the matching stellarAddress.
+// It is not a long-lived secret and needs no password to survive a reload.
+const cosmosPayPendingKey = (id: string) => `cosmos.pay.pending.${id}`;
 
 // legacy single-wallet keys (migrated on first run)
 const OLD_VAULT = 'cosmos.vault';
@@ -30,13 +40,44 @@ export interface VaultSecret {
   mnemonic: string | null; // 12 words, or null when imported from a raw secret
 }
 
+/** Self-reported gender — drives gendered copy ("bienvenido/bienvenida/bienvenidx").
+ *  'x' covers non-binary and prefer-not-to-say. */
+export type Gender = 'm' | 'f' | 'x';
+
 export interface WalletEntry {
   id: string;
   publicKey: string; // G...
   name: string; // user name / nickname
   birthdate: string; // ISO "YYYY-MM-DD" (required at signup)
   email: string; // for opt-in linking to Cosmos products (required at signup)
+  gender?: Gender; // asked at signup; missing on legacy wallets -> treated as 'x'
+  metricsOptIn?: boolean; // optional consent: anonymous usage metrics
+  promoOptIn?: boolean; // optional consent: promotional news & offers
+  avatar?: string; // optional profile picture (small data URL)
   createdAt: number;
+  // CosmosPay (non-sensitive flags; the API keys themselves are sealed separately).
+  cosmosPayEnabled?: boolean;
+  cosmosPayOrgId?: string;
+  // Default BlindPay fiat receiver (KYC account) used for on/off-ramp.
+  cosmosPayReceiverId?: string;
+}
+
+/**
+ * Provisioned CosmosPay account (keys sealed at rest). The account carries BOTH keys —
+ * `dev` for testnet and `prod` for mainnet — and the wallet uses whichever matches its
+ * current network. Either may be null if that environment's key wasn't minted.
+ */
+export interface CosmosPayAccount {
+  keys: { dev: string | null; prod: string | null };
+  organizationId: string;
+}
+
+/** A registration awaiting email confirmation (one-time claim token + address). */
+export interface CosmosPayPending {
+  claimToken: string;
+  stellarAddress: string;
+  expiresAt: number; // epoch ms (best-effort; server enforces expiry)
+  email?: string; // where the confirmation went — lets the UI flag a mismatch vs the current email
 }
 
 function genId(): string {
@@ -144,7 +185,7 @@ export async function migrate(): Promise<void> {
 /** Seal a new wallet under `password`, append it, and make it active. */
 export async function addWallet(
   secret: VaultSecret,
-  info: { publicKey: string; name: string; birthdate: string; email: string },
+  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean },
   password: string,
 ): Promise<WalletEntry> {
   const list = await listWallets();
@@ -163,11 +204,25 @@ export async function addWallet(
     name: info.name,
     birthdate: info.birthdate,
     email: info.email,
+    gender: info.gender,
+    metricsOptIn: info.metricsOptIn,
+    promoOptIn: info.promoOptIn,
     createdAt: Date.now(),
   };
   await writeWallets([...list, entry]);
   await setActiveId(id);
   return entry;
+}
+
+/** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
+export async function updateWalletMeta(
+  id: string,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender'>>,
+): Promise<WalletEntry[]> {
+  const list = await listWallets();
+  const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));
+  await writeWallets(next);
+  return next;
 }
 
 /** Decrypt a wallet. Throws "Contraseña incorrecta." on a bad password. */
@@ -197,11 +252,109 @@ export async function updateWallet(
   await writeWallets((await listWallets()).map((w) => (w.id === id ? { ...w, ...partial } : w)));
 }
 
+/* ----------------------------- CosmosPay -------------------------------- */
+
+/**
+ * Persist a provisioned CosmosPay account: the credential is sealed under the
+ * app `password` (encrypted at rest, same scheme as the wallet secret) while
+ * the org id / environment are mirrored onto the plaintext WalletEntry so the
+ * "receiving enabled" state survives restarts without needing the password.
+ * Returns the updated wallet list.
+ */
+export async function saveCosmosPay(
+  id: string,
+  data: CosmosPayAccount,
+  password: string,
+): Promise<WalletEntry[]> {
+  await storageSet(cosmosPayKey(id), JSON.stringify(await seal(JSON.stringify(data), password)));
+  const list = await listWallets();
+  const next = list.map((w) =>
+    w.id === id ? { ...w, cosmosPayEnabled: true, cosmosPayOrgId: data.organizationId } : w,
+  );
+  await writeWallets(next);
+  return next;
+}
+
+/** Mark a receiver as the wallet's default BlindPay fiat account. */
+export async function saveDefaultReceiver(id: string, receiverId: string): Promise<WalletEntry[]> {
+  const list = await listWallets();
+  const next = list.map((w) => (w.id === id ? { ...w, cosmosPayReceiverId: receiverId } : w));
+  await writeWallets(next);
+  return next;
+}
+
+/** Unlink CosmosPay from a wallet: drop the sealed API keys + pending + the plaintext flags. */
+export async function clearCosmosPay(id: string): Promise<WalletEntry[]> {
+  await storageRemove(cosmosPayKey(id));
+  await storageRemove(cosmosPayPendingKey(id));
+  const list = await listWallets();
+  const next = list.map((w) =>
+    w.id === id ? { ...w, cosmosPayEnabled: false, cosmosPayOrgId: undefined } : w,
+  );
+  await writeWallets(next);
+  return next;
+}
+
+/** Unlink the default BlindPay receiver from a wallet (keeps the CosmosPay keys). */
+export async function clearReceiver(id: string): Promise<WalletEntry[]> {
+  const list = await listWallets();
+  const next = list.map((w) => (w.id === id ? { ...w, cosmosPayReceiverId: undefined } : w));
+  await writeWallets(next);
+  return next;
+}
+
+/** Decrypt the stored CosmosPay account for a wallet (null if none / bad password). */
+export async function getCosmosPay(id: string, password: string): Promise<CosmosPayAccount | null> {
+  const raw = await storageGet(cosmosPayKey(id));
+  if (!raw) return null;
+  try {
+    const box = JSON.parse(raw) as SealedBox;
+    const parsed = JSON.parse(await open(box, password)) as
+      | CosmosPayAccount
+      | { apiKey: string | null; organizationId: string; environment: 'dev' | 'prod' };
+    // Migrate the legacy single-key shape ({ apiKey, environment }) to the dual-key shape,
+    // keeping the existing key for its environment (the other side is filled on re-link).
+    if (!('keys' in parsed) && 'apiKey' in parsed) {
+      const env = parsed.environment === 'prod' ? 'prod' : 'dev';
+      return {
+        organizationId: parsed.organizationId,
+        keys: { dev: env === 'dev' ? parsed.apiKey : null, prod: env === 'prod' ? parsed.apiKey : null },
+      };
+    }
+    return parsed as CosmosPayAccount;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist a pending registration (plaintext — see note on cosmosPayPendingKey). */
+export async function savePendingCosmosPay(id: string, pending: CosmosPayPending): Promise<void> {
+  await storageSet(cosmosPayPendingKey(id), JSON.stringify(pending));
+}
+
+/** Read a pending registration (null if none / malformed). */
+export async function getPendingCosmosPay(id: string): Promise<CosmosPayPending | null> {
+  const raw = await storageGet(cosmosPayPendingKey(id));
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as CosmosPayPending;
+  } catch {
+    return null;
+  }
+}
+
+/** Drop a pending registration (after claim, expiry, or removal). */
+export async function clearPendingCosmosPay(id: string): Promise<void> {
+  await storageRemove(cosmosPayPendingKey(id));
+}
+
 /** Remove a wallet. Returns the remaining list + the new active id (or null). */
 export async function removeWallet(
   id: string,
 ): Promise<{ remaining: WalletEntry[]; newActive: string | null }> {
   await storageRemove(vaultKey(id));
+  await storageRemove(cosmosPayKey(id));
+  await storageRemove(cosmosPayPendingKey(id));
   const remaining = (await listWallets()).filter((w) => w.id !== id);
   await writeWallets(remaining);
   let active = await getActiveId();
@@ -218,12 +371,19 @@ export async function changePassword(oldPassword: string, newPassword: string): 
   for (const w of await listWallets()) {
     const secret = await unlockWallet(w.id, oldPassword); // throws on wrong password
     await storageSet(vaultKey(w.id), JSON.stringify(await seal(JSON.stringify(secret), newPassword)));
+    // Re-seal the CosmosPay credential too, otherwise it would be undecryptable.
+    const cp = await getCosmosPay(w.id, oldPassword);
+    if (cp) await storageSet(cosmosPayKey(w.id), JSON.stringify(await seal(JSON.stringify(cp), newPassword)));
   }
 }
 
 /** Wipe every wallet from this device. */
 export async function destroyAll(): Promise<void> {
-  for (const w of await listWallets()) await storageRemove(vaultKey(w.id));
+  for (const w of await listWallets()) {
+    await storageRemove(vaultKey(w.id));
+    await storageRemove(cosmosPayKey(w.id));
+    await storageRemove(cosmosPayPendingKey(w.id));
+  }
   await storageRemove(WALLETS_KEY);
   await storageRemove(ACTIVE_KEY);
 }

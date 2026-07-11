@@ -1,0 +1,31 @@
+/* =====================================================================
+   Onboarding — Verify (seed check). Prefix: .verify-
+   Slot/chip states are driven by modifier classes (--fixed / --empty /
+   --filled for slots, .is-used for chips).
+   ===================================================================== */
+.verify-grid { margin-bottom: 22px; }
+.verify-word { min-height: 45px; }
+.verify-word--fixed { background: var(--surface); border: 1px solid var(--glass-border); cursor: default; }
+.verify-word--fixed .ob-word-text { color: var(--text-soft); }
+.verify-word--empty { background: transparent; border: 1px dashed rgba(255, 255, 255, 0.22); cursor: pointer; }
+.verify-word--empty .ob-word-text { color: var(--dim); }
+.verify-word--filled { background: var(--avatar-brand); border: 1px solid var(--accent); cursor: pointer; }
+.verify-word--filled .ob-word-text { color: var(--accent); }
+.verify-hint { margin-bottom: 12px; }
+.verify-bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.verify-chip {
+  border: 1px solid var(--glass-soft-border);
+  border-radius: 12px;
+  padding: 11px 18px;
+  font-size: 15px;
+  font-weight: 700;
+  background: var(--glass-soft-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.verify-chip.is-used { background: var(--surface-2); color: var(--dim); cursor: default; }

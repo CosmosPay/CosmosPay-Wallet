@@ -1,0 +1,6 @@
+/* Logo — static shell; the size comes from the width/height props. */
+.logo-img {
+  display: block;
+  object-fit: contain;
+  user-select: none;
+}

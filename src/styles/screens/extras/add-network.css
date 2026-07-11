@@ -1,0 +1,9 @@
+/* AddNetwork screen (src/components/screens/extras/AddNetwork.tsx). */
+
+.add-network-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 12px 0 18px;
+}

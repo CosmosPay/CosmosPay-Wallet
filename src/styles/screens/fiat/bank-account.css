@@ -1,0 +1,5 @@
+/* =====================================================================
+   Fiat — add deposit/payout bank account (src/components/screens/fiat/BankAccount.tsx).
+   Reuses the shared .fiat-* atoms; only the intro margin is screen-specific.
+   ===================================================================== */
+.bank-desc { margin: 4px 2px 16px; } /* on .fiat-desc */

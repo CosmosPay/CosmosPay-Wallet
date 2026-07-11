@@ -1,0 +1,71 @@
+/* =====================================================================
+   Fiat hub + KYC wizard (src/components/screens/fiat/Fiat.tsx)
+   ===================================================================== */
+
+/* ----------------------------- 18+ gate ----------------------------- */
+.fiat-adult-gate { text-align: center; color: var(--muted); padding: 0 16px 50px; } /* on .f1.col.center.g12 */
+.fiat-adult-emoji { font-size: 40px; opacity: 0.6; }
+.fiat-adult-text { font-size: 14px; font-weight: 700; line-height: 1.6; }
+
+/* ---------------------------- KYC wizard ---------------------------- */
+.fiat-kyc-desc { margin: 0 2px 16px; }   /* on .fiat-desc */
+.fiat-progress { margin: 2px 2px 16px; } /* progress dots row, on .flexr.g6 */
+.fiat-progress-dot { flex: 1; height: 4px; border-radius: 999px; background: var(--glass-border); }
+.fiat-progress-dot.is-active { background: var(--accent); }
+.fiat-flex-14 { flex: 1.4; }
+.fiat-gap-6 { height: 6px; }
+.fiat-spacer-16 { flex: 1; min-height: 16px; }
+.fiat-kyc-note { font-size: 11.5px; color: var(--dim); font-weight: 600; text-align: center; margin-top: 12px; line-height: 1.5; }
+
+/* ---------------------------- photo step ---------------------------- */
+.fiat-photo-title { font-size: 17px; font-weight: 800; margin: 6px 2px 4px; }
+/* border-color turns green via .is-done; aspect-ratio per capture */
+.fiat-photo-drop {
+  position: relative;
+  border-radius: 20px;
+  overflow: hidden;
+  border: 2px dashed var(--glass-border);
+  background: var(--glass-soft-bg);
+  cursor: pointer;
+} /* on .tap.center */
+.fiat-photo-drop.is-done { border-color: var(--up); }
+.fiat-photo-drop-doc { aspect-ratio: 3 / 2; }
+.fiat-photo-drop-selfie { aspect-ratio: 1 / 1; }
+.fiat-photo-img { width: 100%; height: 100%; object-fit: cover; }
+.fiat-photo-empty { align-items: center; color: var(--muted); } /* on .col.g10 */
+.fiat-photo-cta { font-size: 13px; font-weight: 700; }
+.fiat-photo-loading { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); } /* on .center */
+.fiat-photo-done {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--up);
+  color: var(--bg);
+  font-weight: 900;
+} /* on .center */
+.fiat-photo-file { display: none; }
+
+/* ------------------------------- hub -------------------------------- */
+.fiat-account-card { margin-bottom: 18px; } /* on .glass.card */
+.fiat-account-label { font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 6px; }
+.fiat-account-id { font-size: 14px; font-weight: 700; font-family: monospace; }
+.fiat-status-pill { font-size: 12px; font-weight: 800; padding: 4px 10px; border-radius: 999px; background: var(--surface); color: var(--muted); }
+.fiat-status-pill--approved { color: var(--up); }
+.fiat-status-pill--rejected { color: #ff5d5d; } /* C.danger */
+.fiat-status-pill--pending { color: var(--muted); }
+.fiat-op-card { padding: 18px; border-radius: 20px; cursor: pointer; margin-bottom: 12px; } /* on .tap.glass.row.g14 */
+.fiat-op-icon { width: 46px; height: 46px; border-radius: 50%; } /* on .glass-soft.center.shrink0 */
+.fiat-title-15 { font-size: 15px; font-weight: 800; }
+.fiat-op-desc { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.fiat-op-chev { color: var(--dim); font-size: 20px; }
+.fiat-accounts-head { margin: 20px 2px 10px; } /* on .row.between */
+.fiat-add-link { font-size: 13px; color: var(--accent); font-weight: 800; cursor: pointer; }
+.fiat-bank-name { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fiat-bank-rail { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-top: 2px; }
+.fiat-chip-del { padding: 7px 14px; color: #fff; background: #ff5d5d; } /* C.danger */
+.fiat-chip-cancel { padding: 7px 14px; color: var(--text); }
+.fiat-trash-btn { width: 34px; height: 34px; border-radius: 50%; color: #ff5d5d; cursor: pointer; } /* on .glass-soft.center.shrink0; C.danger */
+.glass-soft.fiat-trash-btn { border: none; } /* beat .glass-soft's border regardless of bundle order */

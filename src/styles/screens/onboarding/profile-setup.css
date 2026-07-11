@@ -1,0 +1,49 @@
+/* =====================================================================
+   Onboarding — ProfileSetup. Prefix: .profile-setup-
+   ===================================================================== */
+.profile-setup-emoji {
+  display: flex;
+  justify-content: center;
+  margin: 14px 0 6px;
+  font-size: 50px;
+  line-height: 1;
+}
+.profile-setup-title {
+  font-size: 22px;
+  font-weight: 800;
+  text-align: center;
+  letter-spacing: -0.5px;
+  margin-bottom: 8px;
+}
+.profile-setup-sub {
+  font-size: 13.5px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
+  text-align: center;
+  margin: 0 6px 22px;
+}
+/* inline validation error — the negative top margin tucks it under the field */
+.profile-setup-err {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ff5d5d; /* C.danger */
+  margin: -8px 2px 12px;
+}
+.profile-setup-genders { margin-bottom: 14px; }
+.profile-setup-gender {
+  flex: 1;
+  height: 44px;
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.profile-setup-gender-on {
+  background: var(--primary-bg);
+  color: var(--primary-text);
+  border: 1px solid var(--primary-border);
+}
+.profile-setup-gender-off { color: var(--text); } /* surface comes from .glass-soft */
+.profile-setup-check-metrics { margin-bottom: 10px; }
+.profile-setup-check-promo { margin-bottom: 14px; }

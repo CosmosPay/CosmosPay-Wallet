@@ -1,0 +1,34 @@
+/* =====================================================================
+   WalletApp shell — splash intro + boot screen (src/components/WalletApp.tsx).
+   Static shells only; the intro-state-driven opacity/transform values
+   stay inline in the tsx.
+   ===================================================================== */
+
+/* App wrapper revealed under the splash. The 0.8s here pairs with
+   SPLASH_REVEAL_MS (1300) / SPLASH_DONE_MS (2100) in src/constants/app.ts:
+   done - reveal = 800ms, so the fade finishes right as the splash unmounts. */
+.wallet-app-intro {
+  transition: opacity 0.8s ease, transform 0.8s ease;
+}
+
+/* key={screen} remount wrapper: fills the shell as a flex column.
+   Compose with .col .f1 (there is no utility for the min-height unlock). */
+.wallet-app-screen {
+  min-height: 0;
+}
+
+/* Full-screen intro overlay: background veil + logo above everything.
+   Compose with .center; fading opacity/pointer-events stay inline. */
+.splash-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: var(--bg);
+  transition: opacity 0.75s ease;
+}
+
+/* Boot: centered logo + spinner while the vault state loads.
+   Compose with .col .center .f1. */
+.boot-screen {
+  gap: 22px;
+}

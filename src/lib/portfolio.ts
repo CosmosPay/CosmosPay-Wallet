@@ -1,5 +1,5 @@
 /** Turn raw Horizon balances + a price map into display rows + a USD total. */
-import type { AccountState, PriceInfo } from './stellar';
+import type { AccountState, PriceInfo } from '@/lib/stellar';
 
 export interface AssetRow {
   code: string;
@@ -23,9 +23,9 @@ function nativeRow(prices: Record<string, PriceInfo>): AssetRow {
 export function computePortfolio(
   account: AccountState | null,
   prices: Record<string, PriceInfo>,
-): { total: number; rows: AssetRow[]; xlmChange: number } {
+): { total: number; rows: AssetRow[]; changePct: number; deltaUsd: number } {
   if (!account || !account.balances.length) {
-    return { total: 0, rows: [nativeRow(prices)], xlmChange: prices.XLM?.change24h ?? 0 };
+    return { total: 0, rows: [nativeRow(prices)], changePct: 0, deltaUsd: 0 };
   }
   const rows: AssetRow[] = account.balances.map((b) => {
     const amount = parseFloat(b.balance) || 0;
@@ -41,5 +41,16 @@ export function computePortfolio(
     return (b.value ?? 0) - (a.value ?? 0);
   });
   const total = rows.reduce((sum, r) => sum + (r.value ?? 0), 0);
-  return { total, rows, xlmChange: prices.XLM?.change24h ?? 0 };
+  // Whole-portfolio 24h change: back out each asset's value 24h ago from its price
+  // change (value / (1 + chg)), then compare totals. Assets without a known change
+  // (stables at parity, unknown prices) count as flat.
+  const prevTotal = rows.reduce((sum, r) => {
+    if (r.value === null) return sum;
+    const chg = prices[r.code]?.change24h ?? 0;
+    const denom = 1 + chg / 100;
+    return sum + (denom > 0.01 ? r.value / denom : r.value);
+  }, 0);
+  const deltaUsd = total - prevTotal;
+  const changePct = prevTotal > 0 ? (deltaUsd / prevTotal) * 100 : 0;
+  return { total, rows, changePct, deltaUsd };
 }

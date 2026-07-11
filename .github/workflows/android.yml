@@ -1,0 +1,57 @@
+name: Build Android APK
+
+# Native Android build. Runs on demand and on version tags. Produces an unsigned
+# DEBUG apk artifact (installable for testing). For a signed release AAB/APK, add
+# your keystore as secrets and swap assembleDebug -> bundleRelease + signing.
+#
+# iOS is intentionally not here: it can only be built on macOS with Xcode. Run it
+# locally with `npm run cap:ios` (adds ios/ then opens Xcode) or on a macOS runner.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  android:
+    name: Assemble debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Capacitor 8 targets JDK 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - run: npm ci
+
+      # The android platform package isn't a runtime dep — install it just for CI.
+      - name: Add Capacitor Android platform
+        run: |
+          npm i -D @capacitor/android@^8
+          npm run build
+          npx cap add android
+          npx cap sync android
+        env:
+          PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
+          PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
+          PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
+
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosmos-wallet-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

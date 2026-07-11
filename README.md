@@ -1,199 +1,111 @@
-# Cosmos · Wallet no custodial de Stellar
+# Cosmos Pay · Non-custodial Stellar Wallet
 
-Wallet **no custodial** para la red **Stellar**, construida con **Astro + Vite + React (TSX)**.
-Se distribuye como **app móvil** (Capacitor · Android / iOS) y como **extensión de navegador**
-(MV3 · Chrome / Edge / Firefox). Interfaz con **estilo glass (glassmorphism)** animado (fondos en
-movimiento, respiración del glass, animaciones de entrada y efectos hover), **tema claro y oscuro**,
-**multi-idioma** (Español, English, Português, Deutsch, Français con auto-detección), tipografía
-**Poppins**, botones tipo píldora y un perfil que te saluda por tu nombre. Soporta **varias wallets**
-a la vez (crear / importar / cambiar) bajo una sola contraseña. Toda la lógica de criptografía y red
-es real, y todo el código fuente es **TypeScript** (`.ts` / `.tsx`) — sin archivos JavaScript.
+**English** · [Español](readmes/README.es.md) · [Português](readmes/README.pt.md) · [Deutsch](readmes/README.de.md) · [Français](readmes/README.fr.md)
 
-> **No custodial de verdad:** las claves se generan y se cifran en tu dispositivo. Ni la frase
-> de recuperación ni la clave secreta salen nunca del teléfono/navegador. El servidor (Horizon)
-> solo recibe transacciones ya firmadas localmente.
+A **non-custodial** wallet for the **Stellar** network, built with **Astro + Vite + React (TSX)**.
+Ships as a **browser extension** (MV3 · Chrome / Edge / Firefox — popup **and** side panel), a
+**mobile app** (Capacitor · Android / iOS) and a web app. Animated **glassmorphism** UI, light &
+dark themes, **5 languages** (EN/ES/PT/DE/FR, auto-detected), multi-wallet under one password,
+and a dapp provider (`window.cosmosWallet`) so websites can request payments and signatures.
 
----
+> **Truly non-custodial:** keys are generated and encrypted on your device. Neither the recovery
+> phrase nor the secret key ever leaves it. Servers only receive locally-signed transactions.
 
-## ✨ Qué hace (funciones reales)
+## Features
 
-| Función | Estado | Detalle |
-|---|---|---|
-| Crear wallet | ✅ Real | Frase BIP-39 de 12 palabras + derivación **SEP-5** (`m/44'/148'/0'`) |
-| Importar wallet | ✅ Real | Desde frase de 12/24 palabras **o** clave secreta (`S…`) |
-| Exportar wallet | ✅ Real | Revela frase y clave secreta tras confirmar la contraseña |
-| Almacenamiento seguro | ✅ Real | Cifrado **AES-256-GCM** con clave derivada por **PBKDF2** (210k iter.) |
-| Bloqueo / desbloqueo | ✅ Real | La wallet se descifra solo en memoria al introducir la contraseña |
-| Ver saldo | ✅ Real | Balances XLM + activos desde **Horizon** |
-| Recibir | ✅ Real | Dirección `G…` + **QR escaneable** + copiar/compartir |
-| Enviar | ✅ Real | Pago XLM firmado y enviado a la red (crea la cuenta destino si no existe) |
-| Precios de mercado | ✅ Real | XLM/BTC/ETH/SOL/USDC/USDT vía CoinGecko |
-| Financiar (Testnet) | ✅ Real | Friendbot: 10.000 XLM de prueba |
-| Cambiar de red | ✅ Real | Testnet ⇄ Mainnet |
-| Intercambiar (Swap) | ◻︎ Demo | Muestra la estimación de precio; el swap on-chain vía DEX llegará después |
-| Earn / staking | ◻︎ Demo | Pantalla informativa (Stellar AMM); sin movimiento de fondos |
+| Feature | Detail |
+|---|---|
+| Create / import / export wallet | 12-word BIP-39 + **SEP-5** derivation (`m/44'/148'/0'`); import from phrase or secret key (`S…`) |
+| Encrypted vault | **AES-256-GCM**, key derived with **PBKDF2** (210k iters); unlock decrypts in memory only |
+| Balances, send & receive | Horizon; QR receive; XLM send creates the destination account when needed |
+| Swap | Via the Cosmos Pay gateway (auto-quotes, slippage protection) |
+| Fiat on/off-ramp | BlindPay receiver (KYC) — deposits & withdrawals, **18+ only** |
+| History | Last operations with color-coded icons (green in / red out / white neutral) + genesis marker |
+| Favorites & markets | Star assets to pin them in the top-5; live prices (CoinGecko) with animated tickers |
+| Multi-wallet | Create / import / switch under one password; per-wallet email, gender-aware greetings |
+| Dapp provider | `window.cosmosWallet` (SEP-43-style): `getAddress`, `getNetwork`, `signTransaction`, `signMessage`, `requestPayment` |
+| SEP-7 links | `web+stellar:pay` via provider, Firefox protocol handler, `pay` omnibox keyword and address-bar detection |
+| Extension surfaces | Popup (400×600) and side panel / sidebar, with a persistent preference toggle |
+| Developer mode | Live-overridable endpoints (prices API, Developer Platform, payments gateway) from Settings |
 
-La derivación de claves está verificada contra el **vector de prueba oficial SEP-5**.
+Key derivation is verified against the official **SEP-5 test vector**.
 
----
+## Security model
 
-## 🔐 Modelo de seguridad
+1. On create/import you choose a **password**; an AES key is derived with `PBKDF2(password, salt, 210 000, SHA-256)`.
+2. Phrase + secret key are sealed with `AES-256-GCM` (random IV) and stored encrypted
+   (`@capacitor/preferences` on mobile, `localStorage` on web/extension).
+3. Unlocking decrypts **in memory only**; a wrong password fails the GCM auth tag and is rejected.
+4. Signing actions can require the password again (toggle in Settings). The dapp approval window
+   signs locally — no secret ever reaches a page or server.
 
-1. Al crear/importar eliges una **contraseña**.
-2. Se deriva una clave AES con `PBKDF2(contraseña, salt, 210 000, SHA-256)`.
-3. La frase y la clave secreta se sellan con `AES-256-GCM` (IV aleatorio) y se guardan cifradas.
-4. Al desbloquear se descifran **solo en memoria**. Al recargar/cerrar hay que volver a desbloquear.
-5. Contraseña equivocada → el tag de autenticación GCM falla → se rechaza.
-6. En móvil el blob cifrado se guarda con `@capacitor/preferences`; en web con `localStorage`.
-   El contenido siempre está cifrado, así que el almacén subyacente no necesita serlo.
+> The password is **unrecoverable**. If forgotten, remove that wallet from the device and
+> restore it with its recovery phrase (other wallets on the device are not affected).
 
-> ⚠️ La contraseña **no se puede recuperar**. Si se olvida, la única vía es borrar la wallet del
-> dispositivo y restaurarla con la frase de recuperación.
+## Stack
 
----
+**Astro 7** + **Vite** · **React 19 (TSX)** · **@stellar/stellar-sdk** · **bip39** +
+**ed25519-hd-key** · Web Crypto (PBKDF2/AES-GCM) · **qrcode** · **Capacitor 8** · Playwright (e2e).
 
-## 🧱 Tecnologías
+## Development
 
-- **Astro 7** (salida estática) + **Vite**
-- **React 19 + TSX** (isla `client:only`) para toda la app interactiva
-- **@stellar/stellar-sdk** (Horizon, transacciones, keypairs)
-- **bip39** + **ed25519-hd-key** (mnemónico → semilla → SEP-5)
-- **Web Crypto API** (PBKDF2 + AES-GCM)
-- **qrcode** (QR de la dirección)
-- **Capacitor** (Android / iOS, back button, clipboard, preferences)
-
----
-
-## 🚀 Desarrollo
-
-Requisitos: **Node ≥ 18**.
+Requires **Node ≥ 18**.
 
 ```bash
 npm install
-npm run dev        # http://localhost:4321
+npm run dev          # http://localhost:4500 (Vite proxy: /api + /cosmos-api)
+npm run build        # dist/
+npm run test:e2e     # Playwright e2e (see tests/)
+npm run demo         # dapp demo for the provider (http://127.0.0.1:4399)
 ```
 
-Compilar la versión de producción (genera `dist/`, que es lo que empaqueta la app móvil):
+## Browser extension (MV3)
+
+```bash
+npm run build:ext            # -> dist/extension/          (Chrome / Edge)
+npm run build:ext:firefox    # -> dist/extension-firefox/  (Firefox: sidebar + web+stellar handler)
+```
+
+All build output lands under `dist/` (web in `dist/web/`, extensions in `dist/extension[-firefox]/`, release zips in `dist/release/`) so builds never clutter the source root.
+
+- **Chrome / Edge:** `chrome://extensions` → Developer mode → *Load unpacked* → `dist/extension/`.
+- **Firefox:** `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* → `dist/extension-firefox/manifest.json`.
+
+Architecture: the popup/side panel run the full app; a content script injects
+`window.cosmosWallet` into pages; requests travel over a runtime Port to the service worker,
+which opens the **approval window** (`approve/`) where the user unlocks and signs locally.
+Inline scripts are externalised at build time to satisfy `script-src 'self'`; the manifest is
+localized (`_locales/`, EN/ES/PT/DE/FR). Store submission copy lives in
+[STORE_LISTING.md](STORE_LISTING.md).
+
+## Mobile (Capacitor)
 
 ```bash
 npm run build
-npm run preview    # sirve dist/ localmente
+npx cap add android   # once (Android Studio)  |  npx cap add ios (macOS + Xcode)
+npm run cap:android   # build + sync + open    |  npm run cap:ios
 ```
 
----
+## Networks
 
-## 📱 Empaquetar como app móvil (Capacitor)
+**Testnet** (default — free XLM via Friendbot) ⇄ **Mainnet** from the circular network selector
+in the header; custom networks (own Horizon + passphrase) can be added. The same phrase derives
+the same account on every network. New Mainnet accounts need ≥ **1 XLM** (base reserve).
 
-El proyecto ya incluye `capacitor.config.ts` (`webDir: dist`). Para generar las apps nativas:
-
-```bash
-# 1) Compila la web
-npm run build
-
-# 2) Añade las plataformas (una vez)
-npx cap add android      # requiere Android Studio + SDK
-npx cap add ios          # requiere macOS + Xcode
-
-# 3) Sincroniza el build y abre el IDE nativo
-npm run cap:android      # = build + cap sync android + cap open android
-npm run cap:ios          # = build + cap sync ios + cap open ios
-```
-
-Desde Android Studio / Xcode puedes ejecutar en un emulador o dispositivo y generar el
-`.apk`/`.aab` o el build de App Store. Tras cualquier cambio en el código web:
-
-```bash
-npm run cap:sync         # build + cap sync
-```
-
-> El botón **atrás** de Android está integrado (navega hacia atrás en la app; sale si estás en
-> la pantalla inicial). El color de fondo del splash/WebView es `#080808`.
-
----
-
-## 🧩 Extensión de navegador (Chrome / Edge / Firefox · MV3)
-
-```bash
-npm run build:ext        # = astro build + empaqueta en extension/
-```
-
-Luego cárgala como extensión sin empaquetar:
-
-- **Chrome / Edge:** `chrome://extensions` → activa *Modo desarrollador* → *Cargar
-  descomprimida* → selecciona la carpeta `extension/`.
-- **Firefox:** `about:debugging#/runtime/this-firefox` → *Cargar complemento temporal* →
-  elige `extension/manifest.json`.
-
-La wallet se abre como **popup** del navegador (400×600). El `manifest.json` es **MV3**: los
-scripts inline que genera Astro se externalizan automáticamente para cumplir
-`script-src 'self'`, y el CSP permite las llamadas a Horizon, Friendbot y CoinGecko. La misma
-wallet cifrada vive en el almacenamiento local de la extensión.
-
----
-
-## 🌐 Redes
-
-- **Testnet** (por defecto): XLM de prueba gratis (Friendbot). Ideal para probar enviar/recibir.
-- **Mainnet**: fondos reales. Cámbiala en **Perfil → Ajustes → Red**.
-
-La misma frase/clave deriva la **misma** cuenta en ambas redes. En Mainnet, para activar una
-cuenta nueva debe recibir al menos **1 XLM** (reserva base de Stellar).
-
-Para fijar otra red por defecto, edita `network: 'testnet'` en
-`src/components/store.ts` (estado inicial) — o simplemente cámbiala desde Ajustes.
-
----
-
-## 📂 Estructura
+## Layout
 
 ```
-src/
-  pages/index.astro          # punto de entrada; monta la isla React
-  components/
-    WalletApp.tsx            # raíz: enrutado de pantallas + back button nativo
-    store.ts                 # estado global + acciones (hook useWalletStore)
-    parts.tsx                # primitivos de UI (Shell, BottomNav, botones, QR badge…)
-    screens/
-      Onboarding.tsx         # welcome, backup, verify, import, password
-      Unlock.tsx             # desbloqueo
-      Main.tsx               # home, earn, markets, profile, asset
-      Money.tsx              # receive, send, confirm, success, swap
-      Settings.tsx           # ajustes, export
-  lib/
-    wallet.ts                # mnemónico + derivación SEP-5 + import
-    crypto.ts                # AES-GCM + PBKDF2 (Web Crypto)
-    vault.ts                 # vault cifrado (sellar/abrir/cambiar contraseña)
-    storage.ts               # abstracción Preferences (nativo) / localStorage (web)
-    stellar.ts               # Horizon: balances, envío, friendbot, precios
-    portfolio.ts             # balances + precios → filas + total USD
-    format.ts, qr.ts, clipboard.ts
-capacitor.config.ts          # config de la app nativa
-astro.config.ts              # Astro + React + polyfills de Node (Buffer)
-scripts/serve-dist.ts        # servidor estático para previsualizar dist/
-tests/wallet.e2e.ts          # prueba e2e (Playwright)
+src/pages/            index (app) · approve (dapp approval) · sidepanel via build
+src/components/       WalletApp · store.ts · parts.tsx · screens/ (Onboarding, Unlock, Main,
+                      Money, Settings, Extras, Fiat, CosmosPay)
+src/lib/              wallet · crypto · vault · storage · stellar · cosmospay · endpoints ·
+                      portfolio · greeting · i18n · sep7 · qr · format …
+extension-src/        inpage.js (provider) · content.js (bridge) · sw.js (router)
+scripts/              build-extension.ts (chrome|firefox) · serve-dist · serve-demo
+demo/                 dapp-demo.html · pay.html (web+stellar bridge page)
 ```
 
----
+## Disclaimer
 
-## 🧪 Pruebas (e2e)
-
-Hay una prueba end-to-end en navegador real (Playwright) que valida la ruta crítica de
-seguridad: derivación SEP-5, sellado del vault AES-GCM, persistencia, descifrado al
-desbloquear y rechazo de contraseña incorrecta.
-
-```bash
-# terminal 1
-npm run build
-npm run serve:dist        # http://127.0.0.1:4321
-
-# terminal 2
-npx playwright install chromium   # solo la primera vez
-npm run test:e2e
-```
-
----
-
-## ⚠️ Aviso
-
-Software de ejemplo. Audita el código y prueba a fondo en **Testnet** antes de manejar fondos
-reales en Mainnet. Guarda siempre tu frase de recuperación fuera del dispositivo.
+Audit the code and test thoroughly on **Testnet** before handling real funds on Mainnet.
+Always keep your recovery phrase offline. Fiat features require being of legal age (18+).

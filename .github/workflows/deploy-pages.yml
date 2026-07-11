@@ -1,0 +1,58 @@
+name: Deploy web (GitHub Pages)
+
+# Continuous deployment of the web build to GitHub Pages.
+#
+# NOTE ON PATHS: the app references assets at the domain root (e.g. /logo-white.png,
+# /favicon.svg) from client-side React, so it must be served from the root of a
+# domain — a *custom domain* or a *user/org* Pages site (https://<user>.github.io).
+# A project subpath (https://<user>.github.io/<repo>/) would 404 those assets.
+#
+# Backend URLs are read at BUILD time from repository Variables (Settings ->
+# Secrets and variables -> Actions -> Variables). Leave them unset to ship the
+# wallet core only (Horizon/CoinGecko work; CosmosPay provisioning/swap need them).
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
+          PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
+          PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/web
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

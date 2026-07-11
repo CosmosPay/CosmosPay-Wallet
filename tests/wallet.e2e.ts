@@ -40,18 +40,20 @@ try {
   await page.locator('textarea').fill(MNEMONIC);
   await page.getByRole('button', { name: 'Importar wallet' }).click();
 
-  // profile step (name + email + birthdate + consent — all required now)
+  // profile step: name + email + a valid 13+ birthdate + a gender pick are all
+  // required to enable "Continuar" (the two consent checkboxes are optional).
   await page.getByText('¿Cómo te llamas?').waitFor({ timeout: 8000 });
   await page.getByPlaceholder('p. ej. Alex').fill('Test User');
   await page.getByPlaceholder('tu@correo.com').fill('test@cosmos.com');
   await page.locator('input[type="date"]').fill('1990-05-15');
+  await page.getByRole('button', { name: 'Masculino' }).click();
   await page.getByRole('button', { name: 'Continuar' }).click();
-  ok(true, 'Profile step (name/email/dob) captured');
+  ok(true, 'Profile step (name/email/dob/gender) captured');
 
   // seal vault
   await page.getByText('Crea una contraseña').waitFor();
-  await page.getByPlaceholder('Mínimo 8 caracteres').fill('test-pass-123');
-  await page.getByPlaceholder('Repite la contraseña').fill('test-pass-123');
+  await page.getByPlaceholder('Mínimo 8 caracteres').fill('Test-pass-123');
+  await page.getByPlaceholder('Repite la contraseña').fill('Test-pass-123');
   await page.getByRole('button', { name: 'Crear wallet' }).click();
   await page.getByRole('button', { name: 'Ver mi wallet' }).waitFor({ timeout: 10000 });
 
@@ -79,7 +81,7 @@ try {
   await page.waitForTimeout(700);
   ok((await page.getByRole('button', { name: 'Desbloquear' }).count()) > 0, 'Wrong password rejected');
 
-  await page.getByPlaceholder('Contraseña').fill('test-pass-123');
+  await page.getByPlaceholder('Contraseña').fill('Test-pass-123');
   await page.getByRole('button', { name: 'Desbloquear' }).click();
   await page.getByText('Valor del portafolio').waitFor({ timeout: 10000 });
   ok(true, 'Reload -> unlock (decrypt) -> home');

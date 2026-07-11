@@ -15,6 +15,7 @@ import {
   Operation,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
+import { coingeckoBase } from '@/lib/endpoints';
 
 // A network is identified by an id; built-ins are testnet/public, plus any
 // custom networks the user adds (own Horizon + passphrase).
@@ -55,6 +56,15 @@ export function resolveNetwork(id: string, custom: NetConfig[]): NetConfig {
   return allNetworks(custom).find((n) => n.id === id) ?? BUILTIN_NETWORKS[0];
 }
 
+/**
+ * The CosmosPay key environment a network maps to: mainnet (public passphrase) -> 'prod',
+ * everything else (testnet / custom dev nets) -> 'dev'. Compares the passphrase so a custom
+ * mainnet node still resolves to 'prod'.
+ */
+export function networkEnv(cfg: NetConfig): 'dev' | 'prod' {
+  return cfg.passphrase === Networks.PUBLIC ? 'prod' : 'dev';
+}
+
 export function getServer(cfg: NetConfig): Horizon.Server {
   return new Horizon.Server(cfg.horizon);
 }
@@ -87,16 +97,21 @@ export async function getAccountState(
   const server = getServer(cfg);
   try {
     const acc = await server.loadAccount(publicKey);
-    const balances: TokenBalance[] = acc.balances.map((b: any) => {
-      const isNative = b.asset_type === 'native';
-      return {
-        code: isNative ? 'XLM' : b.asset_code,
-        issuer: isNative ? null : b.asset_issuer,
-        balance: b.balance,
-        isNative,
-        buyingLiabilities: b.buying_liabilities,
-      };
-    });
+    const balances: TokenBalance[] = acc.balances
+      // Only spendable tokens: native XLM + credit assets. Liquidity-pool-share balances
+      // (`liquidity_pool_shares`) have NO asset_code — they'd surface as an undefined
+      // `code` and crash the asset list, and they aren't a token you can send anyway.
+      .filter((b: any) => b.asset_type === 'native' || b.asset_type === 'credit_alphanum4' || b.asset_type === 'credit_alphanum12')
+      .map((b: any) => {
+        const isNative = b.asset_type === 'native';
+        return {
+          code: isNative ? 'XLM' : b.asset_code,
+          issuer: isNative ? null : b.asset_issuer,
+          balance: b.balance,
+          isNative,
+          buyingLiabilities: b.buying_liabilities,
+        };
+      });
     const native = balances.find((b) => b.isNative);
     return {
       exists: true,
@@ -408,6 +423,97 @@ export function explorerAccountUrl(cfg: NetConfig, pub: string): string {
   return seg ? `https://stellar.expert/explorer/${seg}/account/${pub}` : '';
 }
 
+/* --------------------------- operation history -------------------------- */
+
+/** A single money movement for an account, normalized for display. Newest first. */
+export interface HistoryOp {
+  id: string;
+  kind: 'sent' | 'received' | 'swap' | 'create' | 'other' | 'fee';
+  createdAt: string; // ISO
+  code: string; // primary (received/sent) asset code
+  amount: string;
+  fromCode?: string; // swap only: the asset spent
+  fromAmount?: string;
+  counterparty: string | null; // the other account (null for self-swaps)
+  hash: string;
+  failed: boolean; // the operation's transaction failed on submit
+  feeKind?: 'swap' | 'liquidity'; // when kind === 'fee': what the commission is for
+}
+
+function assetCodeOf(type?: string, code?: string): string {
+  return !type || type === 'native' ? 'XLM' : code || '?';
+}
+
+/** Normalize a Horizon payment record into a HistoryOp (null for ones we don't show). */
+function normalizeHistoryOp(r: any, pub: string): HistoryOp | null {
+  // Commission/fee payments carry a TEXT memo like "Cosmos Liquidity Commission" or
+  // "Cosmos Swap Commission". The memo rides along when the payments query joins the
+  // transaction (see getHistory); if it isn't present the text is '' and nothing is
+  // relabelled (safe fallback).
+  // The SDK renames the joined transaction to `transaction_attr` (a plain object) and
+  // keeps `transaction` as a lazy-loader FUNCTION — so read the memo from _attr first.
+  const txObj = r.transaction_attr && typeof r.transaction_attr === 'object'
+    ? r.transaction_attr
+    : typeof r.transaction === 'object' && r.transaction
+      ? r.transaction
+      : null;
+  const memoText = txObj && txObj.memo != null ? String(txObj.memo) : '';
+  const isFee = /commission|comisi[oó]n/i.test(memoText);
+  // Distinguish the commission kind so the row can say "Comisión de swap/liquidez".
+  const feeKind: HistoryOp['feeKind'] = isFee
+    ? /liquid/i.test(memoText) ? 'liquidity' : /swap/i.test(memoText) ? 'swap' : undefined
+    : undefined;
+  // With includeFailed, ops carry `transaction_successful`; false = the tx was rejected.
+  const base = { id: String(r.id), createdAt: r.created_at, hash: r.transaction_hash, failed: r.transaction_successful === false, feeKind };
+  switch (r.type) {
+    case 'payment': {
+      const sent = r.from === pub;
+      return { ...base, kind: isFee ? 'fee' : sent ? 'sent' : 'received', code: assetCodeOf(r.asset_type, r.asset_code), amount: r.amount, counterparty: sent ? r.to : r.from };
+    }
+    case 'create_account': {
+      const sent = r.funder === pub;
+      return { ...base, kind: sent ? 'sent' : 'create', code: 'XLM', amount: r.starting_balance, counterparty: sent ? r.account : r.funder };
+    }
+    case 'path_payment_strict_send':
+    case 'path_payment_strict_receive': {
+      const destCode = assetCodeOf(r.asset_type, r.asset_code);
+      const srcCode = assetCodeOf(r.source_asset_type, r.source_asset_code);
+      if (r.from === pub && r.to === pub) {
+        return { ...base, kind: 'swap', code: destCode, amount: r.amount, fromCode: srcCode, fromAmount: r.source_amount, counterparty: null };
+      }
+      const sent = r.from === pub;
+      return { ...base, kind: isFee ? 'fee' : sent ? 'sent' : 'received', code: sent ? srcCode : destCode, amount: sent ? (r.source_amount ?? r.amount) : r.amount, counterparty: sent ? r.to : r.from };
+    }
+    case 'account_merge':
+      return { ...base, kind: 'other', code: 'XLM', amount: '', counterparty: r.into ?? null };
+    default:
+      return null;
+  }
+}
+
+/**
+ * Recent money movements for an account (payments, path-payments/swaps, account creation),
+ * newest first. Best-effort: returns [] on any error (offline / account not found).
+ */
+export async function getHistory(cfg: NetConfig, pub: string, limit = 40): Promise<HistoryOp[]> {
+  try {
+    const server = getServer(cfg);
+    // includeFailed surfaces operations whose transaction was rejected on submit.
+    // join('transactions') embeds each op's transaction so we can read its memo
+    // (used to flag commission/"Cosmos Liquidity Pool" fee payments).
+    const res: any = await server.payments().forAccount(pub).includeFailed(true).join('transactions').order('desc').limit(limit).call();
+    const recs: any[] = res.records ?? [];
+    const out: HistoryOp[] = [];
+    for (const r of recs) {
+      const item = normalizeHistoryOp(r, pub);
+      if (item) out.push(item);
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
 /* ----------------------------- price feed ------------------------------ */
 
 export interface PriceInfo {
@@ -415,9 +521,9 @@ export interface PriceInfo {
   change24h: number; // percent
 }
 
-// Stellar-ecosystem assets only.
-const COINGECKO =
-  'https://api.coingecko.com/api/v3/simple/price?ids=stellar,usd-coin,euro-coin,aquarius&vs_currencies=usd&include_24hr_change=true';
+// Stellar-ecosystem assets only. Base is dev-mode-overridable (see lib/endpoints).
+const COINGECKO_PATH =
+  '/api/v3/simple/price?ids=stellar,usd-coin,euro-coin,aquarius&vs_currencies=usd&include_24hr_change=true';
 
 // USDT does not exist as a native Stellar asset — Stellar's fiat stables are USDC & EURC.
 const CG_IDS: Record<string, string> = {
@@ -430,7 +536,7 @@ const CG_IDS: Record<string, string> = {
 /** Best-effort price fetch. Returns {} on failure (offline / rate-limited). */
 export async function getPrices(): Promise<Record<string, PriceInfo>> {
   try {
-    const res = await fetch(COINGECKO, { headers: { accept: 'application/json' } });
+    const res = await fetch(coingeckoBase() + COINGECKO_PATH, { headers: { accept: 'application/json' } });
     if (!res.ok) return {};
     const data = await res.json();
     const out: Record<string, PriceInfo> = {};
