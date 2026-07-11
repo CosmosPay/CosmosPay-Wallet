@@ -1,7 +1,7 @@
 name: CI
 
 # Build + typecheck + browser tests on every push and PR. Produces the two
-# deploy-ready web artifacts (dist/ for web+native, extension/ for MV3 browsers).
+# deploy-ready web artifacts (dist/web/ for web+native, dist/extension/ for MV3 browsers).
 on:
   push:
     branches: [main, dev]
@@ -30,26 +30,26 @@ jobs:
       - name: Typecheck
         run: npm run check
 
-      # Static site -> dist/ (this is what Capacitor wraps for native, too)
-      - name: Build web (dist/)
+      # Static site -> dist/web/ (this is what Capacitor wraps for native, too)
+      - name: Build web (dist/web/)
         run: npm run build
 
-      # Post-process dist/ into an MV3 unpacked extension -> extension/
-      - name: Build extension (extension/)
+      # Post-process dist/web/ into an MV3 unpacked extension -> dist/extension/
+      - name: Build extension (dist/extension/)
         run: npm run build:ext
 
-      - name: Upload web build (dist/)
+      - name: Upload web build (dist/web/)
         uses: actions/upload-artifact@v4
         with:
           name: web-dist
-          path: dist
+          path: dist/web
           if-no-files-found: error
 
-      - name: Upload browser extension (extension/)
+      - name: Upload browser extension (dist/extension/)
         uses: actions/upload-artifact@v4
         with:
           name: browser-extension
-          path: extension
+          path: dist/extension
           if-no-files-found: error
 
   test:

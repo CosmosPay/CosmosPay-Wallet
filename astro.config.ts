@@ -15,8 +15,13 @@ const GATEWAY_TARGET = env.COSMOS_GATEWAY_PROXY || 'http://localhost:9080';
 
 // https://astro.build/config
 export default defineConfig({
-  // Static output -> produces dist/ that Capacitor wraps into the native app.
+  // Static output -> produces dist/web/ that Capacitor wraps into the native app.
   output: 'static',
+  // All build artifacts live under dist/ (web here, extensions in dist/extension*,
+  // zips in dist/release) so builds never clutter the source root. outDir is dist/web
+  // (not dist/) on purpose: `astro build` wipes its own outDir on every run, so keeping
+  // the web build in a subfolder lets the extension outputs coexist under dist/ untouched.
+  outDir: './dist/web',
   integrations: [react()],
   // Emit bundled JS/CSS into `assets/` instead of the default `_astro/`. MV3
   // browser extensions reject any file/dir whose name starts with `_` (reserved),

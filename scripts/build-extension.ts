@@ -1,9 +1,9 @@
 /**
- * Turn the built dist/ into an MV3 browser extension in extension/.
+ * Turn the built dist/web/ into an MV3 browser extension in dist/extension/.
  *
  *   npm run build:ext   (= astro build && node ... build-extension.ts)
  *
- * Then load extension/ as an "unpacked extension" in Chrome/Edge
+ * Then load dist/extension/ as an "unpacked extension" in Chrome/Edge
  * (chrome://extensions -> Developer mode -> Load unpacked) or Firefox
  * (about:debugging -> Load Temporary Add-on -> pick manifest.json).
  *
@@ -18,7 +18,7 @@
 import { cp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const DIST = 'dist';
+const DIST = 'dist/web';
 
 // Single source of truth for the version: package.json. The release workflow bumps
 // package.json (conventional commits) before this runs, so the manifest tracks it
@@ -37,12 +37,13 @@ function toManifestVersion(v: string): string {
 }
 const VERSION = toManifestVersion(pkg.version);
 
-// Target: `chrome` (default) -> extension/ ; `firefox` -> extension-firefox/.
-// Chrome and Firefox need different manifests (background service_worker vs event-page
-// scripts; protocol_handlers is Firefox-only), so we emit one folder per target to
-// avoid the "unrecognised key" warnings Chrome shows on Firefox-only keys.
+// Target: `chrome` (default) -> dist/extension/ ; `firefox` -> dist/extension-firefox/.
+// Everything lives under dist/ so builds never clutter the source root. Chrome and
+// Firefox need different manifests (background service_worker vs event-page scripts;
+// protocol_handlers is Firefox-only), so we emit one folder per target to avoid the
+// "unrecognised key" warnings Chrome shows on Firefox-only keys.
 const TARGET = process.argv[2] === 'firefox' ? 'firefox' : 'chrome';
-const OUT = TARGET === 'firefox' ? 'extension-firefox' : 'extension';
+const OUT = TARGET === 'firefox' ? 'dist/extension-firefox' : 'dist/extension';
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -54,7 +55,7 @@ async function exists(p: string): Promise<boolean> {
 }
 
 if (!(await exists(DIST))) {
-  console.error('dist/ not found — run `npm run build` first.');
+  console.error(`${DIST}/ not found — run \`npm run build\` first.`);
   process.exit(1);
 }
 

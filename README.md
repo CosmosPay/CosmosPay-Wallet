@@ -62,12 +62,14 @@ npm run demo         # dapp demo for the provider (http://127.0.0.1:4399)
 ## Browser extension (MV3)
 
 ```bash
-npm run build:ext            # -> extension/          (Chrome / Edge)
-npm run build:ext:firefox    # -> extension-firefox/  (Firefox: sidebar + web+stellar handler)
+npm run build:ext            # -> dist/extension/          (Chrome / Edge)
+npm run build:ext:firefox    # -> dist/extension-firefox/  (Firefox: sidebar + web+stellar handler)
 ```
 
-- **Chrome / Edge:** `chrome://extensions` → Developer mode → *Load unpacked* → `extension/`.
-- **Firefox:** `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* → `extension-firefox/manifest.json`.
+All build output lands under `dist/` (web in `dist/web/`, extensions in `dist/extension[-firefox]/`, release zips in `dist/release/`) so builds never clutter the source root.
+
+- **Chrome / Edge:** `chrome://extensions` → Developer mode → *Load unpacked* → `dist/extension/`.
+- **Firefox:** `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* → `dist/extension-firefox/manifest.json`.
 
 Architecture: the popup/side panel run the full app; a content script injects
 `window.cosmosWallet` into pages; requests travel over a runtime Port to the service worker,

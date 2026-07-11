@@ -143,13 +143,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       # ---- 3. Build web + both extensions (manifest version comes from package.json) ----
-      - name: Build web (dist/)
+      - name: Build web (dist/web/)
         run: npm run build
 
-      - name: Build Chrome extension (extension/)
+      - name: Build Chrome extension (dist/extension/)
         run: node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build-extension.ts
 
-      - name: Build Firefox extension (extension-firefox/)
+      - name: Build Firefox extension (dist/extension-firefox/)
         run: node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build-extension.ts firefox
 
       # ---- 4. Zip each extension (manifest.json at the archive root) ----
@@ -157,10 +157,10 @@ jobs:
         id: zip
         run: |
           V="${{ steps.ver.outputs.version }}"
-          mkdir -p release
-          ( cd extension && zip -qr "../release/cosmos-pay-chrome-v${V}.zip" . )
-          ( cd extension-firefox && zip -qr "../release/cosmos-pay-firefox-v${V}.zip" . )
-          echo "Packaged:"; ls -lh release
+          mkdir -p dist/release
+          ( cd dist/extension && zip -qr "../release/cosmos-pay-chrome-v${V}.zip" . )
+          ( cd dist/extension-firefox && zip -qr "../release/cosmos-pay-firefox-v${V}.zip" . )
+          echo "Packaged:"; ls -lh dist/release
 
       # ---- 5a. On main only: commit the bump back + tag ----
       - name: Commit version bump (main)
@@ -200,5 +200,5 @@ jobs:
 
             The .zip is also ready to upload as-is to the Chrome Web Store / Firefox AMO.
           files: |
-            release/cosmos-pay-chrome-v${{ steps.ver.outputs.version }}.zip
-            release/cosmos-pay-firefox-v${{ steps.ver.outputs.version }}.zip
+            dist/release/cosmos-pay-chrome-v${{ steps.ver.outputs.version }}.zip
+            dist/release/cosmos-pay-firefox-v${{ steps.ver.outputs.version }}.zip
