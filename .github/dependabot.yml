@@ -1,0 +1,29 @@
+# Automatic dependency updates. Dependabot opens weekly PRs to keep dependencies on
+# their latest versions, and raises security PRs automatically when a fix ships for a
+# known vulnerability (respecting the `overrides` in package.json). Every PR runs CI +
+# the release gate, so nothing lands unless the tests pass and shipped deps stay clean.
+version: 2
+updates:
+  # npm dependencies (incl. transitive fixes / lockfile + overrides bumps).
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    versioning-strategy: increase # move ranges up to the latest versions
+    labels: ['dependencies']
+    commit-message:
+      prefix: chore # non-feat/fix -> patch bump in the release workflow
+    groups:
+      # One PR for all non-breaking updates to cut noise; majors stay separate.
+      minor-and-patch:
+        update-types: [minor, patch]
+
+  # Keep the GitHub Actions used by the workflows on their latest versions too.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    labels: ['ci']
+    commit-message:
+      prefix: chore
