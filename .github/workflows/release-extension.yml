@@ -40,7 +40,7 @@ jobs:
     name: Tests & security audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -87,7 +87,7 @@ jobs:
     needs: verify # only runs if the tests + security audit above passed
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # full history: needed to diff the pushed commit range
 
@@ -185,7 +185,7 @@ jobs:
 
       # ---- 5c. Publish the release with the .zip files attached ----
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.ver.outputs.version }}
           name: Cosmos Pay v${{ steps.ver.outputs.version }}
