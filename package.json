@@ -22,15 +22,15 @@
     "cap:ios": "astro build && cap sync ios && cap open ios"
   },
   "dependencies": {
-    "@astrojs/react": "^6.0.0",
+    "@astrojs/react": "^6.0.1",
     "@capacitor/app": "^8.1.0",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.4.1",
     "@capacitor/preferences": "^8.0.1",
     "@stellar/stellar-sdk": "^16.0.1",
-    "astro": "^7.0.3",
+    "astro": "^7.0.7",
     "bip39": "^3.1.0",
-    "country-flag-icons": "^1.6.19",
+    "country-flag-icons": "^1.6.20",
     "ed25519-hd-key": "^2.0.0",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
