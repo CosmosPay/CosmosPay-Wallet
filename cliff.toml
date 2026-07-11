@@ -1,0 +1,62 @@
+# git-cliff configuration — builds the changelog from Conventional Commits.
+# Used by .github/workflows/release-extension.yml to fill the GitHub Release body
+# (every push) and to maintain CHANGELOG.md (stable releases on main only).
+# Docs: https://git-cliff.org/docs/configuration
+[changelog]
+# CHANGELOG.md header. Stripped from the GitHub Release body via `--strip all`.
+header = """
+# Changelog
+
+All notable changes to Cosmos Pay are documented here.
+Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+"""
+# One release section. `striptags` removes the `<!-- N -->` ordering hints below.
+body = """
+{% if version %}\
+    ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+    ## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}\
+        - {{ commit.message | split(pat="\n") | first | upper_first }}\
+          {% if commit.id %} ({{ commit.id | truncate(length=7, end="") }}){% endif %}
+    {% endfor %}\
+{% endfor %}\n
+"""
+trim = true
+footer = ""
+
+[git]
+# Only Conventional Commits are considered; merge/other noise is dropped.
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+filter_commits = false
+# Only STABLE releases anchor the changelog: match vX.Y.Z and ignore the ephemeral
+# v1.2.3-dev.N prereleases (created on every dev push) — otherwise every dev tag would
+# close a section and "unreleased" would almost always be empty.
+tag_pattern = 'v[0-9]+\.[0-9]+\.[0-9]+$'
+ignore_tags = '.*-dev.*'
+topo_order = false
+sort_commits = "oldest"
+# Order is controlled by the `<!-- N -->` prefix, stripped in the template above.
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->Features" },
+  { message = "^fix", group = "<!-- 1 -->Bug Fixes" },
+  { message = "^perf", group = "<!-- 2 -->Performance" },
+  { message = "^refactor", group = "<!-- 3 -->Refactor" },
+  { message = "^docs", group = "<!-- 4 -->Documentation" },
+  { message = "^style", group = "<!-- 5 -->Styling" },
+  { message = "^test", group = "<!-- 6 -->Testing" },
+  { message = "^build", group = "<!-- 7 -->Build System" },
+  { message = "^ci", group = "<!-- 8 -->CI/CD" },
+  # Release bump commits and dependabot bumps are noise in the notes — drop them.
+  { message = "^chore\\(release\\)", skip = true },
+  { message = "^chore\\(deps\\)", group = "<!-- 9 -->Dependencies" },
+  # Dependabot's default (non-conventional) message: "Bump X from Y to Z".
+  { message = "^Bump ", group = "<!-- 9 -->Dependencies" },
+  { message = "^chore", group = "<!-- 10 -->Miscellaneous" },
+  { message = ".*", group = "<!-- 10 -->Miscellaneous" },
+]
