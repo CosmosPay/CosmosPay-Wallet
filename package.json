@@ -49,6 +49,7 @@
   },
   "overrides": {
     "yaml": "^2.9.0",
-    "elliptic": "^6.6.1"
+    "elliptic": "^6.6.1",
+    "uuid": "^14.0.1"
   }
 }
