@@ -15,6 +15,7 @@
 
 const MIRROR_KEY = 'cosmos.dapp'; // { address, networkId, networkPassphrase, networkUrl, approvedOrigins: [] }
 const REQ_PREFIX = 'cosmos.req.'; // session-scoped pending request, keyed by id
+const RES_PREFIX = 'cosmos.res.'; // session-scoped parked reply, keyed by id — set when a reply arrives with no live port
 
 const DEFAULT_NETWORK = {
   network: 'TESTNET',
@@ -53,9 +54,11 @@ function safePost(port, msg) {
 }
 
 async function openApproval(req, port) {
-  await chrome.storage.session.set({ [REQ_PREFIX + req.id]: req });
   const url = chrome.runtime.getURL('approve/index.html') + '?req=' + encodeURIComponent(req.id);
   const win = await chrome.windows.create({ url, type: 'popup', width: 420, height: 640, focused: true });
+  // windowId travels with the persisted request too, so a worker restart can still
+  // rebuild `pending` (and thus the onRemoved backstop) from storage alone.
+  await chrome.storage.session.set({ [REQ_PREFIX + req.id]: { ...req, windowId: win.id } });
   pending.set(req.id, { port, windowId: win.id, origin: req.origin, method: req.method });
 }
 
@@ -70,6 +73,28 @@ chrome.runtime.onConnect.addListener((port) => {
     const origin = msg.origin || '';
 
     (async () => {
+      if (method === 'resume') {
+        // Sent by content.js after reconnecting: the previous port died (often a
+        // worker restart) while `ids` were still in flight. Reclaim whatever we can.
+        const ids = Array.isArray(params.ids) ? params.ids : [];
+        const resKeys = ids.map((i) => RES_PREFIX + i);
+        const parked = await chrome.storage.session.get(resKeys);
+        for (const rid of ids) {
+          const reply = parked[RES_PREFIX + rid];
+          if (reply) {
+            safePost(port, reply);
+            chrome.storage.session.remove([RES_PREFIX + rid, REQ_PREFIX + rid]).catch(() => {});
+          } else if (pending.has(rid)) {
+            pending.get(rid).port = port; // still awaiting approval — rebind to the fresh port
+          } else {
+            const stored = (await chrome.storage.session.get(REQ_PREFIX + rid))[REQ_PREFIX + rid];
+            if (stored) pending.set(rid, { port, windowId: stored.windowId, origin: stored.origin, method: stored.method });
+            else safePost(port, { id: rid, error: 'La solicitud caducó.' });
+          }
+        }
+        return;
+      }
+
       const mirror = await getMirror();
       const approved = (mirror && mirror.approvedOrigins) || [];
 
@@ -96,12 +121,17 @@ chrome.runtime.onConnect.addListener((port) => {
 // Approval window -> the user's decision + signed result.
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg || msg.type !== 'cosmos-approve-result') return undefined;
+  const reply = { id: msg.id, result: msg.ok ? msg.result : undefined, error: msg.ok ? undefined : msg.error || 'Rechazado' };
   const p = pending.get(msg.id);
   if (p) {
-    safePost(p.port, { id: msg.id, result: msg.ok ? msg.result : undefined, error: msg.ok ? undefined : msg.error || 'Rechazado' });
+    safePost(p.port, reply);
     pending.delete(msg.id);
+    chrome.storage.session.remove(REQ_PREFIX + msg.id).catch(() => {});
+  } else {
+    // No live port: the worker restarted while the approval window was open. Park
+    // the reply — content.js reclaims it via 'resume' once it reconnects.
+    chrome.storage.session.set({ [RES_PREFIX + msg.id]: reply }).catch(() => {});
   }
-  chrome.storage.session.remove(REQ_PREFIX + msg.id).catch(() => {});
   sendResponse({ ok: true });
   return true;
 });

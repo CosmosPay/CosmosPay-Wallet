@@ -62,15 +62,22 @@ async function writeMirror(patch: { address: string; cfg: NetConfig; addOrigin?:
 }
 
 function respond(id: string, ok: boolean, result?: unknown, error?: string, keepOpen = false) {
-  if (hasChrome()) {
-    try {
-      chrome.runtime.sendMessage({ type: 'cosmos-approve-result', id, ok, result, error }, () => void chrome.runtime.lastError);
-    } catch {
-      /* ignore */
-    }
+  if (!hasChrome()) {
+    if (!keepOpen) window.close();
+    return;
   }
-  // Address-bar requests have no page waiting: keep the window open to show the result.
-  if (!keepOpen) setTimeout(() => window.close(), 120);
+  try {
+    // Close only once the SW has acknowledged the message, not on a fixed timer: a
+    // cold service-worker start can take longer than a short timeout, and closing
+    // early risks the message going out after the sender (this window) is gone.
+    chrome.runtime.sendMessage({ type: 'cosmos-approve-result', id, ok, result, error }, () => {
+      void chrome.runtime.lastError;
+      // Address-bar requests have no page waiting: keep the window open to show the result.
+      if (!keepOpen) window.close();
+    });
+  } catch {
+    if (!keepOpen) window.close();
+  }
 }
 
 export default function ApprovePopup() {
@@ -186,8 +193,15 @@ export default function ApprovePopup() {
         return;
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setErr(message);
       setBusy(false);
+      // A wrong password is retryable — leave the request pending so the user can just
+      // try again. Anything else (malformed XDR, a failed payment build/submit, a
+      // missing vault entry, …) is terminal: nothing will ever retry it, so without a
+      // reply here the dapp's promise would hang forever. Keep the window open so the
+      // user still sees the message; respond() unblocks the dapp regardless.
+      if (message !== 'Contraseña incorrecta.') respond(req.id, false, undefined, message, true);
     }
   };
 
