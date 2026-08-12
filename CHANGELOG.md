@@ -2,6 +2,15 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.2.3] - 2026-08-12
+
+### Miscellaneous
+- Bump android-actions/setup-android from 3 to 4 (93d2883)
+- Bump actions/setup-node from 6 to 7 (c8932c8)
+- Bump the minor-and-patch group across 1 directory with 12 updates (a65e78e)
+- Bump actions/setup-java from 5 to 5.6.0 (d3e66e4)
+- Update package.json to add uuid dependency and maintain elliptic override (734a32c)
+
 ## [1.2.2] - 2026-07-11
 
 ### Bug Fixes
