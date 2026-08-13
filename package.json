@@ -30,6 +30,7 @@
     "@stellar/stellar-sdk": "^16.2.0",
     "astro": "^7.1.6",
     "bip39": "^3.1.0",
+    "buffer": "^6.0.3",
     "country-flag-icons": "^1.6.20",
     "ed25519-hd-key": "^2.0.0",
     "jsqr": "^1.4.0",
@@ -44,12 +45,10 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "playwright": "^1.62.1",
-    "typescript": "^6.0.3",
-    "vite-plugin-node-polyfills": "^0.28.0"
+    "typescript": "^6.0.3"
   },
   "overrides": {
     "yaml": "^2.9.0",
-    "elliptic": "^6.6.1",
     "uuid": "^14.0.1"
   }
 }

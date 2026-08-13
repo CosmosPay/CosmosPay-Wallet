@@ -7,6 +7,12 @@ import '@/styles/app.css';
 <!doctype html>
 <html lang="es">
   <head>
+    <!-- Node globals (Buffer/global/process) expected by @stellar/js-xdr and bip39.
+         Goes first: Astro hoists page scripts into the head and modules run in document
+         order, so this lands before any island hydrates. -->
+    <script>
+      import '@/lib/node-globals';
+    </script>
     <meta charset="utf-8" />
     <meta
       name="viewport"

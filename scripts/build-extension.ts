@@ -67,11 +67,15 @@ await mkdir(join(OUT, 'assets'), { recursive: true });
 
 // externalise inline <script> blocks (MV3 CSP forbids inline scripts). Applied to
 // every extension HTML page: the popup (index.html) and the dapp-approval window.
+// The alternation eats HTML comments first and hands them back untouched, so a
+// comment that merely *mentions* a script tag can't open a bogus match and swallow
+// the real tag that follows it (which silently dropped a module script before).
 let n = 0;
 async function externaliseInlineScripts(pagePath: string): Promise<string> {
   let src = await readFile(pagePath, 'utf8');
   const jobs: Promise<void>[] = [];
-  src = src.replace(/<script>([\s\S]*?)<\/script>/g, (_m: string, code: string) => {
+  src = src.replace(/<!--[\s\S]*?-->|<script>([\s\S]*?)<\/script>/g, (m: string, code?: string) => {
+    if (code === undefined) return m; // HTML comment — leave as-is
     const file = `inline-${n++}.js`;
     jobs.push(writeFile(join(OUT, 'assets', file), code, 'utf8'));
     return `<script src="/assets/${file}"></script>`;

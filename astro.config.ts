@@ -1,6 +1,5 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
-import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import { loadEnv } from 'vite';
 import { fileURLToPath } from 'node:url';
 
@@ -60,19 +59,13 @@ export default defineConfig({
       },
     },
     plugins: [
-      // The Stellar SDK + bip39 expect Node's Buffer / global / process.
-      // protocolImports:false avoids hijacking Vite's own `node:` imports.
-      nodePolyfills({
-        globals: { Buffer: true, global: true, process: true },
-        protocolImports: false,
-      }),
-      // Supply-chain guard: the `elliptic` chain (crypto-browserify -> browserify-sign
-      // / create-ecdh -> elliptic) carries an UNPATCHED advisory (GHSA-848j-6mx2-7j84)
-      // and is pulled in transitively by vite-plugin-node-polyfills. The wallet is
-      // ed25519 + Web Crypto, so it's tree-shaken out today. This inspects every EMITTED
-      // chunk (post tree-shaking) and fails the build if that code ever survives into the
-      // shipped bundle — so a known-vulnerable dep can never reach users, even if a
-      // future import or an `npm audit fix --force` reshuffles the tree.
+      // Supply-chain guard. The wallet used to depend on `vite-plugin-node-polyfills`,
+      // which dragged in crypto-browserify -> browserify-sign / create-ecdh -> elliptic,
+      // an UNPATCHED advisory (GHSA-848j-6mx2-7j84 — no fixed version exists). That
+      // plugin is gone: the only Node globals the SDK needs (Buffer / global / process)
+      // now come from src/lib/node-globals.ts, loaded from each page's <head>.
+      // This still inspects every EMITTED chunk (post tree-shaking) and fails the build
+      // if that code ever reappears, so a future dep bump can't silently reintroduce it.
       {
         name: 'cosmos:forbid-elliptic-in-bundle',
         generateBundle(_options, bundle) {
@@ -81,7 +74,9 @@ export default defineConfig({
             if ((chunk as { type?: string }).type !== 'chunk') continue;
             const mods = (chunk as { modules?: Record<string, unknown> }).modules ?? {};
             for (const id of Object.keys(mods)) {
-              if (/[\\/](elliptic|browserify-sign|create-ecdh)[\\/]/.test(id)) leaked.push(`${id} -> ${file}`);
+              if (/[\\/](elliptic|browserify-sign|create-ecdh|crypto-browserify)[\\/]/.test(id)) {
+                leaked.push(`${id} -> ${file}`);
+              }
             }
           }
           if (leaked.length) {

@@ -1,14 +1,19 @@
 ---
-// Ventana de aprobación de dapps (chrome-extension://…/approve/index.html?req=<id>).
-// La abre el service worker cuando una web llama a window.cosmosWallet.* y hace falta
-// el usuario. Página propia y ligera (fuente del sistema, sin efectos) para no arrastrar
-// el crash del popup ni el store completo.
+// Dapp approval window (chrome-extension://…/approve/index.html?req=<id>). The service
+// worker opens it when a site calls window.cosmosWallet.* and the user has to weigh in.
+// Its own lightweight page (system font, no effects) so it drags in neither the popup's
+// crash nor the full store.
 import ApprovePopup from '@/components/ApprovePopup.tsx';
 ---
 
 <!doctype html>
 <html lang="es" data-theme="dark">
   <head>
+    <!-- Same as index.astro: the Node globals must exist before the island mounts. -->
+
+    <script>
+      import '@/lib/node-globals';
+    </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
