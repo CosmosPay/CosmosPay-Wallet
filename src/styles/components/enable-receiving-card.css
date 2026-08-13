@@ -29,7 +29,7 @@
   font-weight: 800;
   cursor: pointer;
 }
-/* dimmed while the access code is incomplete / an action is running (was inline opacity) */
+/* dimmed while the access code is incomplete / an action is running */
 .enable-receiving-cta:disabled { opacity: 0.5; cursor: default; }
 .enable-receiving-cancel {
   width: 100%;

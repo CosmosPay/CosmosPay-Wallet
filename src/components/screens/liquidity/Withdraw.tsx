@@ -44,7 +44,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
 
       <div className="glass card lp-item">
         <div className="row g10 lp-item-head">
-          <TokenAvatar glyph="◇" color="rgba(255,255,255,.10)" size={34} />
+          <TokenAvatar glyph="◇" tone="pool" size={34} />
           <div>
             <div className="lp-item-title">{position.reserves.map(label).join(' / ')}</div>
             <div className="t-dim-12">

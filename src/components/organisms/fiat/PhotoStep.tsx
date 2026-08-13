@@ -37,7 +37,7 @@ export function PhotoStep({ store, capture, title, hint, fileUrl, onUploaded }: 
           </div>
         )}
         {uploading && (
-          <div className="center fiat-photo-loading"><Spinner color="#fff" /></div>
+          <div className="center fiat-photo-loading"><Spinner tone="white" /></div>
         )}
         {done && (
           <div className="center fiat-photo-done">✓</div>

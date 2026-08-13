@@ -7,8 +7,22 @@
    swap them for var(--…) tokens or app.css utility classes.
    ===================================================================== */
 
+/* Strip the native control frame WebKit paints over the dark surfaces (inset
+   shadow + forced corner radius); .approve-input / .approve-btn supply the real
+   pill shape. This lives here rather than in approve.astro's <style> because
+   Astro scopes that sheet's element selectors to [data-astro-cid-…], which never
+   reaches a client:only island's DOM. */
+.approve-frame input,
+.approve-frame button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .approve-frame {
+  /* 100vh first as the fallback: on iOS Safari it resolves against the large
+     viewport (URL bar hidden), so dvh is what actually fits the window */
   min-height: 100vh;
+  min-height: 100dvh;
   box-sizing: border-box;
   background: #080808;
   color: #fff;

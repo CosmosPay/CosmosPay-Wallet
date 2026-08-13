@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Cosmos — a non-custodial Stellar wallet (Astro + Preact + Capacitor)",
   "scripts": {
-    "dev": "astro dev",
+    "dev": "astro dev --host",
     "start": "astro dev",
     "build": "astro build",
     "preview": "astro preview",

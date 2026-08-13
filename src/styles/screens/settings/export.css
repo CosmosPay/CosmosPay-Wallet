@@ -1,5 +1,5 @@
 /* Export (secret phrase / key) screen (src/components/screens/settings/Export.tsx).
-   Static shells only — the copied colour stays inline (state-driven). */
+   The copied state is the .is-copied modifier. */
 
 /* red warning banner at the top */
 .export-warning {

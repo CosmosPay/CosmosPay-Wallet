@@ -1,6 +1,6 @@
 /* =====================================================================
    Onboarding — shared atoms (onboarding/shared.tsx). Prefix: .ob-
-   State-driven colors (checked / met / bad) stay inline in the tsx.
+   State-driven colours (checked / met / bad) are modifier classes.
    ===================================================================== */
 
 /* muted intro paragraph under the BackBar; screens override margin-bottom
@@ -72,6 +72,8 @@
   transition: all 0.2s ease;
   flex-shrink: 0;
 }
+/* color-mix() needs Safari 16.2+; older engines drop only the tinted fill and
+   keep the coloured ring, which already carries the met/bad state */
 .ob-crit.is-met .ob-crit-dot { border-color: var(--up); background: color-mix(in srgb, var(--up) 18%, transparent); }
 .ob-crit.is-bad .ob-crit-dot { border-color: var(--down); background: color-mix(in srgb, var(--down) 18%, transparent); }
 .ob-crit-tick { opacity: 0.35; }

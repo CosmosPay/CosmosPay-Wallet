@@ -1,11 +1,13 @@
 import type { WalletStore } from '@/components/store';
 import { trim, shortAddr } from '@/lib/format';
 import { explorerTxUrl, type HistoryOp } from '@/lib/stellar';
+import { staggerClass } from '@/constants/parts';
 import '@/styles/screens/money/shared.css';
 
 /** One activity row (send / receive / swap / create / other), linking to the explorer.
- *  Direction and failed/amount colours come from modifier classes; delay stays inline. */
-export function HistoryRow({ item, store, delay = 0 }: { item: HistoryOp; store: WalletStore; delay?: number }) {
+ *  Direction and failed/amount colours come from modifier classes; `index` picks
+ *  the entrance-delay rung (`dense` on the full History screen). */
+export function HistoryRow({ item, store, index = 0, dense = false }: { item: HistoryOp; store: WalletStore; index?: number; dense?: boolean }) {
   const t = store.t;
   const url = explorerTxUrl(store.network, item.hash);
   const date = new Date(item.createdAt).toLocaleDateString(store.locale, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -34,8 +36,7 @@ export function HistoryRow({ item, store, delay = 0 }: { item: HistoryOp; store:
   return (
     <Wrapper
       {...(url ? { href: url, target: '_blank', rel: 'noreferrer' } : {})}
-      className="tap money-hist-row"
-      style={{ animationDelay: `${delay}s` }}
+      className={`tap money-hist-row ${staggerClass(index, dense)}`}
     >
       <div className={`glass-soft money-hist-icon ${iconMod}${item.failed ? ' is-failed' : ''}`}>{icon}</div>
       <div className="f1 min0">

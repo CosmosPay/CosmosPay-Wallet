@@ -1,5 +1,5 @@
-/* NetworkDropdown — network selector menu; left/right alignment (align prop)
-   and the active-row highlight stay inline. */
+/* NetworkDropdown — network selector menu. Edge alignment (.is-left/.is-right)
+   and the active row (.is-on) are modifier classes. */
 .network-dd {
   position: relative;
   display: inline-block;
@@ -17,6 +17,15 @@
   min-width: 200px;
   border-radius: 16px;
   padding: 6px;
+}
+
+/* which edge the menu hangs from (the `align` prop) */
+.network-dd-menu.is-left {
+  left: 0;
+}
+
+.network-dd-menu.is-right {
+  right: 0;
 }
 /* SOLID opaque menu (no backdrop-filter): the frosted blur does not composite inside
    the app's shell in Chrome OR Firefox, so a translucent menu just bleeds the page
@@ -40,6 +49,10 @@
   background: transparent;
   color: var(--text);
 }
+.network-dd-item.is-on {
+  background: var(--surface);
+}
+
 .network-dd-label {
   font-size: 13.5px;
   font-weight: 700;

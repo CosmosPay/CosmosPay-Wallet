@@ -2,17 +2,18 @@ import { AssetLogo, assetMeta } from '@/components/parts';
 import { fmt, pct } from '@/lib/format';
 import type { PriceInfo } from '@/lib/stellar';
 import { useAnimatedNumber } from '@/components/screens/main/shared';
+import { staggerClass } from '@/constants/parts';
 import '@/styles/screens/main/markets.css';
 
 /** One market list row: logo + name/code and animated price + 24h change.
- *  The change colour is a modifier class; animation-delay stays inline (per index). */
-export function MarketRow({ code, price, onClick, delay = 0 }: { code: string; price?: PriceInfo; onClick: () => void; delay?: number }) {
+ *  Every variant is a modifier class; `index` picks the entrance-delay rung. */
+export function MarketRow({ code, price, onClick, index = 0 }: { code: string; price?: PriceInfo; onClick: () => void; index?: number }) {
   const m = assetMeta(code);
   const chg = price?.change24h ?? 0;
   const shownPrice = useAnimatedNumber(price?.usd ?? 0);
   const shownChg = useAnimatedNumber(chg);
   return (
-    <div onClick={onClick} className="tap row between market-row" style={{ animationDelay: `${delay}s` }}>
+    <div onClick={onClick} className={`tap row between market-row ${staggerClass(index)}`}>
       <div className="row g12">
         <AssetLogo code={code} size={38} />
         <div className="col g2">

@@ -1,5 +1,5 @@
 /* Swap screen (src/components/screens/money/Swap.tsx). Card stacking while a token
-   menu is open is handled with .is-open / .is-active modifiers (was inline z-index). */
+   menu is open is handled with .is-open / .is-active modifiers */
 .swap-stack { position: relative; margin-top: 6px; }
 .swap-stack.is-open { z-index: 50; }
 .swap-card { position: relative; border-radius: 20px; padding: 18px; } /* on .glass */

@@ -74,7 +74,7 @@ export function Home({ store }: { store: WalletStore }) {
         </div>
         <div className="row g10 shrink0">
           {/* Refresh is automatic (silent poll in the store); spinner only while loading. */}
-          {store.loading && <Spinner size={15} color="var(--text)" />}
+          {store.loading && <Spinner size={15} tone="text" />}
           <NetworkDropdown store={store} align="right" />
           {/* popup <-> sidebar toggle (preference persists across reopenings) */}
           <SurfaceToggle store={store} />
@@ -154,7 +154,7 @@ export function Home({ store }: { store: WalletStore }) {
             chg={store.prices[r.code]?.change24h}
             fav={store.favorites.includes(r.code)}
             onFav={() => store.toggleFavorite(r.code)}
-            delay={i * 0.05}
+            index={i}
             onClick={() => { store.setSelectedAsset(r.code); store.setScreen('asset'); }}
           />
         ))}
@@ -172,14 +172,14 @@ export function Home({ store }: { store: WalletStore }) {
         )}
       </div>
       {store.history.length === 0 && store.historyLoading ? (
-        <div className="home-history-loading"><Spinner color="var(--text)" /></div>
+        <div className="home-history-loading"><Spinner tone="text" /></div>
       ) : (
         <>
-          {store.history.slice(0, 10).map((it, i) => <HistoryRow key={it.id} item={it} store={store} delay={i * 0.05} />)}
+          {store.history.slice(0, 10).map((it, i) => <HistoryRow key={it.id} item={it} store={store} index={i} />)}
           {/* The "started using Cosmos Pay" marker closes the list only when the home
               preview reaches the actual end (≤10 ops). With more than 10 it lives past
               the shown window, so it's not rendered here — see the full History screen. */}
-          {store.history.length <= 10 && <GenesisRow store={store} delay={store.history.length * 0.05} />}
+          {store.history.length <= 10 && <GenesisRow store={store} index={store.history.length} />}
         </>
       )}
     </div>

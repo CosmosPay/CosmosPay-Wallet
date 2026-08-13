@@ -1,16 +1,18 @@
 import { ASSET_ICONS } from '@/components/assetIcons';
-import { ASSET_META, AV } from '@/constants/assets';
-import { TokenAvatar } from './TokenAvatar';
+import { ASSET_META } from '@/constants/assets';
+import { TokenAvatar, type TokenAvatarSize } from './TokenAvatar';
 import '@/styles/components/asset-logo.css';
 
 export function assetMeta(code: string) {
   // Defensive: an unknown/empty code (e.g. a liquidity-pool balance with no asset_code)
   // must not crash on .slice — fall back to a neutral glyph.
-  return ASSET_META[code] || { name: code || '?', glyph: (code || '?').slice(0, 1), color: AV };
+  return ASSET_META[code] || { name: code || '?', glyph: (code || '?').slice(0, 1), tone: 'base' as const };
 }
 
-/** Official monochrome asset logo (falls back to a glyph circle for unknown codes). */
-export function AssetLogo({ code, size = 34 }: { code: string; size?: number }) {
+/** Official monochrome asset logo (falls back to a glyph circle for unknown codes).
+ *  `size` drives the svg's width/height ATTRIBUTES (not a style) and, on the
+ *  fallback path, picks the matching .token-avatar--<px> class. */
+export function AssetLogo({ code, size = 34 }: { code: string; size?: TokenAvatarSize }) {
   const icon = ASSET_ICONS[code];
   if (icon) {
     return (
@@ -20,5 +22,5 @@ export function AssetLogo({ code, size = 34 }: { code: string; size?: number }) 
     );
   }
   const m = assetMeta(code);
-  return <TokenAvatar glyph={m.glyph} color={m.color} size={size} />;
+  return <TokenAvatar glyph={m.glyph} tone={m.tone} size={size} />;
 }

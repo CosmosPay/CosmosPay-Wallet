@@ -1,0 +1,109 @@
+/* =====================================================================
+   Design tokens. Every colour in the app resolves through these custom
+   properties, so flipping `data-theme` on <html> re-themes the whole UI
+   instantly. Nothing but variables belongs in this file.
+   Loaded first by src/pages/index.astro.
+   ===================================================================== */
+
+:root,
+[data-theme='dark'] {
+  --bg: #080808;
+  --text: #ffffff;
+  --text-soft: #cfd4d1;
+  --muted: #9aa19d;
+  --dim: #6a716d;
+  --dimmer: #5c6460;
+  --accent: #ffffff;
+  --on-accent: #0a0c0b;
+  --glass-bg: rgba(255, 255, 255, 0.06);
+  --glass-border: rgba(255, 255, 255, 0.12);
+  --glass-soft-bg: rgba(255, 255, 255, 0.07);
+  --glass-soft-border: rgba(255, 255, 255, 0.09);
+  --primary-bg: rgba(255, 255, 255, 0.92);
+  --primary-border: rgba(255, 255, 255, 0.65);
+  --primary-text: #0a0c0b;
+  --surface: rgba(255, 255, 255, 0.05);
+  --surface-2: rgba(255, 255, 255, 0.045);
+  --hairline: rgba(255, 255, 255, 0.08);
+  --nav-bg: rgba(10, 10, 10, 0.55);
+  --avatar-bg: rgba(255, 255, 255, 0.09);
+  --avatar-brand: rgba(255, 255, 255, 0.16);
+  --avatar-text: #ffffff;
+  --up: #4ade80;
+  --down: #ff6b6b;
+  --gb-bg-a: rgba(255, 255, 255, 0.05);
+  --gb-bg-b: rgba(255, 255, 255, 0.085);
+  --gb-bd-a: rgba(255, 255, 255, 0.08);
+  --gb-bd-b: rgba(255, 255, 255, 0.2);
+}
+
+[data-theme='light'] {
+  --bg: #eceef1;
+  --text: #0e1311;
+  --text-soft: #2b322f;
+  --muted: #5d6762;
+  --dim: #8b938e;
+  --dimmer: #aab2ad;
+  --accent: #0e1311;
+  --on-accent: #ffffff;
+  --glass-bg: rgba(255, 255, 255, 0.58);
+  --glass-border: rgba(255, 255, 255, 0.85);
+  --glass-soft-bg: rgba(255, 255, 255, 0.62);
+  --glass-soft-border: rgba(0, 0, 0, 0.05);
+  --primary-bg: #14191b;
+  --primary-border: rgba(0, 0, 0, 0.2);
+  --primary-text: #ffffff;
+  --surface: rgba(255, 255, 255, 0.5);
+  --surface-2: rgba(255, 255, 255, 0.4);
+  --hairline: rgba(0, 0, 0, 0.08);
+  --nav-bg: rgba(236, 238, 241, 0.62);
+  --avatar-bg: rgba(0, 0, 0, 0.06);
+  --avatar-brand: rgba(0, 0, 0, 0.1);
+  --avatar-text: #0e1311;
+  --up: #16a34a;
+  --down: #dc2626;
+  --gb-bg-a: rgba(255, 255, 255, 0.42);
+  --gb-bg-b: rgba(255, 255, 255, 0.62);
+  --gb-bd-a: rgba(255, 255, 255, 0.5);
+  --gb-bd-b: rgba(255, 255, 255, 0.95);
+}
+
+/* native controls (date pickers, scrollbars) follow the app theme, so a
+   date <input> no longer needs an inline color-scheme */
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+/* ---------------- fluid device adaptation ----------------
+   The app is a phone-shaped column. To adapt to the device without locking to
+   a single 440px width, `--frame-max` widens the column on bigger viewports
+   (full-width on phones -> a comfortable wider column on tablets/desktop).
+   NOTE: we intentionally do NOT scale the whole UI with CSS `zoom` — Chrome
+   149 crashes its GPU compositor on a zoomed subtree (the extension popup
+   showed "se ha bloqueado"). Widening the column is GPU-safe.
+   The extension side-panel build overrides --frame-max to 100%. */
+:root {
+  --frame-max: 440px;
+}
+
+@media (min-width: 680px) {
+  :root {
+    --frame-max: 500px;
+  }
+}
+
+@media (min-width: 1000px) {
+  :root {
+    --frame-max: 560px;
+  }
+}
+
+@media (min-width: 1400px) {
+  :root {
+    --frame-max: 620px;
+  }
+}

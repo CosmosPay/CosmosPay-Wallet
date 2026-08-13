@@ -4,6 +4,10 @@
 // Its own lightweight page (system font, no effects) so it drags in neither the popup's
 // crash nor the full store.
 import ApprovePopup from '@/components/ApprovePopup.tsx';
+// Document chrome for this window. Kept out of the page as a stylesheet because
+// Astro scopes a <style> block's element selectors to [data-astro-cid-…], and
+// that attribute never reaches a client:only island's DOM.
+import '@/styles/approve.css';
 ---
 
 <!doctype html>
@@ -18,15 +22,6 @@ import ApprovePopup from '@/components/ApprovePopup.tsx';
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>Cosmos Wallet · Aprobar</title>
-    <style>
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        background: #080808;
-        color: #fff;
-      }
-    </style>
   </head>
   <body>
     <ApprovePopup client:only="react" />

@@ -1,5 +1,5 @@
-/* AddAsset screen (src/components/screens/extras/AddAsset.tsx). Static shells only;
-   busy-state opacity on the "+" button and the issuer-validity colour stay inline. */
+/* AddAsset screen (src/components/screens/extras/AddAsset.tsx). Busy state on the
+   "+" button and the issuer-validity colour are modifier classes. */
 
 .add-asset-desc {
   font-size: 13.5px;
@@ -79,9 +79,9 @@
   margin-bottom: 14px;
 }
 
-/* add button dimmed while another preset is being added (was inline opacity) */
+/* add button dimmed while another preset is being added */
 .add-asset-plus.is-dim { opacity: 0.4; }
-/* manual-issuer validity hint colour (was inline) */
+/* manual-issuer validity hint colour */
 .add-asset-valid--none { color: transparent; }
 .add-asset-valid--ok { color: var(--accent); }
 .add-asset-valid--bad { color: #ff5d5d; }

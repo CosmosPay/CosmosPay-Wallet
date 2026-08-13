@@ -1,0 +1,20 @@
+/* =====================================================================
+   Document chrome for the dapp-approval window (src/pages/approve.astro).
+   That page is deliberately lightweight — system font, no effects, no store,
+   no theme tokens — so this sheet uses literal colours and stays independent
+   of theme.css/base.css. The window's own widgets live in
+   src/styles/components/approve-popup.css.
+   ===================================================================== */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #080808;
+  color: #fff;
+  /* iOS Safari (Safari Web Extension) inflates text in landscape and flashes a
+     grey box on tap unless both are pinned */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}

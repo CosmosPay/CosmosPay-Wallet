@@ -4,7 +4,7 @@
 .market-tab { padding: 8px 14px; border-radius: 11px; background: var(--glass-soft-bg); color: var(--muted); cursor: pointer; }
 .market-tab.is-on { background: var(--accent); color: var(--on-accent); }
 
-/* one market row (animation-delay is per-index → stays inline) */
+/* one market row — the per-index entrance delay is a .stagger-* class */
 .market-row { padding: 12px 2px; cursor: pointer; animation: fadeUp 0.45s ease backwards; } /* on .tap.row.between */
 .market-name { font-size: 15px; font-weight: 700; }
 .market-right { text-align: right; } /* on .col.g2 */

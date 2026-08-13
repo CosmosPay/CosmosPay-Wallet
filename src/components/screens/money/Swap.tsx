@@ -150,7 +150,7 @@ export function Swap({ store }: { store: WalletStore }) {
       {/* Quotes refresh automatically — show a subtle indicator while re-pricing. */}
       {enabled && quoting && (
         <div className="center g8 swap-quoting">
-          <Spinner color="var(--dim)" /> {t('swap.quoting')}
+          <Spinner tone="dim" /> {t('swap.quoting')}
         </div>
       )}
 

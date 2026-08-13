@@ -17,7 +17,7 @@ export function NetworkDropdown({ store, align = 'left' }: { store: WalletStore;
       {open && (
         <>
           <div onClick={() => setOpen(false)} className="network-dd-scrim" />
-          <div className="glass network-dd-menu" style={align === 'right' ? { right: 0 } : { left: 0 }}>
+          <div className={`glass network-dd-menu is-${align}`}>
             {store.networks.map((n) => {
               const on = n.id === store.network.id;
               return (
@@ -27,8 +27,7 @@ export function NetworkDropdown({ store, align = 'left' }: { store: WalletStore;
                     if (!on) store.switchNetwork(n.id);
                     setOpen(false);
                   }}
-                  className="tap network-dd-item"
-                  style={on ? { background: 'var(--surface)' } : undefined}
+                  className={on ? 'tap network-dd-item is-on' : 'tap network-dd-item'}
                 >
                   <StellarMark size={14} />
                   <span className="f1 network-dd-label">{n.label}</span>

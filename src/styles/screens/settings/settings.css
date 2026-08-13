@@ -1,6 +1,6 @@
 /* Settings screen (src/components/screens/settings/Settings.tsx).
-   Static shells only — state-driven values (on/off colours, knob position,
-   copied colour) stay inline in the component. */
+   State-driven values (on/off colours, knob position, copied colour) are all
+   .is-on / .is-copied modifier classes. */
 
 /* section block: uppercase label + content */
 .settings-section { margin-top: 22px; }

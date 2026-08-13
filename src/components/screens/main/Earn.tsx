@@ -30,7 +30,7 @@ export function Earn({ store }: { store: WalletStore }) {
       <div className="title-20 earn-generate">{t('earn.generate')}</div>
       <div className="glass card earn-lp tap" onClick={() => store.go('liquidity')}>
         <div className="row g12 earn-lp-head">
-          <TokenAvatar glyph="◇" color="rgba(255,255,255,.10)" size={36} />
+          <TokenAvatar glyph="◇" tone="pool" size={36} />
           <div>
             <div className="earn-lp-title">Liquidity Pools (AMM)</div>
             <div className="t-dim-12">{t('earn.lpSub')}</div>

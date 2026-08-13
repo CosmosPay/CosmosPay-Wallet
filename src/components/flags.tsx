@@ -11,13 +11,13 @@ import BR from 'country-flag-icons/react/3x2/BR';
 import DE from 'country-flag-icons/react/3x2/DE';
 import FR from 'country-flag-icons/react/3x2/FR';
 import { LANGUAGES, type Lang } from '@/lib/i18n';
-import { C } from '@/components/parts';
 
 const MAP: Record<Lang, typeof AR> = { es: AR, en: US, pt: BR, de: DE, fr: FR };
 
-export function LangFlag({ code, size = 22 }: { code: Lang; size?: number }) {
+/** 22px is the base .flag-img rule; 20 is the only modifier that exists. */
+export function LangFlag({ code, size = 22 }: { code: Lang; size?: 20 | 22 }) {
   const Flag = MAP[code];
-  return <Flag className="shrink0 flag-img" style={{ width: `${size}px` }} />;
+  return <Flag className={size === 22 ? 'shrink0 flag-img' : `shrink0 flag-img flag-img--${size}`} />;
 }
 
 /**
@@ -50,12 +50,7 @@ export function LangSelect({
       <button onClick={() => setOpen((o) => !o)} className="row g8 flag-select-btn">
         <LangFlag code={current.code} size={20} />
         <span>{current.name}</span>
-        <span
-          className="flag-select-caret"
-          style={{ transform: open ? 'rotate(180deg)' : 'none' }}
-        >
-          ▼
-        </span>
+        <span className={open ? 'flag-select-caret is-open' : 'flag-select-caret'}>▼</span>
       </button>
       {open && (
         <div className="col g2 flag-select-menu">
@@ -68,8 +63,7 @@ export function LangSelect({
                   onChange(l.code);
                   setOpen(false);
                 }}
-                className="row g10 flag-select-opt"
-                style={{ background: on ? C.cardSolid : 'transparent', fontWeight: on ? 800 : 600 }}
+                className={on ? 'row g10 flag-select-opt is-on' : 'row g10 flag-select-opt'}
               >
                 <LangFlag code={l.code} size={20} />
                 <span className="f1">{l.name}</span>

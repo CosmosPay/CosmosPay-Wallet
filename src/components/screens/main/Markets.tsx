@@ -25,7 +25,7 @@ export function Markets({ store }: { store: WalletStore }) {
       <div className="main-head">
         <span className="title-30">{t('markets.title')}</span>
         <div className="row g10">
-          {store.loading && <Spinner size={16} color="var(--text)" />}
+          {store.loading && <Spinner size={16} tone="text" />}
           {buildKind() === 'ext' && <BackCircle store={store} />}
           <NavMenu store={store} />
         </div>
@@ -36,7 +36,7 @@ export function Markets({ store }: { store: WalletStore }) {
         ))}
       </div>
       {list.map((code, i) => (
-        <MarketRow key={code} code={code} price={store.prices[code]} delay={i * 0.05} onClick={() => { store.setSelectedAsset(code); store.setScreen('asset'); }} />
+        <MarketRow key={code} code={code} price={store.prices[code]} index={i} onClick={() => { store.setSelectedAsset(code); store.setScreen('asset'); }} />
       ))}
       {!Object.keys(store.prices).length && (
         <div className="market-empty">

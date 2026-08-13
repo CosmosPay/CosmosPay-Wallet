@@ -79,7 +79,6 @@ export function Send({ store }: { store: WalletStore }) {
             inputMode="decimal"
             placeholder="0"
             className="send-amount-input"
-            style={{ width: `${Math.max(1, s.amount.length || 1)}ch` }}
           />
           <AssetPicker store={store} />
         </div>

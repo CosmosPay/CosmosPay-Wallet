@@ -4,13 +4,19 @@
    utilities and the theme variables from index.astro are available here.
    ===================================================================== */
 
-/* flag SVG (the width comes from the `size` prop -> stays inline).
+/* flag SVG (the `size` prop picks the width class below).
    Ring is a literal (not var(--glass-border)): identical in both themes. */
 .flag-img {
+  width: 22px;
   height: auto;
   border-radius: 3px;
   display: block;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+/* the only size the app actually asks for */
+.flag-img--20 {
+  width: 20px;
 }
 
 /* dropdown anchor */
@@ -30,11 +36,15 @@
   line-height: 1;
 }
 
-/* caret: the open-state rotation stays inline */
+/* caret: flipped by .is-open */
 .flag-select-caret {
   font-size: 9px;
   opacity: 0.7;
   transition: transform 0.18s ease;
+}
+
+.flag-select-caret.is-open {
+  transform: rotate(180deg);
 }
 
 /* floating menu. Compose with .col .g2. */
@@ -54,16 +64,22 @@
   animation: fadeUp 0.16s ease;
 }
 
-/* menu option. Compose with .row .g10; the active-state background and
-   font-weight stay inline. */
+/* menu option. Compose with .row .g10; the active row is .is-on. */
 .flag-select-opt {
   width: 100%;
   color: var(--text);
   border: none;
   padding: 9px 12px;
   font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
   text-align: left;
+  background: transparent;
+}
+
+.flag-select-opt.is-on {
+  background: var(--glass-soft-bg);
+  font-weight: 800;
 }
 
 .flag-select-check {

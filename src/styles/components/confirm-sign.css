@@ -57,6 +57,12 @@
 }
 .confirm-sign-input {
   text-align: center;
+  margin-bottom: 16px;
+}
+
+/* the error line below takes over part of the gap */
+.confirm-sign-input.has-err {
+  margin-bottom: 8px;
 }
 .confirm-sign-err {
   font-size: 12.5px;

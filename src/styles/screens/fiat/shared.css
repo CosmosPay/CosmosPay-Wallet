@@ -1,7 +1,7 @@
 /* =====================================================================
    Fiat screens — shared atoms (src/components/screens/fiat/shared.tsx)
    plus helpers reused by every screen in the directory (.fiat-*).
-   Static shells only; state-driven values stay inline in the tsx.
+   State-driven values are modifier classes — never inline styles.
    ===================================================================== */
 
 /* ------------------------ form field (Field / Select) ------------------------ */

@@ -52,14 +52,11 @@ export function NavMenu({ store }: { store: WalletStore }) {
         </svg>
       </button>
 
+      {/* Restored already-open -> .is-instant kills the transition so there is
+          absolutely no motion; fresh opens animate. */}
       {mounted && (
         <div
-          className="nav-drawer nav-menu-drawer"
-          style={{
-            transform: shown ? 'translateX(0)' : 'translateX(100%)',
-            // Restored already-open -> absolutely no motion; fresh opens animate.
-            transition: restoredRef.current ? 'none' : 'transform .34s cubic-bezier(.32,.72,.28,1)',
-          }}
+          className={`nav-drawer nav-menu-drawer${shown ? ' is-open' : ''}${restoredRef.current ? ' is-instant' : ''}`}
         >
           <div className="row between nav-menu-header">
             <div className="row g8 nav-menu-brand">
@@ -84,8 +81,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
                     closeDrawer();
                     if (!on) navGo(store, tb.key);
                   }}
-                  className="tap nav-menu-item"
-                  style={on ? { background: 'var(--surface)', border: '1px solid var(--glass-soft-border)' } : undefined}
+                  className={on ? 'tap nav-menu-item is-on' : 'tap nav-menu-item'}
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink0">{tb.icon}</svg>
                   <span className="f1 nav-menu-item-label">{tb.label}</span>

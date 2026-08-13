@@ -203,13 +203,7 @@ export default function WalletApp() {
 
   return (
     <>
-      <div
-        className="wallet-app-intro"
-        style={{
-          opacity: intro === 'show' ? 0 : 1,
-          transform: intro === 'show' ? 'scale(1.05)' : 'none',
-        }}
-      >
+      <div className={intro === 'show' ? 'wallet-app-intro is-hidden' : 'wallet-app-intro'}>
         <Shell showNav={showNav} store={store}>
           {screen === 'boot' ? (
             <Boot />
@@ -229,13 +223,7 @@ export default function WalletApp() {
 
 function Splash({ fading }: { fading: boolean }) {
   return (
-    <div
-      className="center splash-overlay"
-      style={{
-        opacity: fading ? 0 : 1,
-        pointerEvents: fading ? 'none' : 'auto',
-      }}
-    >
+    <div className={fading ? 'center splash-overlay is-fading' : 'center splash-overlay'}>
       <div className="splash-logo">
         <Logo size={116} />
       </div>
@@ -247,7 +235,7 @@ function Boot() {
   return (
     <div className="col center f1 boot-screen">
       <Logo size={84} />
-      <Spinner color="var(--text)" />
+      <Spinner tone="text" />
     </div>
   );
 }

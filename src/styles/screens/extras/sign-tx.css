@@ -1,5 +1,5 @@
-/* SignTx screen (src/components/screens/extras/SignTx.tsx). Static shells only;
-   the summary value font-family (monospace for the source row) stays inline. */
+/* SignTx screen (src/components/screens/extras/SignTx.tsx). The source row's
+   monospace face is the .is-mono modifier at the bottom of this sheet. */
 
 .sign-tx-desc {
   font-size: 13.5px;
@@ -86,5 +86,5 @@
   line-height: 1.5;
 }
 
-/* source account shown monospace (was inline font-family) */
+/* source account shown monospace */
 .sign-tx-summary-val.is-mono { font-family: monospace; }

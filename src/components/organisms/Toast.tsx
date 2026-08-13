@@ -34,13 +34,10 @@ export function Toast({ toast }: { toast: WalletStore['toast'] }) {
   }, [toast]);
 
   if (!shown) return null;
-  const bg =
-    shown.kind === 'ok'
-      ? 'var(--accent)'
-      : shown.kind === 'err'
-      ? 'rgba(210,64,64,.92)'
-      : 'var(--glass-bg)';
-  const fg = shown.kind === 'ok' ? 'var(--on-accent)' : shown.kind === 'err' ? '#fff' : 'var(--text)';
+  // Surface by kind + the exit swap, both as modifier classes (toast.css).
+  const mods =
+    (shown.kind === 'ok' ? ' is-ok' : shown.kind === 'err' ? ' is-err' : '') +
+    (leaving ? ' is-leaving' : '');
 
   // Extension (popup/side panel): a bottom card that slides up for a moment and
   // slides back down — less intrusive than a centered overlay in a small surface.
@@ -48,15 +45,7 @@ export function Toast({ toast }: { toast: WalletStore['toast'] }) {
   if (buildKind() === 'ext') {
     return (
       <div className="toast-ext-wrap">
-        <div
-          key={shown.msg}
-          className="toast-ext-card"
-          style={{
-            background: bg,
-            color: fg,
-            animation: leaving ? 'toastDown .23s ease forwards' : 'toastUp .3s cubic-bezier(.2,.9,.3,1)',
-          }}
-        >
+        <div key={shown.msg} className={`toast-ext-card${mods}`}>
           {shown.msg}
         </div>
       </div>
@@ -68,15 +57,7 @@ export function Toast({ toast }: { toast: WalletStore['toast'] }) {
     // inner card scales in (animating transform on the card itself would fight the
     // centering and make it appear off to one side before snapping to the middle).
     <div className="toast-overlay">
-      <div
-        key={shown.msg}
-        className="toast-card"
-        style={{
-          background: bg,
-          color: fg,
-          animation: leaving ? 'popOut .23s ease forwards' : 'pop .28s ease',
-        }}
-      >
+      <div key={shown.msg} className={`toast-card${mods}`}>
         {shown.msg}
       </div>
     </div>

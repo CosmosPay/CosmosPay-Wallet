@@ -42,7 +42,7 @@ export function Receive({ store }: { store: WalletStore }) {
         {qr ? (
           <img src={qr} width="188" height="188" alt="QR" className="receive-qr-img" />
         ) : (
-          <div className="receive-qr-ph"><Spinner color="#0a0c0b" /></div>
+          <div className="receive-qr-ph"><Spinner tone="ink" /></div>
         )}
       </div>
       <div className="center receive-chip-wrap">

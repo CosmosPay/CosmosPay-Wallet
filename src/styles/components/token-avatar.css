@@ -1,5 +1,8 @@
 /* TokenAvatar — coloured circular token badge.
-   width/height/font-size (size prop) and background (color prop) stay inline. */
+   Size and tone used to arrive as inline width/height/font-size/background.
+   They are modifier classes now: `--<px>` for the diameter (the glyph is
+   ~0.46 of it) and `--base|--brand|--pool` for the surface. Adding a new
+   size means adding a class here AND widening TokenAvatarSize in the tsx. */
 .token-avatar {
   border-radius: 50%;
   backdrop-filter: blur(10px);
@@ -12,4 +15,67 @@
   font-weight: 700;
   color: var(--avatar-text);
   flex-shrink: 0;
+}
+
+/* ------------------------------ tones ------------------------------ */
+.token-avatar--base {
+  background: var(--avatar-bg);
+}
+
+.token-avatar--brand {
+  background: var(--avatar-brand);
+}
+
+/* liquidity-pool badge: a literal tint, deliberately identical in both themes */
+.token-avatar--pool {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ------------------------------ sizes ------------------------------ */
+.token-avatar--20 {
+  width: 20px;
+  height: 20px;
+  font-size: 9px;
+}
+
+.token-avatar--24 {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+
+.token-avatar--26 {
+  width: 26px;
+  height: 26px;
+  font-size: 12px;
+}
+
+.token-avatar--28 {
+  width: 28px;
+  height: 28px;
+  font-size: 13px;
+}
+
+.token-avatar--34 {
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+}
+
+.token-avatar--36 {
+  width: 36px;
+  height: 36px;
+  font-size: 17px;
+}
+
+.token-avatar--38 {
+  width: 38px;
+  height: 38px;
+  font-size: 17px;
+}
+
+.token-avatar--64 {
+  width: 64px;
+  height: 64px;
+  font-size: 29px;
 }

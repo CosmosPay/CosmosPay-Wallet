@@ -3,8 +3,8 @@
  *  is re-exported here so every existing `import { ... } from '@/components/parts'`
  *  keeps working unchanged. New code may import from the layer directly. */
 
-// Design tokens live in src/constants/ui.ts (single source of truth).
-export { C, CONTROL, CONTROL_H, inputStyle } from '@/constants/ui';
+// Styling tokens are CSS-only (src/styles/theme.css); nothing style-shaped is
+// re-exported here any more — see CLAUDE.md.
 export { ASSET_META } from '@/constants/assets';
 
 // atoms

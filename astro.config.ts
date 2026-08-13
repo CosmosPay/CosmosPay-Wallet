@@ -50,6 +50,7 @@ export default defineConfig({
         // prefix itself before forwarding upstream), so forward the prefix as-is.
         '/cosmos-api': { target: GATEWAY_TARGET, changeOrigin: true },
       },
+      allowedHosts: [env.ALLOWED_HOSTS]
     },
     resolve: {
       // `@` -> src so modules can import `@/lib/...` instead of `../../lib/...`.
@@ -90,6 +91,21 @@ export default defineConfig({
     build: {
       // A single WebView app: a slightly larger chunk is fine, avoid noisy warnings.
       chunkSizeWarningLimit: 1500,
+      // Minify CSS with esbuild, NOT Vite 8's new Lightning CSS default.
+      // Lightning CSS rewrites vendor prefixes from its own feature data, and for
+      // `backdrop-filter` it deletes the UNPREFIXED declaration and keeps only
+      // `-webkit-` — under every target we tried, including `firefox >= 113`.
+      // Only WebKit understands the -webkit- alias: Chrome and Firefox both report
+      // CSS.supports('-webkit-backdrop-filter', …) === false, so the shipped bundle
+      // had the entire glass system silently dead everywhere except Safari.
+      // esbuild emits both declarations unchanged, which is correct for all engines.
+      cssMinify: 'esbuild',
+      // esbuild prunes prefixes against this target, so it has to name the oldest
+      // engines we support or it drops ones that are still needed (`-webkit-user-
+      // select`, which Safari requires below 17). The floor is what the stylesheets
+      // actually demand: color-mix() (Safari 16.2 / Chrome 111 / Firefox 113) and
+      // dvh (Safari 15.4).
+      cssTarget: ['chrome111', 'edge111', 'firefox113', 'safari16.4', 'ios16.4'],
     },
   },
 });

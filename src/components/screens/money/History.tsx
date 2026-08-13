@@ -18,12 +18,12 @@ export function History({ store }: { store: WalletStore }) {
     <div className="scr screen col pb-104">
       <BackBar title={t('history.title')} onBack={() => store.go('home', 'home')} />
       {store.historyLoading && items.length === 0 ? (
-        <div className="f1 center"><Spinner color="var(--text)" /></div>
+        <div className="f1 center"><Spinner tone="text" /></div>
       ) : (
         <div className="history-list">
-          {items.map((it, i) => <HistoryRow key={it.id} item={it} store={store} delay={i * 0.03} />)}
+          {items.map((it, i) => <HistoryRow key={it.id} item={it} store={store} index={i} dense />)}
           {/* Visual-only marker closing the list: when this wallet started using Cosmos Pay. */}
-          <GenesisRow store={store} delay={items.length * 0.03} />
+          <GenesisRow store={store} index={items.length} dense />
         </div>
       )}
     </div>

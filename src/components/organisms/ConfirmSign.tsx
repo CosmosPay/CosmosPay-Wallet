@@ -48,8 +48,7 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
           placeholder={t('pwd.label')}
           onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          className="input confirm-sign-input"
-          style={{ marginBottom: err ? '8px' : '16px' }}
+          className={err ? 'input confirm-sign-input has-err' : 'input confirm-sign-input'}
         />
         {err && <div className="confirm-sign-err">{err}</div>}
         <div className="flexr g10">

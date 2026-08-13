@@ -14,13 +14,15 @@
   -webkit-backdrop-filter: blur(24px) saturate(150%);
   border-top: 1px solid var(--hairline);
 }
-/* sliding active indicator — follows the selected tab (width + translateX are
-   computed from the tab count / active index, so they stay inline) */
+/* Sliding active indicator. nav.tsx ships a FIXED five-tab bar, so the width is
+   a constant and the slide is one class per tab index — add a rung here if the
+   tab list ever grows. */
 .bottom-nav-indicator {
   position: absolute;
   left: 16px;
   top: 0;
   bottom: calc(20px + env(safe-area-inset-bottom));
+  width: calc((100% - 32px) / 5);
   transition: transform 0.42s cubic-bezier(0.34, 1.3, 0.5, 1);
   display: flex;
   align-items: center;
@@ -28,6 +30,12 @@
   pointer-events: none;
   z-index: 1;
 }
+
+.bottom-nav-indicator.is-tab-0 { transform: translateX(0); }
+.bottom-nav-indicator.is-tab-1 { transform: translateX(100%); }
+.bottom-nav-indicator.is-tab-2 { transform: translateX(200%); }
+.bottom-nav-indicator.is-tab-3 { transform: translateX(300%); }
+.bottom-nav-indicator.is-tab-4 { transform: translateX(400%); }
 .bottom-nav-dot {
   width: 50px;
   height: 50px;
@@ -36,7 +44,7 @@
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
   transform: translateY(-10px);
 }
-/* tab item — color + lift transform depend on the active state (inline) */
+/* tab item — colour + lift come from .is-on */
 .bottom-nav-tab {
   flex: 1;
   position: relative;
@@ -47,11 +55,19 @@
   justify-content: center;
   gap: 5px;
   cursor: pointer;
+  color: var(--dim);
 }
-/* compound selector so the spring transition beats the generic `.tap`
-   transition regardless of stylesheet order (was an inline style before) */
+/* Compound selectors so both the spring transition and the resting transform
+   beat the generic `.tap` rules (`.tap:active`'s press-scale included, which is
+   what the old inline transform used to suppress) regardless of sheet order. */
 .tap.bottom-nav-tab {
   transition: transform 0.42s cubic-bezier(0.34, 1.3, 0.5, 1), color 0.25s ease;
+  transform: none;
+}
+
+.tap.bottom-nav-tab.is-on {
+  color: var(--on-accent);
+  transform: translateY(-10px);
 }
 .bottom-nav-label {
   font-size: 10px;

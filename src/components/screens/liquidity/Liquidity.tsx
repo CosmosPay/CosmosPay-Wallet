@@ -92,7 +92,7 @@ function Positions({ store, positions }: { store: WalletStore; positions: Liquid
   if (positions === null) {
     return (
       <div className="center g8 lp-loading">
-        <Spinner color="var(--dim)" /> {t('lp.loading')}
+        <Spinner tone="dim" /> {t('lp.loading')}
       </div>
     );
   }
@@ -105,7 +105,7 @@ function Positions({ store, positions }: { store: WalletStore; positions: Liquid
         <div key={p.poolId} className="glass card lp-item">
           <div className="row between g10 lp-item-head">
             <div className="row g10">
-              <TokenAvatar glyph="◇" color="rgba(255,255,255,.10)" size={34} />
+              <TokenAvatar glyph="◇" tone="pool" size={34} />
               <div>
                 <div className="lp-item-title">{pairLabel(p.reserves)}</div>
                 <div className="t-dim-12">
@@ -144,7 +144,7 @@ function Pools({ store, pools }: { store: WalletStore; pools: LiquidityPool[] | 
   if (pools === null) {
     return (
       <div className="center g8 lp-loading">
-        <Spinner color="var(--dim)" /> {t('lp.loading')}
+        <Spinner tone="dim" /> {t('lp.loading')}
       </div>
     );
   }
@@ -157,7 +157,7 @@ function Pools({ store, pools }: { store: WalletStore; pools: LiquidityPool[] | 
         <div key={pool.id} className="glass card lp-item">
           <div className="row between g10 lp-item-head">
             <div className="row g10">
-              <TokenAvatar glyph="◇" color="rgba(255,255,255,.10)" size={34} />
+              <TokenAvatar glyph="◇" tone="pool" size={34} />
               <div>
                 <div className="lp-item-title">{pairLabel(pool.reserves)}</div>
                 <div className="t-dim-12">

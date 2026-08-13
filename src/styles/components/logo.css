@@ -2,5 +2,7 @@
 .logo-img {
   display: block;
   object-fit: contain;
+  /* Safari only accepts the unprefixed property from 17.0 on */
+  -webkit-user-select: none;
   user-select: none;
 }

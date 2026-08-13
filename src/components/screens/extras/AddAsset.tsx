@@ -73,7 +73,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
 
       {loading ? (
         <div className="glass center g10 add-asset-loading">
-          <Spinner color="var(--text)" /> {t('addAsset.loading')}
+          <Spinner tone="text" /> {t('addAsset.loading')}
         </div>
       ) : common.length ? (
         <div className="glass add-asset-list">
@@ -95,7 +95,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
                     title={t('addAsset.add')}
                     className={store.busy && adding !== a.code ? 'glass-soft center shrink0 add-asset-plus is-dim' : 'glass-soft center shrink0 add-asset-plus'}
                   >
-                    {adding === a.code ? <Spinner color="var(--text)" /> : '+'}
+                    {adding === a.code ? <Spinner tone="text" /> : '+'}
                   </button>
                 )}
               </div>

@@ -2,16 +2,17 @@ import { AssetLogo, assetMeta } from '@/components/parts';
 import { fmt, trim, pct } from '@/lib/format';
 import type { AssetRow } from '@/lib/portfolio';
 import { useAnimatedNumber } from '@/components/screens/main/shared';
+import { staggerClass } from '@/constants/parts';
 import '@/styles/screens/main/home.css';
 
 /** One holding row on Home: logo + name/amount and animated value + 24h change + favourite star.
- *  Change colour and the star use modifier classes; animation-delay stays inline (per index). */
-export function AssetListRow({ row, chg, fav, onFav, onClick, delay = 0 }: { row: AssetRow; chg?: number; fav?: boolean; onFav?: () => void; onClick: () => void; delay?: number }) {
+ *  Every variant is a modifier class; `index` picks the entrance-delay rung. */
+export function AssetListRow({ row, chg, fav, onFav, onClick, index = 0 }: { row: AssetRow; chg?: number; fav?: boolean; onFav?: () => void; onClick: () => void; index?: number }) {
   const m = assetMeta(row.code);
   const shownValue = useAnimatedNumber(row.value ?? 0);
   const shownChg = useAnimatedNumber(chg ?? 0);
   return (
-    <div onClick={onClick} className="tap home-asset-row" style={{ animationDelay: `${delay}s` }}>
+    <div onClick={onClick} className={`tap home-asset-row ${staggerClass(index)}`}>
       <div className="row g12 min0">
         <AssetLogo code={row.code} size={34} />
         <div className="col g2">

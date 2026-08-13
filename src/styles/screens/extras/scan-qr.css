@@ -1,6 +1,6 @@
 /* ScanQR screen (src/components/screens/extras/ScanQR.tsx).
-   Static shells only — camera state (caret rotation, active-option background)
-   stays inline in the component. */
+   Camera state (caret rotation, active-option background) is expressed with
+   .is-open / .is-on modifier classes. */
 
 .scan-hint {
   font-size: 13.5px;
@@ -10,13 +10,17 @@
   margin: 12px 0 18px;
 }
 
-/* square camera viewport on a glass card */
+/* square camera viewport on a glass card.
+   `isolation` is not cosmetic: Safari does not clip a composited child (the
+   <video> below) to an ancestor's border-radius unless that ancestor forms its
+   own stacking context, so without it the camera feed spills over the corners. */
 .scan-viewport {
   position: relative;
   width: 100%;
   aspect-ratio: 1 / 1;
   border-radius: 24px;
   overflow: hidden;
+  isolation: isolate;
 }
 
 /* permission-denied / no-camera message inside the viewport */
@@ -96,6 +100,6 @@
 .scan-fallbacks { margin-top: 14px; }
 .scan-hidden { display: none; }
 
-/* dev-camera dropdown caret + selected option (was inline) */
+/* dev-camera dropdown caret + selected option */
 .scan-caret.is-open { transform: rotate(180deg); }
 .scan-opt.is-on { background: var(--surface); }

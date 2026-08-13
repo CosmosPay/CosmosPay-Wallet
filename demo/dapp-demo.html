@@ -4,19 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cosmos Wallet · dapp de prueba</title>
-    <style>
-      body { font-family: system-ui, sans-serif; background: #0d0f10; color: #eef; max-width: 680px; margin: 40px auto; padding: 0 20px; }
-      h1 { font-size: 22px; }
-      .sub { color: #99a; font-size: 14px; margin-top: -8px; }
-      button { border: 1px solid #345; background: #16202a; color: #eef; border-radius: 10px; padding: 11px 16px; font-size: 14px; font-weight: 700; cursor: pointer; margin: 4px 6px 4px 0; }
-      button:hover { background: #1d2b38; }
-      pre { background: #05070a; border: 1px solid #223; border-radius: 10px; padding: 14px; font-size: 12.5px; white-space: pre-wrap; word-break: break-all; min-height: 40px; }
-      .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-      .ok { background: #123a24; color: #7fe3a3; }
-      .no { background: #3a1212; color: #ff9a9a; }
-      label { font-size: 13px; color: #99a; display: block; margin: 14px 0 4px; }
-      textarea { width: 100%; box-sizing: border-box; background: #05070a; color: #eef; border: 1px solid #223; border-radius: 10px; padding: 10px; font-family: ui-monospace, monospace; font-size: 12px; min-height: 70px; }
-    </style>
+    <link rel="stylesheet" href="dapp-demo.css" />
   </head>
   <body>
     <h1>Cosmos Wallet · dapp de prueba</h1>
@@ -39,11 +27,11 @@
     <textarea id="uri" placeholder="web+stellar:pay?destination=G…&amount=1&memo=hola">web+stellar:pay?destination=GA6HCMBLTZS5VYYBCATRBRZ3BZJMAFUDKYYF6AH6MVCMGWMRDNSWJPIH&amount=1&memo=demo</textarea>
 
     <label>Flujo nativo del esquema (SOLO Firefox con <code>extension-firefox/</code>)</label>
-    <p style="font-size:13px;color:#99a;margin:4px 0">
+    <p class="note">
       Haz clic (no lo escribas en la barra). En Chrome no hará nada — es limitación de las extensiones Chrome.
     </p>
     <a href="web+stellar:pay?destination=GA6HCMBLTZS5VYYBCATRBRZ3BZJMAFUDKYYF6AH6MVCMGWMRDNSWJPIH&amount=1&memo=demo"
-       style="display:inline-block;color:#7fb0ff;font-weight:700;text-decoration:none;border:1px solid #345;border-radius:10px;padding:11px 16px">
+       class="scheme-link">
       🔗 Abrir web+stellar:pay… con la wallet
     </a>
 

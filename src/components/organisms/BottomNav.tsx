@@ -11,14 +11,9 @@ export function BottomNav({ store }: { store: WalletStore }) {
 
   return (
     <div className="bottom-nav">
-      {/* sliding active indicator — follows the selected tab */}
-      <div
-        className="bottom-nav-indicator"
-        style={{
-          width: `calc((100% - 32px) / ${tabs.length})`,
-          transform: `translateX(${idx * 100}%)`,
-        }}
-      >
+      {/* Sliding active indicator — one .is-tab-<i> rung per tab (bottom-nav.css
+          hard-codes the five-tab width, matching navTabs). */}
+      <div className={`bottom-nav-indicator is-tab-${idx}`}>
         <div className="bottom-nav-dot" />
       </div>
 
@@ -28,11 +23,7 @@ export function BottomNav({ store }: { store: WalletStore }) {
           <div
             key={tb.key}
             onClick={() => go(tb.key)}
-            className="tap bottom-nav-tab"
-            style={{
-              color: on ? 'var(--on-accent)' : 'var(--dim)',
-              transform: on ? 'translateY(-10px)' : 'none',
-            }}
+            className={on ? 'tap bottom-nav-tab is-on' : 'tap bottom-nav-tab'}
           >
             <svg width="23" height="23" viewBox="0 0 24 24" fill="none">{tb.icon}</svg>
             {!on && <span className="bottom-nav-label">{tb.label}</span>}
