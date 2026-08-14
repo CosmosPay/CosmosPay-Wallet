@@ -3,6 +3,7 @@ import { BackBar, Logo } from '@/components/parts';
 import { APP_VERSION } from '@/lib/config';
 import { buildKind, platformName } from '@/lib/platform';
 import '@/styles/screens/settings/about.css';
+import { cx } from '@/lib/cx';
 
 /* ------------------------------ ABOUT ------------------------------- */
 export function About({ store }: { store: WalletStore }) {
@@ -27,7 +28,7 @@ export function About({ store }: { store: WalletStore }) {
         {rows.map((r) => (
           <div key={r[0]} className="about-row">
             <span className="about-row-label">{r[0]}</span>
-            <span className={r[0] === t('about.platform') ? 'about-row-value about-row-value--cap' : 'about-row-value'}>{r[1]}</span>
+            <span className={cx('about-row-value', r[0] === t('about.platform') && 'about-row-value--cap')}>{r[1]}</span>
           </div>
         ))}
       </div>

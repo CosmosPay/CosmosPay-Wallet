@@ -2,7 +2,9 @@ import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { BackBar, PrimaryButton, Spinner } from '@/components/parts';
 import { trim } from '@/lib/format';
-import { spendableXlm, sendableAssets, SwapTokenSelect } from '@/components/screens/money/shared';
+import { cx } from '@/lib/cx';
+import { AssetSelect } from '@/components/molecules/money/AssetSelect';
+import { spendableXlm, sendableAssets } from '@/components/screens/money/shared';
 import '@/styles/screens/money/swap.css';
 import '@/styles/screens/money/liquidity.css';
 
@@ -37,13 +39,11 @@ export function Deposit({ store }: { store: WalletStore }) {
   const overB = amtB > availB; // amountB is optional; only guards when the user typed one
   const canDeposit = amtA > 0 && !sameAsset && !!a && !!b && !overA && !overB;
 
-  const asAsset = (x: { code: string; issuer: string | null }) => ({ code: x.code, issuer: x.issuer });
-
   const submit = () => {
     if (!a || !b) return;
     store.submitDeposit({
-      assetA: asAsset(a),
-      assetB: asAsset(b),
+      assetA: a,
+      assetB: b,
       maxAmountA: amountA,
       maxAmountB: amountB.trim() ? amountB : undefined,
     });
@@ -53,11 +53,11 @@ export function Deposit({ store }: { store: WalletStore }) {
     <div className="scr screen col pb-104">
       <BackBar title={t('lp.depositTitle')} onBack={() => store.go('liquidity')} />
 
-      <div className={openSel ? 'swap-stack is-open' : 'swap-stack'}>
-        <div className={openSel === 'a' ? 'glass swap-card is-active' : 'glass swap-card'}>
+      <div className={cx('swap-stack', openSel && 'is-open')}>
+        <div className={cx('glass swap-card', openSel === 'a' && 'is-active')}>
           <div className="swap-label">{t('lp.assetA')}</div>
           <div className="row between g10">
-            <SwapTokenSelect assets={assets} code={aCode} onPick={setACode} open={openSel === 'a'} onToggle={(n) => setOpenSel(n ? 'a' : null)} />
+            <AssetSelect assets={assets} code={aCode} onPick={setACode} open={openSel === 'a'} onToggle={(n) => setOpenSel(n ? 'a' : null)} />
             <input value={amountA} onChange={(e) => setAmountA((e.target as HTMLInputElement).value)} inputMode="decimal" placeholder="0" className="swap-input" />
           </div>
           <div className="swap-balance">
@@ -69,10 +69,10 @@ export function Deposit({ store }: { store: WalletStore }) {
           <span className="lp-plus">+</span>
         </div>
 
-        <div className={openSel === 'b' ? 'glass swap-card swap-card--to is-active' : 'glass swap-card swap-card--to'}>
+        <div className={cx('glass swap-card swap-card--to', openSel === 'b' && 'is-active')}>
           <div className="swap-label">{t('lp.assetB')}</div>
           <div className="row between g10">
-            <SwapTokenSelect assets={assets} code={bCode} onPick={setBCode} open={openSel === 'b'} onToggle={(n) => setOpenSel(n ? 'b' : null)} />
+            <AssetSelect assets={assets} code={bCode} onPick={setBCode} open={openSel === 'b'} onToggle={(n) => setOpenSel(n ? 'b' : null)} />
             <input value={amountB} onChange={(e) => setAmountB((e.target as HTMLInputElement).value)} inputMode="decimal" placeholder={t('lp.autoAmount')} className="swap-input" />
           </div>
           <div className="swap-balance">

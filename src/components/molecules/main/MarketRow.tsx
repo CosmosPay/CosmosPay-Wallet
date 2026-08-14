@@ -1,8 +1,9 @@
 import { AssetLogo, assetMeta } from '@/components/parts';
 import { fmt, pct } from '@/lib/format';
 import type { PriceInfo } from '@/lib/stellar';
-import { useAnimatedNumber } from '@/components/screens/main/shared';
+import { useAnimatedNumber } from '@/components/hooks';
 import { staggerClass } from '@/constants/parts';
+import { cx } from '@/lib/cx';
 import '@/styles/screens/main/markets.css';
 
 /** One market list row: logo + name/code and animated price + 24h change.
@@ -13,7 +14,7 @@ export function MarketRow({ code, price, onClick, index = 0 }: { code: string; p
   const shownPrice = useAnimatedNumber(price?.usd ?? 0);
   const shownChg = useAnimatedNumber(chg);
   return (
-    <div onClick={onClick} className={`tap row between market-row ${staggerClass(index)}`}>
+    <div onClick={onClick} className={cx('tap row between market-row', staggerClass(index))}>
       <div className="row g12">
         <AssetLogo code={code} size={38} />
         <div className="col g2">
@@ -25,7 +26,7 @@ export function MarketRow({ code, price, onClick, index = 0 }: { code: string; p
         <span className="market-price">
           {price ? '$' + fmt(shownPrice, price.usd >= 1 ? 2 : 4) : '—'}
         </span>
-        <span className={chg >= 0 ? 'market-chg is-up' : 'market-chg is-down'}>{price ? pct(shownChg) : ''}</span>
+        <span className={cx('market-chg', chg >= 0 ? 'is-up' : 'is-down')}>{price ? pct(shownChg) : ''}</span>
       </div>
     </div>
   );

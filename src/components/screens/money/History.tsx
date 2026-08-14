@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import type { WalletStore } from '@/components/store';
 import { BackBar, Spinner } from '@/components/parts';
-import { HistoryRow, GenesisRow } from './shared';
+import { HistoryRow } from '@/components/molecules/money/HistoryRow';
+import { GenesisRow } from '@/components/molecules/money/GenesisRow';
 import '@/styles/screens/money/history.css';
 
 /* ----------------------------- HISTORY ------------------------------ */

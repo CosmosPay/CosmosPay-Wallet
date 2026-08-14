@@ -1,8 +1,9 @@
 import { AssetLogo, assetMeta } from '@/components/parts';
 import { fmt, trim, pct } from '@/lib/format';
 import type { AssetRow } from '@/lib/portfolio';
-import { useAnimatedNumber } from '@/components/screens/main/shared';
+import { useAnimatedNumber } from '@/components/hooks';
 import { staggerClass } from '@/constants/parts';
+import { cx } from '@/lib/cx';
 import '@/styles/screens/main/home.css';
 
 /** One holding row on Home: logo + name/amount and animated value + 24h change + favourite star.
@@ -12,7 +13,7 @@ export function AssetListRow({ row, chg, fav, onFav, onClick, index = 0 }: { row
   const shownValue = useAnimatedNumber(row.value ?? 0);
   const shownChg = useAnimatedNumber(chg ?? 0);
   return (
-    <div onClick={onClick} className={`tap home-asset-row ${staggerClass(index)}`}>
+    <div onClick={onClick} className={cx('tap home-asset-row', staggerClass(index))}>
       <div className="row g12 min0">
         <AssetLogo code={row.code} size={34} />
         <div className="col g2">
@@ -26,14 +27,14 @@ export function AssetListRow({ row, chg, fav, onFav, onClick, index = 0 }: { row
             {row.value !== null ? '$' + fmt(shownValue, 2) : '—'}
           </span>
           {chg !== undefined && (
-            <span className={chg >= 0 ? 'home-asset-chg is-up' : 'home-asset-chg is-down'}>{pct(shownChg)}</span>
+            <span className={cx('home-asset-chg', chg >= 0 ? 'is-up' : 'is-down')}>{pct(shownChg)}</span>
           )}
         </div>
         {onFav && (
           <span
             onClick={(e) => { e.stopPropagation(); onFav(); }}
             title="Favorito"
-            className={fav ? 'tap home-asset-fav is-fav' : 'tap home-asset-fav'}
+            className={cx('tap home-asset-fav', fav && 'is-fav')}
           >
             {fav ? '★' : '☆'}
           </span>

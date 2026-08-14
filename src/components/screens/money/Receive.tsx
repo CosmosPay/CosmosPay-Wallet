@@ -3,14 +3,15 @@ import type { WalletStore } from '@/components/store';
 import { BackBar, Spinner, AssetLogo } from '@/components/parts';
 import { qrDataUrl } from '@/lib/qr';
 import { buildSep7Pay } from '@/lib/sep7';
-import { copyText } from '@/lib/clipboard';
+import { useCopied } from '@/components/hooks';
+import { cx } from '@/lib/cx';
 import '@/styles/screens/money/receive.css';
 
 /* ----------------------------- RECEIVE ------------------------------ */
 export function Receive({ store }: { store: WalletStore }) {
   const t = store.t;
   const [qr, setQr] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopied();
   const pub = store.meta?.publicKey ?? '';
 
   useEffect(() => {
@@ -18,15 +19,10 @@ export function Receive({ store }: { store: WalletStore }) {
     if (pub) qrDataUrl(buildSep7Pay({ destination: pub })).then(setQr).catch(() => {});
   }, [pub]);
 
-  const copy = async () => {
-    await copyText(pub);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
-  };
   const share = async () => {
     try {
       if (navigator.share) await navigator.share({ title: t('receive.stellarAddress'), text: pub });
-      else copy();
+      else copy(pub);
     } catch {
       /* user cancelled */
     }
@@ -56,12 +52,12 @@ export function Receive({ store }: { store: WalletStore }) {
           <div className="receive-addr-label">{t('receive.addressLabel')}</div>
           <div className="receive-addr-value">{pub}</div>
         </div>
-        <div onClick={copy} className={copied ? 'receive-copy is-copied' : 'receive-copy'}>
+        <div onClick={() => copy(pub)} className={cx('receive-copy', copied && 'is-copied')}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
         </div>
       </div>
       <div className="flexr g10">
-        <button onClick={copy} className="glass-soft receive-btn">{copied ? t('common.copied') : t('common.copy')}</button>
+        <button onClick={() => copy(pub)} className="glass-soft receive-btn">{copied ? t('common.copied') : t('common.copy')}</button>
         <button onClick={share} className="receive-btn receive-btn--share">{t('common.share')}</button>
       </div>
 

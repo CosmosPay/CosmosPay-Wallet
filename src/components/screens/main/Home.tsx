@@ -1,17 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { Spinner, NetworkDropdown, NavMenu, SurfaceToggle, EnableReceivingCard } from '@/components/parts';
-import { HistoryRow, GenesisRow } from '@/components/screens/Money';
+import { HistoryRow } from '@/components/molecules/money/HistoryRow';
+import { GenesisRow } from '@/components/molecules/money/GenesisRow';
 import { HomeAction } from '@/components/molecules/main/HomeAction';
 import { AssetListRow } from '@/components/molecules/main/AssetListRow';
 import { ActivateCard } from '@/components/organisms/main/ActivateCard';
 import { computePortfolio } from '@/lib/portfolio';
 import { fmt, splitMoney, pct } from '@/lib/format';
 import { getGreeting, ageFromBirthdate } from '@/lib/greeting';
-import { useAnimatedNumber } from './shared';
+import { useAnimatedNumber } from '@/components/hooks';
+import { cx } from '@/lib/cx';
 import '@/styles/screens/main/home.css';
-
-// Stellar-ecosystem assets only (no BTC/ETH/SOL; USDT isn't native to Stellar).
 
 /** Cap a name to `max` chars, cutting back to its last vowel so it reads naturally
  *  (e.g. "Wolfeschlegelstein" -> "Wolfeschlege"). Short names pass through intact. */
@@ -92,7 +92,7 @@ export function Home({ store }: { store: WalletStore }) {
         </div>
         {/* 24h change of the WHOLE portfolio: percentage + USD difference vs yesterday
             (e.g. "↗ +1.00% · +$10.00"), green when up / red when down. */}
-        <div className={changePct >= 0 ? 'home-change is-up' : 'home-change is-down'}>
+        <div className={cx('home-change', changePct >= 0 ? 'is-up' : 'is-down')}>
           {changePct >= 0 ? '↗' : '↘'} {pct(shownPct)}
           <span className="home-change-delta">
             · {deltaUsd >= 0 ? '+' : '−'}${fmt(Math.abs(shownDelta), 2)}

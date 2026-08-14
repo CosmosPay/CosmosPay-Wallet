@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, GhostButton, BackBar, Spinner } from '@/components/parts';
-import { copyText } from '@/lib/clipboard';
+import { useCopied } from '@/components/hooks';
 import { trim } from '@/lib/format';
 import type { PayIntent } from '@/lib/cosmospay';
-import { sendableAssets, SwapTokenSelect } from './shared';
+import { AssetSelect } from '@/components/molecules/money/AssetSelect';
+import { sendableAssets } from './shared';
 import '@/styles/screens/money/pay-link.css';
 
 /* ----------------------------- PAY LINK ----------------------------- */
@@ -17,7 +18,7 @@ export function PayLink({ store }: { store: WalletStore }) {
   const [msg, setMsg] = useState('');
   const [intent, setIntent] = useState<PayIntent | null>(null);
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopied();
   const asset = assets.find((a) => a.code === code);
 
   const generate = async () => {
@@ -42,9 +43,7 @@ export function PayLink({ store }: { store: WalletStore }) {
     } catch {
       /* fall back to copy */
     }
-    await copyText(intent.uri);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    await copy(intent.uri);
   };
 
   return (
@@ -56,7 +55,7 @@ export function PayLink({ store }: { store: WalletStore }) {
           <div className="glass card">
             <div className="paylink-amount-label">{t('paylink.amount')}</div>
             <div className="row between g10">
-              <SwapTokenSelect assets={assets} code={code} onPick={setCode} />
+              <AssetSelect assets={assets} code={code} onPick={setCode} />
               <input value={amount} onChange={(e) => setAmount((e.target as HTMLInputElement).value)} inputMode="decimal" placeholder="0" className="paylink-amount-input" />
             </div>
           </div>

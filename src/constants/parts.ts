@@ -1,4 +1,5 @@
-/** Constants shared by the src/components/parts primitives. */
+/** Constants shared by the src/components/parts primitives and the hooks in
+ *  src/components/hooks.ts. */
 
 /** Numeric keypad layout shared by Send / Swap amount entry (NumberPad). */
 export const NUMPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'];
@@ -6,6 +7,9 @@ export const NUMPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0
 /** Toast exit-animation length in ms — must match the popOut / toastDown
  *  animation duration (.23s) the .is-leaving class runs in toast.css. */
 export const TOAST_EXIT_MS = 230;
+
+/** How long a copy button keeps showing its "copied" state (useCopied default). */
+export const COPY_FEEDBACK_MS = 1500;
 
 /** Rungs on the staggered-entrance ladder in src/styles/animations.css.
  *  Keep in sync with the number of .stagger-* / .stagger-dense-* classes. */

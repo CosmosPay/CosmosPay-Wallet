@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { buildKind } from '@/lib/platform';
 import { TOAST_EXIT_MS } from '@/constants/parts';
+import { cx } from '@/lib/cx';
 import '@/styles/components/toast.css';
 
 export function Toast({ toast }: { toast: WalletStore['toast'] }) {
@@ -35,29 +36,24 @@ export function Toast({ toast }: { toast: WalletStore['toast'] }) {
 
   if (!shown) return null;
   // Surface by kind + the exit swap, both as modifier classes (toast.css).
-  const mods =
-    (shown.kind === 'ok' ? ' is-ok' : shown.kind === 'err' ? ' is-err' : '') +
-    (leaving ? ' is-leaving' : '');
-
+  const ext = buildKind() === 'ext';
   // Extension (popup/side panel): a bottom card that slides up for a moment and
-  // slides back down — less intrusive than a centered overlay in a small surface.
-  // Fixed to the viewport so it never sinks below the visible area (toast.css).
-  if (buildKind() === 'ext') {
-    return (
-      <div className="toast-ext-wrap">
-        <div key={shown.msg} className={`toast-ext-card${mods}`}>
-          {shown.msg}
-        </div>
-      </div>
-    );
-  }
-
+  // slides back down — less intrusive than a centered overlay in a small surface,
+  // and fixed to the viewport so it never sinks below the visible area.
+  // Elsewhere: a flex-centered overlay so the card is centred from the first frame
+  // (animating transform on the card itself would fight the centring and make it
+  // appear off to one side before snapping to the middle).
   return (
-    // Flex-centered overlay so the card is centered from the first frame; only the
-    // inner card scales in (animating transform on the card itself would fight the
-    // centering and make it appear off to one side before snapping to the middle).
-    <div className="toast-overlay">
-      <div key={shown.msg} className={`toast-card${mods}`}>
+    <div className={ext ? 'toast-ext-wrap' : 'toast-overlay'}>
+      <div
+        key={shown.msg}
+        className={cx(
+          ext ? 'toast-ext-card' : 'toast-card',
+          shown.kind === 'ok' && 'is-ok',
+          shown.kind === 'err' && 'is-err',
+          leaving && 'is-leaving',
+        )}
+      >
         {shown.msg}
       </div>
     </div>

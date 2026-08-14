@@ -1,3 +1,4 @@
+import { cx } from '@/lib/cx';
 import '@/styles/screens/settings/settings.css';
 
 /** Glass card with a label (+ optional description) and a pill switch on the right.
@@ -9,7 +10,7 @@ export function ToggleRow({ label, desc, on, onChange }: { label: string; desc?:
         <div className="settings-item-label">{label}</div>
         {desc && <div className="settings-item-desc">{desc}</div>}
       </div>
-      <div onClick={() => onChange(!on)} className={on ? 'tap settings-switch is-on' : 'tap settings-switch'}>
+      <div onClick={() => onChange(!on)} className={cx('tap settings-switch', on && 'is-on')}>
         <div className="settings-switch-knob" />
       </div>
     </div>

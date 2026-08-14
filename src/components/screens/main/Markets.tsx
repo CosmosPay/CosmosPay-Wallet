@@ -6,6 +6,7 @@ import { MarketRow } from '@/components/molecules/main/MarketRow';
 import { BackCircle } from './shared';
 import '@/styles/screens/main/shared.css';
 import '@/styles/screens/main/markets.css';
+import { cx } from '@/lib/cx';
 
 /* ------------------------------ MARKETS ------------------------------ */
 export function Markets({ store }: { store: WalletStore }) {
@@ -32,7 +33,7 @@ export function Markets({ store }: { store: WalletStore }) {
       </div>
       <div className="flexr g8 market-tabs">
         {tabs.map((tb) => (
-          <span key={tb.k} onClick={() => store.setSelectedAsset('mkt:' + tb.k)} className={tab === tb.k ? 'tap market-tab is-on' : 'tap market-tab'}>{tb.l}</span>
+          <span key={tb.k} onClick={() => store.setSelectedAsset('mkt:' + tb.k)} className={cx('tap market-tab', tab === tb.k && 'is-on')}>{tb.l}</span>
         ))}
       </div>
       {list.map((code, i) => (

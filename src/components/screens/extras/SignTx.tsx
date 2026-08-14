@@ -4,6 +4,7 @@ import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { copyText, readText } from '@/lib/clipboard';
 import { inspectXdr, signXdr, submitXdr, type TxSummary } from '@/lib/stellar';
 import '@/styles/screens/extras/sign-tx.css';
+import { cx } from '@/lib/cx';
 
 /* --------------------------- SIGN TRANSACTION ----------------------- */
 export function SignTx({ store }: { store: WalletStore }) {
@@ -92,7 +93,7 @@ export function SignTx({ store }: { store: WalletStore }) {
           ].map((r) => (
             <div key={r[0]} className="flexr between g12 sign-tx-summary-row">
               <span className="t-muted-13">{r[0]}</span>
-              <span className={r[0] === t('sign.source') ? 'sign-tx-summary-val is-mono' : 'sign-tx-summary-val'}>{r[1]}</span>
+              <span className={cx('sign-tx-summary-val', r[0] === t('sign.source') && 'is-mono')}>{r[1]}</span>
             </div>
           ))}
         </div>

@@ -4,6 +4,7 @@ import { computePortfolio } from '@/lib/portfolio';
 import { fmt, trim, pct } from '@/lib/format';
 import { explorerAccountUrl } from '@/lib/stellar';
 import '@/styles/screens/main/asset.css';
+import { cx } from '@/lib/cx';
 
 /* --------------------------- ASSET DETAIL ---------------------------- */
 export function Asset({ store }: { store: WalletStore }) {
@@ -29,7 +30,7 @@ export function Asset({ store }: { store: WalletStore }) {
         <span className="asset-price">
           {price ? '$' + fmt(price.usd, price.usd >= 1 ? 2 : 4) : '—'}
         </span>
-        {price && <span className={price.change24h >= 0 ? 'asset-change is-up' : 'asset-change is-down'}>{price.change24h >= 0 ? '↗' : '↘'} {pct(price.change24h)}</span>}
+        {price && <span className={cx('asset-change', price.change24h >= 0 ? 'is-up' : 'is-down')}>{price.change24h >= 0 ? '↗' : '↘'} {pct(price.change24h)}</span>}
       </div>
       <div className="asset-sub">{t('asset.marketPrice')}</div>
 

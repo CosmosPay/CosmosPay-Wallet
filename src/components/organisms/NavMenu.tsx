@@ -1,9 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { WalletStore } from '@/components/store';
 import { buildKind } from '@/lib/platform';
 import { Logo } from '@/components/atoms/Logo';
 import { navTabs, navActiveKey, navGo } from './nav';
+import { cx } from '@/lib/cx';
 import '@/styles/components/nav-menu.css';
+
+/** Both drawer sections share ONE row style (metrics, weight, trailing ›). The
+ *  active tab is distinguished by its highlighted background only. */
+function NavItem({ lead, label, on, onClick }: { lead: ReactNode; label: string; on?: boolean; onClick: () => void }) {
+  return (
+    <div onClick={onClick} className={cx('tap nav-menu-item', on && 'is-on')}>
+      {lead}
+      <span className="f1 nav-menu-item-label">{label}</span>
+      <span className="nav-menu-chevron">›</span>
+    </div>
+  );
+}
 
 /** Extension-mode navigation: a hamburger button that lives in each tab screen's
  *  header (next to the profile avatar on Home). Opens a FULL-VIEW drawer that slides
@@ -43,6 +57,15 @@ export function NavMenu({ store }: { store: WalletStore }) {
   const activeKey = navActiveKey(store);
   const openDrawer = () => store.setNavMenuOpen(true);
   const closeDrawer = () => store.setNavMenuOpen(false);
+  // Quick access: the scanner + settings + the profile shortcuts, one tap away.
+  const shortcuts = [
+    { key: 'scan', label: store.t('scan.scanQr'), glyph: '⛶' },
+    ...(store.meta?.email ? [{ key: 'cosmospay', label: store.t('cosmospay.manage'), glyph: '◇' }] : []),
+    { key: 'export', label: store.t('profile.exportKeys'), glyph: '⚷' },
+    { key: 'receive', label: store.t('profile.receiveAddr'), glyph: '⛁' },
+    { key: 'settings', label: store.t('profile.settings'), glyph: '⚙' },
+    { key: 'about', label: store.t('profile.about'), glyph: '?' },
+  ];
 
   return (
     <>
@@ -55,9 +78,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
       {/* Restored already-open -> .is-instant kills the transition so there is
           absolutely no motion; fresh opens animate. */}
       {mounted && (
-        <div
-          className={`nav-drawer nav-menu-drawer${shown ? ' is-open' : ''}${restoredRef.current ? ' is-instant' : ''}`}
-        >
+        <div className={cx('nav-drawer nav-menu-drawer', shown && 'is-open', restoredRef.current && 'is-instant')}>
           <div className="row between nav-menu-header">
             <div className="row g8 nav-menu-brand">
               <Logo size={22} />Cosmos Pay
@@ -70,50 +91,30 @@ export function NavMenu({ store }: { store: WalletStore }) {
           </div>
 
           <div className="scr col f1 nav-menu-list">
-            {/* Both sections share ONE row style (metrics, weight, trailing ›). The
-                active tab is distinguished by its highlighted background only. */}
-            {tabs.map((tb) => {
-              const on = tb.key === activeKey;
-              return (
-                <div
-                  key={tb.key}
-                  onClick={() => {
-                    closeDrawer();
-                    if (!on) navGo(store, tb.key);
-                  }}
-                  className={on ? 'tap nav-menu-item is-on' : 'tap nav-menu-item'}
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink0">{tb.icon}</svg>
-                  <span className="f1 nav-menu-item-label">{tb.label}</span>
-                  <span className="nav-menu-chevron">›</span>
-                </div>
-              );
-            })}
-
-            {/* Quick access: settings + the profile shortcuts, so they're one tap away. */}
-            <div className="nav-menu-divider" />
-            {[
-              { key: 'scan', label: store.t('scan.scanQr'), glyph: '⛶' },
-              ...(store.meta?.email ? [{ key: 'cosmospay', label: store.t('cosmospay.manage'), glyph: '◇' }] : []),
-              { key: 'export', label: store.t('profile.exportKeys'), glyph: '⚷' },
-              { key: 'receive', label: store.t('profile.receiveAddr'), glyph: '⛁' },
-              { key: 'settings', label: store.t('profile.settings'), glyph: '⚙' },
-              { key: 'about', label: store.t('profile.about'), glyph: '?' },
-            ].map((it) => (
-              <div
-                key={it.key}
+            {tabs.map((tb) => (
+              <NavItem
+                key={tb.key}
+                lead={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink0">{tb.icon}</svg>}
+                label={tb.label}
+                on={tb.key === activeKey}
                 onClick={() => {
-                  // Deliberately NOT closing the drawer: its open-state persists in the
-                  // store, so pressing "back" on the destination lands here with the
-                  // menu already open — no need to reopen it.
-                  store.setScreen(it.key as Parameters<WalletStore['setScreen']>[0]);
+                  closeDrawer();
+                  if (tb.key !== activeKey) navGo(store, tb.key);
                 }}
-                className="tap nav-menu-item"
-              >
-                <span className="nav-menu-glyph">{it.glyph}</span>
-                <span className="f1 nav-menu-item-label">{it.label}</span>
-                <span className="nav-menu-chevron">›</span>
-              </div>
+              />
+            ))}
+
+            <div className="nav-menu-divider" />
+            {shortcuts.map((it) => (
+              <NavItem
+                key={it.key}
+                lead={<span className="nav-menu-glyph">{it.glyph}</span>}
+                label={it.label}
+                // Deliberately NOT closing the drawer: its open-state persists in the
+                // store, so pressing "back" on the destination lands here with the
+                // menu already open — no need to reopen it.
+                onClick={() => store.setScreen(it.key as Parameters<WalletStore['setScreen']>[0])}
+              />
             ))}
           </div>
         </div>

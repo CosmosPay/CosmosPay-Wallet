@@ -52,7 +52,7 @@
   letter-spacing: 0.3em;
   font-size: 20px;
   font-weight: 800;
-  background: var(--glass-soft-bg); /* C.cardSolid */
+  background: var(--glass-soft-bg);
   color: var(--text);
   border: 1px solid var(--glass-border);
   outline: none;

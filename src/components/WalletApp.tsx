@@ -13,6 +13,7 @@ import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from '@/components/s
 import { Fiat, BankAccount, Deposit, Withdraw } from '@/components/screens/Fiat';
 import { Liquidity, LpDeposit, LpWithdraw } from '@/components/screens/Liquidity';
 import { CosmosPay } from '@/components/screens/CosmosPay';
+import { cx } from '@/lib/cx';
 
 /** Map the Android hardware back button to a sensible in-app navigation. */
 function handleBack(store: WalletStore, exitApp: () => void) {
@@ -203,7 +204,7 @@ export default function WalletApp() {
 
   return (
     <>
-      <div className={intro === 'show' ? 'wallet-app-intro is-hidden' : 'wallet-app-intro'}>
+      <div className={cx('wallet-app-intro', intro === 'show' && 'is-hidden')}>
         <Shell showNav={showNav} store={store}>
           {screen === 'boot' ? (
             <Boot />
@@ -223,7 +224,7 @@ export default function WalletApp() {
 
 function Splash({ fading }: { fading: boolean }) {
   return (
-    <div className={fading ? 'center splash-overlay is-fading' : 'center splash-overlay'}>
+    <div className={cx('center splash-overlay', fading && 'is-fading')}>
       <div className="splash-logo">
         <Logo size={116} />
       </div>

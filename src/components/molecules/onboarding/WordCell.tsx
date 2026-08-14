@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { cx } from '@/lib/cx';
 import '@/styles/screens/onboarding/shared.css';
 
 /** Numbered seed-word cell (Backup grid + Verify slots). State-driven looks
@@ -15,7 +16,7 @@ export function WordCell({
   onClick?: () => void;
 }) {
   return (
-    <div onClick={onClick} className={className ? `ob-word-cell ${className}` : 'ob-word-cell'}>
+    <div onClick={onClick} className={cx('ob-word-cell', className)}>
       <span className="ob-word-num">{n}</span>
       <span className="ob-word-text">{children}</span>
     </div>

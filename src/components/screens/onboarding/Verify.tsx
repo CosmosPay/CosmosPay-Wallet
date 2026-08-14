@@ -2,6 +2,7 @@ import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar } from '@/components/parts';
 import { Desc, WordCell } from '@/components/molecules/onboarding';
 import '@/styles/screens/onboarding/verify.css';
+import { cx } from '@/lib/cx';
 
 export function Verify({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -32,7 +33,7 @@ export function Verify({ store }: { store: WalletStore }) {
             }
           }
           return (
-            <WordCell key={i} n={i + 1} onClick={onClick} className={`verify-word ${mod}`}>
+            <WordCell key={i} n={i + 1} onClick={onClick} className={cx('verify-word', mod)}>
               {content}
             </WordCell>
           );
@@ -46,7 +47,7 @@ export function Verify({ store }: { store: WalletStore }) {
             <div
               key={i}
               onClick={u ? undefined : () => store.tapChip(w)}
-              className={u ? 'verify-chip is-used' : 'verify-chip'}
+              className={cx('verify-chip', u && 'is-used')}
             >
               {w}
             </div>

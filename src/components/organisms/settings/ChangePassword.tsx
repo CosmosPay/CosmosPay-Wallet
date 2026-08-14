@@ -2,6 +2,8 @@ import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, Spinner } from '@/components/parts';
 import { Field } from '@/components/molecules/onboarding';
+import { useBusy } from '@/components/hooks';
+import { MIN_PWD_LEN } from '@/constants/settings';
 import { changePassword } from '@/lib/vault';
 import '@/styles/screens/settings/settings.css';
 
@@ -10,21 +12,19 @@ export function ChangePassword({ store, onDone }: { store: WalletStore; onDone: 
   const t = store.t;
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
-  const [busy, setBusy] = useState(false);
-  const ok = cur.length > 0 && next.length >= 8 && !busy;
+  const [busy, run] = useBusy();
+  const ok = cur.length > 0 && next.length >= MIN_PWD_LEN && !busy;
 
-  const submit = async () => {
-    setBusy(true);
-    try {
-      await changePassword(cur, next);
-      store.flash(t('settings.pwdUpdated'), 'ok');
-      onDone();
-    } catch (e) {
-      store.flash((e as Error).message, 'err');
-    } finally {
-      setBusy(false);
-    }
-  };
+  const submit = () =>
+    run(async () => {
+      try {
+        await changePassword(cur, next);
+        store.flash(t('settings.pwdUpdated'), 'ok');
+        onDone();
+      } catch (e) {
+        store.flash((e as Error).message, 'err');
+      }
+    });
 
   return (
     <div className="settings-subform">

@@ -12,13 +12,9 @@
   align-items: center;
 }
 
+/* row without centering (children stretch) */
 .flexr {
   display: flex;
-}
-
-/* row without centering (children stretch) */
-.t-right {
-  text-align: right;
 }
 
 .col {
@@ -36,6 +32,10 @@
   justify-content: space-between;
 }
 
+.t-right {
+  text-align: right;
+}
+
 .f1 {
   flex: 1;
 }
@@ -50,10 +50,6 @@
 
 .g2 {
   gap: 2px;
-}
-
-.g4 {
-  gap: 4px;
 }
 
 .g6 {
@@ -74,10 +70,6 @@
 
 .g10 {
   gap: 10px;
-}
-
-.g11 {
-  gap: 11px;
 }
 
 .g12 {
@@ -118,26 +110,30 @@
   padding-bottom: 110px;
 }
 
-/* ------------------------ glass surfaces ------------------------ */
-.glass {
+/* ------------------------ glass surfaces ------------------------
+   Three translucent surfaces. The full-width pill controls further down
+   (.input, .btn-primary, .btn-ghost) wear exactly the same paint, so each
+   surface is declared once for every class that uses it — only the idle
+   "breathing" animation stays exclusive to the decorative surfaces. */
+.glass,
+.input {
   background: var(--glass-bg);
   backdrop-filter: blur(22px) saturate(150%);
   -webkit-backdrop-filter: blur(22px) saturate(150%);
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-border), 0 10px 30px rgba(0, 0, 0, 0.28);
-  animation: glassBreath 8s ease-in-out infinite;
-  /* fidelity with the old C.glass */
 }
 
-.glass-soft {
+.glass-soft,
+.btn-ghost {
   background: var(--glass-soft-bg);
   backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
   border: 1px solid var(--glass-soft-border);
-  animation: glassBreath 11s ease-in-out infinite;
 }
 
-.glass-bright {
+.glass-bright,
+.btn-primary {
   background: var(--primary-bg);
   backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
@@ -145,32 +141,19 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 30px rgba(0, 0, 0, 0.3);
 }
 
-/* full-width 54px pill input on a glass surface (was C.glass + inputStyle) */
-.input {
-  width: 100%;
-  height: 54px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  padding: 0 20px;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 600;
-  outline: none;
-  background: var(--glass-bg);
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 var(--glass-border), 0 10px 30px rgba(0, 0, 0, 0.28);
+/* only the decorative surfaces breathe — a control that borrows their paint
+   must not pulse under the user's finger */
+.glass {
+  animation: glassBreath 8s ease-in-out infinite;
+}
+
+.glass-soft {
+  animation: glassBreath 11s ease-in-out infinite;
 }
 
 .card {
   border-radius: 18px;
   padding: 18px;
-}
-
-.card-16 {
-  border-radius: 16px;
-  padding: 14px 16px;
 }
 
 /* --------------------------- buttons ---------------------------- */
@@ -185,11 +168,6 @@
   cursor: pointer;
   flex-shrink: 0;
   color: var(--text);
-}
-
-.circle-34 {
-  width: 34px;
-  height: 34px;
 }
 
 /* full-width 48px pill action (paste pay-URL, scan upload/paste…) */
@@ -208,27 +186,40 @@
   color: var(--text);
 }
 
-/* main CTA (was C.glassBright + CONTROL) */
-.btn-primary {
+/* the three full-width 54px pill controls share one box */
+.input,
+.btn-primary,
+.btn-ghost {
   width: 100%;
   height: 54px;
   box-sizing: border-box;
   border-radius: 999px;
   padding: 0 20px;
-  flex-shrink: 0;
-  /* never squashed inside flex-column screens */
+}
+
+.btn-primary,
+.btn-ghost {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--primary-text);
   font-size: 16px;
   font-weight: 800;
   cursor: pointer;
-  background: var(--primary-bg);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border: 1px solid var(--primary-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* pill text field on a glass surface */
+.input {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  outline: none;
+}
+
+/* main CTA */
+.btn-primary {
+  color: var(--primary-text);
+  /* never squashed inside flex-column screens */
+  flex-shrink: 0;
 }
 
 .btn-primary:disabled {
@@ -236,24 +227,9 @@
   opacity: 0.4;
 }
 
-/* secondary full-width action (was C.glassSoft + CONTROL) */
+/* secondary full-width action */
 .btn-ghost {
-  width: 100%;
-  height: 54px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  padding: 0 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   color: var(--text);
-  font-size: 16px;
-  font-weight: 800;
-  cursor: pointer;
-  background: var(--glass-soft-bg);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  border: 1px solid var(--glass-soft-border);
 }
 
 /* -------------------------- typography -------------------------- */
@@ -287,10 +263,6 @@
   font-size: 12px;
   color: var(--dim);
   font-weight: 600;
-}
-
-.t-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 /* ---------------------- shared components ----------------------- */

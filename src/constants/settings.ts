@@ -1,9 +1,6 @@
 /** Constants for the settings area (Settings / Export) and the Cosmos Pay
  *  integration screen. Label keys resolve through i18n at render time. */
 
-/** How long the "Copied" feedback stays on screen (Settings address, Export reveal). */
-export const COPY_FEEDBACK_MS = 1500;
-
 /** Minimum vault password length (mirrors the password-setup rule / `pwd.min` copy). */
 export const MIN_PWD_LEN = 8;
 

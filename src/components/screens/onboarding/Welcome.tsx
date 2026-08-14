@@ -3,13 +3,14 @@ import { PrimaryButton, GhostButton, Logo } from '@/components/parts';
 import { LangSelect } from '@/components/flags';
 import { APP_VERSION } from '@/lib/config';
 import '@/styles/screens/onboarding/welcome.css';
+import { cx } from '@/lib/cx';
 
 export function Welcome({ store }: { store: WalletStore }) {
   const t = store.t;
   return (
     <div className="col welcome-screen">
       {/* justify-content depends on whether the cancel link is shown */}
-      <div className={store.addingWallet ? 'row welcome-topbar is-adding' : 'row welcome-topbar'}>
+      <div className={cx('row welcome-topbar', store.addingWallet && 'is-adding')}>
         {store.addingWallet && (
           <div onClick={() => store.cancelAddWallet()} className="tap row g8 welcome-cancel">
             <span className="welcome-cancel-arrow">‹</span> {t('common.cancel')}

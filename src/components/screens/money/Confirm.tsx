@@ -3,6 +3,7 @@ import { PrimaryButton, BackBar, Spinner, AssetLogo } from '@/components/parts';
 import { fmt, shortAddr } from '@/lib/format';
 import { normalizeAmount } from '@/lib/stellar';
 import '@/styles/screens/money/confirm.css';
+import { cx } from '@/lib/cx';
 
 /* ----------------------------- CONFIRM ------------------------------ */
 export function Confirm({ store }: { store: WalletStore }) {
@@ -44,7 +45,7 @@ export function Confirm({ store }: { store: WalletStore }) {
           <div key={i} className="confirm-row">
             <span className="confirm-row-label">{r[0]}</span>
             <div className="confirm-row-right">
-              <div className={r[1].includes('…') ? 'confirm-row-val is-mono' : 'confirm-row-val'}>{r[1]}</div>
+              <div className={cx('confirm-row-val', r[1].includes('…') && 'is-mono')}>{r[1]}</div>
               {r[2] && <div className="t-dim-12">{r[2]}</div>}
             </div>
           </div>

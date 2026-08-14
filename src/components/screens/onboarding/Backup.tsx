@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar } from '@/components/parts';
-import { copyText } from '@/lib/clipboard';
+import { useCopied } from '@/components/hooks';
+import { cx } from '@/lib/cx';
 import { TERMS_URL } from '@/lib/config';
-import { COPY_FEEDBACK_MS } from '@/constants/onboarding';
 import { CheckRow, Desc, WordCell } from '@/components/molecules/onboarding';
 import '@/styles/screens/onboarding/backup.css';
 
@@ -11,14 +11,8 @@ export function Backup({ store }: { store: WalletStore }) {
   const t = store.t;
   const [saved, setSaved] = useState(false);
   const [terms, setTerms] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopied();
   const words = store.draftMnemonic.split(' ');
-
-  const copy = async () => {
-    await copyText(store.draftMnemonic);
-    setCopied(true);
-    setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
-  };
 
   return (
     <div className="scr screen">
@@ -38,7 +32,7 @@ export function Backup({ store }: { store: WalletStore }) {
           </WordCell>
         ))}
       </div>
-      <button onClick={copy} className={copied ? 'glass-soft backup-copy is-copied' : 'glass-soft backup-copy'}>
+      <button onClick={() => copy(store.draftMnemonic)} className={cx('glass-soft backup-copy', copied && 'is-copied')}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
           <rect x="9" y="9" width="11" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.8" />
           <path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />

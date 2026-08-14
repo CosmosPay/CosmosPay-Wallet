@@ -3,6 +3,7 @@ import type { ChangeEvent } from 'react';
 import type { WalletStore } from '@/components/store';
 import { Spinner } from '@/components/parts';
 import '@/styles/screens/fiat/fiat.css';
+import { cx } from '@/lib/cx';
 
 /** A single KYC photo step: pick from camera/gallery, upload, show progress + result.
  *  The green "done" border comes from the `.is-done` modifier class. */
@@ -22,12 +23,11 @@ export function PhotoStep({ store, capture, title, hint, fileUrl, onUploaded }: 
   };
 
   const done = !!fileUrl && !uploading;
-  const shape = capture === 'user' ? 'fiat-photo-drop-selfie' : 'fiat-photo-drop-doc';
   return (
     <>
       <div className="fiat-photo-title">{title}</div>
       <div className="fiat-desc fiat-kyc-desc">{hint}</div>
-      <div onClick={() => inputRef.current?.click()} className={`tap center fiat-photo-drop ${shape}${done ? ' is-done' : ''}`}>
+      <div onClick={() => inputRef.current?.click()} className={cx('tap center fiat-photo-drop', capture === 'user' ? 'fiat-photo-drop-selfie' : 'fiat-photo-drop-doc', done && 'is-done')}>
         {preview ? (
           <img src={preview} alt="" className="fiat-photo-img" />
         ) : (

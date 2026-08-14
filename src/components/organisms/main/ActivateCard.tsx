@@ -1,6 +1,6 @@
-import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { Spinner } from '@/components/parts';
+import { useBusy } from '@/components/hooks';
 import '@/styles/screens/main/home.css';
 
 /** Not-yet-activated account card: fund via Friendbot (testnet) or show the address (mainnet).
@@ -8,15 +8,7 @@ import '@/styles/screens/main/home.css';
 export function ActivateCard({ store }: { store: WalletStore }) {
   const t = store.t;
   const testnet = !!store.network.friendbot;
-  const [busy, setBusy] = useState(false);
-  const fund = async () => {
-    setBusy(true);
-    try {
-      await store.fund();
-    } finally {
-      setBusy(false);
-    }
-  };
+  const [busy, run] = useBusy();
   return (
     <div className="glass card home-activate">
       <div className="home-activate-title">{t('home.activate')}</div>
@@ -25,7 +17,7 @@ export function ActivateCard({ store }: { store: WalletStore }) {
         {testnet ? t('home.activateTestnet') : t('home.activateMainnet')}
       </div>
       {testnet ? (
-        <button onClick={fund} disabled={busy} className="home-activate-btn">
+        <button onClick={() => run(() => store.fund())} disabled={busy} className="home-activate-btn">
           {busy ? <Spinner /> : t('home.getTestXlm')}
         </button>
       ) : (

@@ -32,9 +32,7 @@ export function Operations({ store }: { store: WalletStore }) {
           otherwise COMPRESS to fit (squashed rows, nothing to scroll) instead of overflowing. */}
       <div className="glass col shrink0 operations-card">
         {rows.map((r) => (
-          <div key={r.label}>
-            <OpRow glyph={r.glyph} label={r.label} sub={r.sub} onClick={r.onClick} />
-          </div>
+          <OpRow key={r.label} glyph={r.glyph} label={r.label} sub={r.sub} onClick={r.onClick} />
         ))}
       </div>
     </div>

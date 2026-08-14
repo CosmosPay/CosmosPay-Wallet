@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { Spinner } from '@/components/atoms/Spinner';
+import { cx } from '@/lib/cx';
 import '@/styles/components/confirm-sign.css';
 
 /** Password gate shown before any signing action (toggleable in Settings). */
@@ -48,7 +49,7 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
           placeholder={t('pwd.label')}
           onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => e.key === 'Enter' && submit()}
-          className={err ? 'input confirm-sign-input has-err' : 'input confirm-sign-input'}
+          className={cx('input confirm-sign-input', err && 'has-err')}
         />
         {err && <div className="confirm-sign-err">{err}</div>}
         <div className="flexr g10">

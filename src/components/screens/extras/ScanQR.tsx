@@ -6,6 +6,7 @@ import { parseStellarQr } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
 import { SCAN_DECODE_MAX_PX, SCAN_MEMO_MAX } from '@/constants/extras';
 import '@/styles/screens/extras/scan-qr.css';
+import { cx } from '@/lib/cx';
 
 /* ----------------------------- SCAN QR ------------------------------ */
 export function ScanQR({ store }: { store: WalletStore }) {
@@ -218,7 +219,7 @@ export function ScanQR({ store }: { store: WalletStore }) {
                 ? devices.find((d) => d.deviceId === deviceId)?.label || t('scan.device')
                 : `${t('scan.device')} · auto`}
             </span>
-            <span className={devOpen ? 'shrink0 scan-caret is-open' : 'shrink0 scan-caret'}>▼</span>
+            <span className={cx('shrink0 scan-caret', devOpen && 'is-open')}>▼</span>
           </button>
           {devOpen && (
             <>
@@ -230,7 +231,7 @@ export function ScanQR({ store }: { store: WalletStore }) {
                     <div
                       key={opt.id || 'auto'}
                       onClick={() => { setDeviceId(opt.id); setDevOpen(false); }}
-                      className={on ? 'tap row g9 scan-opt is-on' : 'tap row g9 scan-opt'}
+                      className={cx('tap row g9 scan-opt', on && 'is-on')}
                     >
                       <span className="f1 scan-ellipsis scan-opt-label">{opt.label}</span>
                       {on && <span className="shrink0 scan-check">✓</span>}

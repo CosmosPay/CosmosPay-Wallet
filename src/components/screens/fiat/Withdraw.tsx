@@ -6,6 +6,7 @@ import type { FiatToken, PayoutQuote } from '@/lib/cosmospay';
 import { fmtMinor, fmtFiat, toMinor, stableTokens } from '@/lib/fiatFormat';
 import { Field, Select, QuoteRow } from '@/components/molecules/fiat';
 import '@/styles/screens/fiat/withdraw.css';
+import { cx } from '@/lib/cx';
 
 /** Withdraw crypto → fiat. Quote → authorize → sign locally → create payout. */
 export function Withdraw({ store }: { store: WalletStore }) {
@@ -69,13 +70,13 @@ export function Withdraw({ store }: { store: WalletStore }) {
         {tokens.map((x) => <option key={x.code} value={x.code}>{x.code} · {x.balance.toFixed(2)}</option>)}
       </Select>
       <Field label={t('fiat.sendAmount')} value={amount} onChange={(v) => { setAmount(v); setQuote(null); }} placeholder="0.00" />
-      <div className={insufficient ? 'withdraw-balance is-insufficient' : 'withdraw-balance'}>
+      <div className={cx('withdraw-balance', insufficient && 'is-insufficient')}>
         {t('fiat.balance')}: {bal.toFixed(2)} {token}
       </div>
 
       <div onClick={() => { setCoverFees((v) => !v); setQuote(null); }} className="tap glass row between withdraw-cover">
         <span className="withdraw-cover-label">{t('fiat.coverFees')}</span>
-        <span className={coverFees ? 'withdraw-switch is-on' : 'withdraw-switch'}>
+        <span className={cx('withdraw-switch', coverFees && 'is-on')}>
           <span className="withdraw-switch-knob" />
         </span>
       </div>

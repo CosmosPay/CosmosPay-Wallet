@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar, Spinner, AssetLogo } from '@/components/parts';
-import { Field } from '@/components/screens/Onboarding';
+import { Field } from '@/components/molecules/onboarding';
 import { isValidPublicKey } from '@/lib/wallet';
 import { resolveAssetIssuer } from '@/lib/stellar';
 import { KNOWN_ISSUERS, COMMON_CODES, ASSET_CODE_MAX } from '@/constants/extras';
 import '@/styles/screens/extras/add-asset.css';
+import { cx } from '@/lib/cx';
 
 /* ---------------------------- ADD ASSET ----------------------------- */
 export function AddAsset({ store }: { store: WalletStore }) {
@@ -93,7 +94,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
                     onClick={() => addPreset(a.code, a.issuer)}
                     disabled={store.busy}
                     title={t('addAsset.add')}
-                    className={store.busy && adding !== a.code ? 'glass-soft center shrink0 add-asset-plus is-dim' : 'glass-soft center shrink0 add-asset-plus'}
+                    className={cx('glass-soft center shrink0 add-asset-plus', store.busy && adding !== a.code && 'is-dim')}
                   >
                     {adding === a.code ? <Spinner tone="text" /> : '+'}
                   </button>

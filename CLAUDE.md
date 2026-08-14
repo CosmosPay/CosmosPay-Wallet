@@ -17,8 +17,13 @@ and let the caller compose a class.
 
 // YES
 <div className="home-asset-row" />
-<button className={on ? 'network-dd-item is-on' : 'network-dd-item'} />
+<button className={cx('network-dd-item', on && 'is-on')} />
 ```
+
+Compose class names with `cx()` from `src/lib/cx.ts` — it drops falsy parts, so a
+base class plus its conditional modifiers reads as one list instead of a ternary
+repeating the base on both branches. It is also how a component folds an incoming
+`className` in: `cx('btn-primary', className)`.
 
 ### Where a rule goes
 

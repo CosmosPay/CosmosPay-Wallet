@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
-import { Field } from '@/components/screens/Onboarding';
+import { Field } from '@/components/molecules/onboarding';
+import { useBusy } from '@/components/hooks';
 import '@/styles/screens/extras/add-network.css';
 
 /* --------------------------- ADD NETWORK ---------------------------- */
@@ -10,18 +11,14 @@ export function AddNetwork({ store }: { store: WalletStore }) {
   const [name, setName] = useState('');
   const [horizon, setHorizon] = useState('');
   const [passphrase, setPassphrase] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, run] = useBusy();
   const ok = name.trim().length > 1 && /^https?:\/\/.+/.test(horizon.trim()) && passphrase.trim().length > 3 && !busy;
 
-  const save = async () => {
-    setBusy(true);
-    try {
+  const save = () =>
+    run(async () => {
       await store.addNetwork({ label: name.trim(), horizon: horizon.trim().replace(/\/$/, ''), passphrase: passphrase.trim() });
       store.go('home', 'home');
-    } finally {
-      setBusy(false);
-    }
-  };
+    });
 
   return (
     <div className="scr screen col">

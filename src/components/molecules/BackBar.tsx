@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { cx } from '@/lib/cx';
 import '@/styles/components/back-bar.css';
 
 export function BackBar({
@@ -18,7 +19,7 @@ export function BackBar({
       {right}
       {/* Exit button pinned top-RIGHT for consistency with the tab screens' header
           control — the same position across every view keeps the muscle memory. */}
-      <div onClick={onBack} className={closeIcon ? 'tap glass-soft circle-btn back-bar-btn is-close' : 'tap glass-soft circle-btn back-bar-btn'}>
+      <div onClick={onBack} className={cx('tap glass-soft circle-btn back-bar-btn', closeIcon && 'is-close')}>
         {closeIcon ? '✕' : '‹'}
       </div>
     </div>

@@ -7,6 +7,7 @@ import { DAPP_MIRROR_KEY, APPROVE_TITLES } from '@/constants/app';
 import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type WalletEntry } from '@/lib/vault';
 import { resolveNetwork, signXdr, sendPayment, type NetConfig } from '@/lib/stellar';
 import { parseStellarQr, type ParsedQr } from '@/lib/sep7';
+import { cx } from '@/lib/cx';
 
 // Extension API — no @types/chrome in this project; the popup only runs as an
 // extension page where `chrome` exists (guarded by hasChrome()).
@@ -277,7 +278,7 @@ function Row({ label, value, mono }: { label: string; value: string; mono?: bool
   return (
     <div className="approve-row">
       <span className="approve-row-label">{label}</span>
-      <span className={`approve-row-value${mono ? ' approve-mono' : ''}`}>{value}</span>
+      <span className={cx('approve-row-value', mono && 'approve-mono')}>{value}</span>
     </div>
   );
 }

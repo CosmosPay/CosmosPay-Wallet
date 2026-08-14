@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { StellarMark } from '@/components/atoms/StellarMark';
+import { cx } from '@/lib/cx';
 import '@/styles/components/network-dropdown.css';
 
 /** Network selector as a dropdown (lists networks + "add network") — dev fast-access.
@@ -27,7 +28,7 @@ export function NetworkDropdown({ store, align = 'left' }: { store: WalletStore;
                     if (!on) store.switchNetwork(n.id);
                     setOpen(false);
                   }}
-                  className={on ? 'tap network-dd-item is-on' : 'tap network-dd-item'}
+                  className={cx('tap network-dd-item', on && 'is-on')}
                 >
                   <StellarMark size={14} />
                   <span className="f1 network-dd-label">{n.label}</span>

@@ -1,6 +1,7 @@
 import type { WalletStore } from '@/components/store';
 import { Logo } from '@/components/parts';
 import { staggerClass } from '@/constants/parts';
+import { cx } from '@/lib/cx';
 import '@/styles/screens/money/shared.css';
 
 /** Visual-only history marker: when this wallet started using Cosmos Pay. Shown
@@ -10,7 +11,7 @@ export function GenesisRow({ store, index = 0, dense = false }: { store: WalletS
     ? new Date(store.meta.createdAt).toLocaleDateString(store.locale, { day: 'numeric', month: 'short', year: 'numeric' })
     : '';
   return (
-    <div className={`money-genesis-row ${staggerClass(index, dense)}`}>
+    <div className={cx('money-genesis-row', staggerClass(index, dense))}>
       <div className="glass-soft money-genesis-icon">
         <Logo size={19} />
       </div>

@@ -3,8 +3,9 @@ import { PrimaryButton, BackBar } from '@/components/parts';
 import { readText } from '@/lib/clipboard';
 import { fmt, trim } from '@/lib/format';
 import { isValidPublicKey } from '@/lib/wallet';
-import { AssetPicker } from '@/components/molecules/money/AssetPicker';
-import { spendableXlm } from './shared';
+import { cx } from '@/lib/cx';
+import { AssetSelect } from '@/components/molecules/money/AssetSelect';
+import { spendableXlm, sendableAssets } from './shared';
 import '@/styles/screens/money/send.css';
 
 /* ------------------------------- SEND ------------------------------- */
@@ -63,7 +64,7 @@ export function Send({ store }: { store: WalletStore }) {
         ⛓ {t('ops.pastePay')}
       </button>
       {s.to && (
-        <div className={addrValid ? 'send-addr-note is-valid' : 'send-addr-note is-invalid'}>
+        <div className={cx('send-addr-note', addrValid ? 'is-valid' : 'is-invalid')}>
           <span className="send-addr-dot">{addrValid ? '✓' : '✕'}</span>
           {addrValid ? t('send.validAddr') : t('send.invalidAddr')}
         </div>
@@ -80,7 +81,12 @@ export function Send({ store }: { store: WalletStore }) {
             placeholder="0"
             className="send-amount-input"
           />
-          <AssetPicker store={store} />
+          <AssetSelect
+            variant="send"
+            assets={sendableAssets(store)}
+            code={code}
+            onPick={(c) => store.setSend({ ...s, asset: c, amount: '0' })}
+          />
         </div>
         <div className="send-avail">
           {price > 0 ? `≈ $${fmt(amt * price, 2)} · ` : ''}{t('send.available')}: {trim(avail, 4)} {code}

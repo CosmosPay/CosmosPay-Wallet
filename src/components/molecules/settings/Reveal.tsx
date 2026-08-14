@@ -1,3 +1,4 @@
+import { cx } from '@/lib/cx';
 import '@/styles/screens/settings/export.css';
 
 /** A revealed secret block: title + (seed grid | mono value box) + copy button.
@@ -16,9 +17,9 @@ export function Reveal({ title, value, mono, copied, onCopy, grid, copyLabel, co
           ))}
         </div>
       ) : (
-        <div className={mono ? 'glass export-value-box export-mono' : 'glass export-value-box'}>{value}</div>
+        <div className={cx('glass export-value-box', mono && 'export-mono')}>{value}</div>
       )}
-      <button onClick={onCopy} className={copied ? 'glass-soft export-copy-btn is-copied' : 'glass-soft export-copy-btn'}>{copied ? copiedLabel : copyLabel}</button>
+      <button onClick={onCopy} className={cx('glass-soft export-copy-btn', copied && 'is-copied')}>{copied ? copiedLabel : copyLabel}</button>
     </div>
   );
 }

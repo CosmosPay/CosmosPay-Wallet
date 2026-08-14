@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, Spinner, Logo } from '@/components/parts';
+import { EyeIcon } from '@/components/atoms/EyeIcon';
 import { LangSelect } from '@/components/flags';
 import { getGreeting } from '@/lib/greeting';
 import { shortAddr } from '@/lib/format';
+import { cx } from '@/lib/cx';
 import '@/styles/screens/unlock.css';
 
 export function Unlock({ store }: { store: WalletStore }) {
@@ -54,20 +56,9 @@ export function Unlock({ store }: { store: WalletStore }) {
             type="button"
             onClick={() => setShowPwd((v) => !v)}
             aria-label={showPwd ? 'Ocultar' : 'Mostrar'}
-            className={showPwd ? 'unlock-eye is-shown' : 'unlock-eye'}
+            className={cx('unlock-eye', showPwd && 'is-shown')}
           >
-            {showPwd ? (
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
-                <path d="M2 12s3.5-7 10-7c2.2 0 4.1.8 5.6 1.9M22 12s-3.5 7-10 7c-2.2 0-4.1-.8-5.6-1.9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
-                <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-              </svg>
-            ) : (
-              <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
-                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
-                <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
-              </svg>
-            )}
+            <EyeIcon off={showPwd} />
           </button>
         </div>
       </div>
@@ -96,7 +87,7 @@ export function Unlock({ store }: { store: WalletStore }) {
           <div className="unlock-switch">
             <button onClick={() => setWalletOpen((o) => !o)} className="glass-soft unlock-switch-btn">
               {t('unlock.switchTitle')}
-              <span className={walletOpen ? 'unlock-switch-caret is-open' : 'unlock-switch-caret'}>▼</span>
+              <span className={cx('unlock-switch-caret', walletOpen && 'is-open')}>▼</span>
             </button>
             {walletOpen && (
               <>
@@ -116,7 +107,7 @@ export function Unlock({ store }: { store: WalletStore }) {
                       );
                     }
                     return (
-                      <div key={w.id} className={active ? 'unlock-wallet-row is-active' : 'unlock-wallet-row'}>
+                      <div key={w.id} className={cx('unlock-wallet-row', active && 'is-active')}>
                         <div onClick={() => { if (!active) store.selectWalletForUnlock(w.id); setWalletOpen(false); }} className="tap f1 row g10 min0 unlock-wallet-main">
                           <div className="unlock-wallet-avatar">
                             {w.avatar ? <img src={w.avatar} alt="" className="unlock-wallet-avatar-img" /> : w.name.slice(0, 1).toUpperCase()}

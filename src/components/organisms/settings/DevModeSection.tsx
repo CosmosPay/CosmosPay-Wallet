@@ -3,6 +3,7 @@ import type { WalletStore } from '@/components/store';
 import { SettingsSection } from '@/components/molecules/settings/SettingsSection';
 import { ENDPOINT_FIELDS, devModeEnabled, setDevMode, getOverrides, setOverride, resetOverrides, type EndpointOverrides } from '@/lib/endpoints';
 import '@/styles/screens/settings/settings.css';
+import { cx } from '@/lib/cx';
 
 /** Developer mode: live-overridable endpoints (prices API, Developer Platform,
  *  payments gateway). Persisted in localStorage; getters in lib/endpoints resolve
@@ -33,7 +34,7 @@ export function DevModeSection({ store }: { store: WalletStore }) {
     <SettingsSection title={t('settings.devMode')}>
       <div onClick={toggle} className="tap glass row between settings-tile">
         <span className="settings-devmode-label">{t('settings.devMode')}</span>
-        <div className={on ? 'settings-switch settings-switch-sm is-on' : 'settings-switch settings-switch-sm'}>
+        <div className={cx('settings-switch settings-switch-sm', on && 'is-on')}>
           <div className="settings-switch-knob" />
         </div>
       </div>

@@ -9,7 +9,7 @@
 }
 
 .operations-card { border-radius: 18px; overflow: hidden; }
-/* hairline between rows (the row wrappers are the card's only children) */
+/* hairline between rows (the OpRows are the card's only children) */
 .operations-card > div:not(:last-child) { border-bottom: 1px solid var(--hairline); }
 
 .operations-row { padding: 15px 16px; cursor: pointer; }

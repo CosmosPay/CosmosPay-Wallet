@@ -1,9 +1,10 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useRef } from 'react';
 import type { WalletStore } from '@/components/store';
 import { buildKind } from '@/lib/platform';
 import { shortAddr } from '@/lib/format';
 import { getGreeting } from '@/lib/greeting';
-import { copyText } from '@/lib/clipboard';
+import { useCopied } from '@/components/hooks';
+import { cx } from '@/lib/cx';
 import { BackCircle } from './shared';
 import '@/styles/screens/main/profile.css';
 
@@ -49,7 +50,7 @@ export function Profile({ store }: { store: WalletStore }) {
     [store.meta?.name, store.meta?.birthdate, t, store.meta?.gender],
   );
   const fileRef = useRef<HTMLInputElement>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, copy] = useCopied();
 
   const onFile = async (e: { target: HTMLInputElement }) => {
     const f = e.target.files?.[0];
@@ -61,11 +62,6 @@ export function Profile({ store }: { store: WalletStore }) {
       }
     }
     e.target.value = '';
-  };
-  const copyAddr = async () => {
-    await copyText(pub);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -92,7 +88,7 @@ export function Profile({ store }: { store: WalletStore }) {
           <span className="profile-name">{name}</span>
           <div className="row g7">
             <span className="profile-addr">{shortAddr(pub, 8, 8)}</span>
-            <span onClick={copyAddr} className={copied ? 'tap profile-copy is-copied' : 'tap profile-copy'} title={t('profile.copyAddress')}>
+            <span onClick={() => copy(pub)} className={cx('tap profile-copy', copied && 'is-copied')} title={t('profile.copyAddress')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.9" /><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>
             </span>
           </div>
@@ -110,7 +106,7 @@ export function Profile({ store }: { store: WalletStore }) {
         {store.wallets.map((w) => {
           const active = w.id === store.meta?.id;
           return (
-            <div key={w.id} onClick={() => !active && store.switchWallet(w.id)} className={active ? 'tap profile-wallet-row is-active' : 'tap profile-wallet-row'}>
+            <div key={w.id} onClick={() => !active && store.switchWallet(w.id)} className={cx('tap profile-wallet-row', active && 'is-active')}>
               <div className="profile-wallet-avatar">{w.name.slice(0, 1).toUpperCase()}</div>
               <div className="f1 min0">
                 <div className="profile-wallet-name">{w.name}</div>

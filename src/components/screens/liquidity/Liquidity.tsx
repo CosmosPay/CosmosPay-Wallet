@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import type { SwapAsset, WalletStore } from '@/components/store';
 import type { LiquidityPool, LiquidityPosition } from '@/lib/cosmospay';
 import { AssetLogo, BackBar, PrimaryButton, Spinner, TokenAvatar, EnableReceivingCard } from '@/components/parts';
 import { trim } from '@/lib/format';
 import { networkEnv } from '@/lib/stellar';
+import { cx } from '@/lib/cx';
 import '@/styles/screens/money/liquidity.css';
 
 /* ----------------------------- LIQUIDITY ----------------------------- */
@@ -20,6 +22,81 @@ const toAsset = (r: { asset: string; issuer: string | null }): SwapAsset => ({
   issuer: r.issuer,
 });
 const pairLabel = (rs: { asset: string }[]) => rs.map(label).join(' / ');
+/** Reserve/redeemable amounts as the card's asset rows want them. */
+const amountRows = (rs: { asset: string; amount: string }[], decimals: number) =>
+  rs.map((r) => ({ code: label(r), amount: trim(parseFloat(r.amount) || 0, decimals) }));
+
+/** Loading / empty / list frame — both tabs load asynchronously and start at null. */
+function LpSection<T>({
+  store,
+  items,
+  emptyKey,
+  children,
+}: {
+  store: WalletStore;
+  items: T[] | null;
+  emptyKey: string;
+  children: (item: T) => ReactNode;
+}) {
+  if (items === null) {
+    return (
+      <div className="center g8 lp-loading">
+        <Spinner tone="dim" /> {store.t('lp.loading')}
+      </div>
+    );
+  }
+  if (items.length === 0) return <div className="glass swap-note lp-empty">{store.t(emptyKey)}</div>;
+  return <div className="col g10">{items.map(children)}</div>;
+}
+
+/** One pool card: pair header (+ optional trailing column), the asset amounts and
+ *  the single action the card offers. Shared by both tabs. */
+function LpCard({
+  title,
+  sub,
+  right,
+  rowsLabel,
+  rows,
+  action,
+  onAction,
+}: {
+  title: string;
+  sub: ReactNode;
+  right?: ReactNode;
+  rowsLabel?: string;
+  rows: { code: string; amount: string }[];
+  action: string;
+  onAction: () => void;
+}) {
+  return (
+    <div className="glass card lp-item">
+      <div className="row between g10 lp-item-head">
+        <div className="row g10">
+          <TokenAvatar glyph="◇" tone="pool" size={34} />
+          <div>
+            <div className="lp-item-title">{title}</div>
+            <div className="t-dim-12">{sub}</div>
+          </div>
+        </div>
+        {right}
+      </div>
+      <div className="lp-redeem">
+        {rowsLabel && <div className="lp-redeem-label">{rowsLabel}</div>}
+        {rows.map((r) => (
+          <div key={r.code} className="lp-redeem-row">
+            <span className="row g8">
+              <AssetLogo code={r.code} size={20} /> {r.code}
+            </span>
+            <span className="lp-redeem-amt">{r.amount}</span>
+          </div>
+        ))}
+      </div>
+      <button className="lp-action-btn" onClick={onAction}>
+        {action}
+      </button>
+    </div>
+  );
+}
 
 export function Liquidity({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -55,135 +132,67 @@ export function Liquidity({ store }: { store: WalletStore }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, tab]);
 
-  return (
-    <div className="scr screen col pb-104">
-      <BackBar title={t('lp.title')} onBack={() => store.go('earn', 'earn')} />
-
-      {!enabled ? (
+  if (!enabled) {
+    return (
+      <div className="scr screen col pb-104">
+        <BackBar title={t('lp.title')} onBack={() => store.go('earn', 'earn')} />
         <div className="lp-enable">
           <div className="glass swap-note">{t('lp.enableFirst')}</div>
           <EnableReceivingCard store={store} />
         </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="scr screen col pb-104">
+      <BackBar title={t('lp.title')} onBack={() => store.go('earn', 'earn')} />
+
+      <div className="lp-tabs">
+        {([['positions', t('lp.myPositions')], ['pools', t('lp.explore')]] as const).map(([key, text]) => (
+          <button key={key} className={cx('lp-tab', tab === key && 'is-on')} onClick={() => setTab(key)}>
+            {text}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'positions' ? (
+        <LpSection store={store} items={positions} emptyKey="lp.noPositions">
+          {(p) => (
+            <LpCard
+              key={p.poolId}
+              title={pairLabel(p.reserves)}
+              sub={`${t('lp.poolShare')}: ${trim(p.shareOfPoolBps / 100, 2)}%`}
+              right={
+                <div className="lp-item-shares">
+                  <div className="lp-item-shares-val">{trim(parseFloat(p.shares) || 0, 4)}</div>
+                  <div className="t-dim-12">{t('lp.shares')}</div>
+                </div>
+              }
+              rowsLabel={t('lp.redeemable')}
+              rows={amountRows(p.redeemable, 4)}
+              action={t('lp.withdraw')}
+              onAction={() => store.openWithdraw(p)}
+            />
+          )}
+        </LpSection>
       ) : (
-        <>
-          <div className="lp-tabs">
-            <button className={tab === 'positions' ? 'lp-tab is-on' : 'lp-tab'} onClick={() => setTab('positions')}>
-              {t('lp.myPositions')}
-            </button>
-            <button className={tab === 'pools' ? 'lp-tab is-on' : 'lp-tab'} onClick={() => setTab('pools')}>
-              {t('lp.explore')}
-            </button>
-          </div>
-
-          {tab === 'positions' && <Positions store={store} positions={positions} />}
-          {tab === 'pools' && <Pools store={store} pools={pools} />}
-
-          <div className="lp-spacer" />
-          <PrimaryButton onClick={() => store.openDeposit()}>{t('lp.newDeposit')}</PrimaryButton>
-        </>
+        <LpSection store={store} items={pools} emptyKey="lp.noPools">
+          {(pool) => (
+            <LpCard
+              key={pool.id}
+              title={pairLabel(pool.reserves)}
+              sub={`${t('lp.fee')}: ${trim(pool.feeBp / 100, 2)}% · ${t('lp.tvl')} ${trim(parseFloat(pool.totalShares) || 0, 2)}`}
+              rows={amountRows(pool.reserves, 2)}
+              action={t('lp.deposit')}
+              onAction={() => store.openDeposit(toAsset(pool.reserves[0]), toAsset(pool.reserves[1]))}
+            />
+          )}
+        </LpSection>
       )}
-    </div>
-  );
-}
 
-/* --------------------------- positions tab --------------------------- */
-function Positions({ store, positions }: { store: WalletStore; positions: LiquidityPosition[] | null }) {
-  const t = store.t;
-  if (positions === null) {
-    return (
-      <div className="center g8 lp-loading">
-        <Spinner tone="dim" /> {t('lp.loading')}
-      </div>
-    );
-  }
-  if (positions.length === 0) {
-    return <div className="glass swap-note lp-empty">{t('lp.noPositions')}</div>;
-  }
-  return (
-    <div className="col g10">
-      {positions.map((p) => (
-        <div key={p.poolId} className="glass card lp-item">
-          <div className="row between g10 lp-item-head">
-            <div className="row g10">
-              <TokenAvatar glyph="◇" tone="pool" size={34} />
-              <div>
-                <div className="lp-item-title">{pairLabel(p.reserves)}</div>
-                <div className="t-dim-12">
-                  {t('lp.poolShare')}: {trim(p.shareOfPoolBps / 100, 2)}%
-                </div>
-              </div>
-            </div>
-            <div className="lp-item-shares">
-              <div className="lp-item-shares-val">{trim(parseFloat(p.shares) || 0, 4)}</div>
-              <div className="t-dim-12">{t('lp.shares')}</div>
-            </div>
-          </div>
-          <div className="lp-redeem">
-            <div className="lp-redeem-label">{t('lp.redeemable')}</div>
-            {p.redeemable.map((r) => (
-              <div key={label(r)} className="lp-redeem-row">
-                <span className="row g8">
-                  <AssetLogo code={label(r)} size={20} /> {label(r)}
-                </span>
-                <span className="lp-redeem-amt">{trim(parseFloat(r.amount) || 0, 4)}</span>
-              </div>
-            ))}
-          </div>
-          <button className="lp-action-btn" onClick={() => store.openWithdraw(p)}>
-            {t('lp.withdraw')}
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* ----------------------------- pools tab ----------------------------- */
-function Pools({ store, pools }: { store: WalletStore; pools: LiquidityPool[] | null }) {
-  const t = store.t;
-  if (pools === null) {
-    return (
-      <div className="center g8 lp-loading">
-        <Spinner tone="dim" /> {t('lp.loading')}
-      </div>
-    );
-  }
-  if (pools.length === 0) {
-    return <div className="glass swap-note lp-empty">{t('lp.noPools')}</div>;
-  }
-  return (
-    <div className="col g10">
-      {pools.map((pool) => (
-        <div key={pool.id} className="glass card lp-item">
-          <div className="row between g10 lp-item-head">
-            <div className="row g10">
-              <TokenAvatar glyph="◇" tone="pool" size={34} />
-              <div>
-                <div className="lp-item-title">{pairLabel(pool.reserves)}</div>
-                <div className="t-dim-12">
-                  {t('lp.fee')}: {trim(pool.feeBp / 100, 2)}% · {t('lp.tvl')} {trim(parseFloat(pool.totalShares) || 0, 2)}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="lp-redeem">
-            {pool.reserves.map((r) => (
-              <div key={label(r)} className="lp-redeem-row">
-                <span className="row g8">
-                  <AssetLogo code={label(r)} size={20} /> {label(r)}
-                </span>
-                <span className="lp-redeem-amt">{trim(parseFloat(r.amount) || 0, 2)}</span>
-              </div>
-            ))}
-          </div>
-          <button
-            className="lp-action-btn"
-            onClick={() => store.openDeposit(toAsset(pool.reserves[0]), toAsset(pool.reserves[1]))}
-          >
-            {t('lp.deposit')}
-          </button>
-        </div>
-      ))}
+      <div className="lp-spacer" />
+      <PrimaryButton onClick={() => store.openDeposit()}>{t('lp.newDeposit')}</PrimaryButton>
     </div>
   );
 }

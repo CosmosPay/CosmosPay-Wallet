@@ -1,7 +1,52 @@
 import { useState } from 'react';
+import type { ReactNode } from 'react';
 import type { WalletStore } from '@/components/store';
 import { Spinner } from '@/components/atoms/Spinner';
+import { useBusy } from '@/components/hooks';
 import '@/styles/components/enable-receiving-card.css';
+
+/** The card shell every state below wears: title, description, optional body,
+ *  a primary action that spins while busy and an optional secondary action. */
+function Card({
+  title,
+  desc,
+  note,
+  children,
+  cta,
+  onCta,
+  ctaDisabled,
+  secondary,
+  onSecondary,
+  busy,
+}: {
+  title: string;
+  desc: string;
+  note?: string;
+  children?: ReactNode;
+  cta: string;
+  onCta: () => void;
+  ctaDisabled?: boolean;
+  secondary?: string;
+  onSecondary?: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="glass card enable-receiving-card">
+      <div className="enable-receiving-title">{title}</div>
+      <div className="enable-receiving-desc">{desc}</div>
+      {note && <div className="enable-receiving-mismatch">{note}</div>}
+      {children}
+      <button onClick={onCta} disabled={busy || ctaDisabled} className="enable-receiving-cta">
+        {busy ? <Spinner /> : cta}
+      </button>
+      {secondary && (
+        <button onClick={onSecondary} disabled={busy} className="enable-receiving-cancel">
+          {secondary}
+        </button>
+      )}
+    </div>
+  );
+}
 
 /**
  * CosmosPay account card — shared by the Home screen and the Swap screen so both
@@ -16,23 +61,24 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
   const [code, setCode] = useState('');
   // LOCAL busy: only this card's own actions spin its buttons — an unrelated global
   // action (e.g. Home's "activate account" / Friendbot funding) must not.
-  const [busy, setBusy] = useState(false);
-  const run = async (fn: () => unknown) => {
-    setBusy(true);
-    try {
-      await fn();
-    } finally {
-      setBusy(false);
-    }
-  };
+  const [busy, run] = useBusy();
 
   // Link flow — enter the emailed access code.
   if (link?.stage === 'sent') {
-    const ready = code.length === 6 && !busy;
     return (
-      <div className="glass card enable-receiving-card">
-        <div className="enable-receiving-title">{t('cosmospay.codeTitle')}</div>
-        <div className="enable-receiving-desc">{t('cosmospay.codeDesc')}</div>
+      <Card
+        busy={busy}
+        title={t('cosmospay.codeTitle')}
+        desc={t('cosmospay.codeDesc')}
+        cta={t('cosmospay.linkVerifyCta')}
+        onCta={() => run(() => store.submitLinkCode(code))}
+        ctaDisabled={code.length !== 6}
+        secondary={t('common.cancel')}
+        onSecondary={() => {
+          setCode('');
+          store.cancelLink();
+        }}
+      >
         <input
           value={code}
           onChange={(e) => setCode((e.target as HTMLInputElement).value.replace(/\D/g, '').slice(0, 6))}
@@ -41,33 +87,22 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
           placeholder={t('cosmospay.codePlaceholder')}
           className="enable-receiving-code"
         />
-        <button
-          onClick={() => run(() => store.submitLinkCode(code))}
-          disabled={!ready}
-          className="enable-receiving-cta"
-        >
-          {busy ? <Spinner /> : t('cosmospay.linkVerifyCta')}
-        </button>
-        <button onClick={() => { setCode(''); store.cancelLink(); }} disabled={busy} className="enable-receiving-cancel">
-          {t('common.cancel')}
-        </button>
-      </div>
+      </Card>
     );
   }
 
   // Link flow — offer to link the existing account.
   if (link?.stage === 'offer') {
     return (
-      <div className="glass card enable-receiving-card">
-        <div className="enable-receiving-title">{t('cosmospay.existsLinkTitle')}</div>
-        <div className="enable-receiving-desc">{t('cosmospay.existsLinkDesc')}</div>
-        <button onClick={() => run(() => store.linkReceiving())} disabled={busy} className="enable-receiving-cta">
-          {busy ? <Spinner /> : t('cosmospay.linkCta')}
-        </button>
-        <button onClick={() => store.cancelLink()} disabled={busy} className="enable-receiving-cancel">
-          {t('common.cancel')}
-        </button>
-      </div>
+      <Card
+        busy={busy}
+        title={t('cosmospay.existsLinkTitle')}
+        desc={t('cosmospay.existsLinkDesc')}
+        cta={t('cosmospay.linkCta')}
+        onCta={() => run(() => store.linkReceiving())}
+        secondary={t('common.cancel')}
+        onSecondary={() => store.cancelLink()}
+      />
     );
   }
 
@@ -77,26 +112,15 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
   const pendingEmail = store.cosmosPayPending?.email;
   const emailMismatch = pending && !!pendingEmail && !!store.meta?.email && pendingEmail !== store.meta.email;
   return (
-    <div className="glass card enable-receiving-card">
-      <div className="enable-receiving-title">{pending ? t('cosmospay.pendingTitle') : t('cosmospay.cardTitle')}</div>
-      <div className="enable-receiving-desc">{pending ? t('cosmospay.pendingDesc') : t('cosmospay.cardDesc')}</div>
-      {emailMismatch && (
-        <div className="enable-receiving-mismatch">
-          {t('cosmospay.emailMismatch', { old: pendingEmail!, new: store.meta!.email })}
-        </div>
-      )}
-      <button
-        onClick={() => run(() => (pending ? store.claimReceiving() : store.enableReceiving()))}
-        disabled={busy}
-        className="enable-receiving-cta"
-      >
-        {busy ? <Spinner /> : pending ? t('cosmospay.confirmCta') : t('cosmospay.cta')}
-      </button>
-      {pending && (
-        <button onClick={() => run(() => store.resendReceiving())} disabled={busy} className="enable-receiving-cancel">
-          {t('cosmospay.resend')}
-        </button>
-      )}
-    </div>
+    <Card
+      busy={busy}
+      title={pending ? t('cosmospay.pendingTitle') : t('cosmospay.cardTitle')}
+      desc={pending ? t('cosmospay.pendingDesc') : t('cosmospay.cardDesc')}
+      note={emailMismatch ? t('cosmospay.emailMismatch', { old: pendingEmail!, new: store.meta!.email }) : undefined}
+      cta={pending ? t('cosmospay.confirmCta') : t('cosmospay.cta')}
+      onCta={() => run(() => (pending ? store.claimReceiving() : store.enableReceiving()))}
+      secondary={pending ? t('cosmospay.resend') : undefined}
+      onSecondary={() => run(() => store.resendReceiving())}
+    />
   );
 }

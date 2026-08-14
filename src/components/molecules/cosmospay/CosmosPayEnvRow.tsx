@@ -1,4 +1,5 @@
 import type { WalletStore } from '@/components/store';
+import { cx } from '@/lib/cx';
 import '@/styles/screens/cosmos-pay.css';
 
 /** One network's Cosmos Pay key: status + per-network unlink. */
@@ -8,7 +9,7 @@ export function CosmosPayEnvRow({ store, net, env, present }: { store: WalletSto
     <div className="cosmospay-env">
       <div>
         <div className="cosmospay-env-net">{net}</div>
-        <div className={present ? 'cosmospay-env-status is-linked' : 'cosmospay-env-status'}>{present ? t('cosmospay.keyLinked') : t('cosmospay.keyMissing')}</div>
+        <div className={cx('cosmospay-env-status', present && 'is-linked')}>{present ? t('cosmospay.keyLinked') : t('cosmospay.keyMissing')}</div>
       </div>
       {present && (
         <button onClick={() => store.unlinkCosmosPayEnv(env)} className="cosmospay-unlink-btn">

@@ -1,14 +1,5 @@
-/* Send screen (src/components/screens/money/Send.tsx) + AssetPicker. */
-/* asset picker dropdown */
-.send-picker { position: relative; }
-.send-picker-btn { display: flex; align-items: center; gap: 8px; color: var(--text); border: none; border-radius: 999px; padding: 7px 14px 7px 7px; font-size: 14px; font-weight: 800; cursor: pointer; } /* on .glass-soft */
-.send-picker-caret { font-size: 9px; opacity: 0.7; transition: transform 0.2s; }
-.send-picker-caret.is-open { transform: rotate(180deg); }
-.send-picker-overlay { position: fixed; inset: 0; z-index: 30; }
-.send-picker-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 31; min-width: 210px; border-radius: 16px; padding: 6px; animation: fadeUp 0.18s ease; } /* on .glass */
-.send-picker-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 11px; cursor: pointer; background: transparent; }
-.send-picker-item.is-on { background: var(--surface); }
-.send-picker-item-code { flex: 1; font-size: 13.5px; font-weight: 700; }
+/* Send screen (src/components/screens/money/Send.tsx).
+   The asset dropdown is the shared AssetSelect — see components/asset-select.css. */
 
 /* destination + amount + shortcuts */
 .send-to-label { margin: 8px 0 6px; } /* on .label-up */

@@ -1,10 +1,6 @@
+/** Balance helpers shared by the money screens. The presentational molecules live
+ *  under src/components/molecules/money and are imported straight from there. */
 import type { WalletStore } from '@/components/store';
-
-// Presentational molecules moved to the atomic layer; re-exported here so existing
-// `from './shared'` / '@/components/screens/Money' imports keep working unchanged.
-export { SwapTokenSelect } from '@/components/molecules/money/SwapTokenSelect';
-export { HistoryRow } from '@/components/molecules/money/HistoryRow';
-export { GenesisRow } from '@/components/molecules/money/GenesisRow';
 
 export function spendableXlm(store: WalletStore): number {
   const acc = store.account;

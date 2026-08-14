@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { Reveal } from '@/components/molecules/settings/Reveal';
-import { copyText } from '@/lib/clipboard';
+import { useBusy, useCopied } from '@/components/hooks';
 import '@/styles/screens/settings/export.css';
 
 /* ------------------------------ EXPORT ------------------------------ */
@@ -10,22 +10,14 @@ export function Export({ store }: { store: WalletStore }) {
   const t = store.t;
   const [pwd, setPwd] = useState('');
   const [revealed, setRevealed] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [copiedKey, setCopiedKey] = useState('');
+  const [busy, run] = useBusy();
+  const [copied, copy] = useCopied();
 
-  const unlock = async () => {
-    setBusy(true);
-    const ok = await store.checkPassword(pwd);
-    setBusy(false);
-    if (ok) setRevealed(true);
-    else store.flash(t('pwd.label') + ' ✗', 'err');
-  };
-
-  const copy = async (label: string, value: string) => {
-    await copyText(value);
-    setCopiedKey(label);
-    setTimeout(() => setCopiedKey(''), 1500);
-  };
+  const unlock = () =>
+    run(async () => {
+      if (await store.checkPassword(pwd)) setRevealed(true);
+      else store.flash(t('pwd.label') + ' ✗', 'err');
+    });
 
   const mnemonic = store.session?.mnemonic ?? null;
   const secret = store.session?.secret ?? '';
@@ -52,13 +44,13 @@ export function Export({ store }: { store: WalletStore }) {
       ) : (
         <>
           {mnemonic ? (
-            <Reveal title={t('export.phraseTitle')} value={mnemonic} mono={false} copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copiedKey === 'phrase'} onCopy={() => copy('phrase', mnemonic)} grid />
+            <Reveal title={t('export.phraseTitle')} value={mnemonic} mono={false} copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'phrase'} onCopy={() => copy(mnemonic, 'phrase')} grid />
           ) : (
             <div className="glass export-nophrase">
               {t('export.noPhrase')}
             </div>
           )}
-          <Reveal title={t('export.secretTitle')} value={secret} mono copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copiedKey === 'secret'} onCopy={() => copy('secret', secret)} />
+          <Reveal title={t('export.secretTitle')} value={secret} mono copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'secret'} onCopy={() => copy(secret, 'secret')} />
           <div className="export-compat">
             {t('export.compat')}
           </div>

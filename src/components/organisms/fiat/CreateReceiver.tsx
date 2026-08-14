@@ -5,6 +5,7 @@ import { Field, Select } from '@/components/molecules/fiat';
 import { PhotoStep } from './PhotoStep';
 import { COUNTRIES, DOC_TYPES } from '@/constants/fiat';
 import '@/styles/screens/fiat/fiat.css';
+import { cx } from '@/lib/cx';
 
 /** KYC wizard: personal info → doc front → doc back → selfie, then create the receiver. */
 export function CreateReceiver({ store }: { store: WalletStore }) {
@@ -55,7 +56,7 @@ export function CreateReceiver({ store }: { store: WalletStore }) {
       {/* progress dots */}
       <div className="flexr g6 fiat-progress">
         {[0, 1, 2, 3].map((i) => (
-          <div key={i} className={i <= step ? 'fiat-progress-dot is-active' : 'fiat-progress-dot'} />
+          <div key={i} className={cx('fiat-progress-dot', i <= step && 'is-active')} />
         ))}
       </div>
 

@@ -3,9 +3,11 @@ import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar, Spinner, EnableReceivingCard } from '@/components/parts';
 import { trim } from '@/lib/format';
 import { networkEnv } from '@/lib/stellar';
+import { cx } from '@/lib/cx';
 import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
 import type { SwapQuote } from '@/lib/cosmospay';
-import { spendableXlm, sendableAssets, SwapTokenSelect } from './shared';
+import { AssetSelect } from '@/components/molecules/money/AssetSelect';
+import { spendableXlm, sendableAssets } from './shared';
 import '@/styles/screens/money/swap.css';
 
 /* ------------------------------- SWAP ------------------------------- */
@@ -59,8 +61,6 @@ export function Swap({ store }: { store: WalletStore }) {
   // Effective rate the user actually gets (fee included): dest estimated per 1 unit paid.
   const rate = quote && payNum > 0 ? (parseFloat(quote.destination.estimated) || 0) / payNum : null;
 
-  const asSwapAsset = (b: { code: string; issuer: string | null }) => ({ code: b.code, issuer: b.issuer });
-
   // Clear a stale quote the instant the amount or either asset changes.
   useEffect(() => {
     setQuote(null);
@@ -71,14 +71,11 @@ export function Swap({ store }: { store: WalletStore }) {
   // executed swap re-prices server-side on submit and enforces destMin, so the user
   // is protected even if the displayed quote is a few seconds old.
   useEffect(() => {
-    const amt = parseFloat(pay) || 0;
-    const f = assets.find((a) => a.code === fromCode);
-    const tt = assets.find((a) => a.code === toCode);
-    if (!enabled || amt <= 0 || !f || !tt || f.code === tt.code) return;
+    if (!enabled || payNum <= 0 || !from || !to || sameAsset) return;
     let cancelled = false;
     const run = async () => {
       setQuoting(true);
-      const q = await store.quoteSwap(pay, { code: f.code, issuer: f.issuer }, { code: tt.code, issuer: tt.issuer });
+      const q = await store.quoteSwap(pay, from, to);
       if (cancelled) return;
       setQuoting(false);
       if (q) setQuote(q);
@@ -104,11 +101,11 @@ export function Swap({ store }: { store: WalletStore }) {
     <div className="scr screen col pb-104">
       <BackBar title={t('swap.title')} onBack={() => store.go('home', 'home')} />
 
-      <div className={openSel ? 'swap-stack is-open' : 'swap-stack'}>
-        <div className={openSel === 'from' ? 'glass swap-card is-active' : 'glass swap-card'}>
+      <div className={cx('swap-stack', openSel && 'is-open')}>
+        <div className={cx('glass swap-card', openSel === 'from' && 'is-active')}>
           <div className="swap-label">{t('swap.pay')}</div>
           <div className="row between g10">
-            <SwapTokenSelect assets={assets} code={fromCode} onPick={setFromCode} open={openSel === 'from'} onToggle={(n) => setOpenSel(n ? 'from' : null)} />
+            <AssetSelect assets={assets} code={fromCode} onPick={setFromCode} open={openSel === 'from'} onToggle={(n) => setOpenSel(n ? 'from' : null)} />
             <input value={pay} onChange={(e) => setPay((e.target as HTMLInputElement).value)} inputMode="decimal" className="swap-input" />
           </div>
           <div className="swap-balance">
@@ -121,11 +118,11 @@ export function Swap({ store }: { store: WalletStore }) {
         <div className="swap-seam">
           <button onClick={invert} aria-label="invert" className="swap-invert">⇅</button>
         </div>
-        <div className={openSel === 'to' ? 'glass swap-card swap-card--to is-active' : 'glass swap-card swap-card--to'}>
+        <div className={cx('glass swap-card swap-card--to', openSel === 'to' && 'is-active')}>
           <div className="swap-label">{t('swap.receiveEst')}</div>
           <div className="row between g10">
-            <SwapTokenSelect assets={assets} code={toCode} onPick={setToCode} open={openSel === 'to'} onToggle={(n) => setOpenSel(n ? 'to' : null)} />
-            <div className={quote ? 'swap-receive' : 'swap-receive is-empty'}>{quote ? trim(receive, 4) : '—'}</div>
+            <AssetSelect assets={assets} code={toCode} onPick={setToCode} open={openSel === 'to'} onToggle={(n) => setOpenSel(n ? 'to' : null)} />
+            <div className={cx('swap-receive', !quote && 'is-empty')}>{quote ? trim(receive, 4) : '—'}</div>
           </div>
           {rate !== null && (
             <div className="swap-rate">
@@ -180,7 +177,7 @@ export function Swap({ store }: { store: WalletStore }) {
 
       <div className="swap-spacer" />
       {enabled ? (
-        <PrimaryButton disabled={store.busy || !canSwap} onClick={() => from && to && store.submitSwap(pay, asSwapAsset(from), asSwapAsset(to))}>
+        <PrimaryButton disabled={store.busy || !canSwap} onClick={() => from && to && store.submitSwap(pay, from, to)}>
           {store.busy ? <Spinner /> : t('swap.cta')}
         </PrimaryButton>
       ) : (

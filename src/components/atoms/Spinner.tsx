@@ -1,3 +1,5 @@
+import { cx } from '@/lib/cx';
+
 /** Tones a spinner can wear — each maps to a .spinner--* class in app.css.
  *  'on-primary' is the base rule (what sits inside a .btn-primary). */
 export type SpinnerTone = 'on-primary' | 'text' | 'dim' | 'white' | 'ink';
@@ -6,9 +8,7 @@ export type SpinnerTone = 'on-primary' | 'text' | 'dim' | 'white' | 'ink';
 export type SpinnerSize = 15 | 16 | 18;
 
 export function Spinner({ size = 18, tone = 'on-primary' }: { size?: SpinnerSize; tone?: SpinnerTone }) {
-  // The shell, both sizes and every tone live in .spinner* (app.css).
-  const cls = ['spinner'];
-  if (size !== 18) cls.push(`spinner--${size}`);
-  if (tone !== 'on-primary') cls.push(`spinner--${tone}`);
-  return <span className={cls.join(' ')} />;
+  // The shell, both sizes and every tone live in .spinner* (app.css); the base
+  // rule already is the 18px on-primary variant, so those need no modifier.
+  return <span className={cx('spinner', size !== 18 && `spinner--${size}`, tone !== 'on-primary' && `spinner--${tone}`)} />;
 }
