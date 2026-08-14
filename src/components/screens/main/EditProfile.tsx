@@ -4,7 +4,7 @@ import type { Gender } from '@/lib/vault';
 import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { Field } from '@/components/molecules/onboarding';
 import { useBusy } from '@/components/hooks';
-import { EMAIL_RE } from '@/constants/validation';
+import { EMAIL_RE } from '@/lib/validate';
 import { GENDER_OPTIONS, NAME_MAX_LEN, EMAIL_MAX_LEN } from '@/constants/onboarding';
 import { ageFromBirthdate } from '@/lib/greeting';
 import { cx } from '@/lib/cx';

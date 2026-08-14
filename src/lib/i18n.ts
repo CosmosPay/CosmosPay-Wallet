@@ -242,6 +242,7 @@ const T: Record<string, Record<Lang, string>> = {
   'unlock.use': { es: 'Usar', en: 'Use', pt: 'Usar', de: 'Verwenden', fr: 'Utiliser' },
   'unlock.current': { es: 'Actual', en: 'Current', pt: 'Atual', de: 'Aktuell', fr: 'Actuel' },
   'unlock.removeConfirm': { es: '¿Eliminar «{name}» de este dispositivo? Asegúrate de tener su frase de recuperación.', en: 'Remove “{name}” from this device? Make sure you have its recovery phrase.', pt: 'Remover «{name}» deste dispositivo? Certifica-te de que tens a frase de recuperação.', de: '„{name}“ von diesem Gerät entfernen? Stelle sicher, dass du die Wiederherstellungsphrase hast.', fr: 'Supprimer « {name} » de cet appareil ? Assure-toi d’avoir sa phrase de récupération.' },
+  'unlock.autoLocked': { es: 'Wallet bloqueada por inactividad.', en: 'Wallet locked due to inactivity.', pt: 'Wallet bloqueada por inatividade.', de: 'Wallet wegen Inaktivität gesperrt.', fr: 'Portefeuille verrouillé pour inactivité.' },
   'unlock.happyDay': { es: '¡Feliz día!', en: 'Happy day!', pt: 'Feliz dia!', de: 'Schönen Tag!', fr: 'Joyeuse journée !' },
   'unlock.yearsOld': { es: '¡{age} años!', en: '{age} years old!', pt: '{age} anos!', de: '{age} Jahre!', fr: '{age} ans !' },
 

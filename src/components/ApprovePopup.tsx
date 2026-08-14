@@ -3,10 +3,12 @@
 import '@/styles/components/approve-popup.css';
 import { useEffect, useState } from 'react';
 import { Keypair } from '@stellar/stellar-sdk';
-import { DAPP_MIRROR_KEY, APPROVE_TITLES } from '@/constants/app';
+import { DAPP_MIRROR_KEY, APPROVE_TITLES, OP_LABELS } from '@/constants/app';
 import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type WalletEntry } from '@/lib/vault';
 import { resolveNetwork, signXdr, sendPayment, type NetConfig } from '@/lib/stellar';
 import { parseStellarQr, type ParsedQr } from '@/lib/sep7';
+import { reviewTx, type TxReview } from '@/lib/txGuard';
+import { signMessagePayload, SIGN_MESSAGE_DOMAIN } from '@/lib/signMessage';
 import { cx } from '@/lib/cx';
 
 // Extension API — no @types/chrome in this project; the popup only runs as an
@@ -87,6 +89,12 @@ export default function ApprovePopup() {
   const [cfg, setCfg] = useState<NetConfig | null>(null);
   const [pay, setPay] = useState<ParsedQr | null>(null);
   const [payErr, setPayErr] = useState('');
+  // Decoded signTransaction payload — what the user actually approves.
+  const [review, setReview] = useState<TxReview | null>(null);
+  const [reviewErr, setReviewErr] = useState('');
+  // Set when the dapp asks to sign against a different network than the wallet's.
+  // Nothing can be approved in that state; only Reject stays available.
+  const [netMismatch, setNetMismatch] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [pwd, setPwd] = useState('');
   const [busy, setBusy] = useState(false);
@@ -107,6 +115,24 @@ export default function ApprovePopup() {
           const parsed = parseStellarQr(String(r.params.uri || ''));
           if (parsed) setPay(parsed);
           else setPayErr('El enlace SEP-7 no contiene un pago válido.');
+        }
+        if (r && r.method === 'signTransaction') {
+          // A dapp may state which network it built for, but it does NOT get to
+          // choose the one we sign against: the passphrase is not carried inside the
+          // envelope, so accepting theirs is what lets a "Testnet" approval produce a
+          // valid mainnet signature. Mismatch => refuse, don't silently re-target.
+          const asked = String(r.params.networkPassphrase || '');
+          if (asked && asked !== c.passphrase) {
+            setNetMismatch(
+              `La web pide firmar en una red distinta a la tuya (${c.label}). Cambia de red en la wallet si realmente quieres operar ahí.`,
+            );
+          } else {
+            try {
+              setReview(reviewTx(c, String(r.params.xdr || '')));
+            } catch (err) {
+              setReviewErr(err instanceof Error ? err.message : String(err));
+            }
+          }
         }
         if (e) await writeMirror({ address: e.publicKey, cfg: c }); // keep the SW mirror fresh
       } finally {
@@ -162,17 +188,30 @@ export default function ApprovePopup() {
 
       // everything below needs the secret -> unlock first
       const { secret } = await unlockWallet(entry.id, pwd); // throws "Contraseña incorrecta." on bad pwd
-      await writeMirror({ address: entry.publicKey, cfg, addOrigin: req.origin });
+      // Refresh the public mirror, but do NOT grant the origin here: signing once is
+      // not consent to be recognised forever. Only the explicit connect approval
+      // (getAddress, above) writes to approvedOrigins.
+      await writeMirror({ address: entry.publicKey, cfg });
 
       if (req.method === 'signTransaction') {
-        const signCfg: NetConfig = req.params.networkPassphrase ? { ...cfg, passphrase: req.params.networkPassphrase } : cfg;
-        const signedTxXdr = signXdr(signCfg, secret, String(req.params.xdr || ''));
+        if (netMismatch) throw new Error(netMismatch);
+        if (reviewErr) throw new Error(reviewErr);
+        // `cfg` — the wallet's network — and never req.params.networkPassphrase.
+        const signedTxXdr = signXdr(cfg, secret, String(req.params.xdr || ''));
         respond(req.id, true, { signedTxXdr, signerAddress: entry.publicKey });
         return;
       }
       if (req.method === 'signMessage') {
-        const sig = Keypair.fromSecret(secret).sign(Buffer.from(String(req.params.message || ''), 'utf8'));
-        respond(req.id, true, { signedMessage: sig.toString('base64'), signerAddress: entry.publicKey });
+        // Sign a domain-separated digest, never the caller's raw bytes — otherwise a
+        // 32-byte "message" that is really a transaction hash yields a valid
+        // transaction signature. See lib/signMessage.ts.
+        const digest = await signMessagePayload(String(req.params.message || ''));
+        const sig = Keypair.fromSecret(secret).sign(Buffer.from(digest));
+        respond(req.id, true, {
+          signedMessage: sig.toString('base64'),
+          signerAddress: entry.publicKey,
+          domain: SIGN_MESSAGE_DOMAIN,
+        });
         return;
       }
       if (req.method === 'requestPayment') {
@@ -206,7 +245,13 @@ export default function ApprovePopup() {
     }
   };
 
-  const canApprove = isConnect || (isPay ? !!pay && !!pwd : !!pwd);
+  // A transaction the window could not decode — or one aimed at another network —
+  // is never approvable: the only honest action left is Reject.
+  const isSignTx = req.method === 'signTransaction';
+  const canApprove =
+    !netMismatch &&
+    !reviewErr &&
+    (isConnect || (isPay ? !!pay && !!pwd : isSignTx ? !!review && !!pwd : !!pwd));
 
   return (
     <Frame>
@@ -232,9 +277,45 @@ export default function ApprovePopup() {
         )}
         {isPay && payErr && <div className="approve-pay-error">{payErr}</div>}
 
-        {req.method === 'signMessage' && <Row label="Mensaje" value={short(String(req.params.message || ''), 40)} />}
-        {req.method === 'signTransaction' && <Row label="Transacción (XDR)" value={short(String(req.params.xdr || ''), 14)} mono />}
+        {req.method === 'signMessage' && (
+          <>
+            <div className="approve-divider" />
+            <div className="approve-row-label">Mensaje a firmar</div>
+            <div className="approve-msg">{String(req.params.message || '')}</div>
+          </>
+        )}
+
+        {req.method === 'signTransaction' && review && (
+          <>
+            <div className="approve-divider" />
+            <Row label="Comisión" value={`${review.feeXlm} XLM`} />
+            {review.memo && <Row label="Memo" value={`${review.memo} (${review.memoType})`} />}
+            <div className="approve-ops">
+              {review.operations.map((op, i) => (
+                <div key={i} className={cx('approve-op', op.critical && 'is-critical')}>
+                  <div className="approve-op-type">
+                    {i + 1}. {OP_LABELS[op.type] ?? op.type}
+                  </div>
+                  {op.rows.map((r) => (
+                    <div key={r.label} className="approve-row">
+                      <span className="approve-row-label">{r.label}</span>
+                      <span className="approve-row-value approve-mono">{r.value}</span>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
+
+      {netMismatch && <div className="approve-danger">⛔ {netMismatch}</div>}
+      {reviewErr && <div className="approve-danger">⛔ No se pudo leer la transacción: {reviewErr}</div>}
+      {review?.hasCritical && (
+        <div className="approve-danger">
+          ⚠️ Esta transacción incluye una operación que puede dar control de tu cuenta a un tercero. No la apruebes salvo que sepas exactamente qué estás haciendo.
+        </div>
+      )}
 
       <p className="approve-note">
         {isConnect

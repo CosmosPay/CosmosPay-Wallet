@@ -31,6 +31,9 @@
   --avatar-text: #ffffff;
   --up: #4ade80;
   --down: #ff6b6b;
+  /* Error / refusal copy. Distinct from --down, which means "price fell": the two
+     happen to be red today but must be free to diverge. */
+  --danger: #ff5d5d;
   --gb-bg-a: rgba(255, 255, 255, 0.05);
   --gb-bg-b: rgba(255, 255, 255, 0.085);
   --gb-bd-a: rgba(255, 255, 255, 0.08);
@@ -62,6 +65,7 @@
   --avatar-text: #0e1311;
   --up: #16a34a;
   --down: #dc2626;
+  --danger: #d92020;
   --gb-bg-a: rgba(255, 255, 255, 0.42);
   --gb-bg-b: rgba(255, 255, 255, 0.62);
   --gb-bd-a: rgba(255, 255, 255, 0.5);

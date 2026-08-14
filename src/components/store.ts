@@ -37,6 +37,9 @@ import {
   type WalletEntry,
 } from '@/lib/vault';
 import { storageGet, storageSet } from '@/lib/storage';
+import { assertSafeToSign } from '@/lib/txGuard';
+import { isSafeHorizonUrl } from '@/lib/validate';
+import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
 import {
   addTrustline as stellarAddTrustline,
   allNetworks,
@@ -744,6 +747,40 @@ export function useWalletStore() {
     setScreen('unlock');
   }, []);
 
+  /**
+   * Idle auto-lock. An open session holds the decrypted secret and the app password
+   * in memory; the browser-action popup tears that down when it closes, but the side
+   * panel, the web build and the Capacitor app keep it alive until the tab dies. So
+   * inactivity — not just an explicit tap on "lock" — has to end the session.
+   */
+  const lastActiveRef = useRef(Date.now());
+  useEffect(() => {
+    if (!session) return;
+    const touch = () => {
+      lastActiveRef.current = Date.now();
+    };
+    touch();
+    const onVisible = () => {
+      // Coming back into view counts as activity; going away deliberately does not,
+      // so a backgrounded panel still expires on schedule.
+      if (document.visibilityState === 'visible') touch();
+    };
+    const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
+    for (const e of events) window.addEventListener(e, touch, { passive: true });
+    document.addEventListener('visibilitychange', onVisible);
+    const id = setInterval(() => {
+      if (Date.now() - lastActiveRef.current >= AUTO_LOCK_MS) {
+        lock();
+        flash(t('unlock.autoLocked'), 'info');
+      }
+    }, AUTO_LOCK_CHECK_MS);
+    return () => {
+      clearInterval(id);
+      for (const e of events) window.removeEventListener(e, touch);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [session, lock, flash, t]);
+
   /** Wipe EVERY wallet (used by "forgot password" — nothing can be decrypted). */
   /** Lock screen: choose which wallet to unlock (no decryption — just sets it active). */
   const selectWalletForUnlock = useCallback(
@@ -860,7 +897,17 @@ export function useWalletStore() {
 
   const addNetwork = useCallback(
     async (cfg: Omit<NetConfig, 'id' | 'custom'>) => {
-      const id = 'custom-' + Math.random().toString(36).slice(2, 9);
+      // Re-check here, not only in the form: this Horizon will receive every signed
+      // envelope the wallet submits on that network.
+      if (!isSafeHorizonUrl(cfg.horizon)) {
+        throw new Error('La URL de Horizon debe usar https:// (o ser local).');
+      }
+      if (!cfg.passphrase.trim()) throw new Error('Falta la passphrase de la red.');
+      // A colliding id would silently resolve to the wrong Horizon *and* the wrong
+      // passphrase — i.e. sign for one network and submit to another.
+      const taken = new Set(allNetworks(customNetworks).map((n) => n.id));
+      let id = 'custom-' + Math.random().toString(36).slice(2, 9);
+      while (taken.has(id)) id = 'custom-' + Math.random().toString(36).slice(2, 9);
       const entry: NetConfig = { ...cfg, id, custom: true };
       const next = [...customNetworks, entry];
       setCustomNetworksState(next);
@@ -1242,6 +1289,14 @@ export function useWalletStore() {
           source: session.publicKey,
           slippageBps: DEFAULT_SLIPPAGE_BPS,
         });
+        // The gateway builds this envelope; we sign it. Verify it actually does what
+        // was just confirmed — source, operation set, fee and amount — before handing
+        // over a signature. Throws (caught below) on anything unexpected.
+        assertSafeToSign(network, swap.xdr, {
+          signer: session.publicKey,
+          intent: 'swap',
+          maxSend: { amount: swap.sendAmount, assetCode: from.code },
+        });
         const signedXdr = signXdr(network, session.secret, swap.xdr);
         const res = await cpSubmitSwap(apiKey, swap.id, signedXdr);
         if (res.submitted) {
@@ -1340,6 +1395,8 @@ export function useWalletStore() {
           maxAmountB: input.maxAmountB,
           slippageBps: DEFAULT_SLIPPAGE_BPS,
         });
+        // Server-built envelope — verify before signing (see lib/txGuard.ts).
+        assertSafeToSign(network, op.xdr, { signer: session.publicKey, intent: 'lp-deposit' });
         const signedXdr = signXdr(network, session.secret, op.xdr);
         const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
         if (res.submitted) {
@@ -1389,6 +1446,8 @@ export function useWalletStore() {
           shares: input.shares,
           slippageBps: DEFAULT_SLIPPAGE_BPS,
         });
+        // Server-built envelope — verify before signing (see lib/txGuard.ts).
+        assertSafeToSign(network, op.xdr, { signer: session.publicKey, intent: 'lp-withdraw' });
         const signedXdr = signXdr(network, session.secret, op.xdr);
         const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
         if (res.submitted) {
@@ -1717,6 +1776,14 @@ export function useWalletStore() {
         const auth = await cpAuthorizePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar' });
         const xdr = extractUnsignedXdr(auth);
         if (!xdr) throw new Error(t('fiat.noXdr'));
+        // extractUnsignedXdr probes untyped BlindPay fields and returns the first
+        // base64-ish string it finds, so the guard is doing double duty here: it is
+        // the only thing that proves the string is a transaction we should sign.
+        assertSafeToSign(network, xdr, {
+          signer: session.publicKey,
+          intent: 'offramp',
+          maxSend: quote.sender_amount != null ? { amount: String(quote.sender_amount / 100), assetCode: token } : undefined,
+        });
         const signed = signXdr(network, session.secret, xdr);
         const payout = await cpCreatePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar', signed_transaction: signed });
         const fiatMinor = quote.receiver_local_amount || quote.receiver_amount || 0;

@@ -107,6 +107,65 @@
   font-size: 12.5px;
   margin: 0;
 }
+/* Decoded signTransaction payload. The window is a fixed 420x640 popup, so the
+   operation list scrolls inside the card rather than growing the frame — the
+   action buttons must never be pushed out of reach. */
+.approve-ops {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+  max-height: 210px;
+  overflow-y: auto;
+}
+.approve-op {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  padding: 9px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.approve-op.is-critical {
+  border-color: #ff6b6b;
+  background: rgba(255, 107, 107, 0.1);
+}
+.approve-op-type {
+  font-weight: 800;
+  font-size: 12.5px;
+}
+.approve-op.is-critical .approve-op-type {
+  color: #ff6b6b;
+}
+
+/* Full message body for signMessage — shown in full, never truncated: the user
+   cannot consent to bytes the window hid from them. */
+.approve-msg {
+  margin-top: 6px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  max-height: 150px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* Blocking warning: network mismatch, undecodable envelope, or a critical op. */
+.approve-danger {
+  border: 1px solid #ff6b6b;
+  background: rgba(255, 107, 107, 0.12);
+  color: #ffb3b3;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .approve-error {
   color: #ff6b6b;
   font-size: 12.5px;

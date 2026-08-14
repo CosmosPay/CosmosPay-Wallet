@@ -1,7 +1,7 @@
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { ageFromBirthdate } from '@/lib/greeting';
-import { EMAIL_RE } from '@/constants/validation';
+import { EMAIL_RE } from '@/lib/validate';
 import { GENDER_OPTIONS, MIN_AGE, NAME_MAX_LEN, EMAIL_MAX_LEN } from '@/constants/onboarding';
 import { Field, CheckRow } from '@/components/molecules/onboarding';
 import { cx } from '@/lib/cx';
