@@ -9,10 +9,16 @@
  * This is the cheapest check that would have caught it. It cannot see a claim that is
  * false about a path that DOES exist ("ui.ts has been deleted"), so it is a floor,
  * not a proof.
+ *
+ * Case is part of the path. `existsSync` disagrees — it is case-insensitive on Windows
+ * and on default macOS volumes — so a header naming `ScanQr.tsx` for a file called
+ * `ScanQR.tsx` passed on the machine that wrote it and failed in CI on Linux, which is
+ * exactly how it shipped. The check below resolves one segment at a time against the
+ * real directory listing, so it means the same thing on every platform.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..', '..');
@@ -47,6 +53,32 @@ function walk(dir: string): string[] {
   });
 }
 
+/** Directory listings, memoised — the scan resolves thousands of tokens over the same tree. */
+const listings = new Map<string, Set<string>>();
+function entriesOf(dir: string): Set<string> {
+  const cached = listings.get(dir);
+  if (cached) return cached;
+  let entries: Set<string>;
+  try {
+    entries = new Set(readdirSync(dir));
+  } catch {
+    entries = new Set(); // not a directory, or unreadable: nothing resolves under it
+  }
+  listings.set(dir, entries);
+  return entries;
+}
+
+/** `existsSync(join(base, rel))`, but every segment must match the real name exactly. */
+function existsExact(base: string, rel: string): boolean {
+  let dir = base;
+  for (const segment of rel.split('/')) {
+    if (segment === '' || segment === '.') continue;
+    if (!entriesOf(dir).has(segment)) return false;
+    dir = join(dir, segment);
+  }
+  return true;
+}
+
 test('every path cited in code comments and docs exists on disk', () => {
   const files = [
     ...SCANNED_DIRS.flatMap((d) => walk(join(ROOT, d))).filter((f) => SCANNED_EXT.test(f)),
@@ -61,7 +93,7 @@ test('every path cited in code comments and docs exists on disk', () => {
     for (const match of text.match(PATH_RE) ?? []) {
       if (isTemplate(match)) continue;
       // An unrooted token is relative to `src/` — that is where the tree it names lives.
-      if (existsSync(join(ROOT, match)) || existsSync(join(ROOT, 'src', match))) continue;
+      if (existsExact(ROOT, match) || existsExact(join(ROOT, 'src'), match)) continue;
       broken.push(`${relative(ROOT, file).replaceAll('\\', '/')} -> ${match}`);
     }
   }

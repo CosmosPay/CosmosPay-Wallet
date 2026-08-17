@@ -1,4 +1,4 @@
-/* ScanQR screen (src/features/extras/ScanQr.tsx).
+/* ScanQR screen (src/features/extras/ScanQR.tsx).
    Camera state (caret rotation, active-option background) is expressed with
    .is-open / .is-on modifier classes. */
 
