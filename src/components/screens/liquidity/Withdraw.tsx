@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { AssetLogo, BackBar, PrimaryButton, Spinner, TokenAvatar } from '@/components/parts';
 import { trim } from '@/lib/format';
+import { decideLpWithdraw } from '@/lib/money';
 import '@/styles/screens/money/swap.css';
 import '@/styles/screens/money/liquidity.css';
 
@@ -33,8 +34,9 @@ export function Withdraw({ store }: { store: WalletStore }) {
 
   const amt = parseFloat(shares) || 0;
   const fraction = held > 0 ? Math.min(1, amt / held) : 0;
-  const over = amt > held;
-  const canWithdraw = amt > 0 && !over;
+  const withdrawDecision = decideLpWithdraw(shares, held);
+  const over = withdrawDecision.over;
+  const canWithdraw = withdrawDecision.ok;
 
   const setPct = (pct: number) => setShares(trim((held * pct) / 100, 7));
 

@@ -101,6 +101,13 @@ import {
 import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '@/lib/i18n';
 import { parseStellarQr } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
+// Pure money-decision rules. The screens call these to enable their buttons; the
+// store re-checks the SAME function before signing/submitting — a disabled button
+// is a hint, not an enforcement point. Kept out of this hook so node:test can
+// cover them (see tests/unit/money.test.ts).
+import { decideSend, decideSwap, decideLpDeposit, decideLpWithdraw, spendableXlm } from '@/lib/money';
+import { clampMemo } from '@/lib/validation';
+import { trim } from '@/lib/format';
 
 export type Theme = 'dark' | 'light';
 
@@ -398,7 +405,7 @@ export function useWalletStore() {
       ...s,
       to: parsed.destination,
       amount: parsed.amount ?? s.amount,
-      memo: parsed.memo ? parsed.memo.slice(0, 28) : s.memo,
+      memo: parsed.memo ? clampMemo(parsed.memo) : s.memo,
     }));
     return true;
   }, []);
@@ -500,7 +507,6 @@ export function useWalletStore() {
       if (active) setMetaState(active);
       setScreen(list.length > 0 ? 'unlock' : 'welcome');
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Once unlocked, if a SEP-7 link is waiting, jump straight into a prefilled send.
@@ -510,7 +516,6 @@ export function useWalletStore() {
       pendingSep7.current = null;
       if (applySep7(uri)) setScreen('send');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
   /* ------------------------- data loading ------------------------- */
@@ -537,7 +542,6 @@ export function useWalletStore() {
   // reload whenever the session opens or the network changes
   useEffect(() => {
     if (session) refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, network]);
 
   /* --------------------------- favorite assets -------------------------- */
@@ -581,7 +585,6 @@ export function useWalletStore() {
       clearInterval(id);
       document.removeEventListener('visibilitychange', onVisible);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session, network]);
 
   /* --------------------------- onboarding ------------------------- */
@@ -929,6 +932,26 @@ export function useWalletStore() {
   const submitSend = useCallback(async () => {
     if (!session) return;
     const code0 = send.asset || 'XLM';
+    // Enforcement: re-check the same rules the Send screen used to enable its button.
+    const bal0 = account?.balances.find((b) => b.code === code0);
+    const available = code0 === 'XLM'
+      ? spendableXlm(account?.xlm ?? 0, account?.subentryCount ?? 0)
+      : parseFloat(bal0?.balance ?? '0') || 0;
+    const sendGuard = decideSend(send.to, send.amount, send.memo, available);
+    if (!sendGuard.ok) {
+      setSuccessInfo({
+        kind: 'err',
+        title: t('success.failed'),
+        msg: !sendGuard.addressValid
+          ? t('send.invalidAddr')
+          : !sendGuard.amountValid
+            ? t('send.insufficient')
+            : t('send.memoTooLong'),
+        rows: [],
+      });
+      setScreen('success');
+      return;
+    }
     const okSig = await requestSignature({
       title: t('confirmSig.sendTitle'),
       message: t('confirmSig.sendMsg', { amount: send.amount, code: code0 }),
@@ -1226,6 +1249,26 @@ export function useWalletStore() {
         flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
         return;
       }
+      // Enforcement: re-check the swap rules (amount within the source balance, distinct assets).
+      const fromBal = account?.balances.find((b) => b.code === from.code);
+      const available = from.code === 'XLM'
+        ? spendableXlm(account?.xlm ?? 0, account?.subentryCount ?? 0)
+        : parseFloat(fromBal?.balance ?? '0') || 0;
+      const swapGuard = decideSwap(amount, available, from.code === to.code);
+      if (!swapGuard.ok) {
+        setSuccessInfo({
+          kind: 'err',
+          title: t('swap.failed'),
+          msg: swapGuard.insufficient
+            ? t('swap.insufficient', { avail: trim(available, 4), code: from.code })
+            : from.code === to.code
+              ? t('swap.sameAsset')
+              : t('swap.invalidAmount'),
+          rows: [],
+        });
+        setScreen('success');
+        return;
+      }
       const okSig = await requestSignature({
         title: t('confirmSig.swapTitle'),
         message: t('confirmSig.swapMsg', { amount, code: to.code }),
@@ -1274,7 +1317,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [session, cosmosPay, network, requestSignature, refresh, t, flash],
+    [session, cosmosPay, network, account, requestSignature, refresh, t, flash],
   );
 
   /* ------------------------- liquidity pools ---------------------- */
@@ -1323,6 +1366,32 @@ export function useWalletStore() {
       if (!session) return;
       const apiKey = cosmosApiKey();
       if (!apiKey) return;
+      // Enforcement: re-check the deposit pair rules before building the XDR.
+      const aBal = account?.balances.find((b) => b.code === input.assetA.code);
+      const bBal = account?.balances.find((b) => b.code === input.assetB.code);
+      const availA = input.assetA.code === 'XLM'
+        ? spendableXlm(account?.xlm ?? 0, account?.subentryCount ?? 0)
+        : parseFloat(aBal?.balance ?? '0') || 0;
+      const availB = input.assetB.code === 'XLM'
+        ? spendableXlm(account?.xlm ?? 0, account?.subentryCount ?? 0)
+        : parseFloat(bBal?.balance ?? '0') || 0;
+      const depositGuard = decideLpDeposit(input.maxAmountA, input.maxAmountB, availA, availB, input.assetA.code === input.assetB.code);
+      if (!depositGuard.ok) {
+        setSuccessInfo({
+          kind: 'err',
+          title: t('lp.depositFailed'),
+          msg: input.assetA.code === input.assetB.code
+            ? t('lp.sameAsset')
+            : depositGuard.overA
+              ? t('swap.insufficient', { avail: trim(availA, 4), code: input.assetA.code })
+              : depositGuard.overB
+                ? t('swap.insufficient', { avail: trim(availB, 4), code: input.assetB.code })
+                : t('lp.invalidAmount'),
+          rows: [],
+        });
+        setScreen('success');
+        return;
+      }
       const okSig = await requestSignature({
         title: t('confirmSig.lpDepositTitle'),
         message: t('confirmSig.lpDepositMsg', { a: input.assetA.code, b: input.assetB.code }),
@@ -1367,7 +1436,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [session, cosmosApiKey, network, requestSignature, refresh, t],
+    [session, cosmosApiKey, network, account, requestSignature, refresh, t],
   );
 
   /** Full withdraw flow: build -> sign locally -> submit. Mirrors submitDeposit. */
@@ -1376,6 +1445,22 @@ export function useWalletStore() {
       if (!session) return;
       const apiKey = cosmosApiKey();
       if (!apiKey) return;
+      // Enforcement: re-check the shares-burned rule (never more than held).
+      const position = lpTarget?.mode === 'withdraw' ? lpTarget.position : null;
+      const held = position?.poolId === input.poolId ? parseFloat(position.shares) || 0 : Number.POSITIVE_INFINITY;
+      const withdrawGuard = decideLpWithdraw(input.shares, held);
+      if (!withdrawGuard.ok) {
+        setSuccessInfo({
+          kind: 'err',
+          title: t('lp.withdrawFailed'),
+          msg: withdrawGuard.over
+            ? t('lp.overShares', { held: trim(held, 4) })
+            : t('lp.invalidShares'),
+          rows: [],
+        });
+        setScreen('success');
+        return;
+      }
       const okSig = await requestSignature({
         title: t('confirmSig.lpWithdrawTitle'),
         message: t('confirmSig.lpWithdrawMsg', { shares: input.shares }),
@@ -1417,7 +1502,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [session, cosmosApiKey, network, requestSignature, refresh, t],
+    [session, cosmosApiKey, network, account, lpTarget, requestSignature, refresh, t],
   );
 
   /** Create a shareable CosmosPay pay link (SEP-7 pay intent) addressed to this wallet. */

@@ -1,5 +1,5 @@
 /* =====================================================================
-   Fiat screens — shared atoms (src/components/screens/fiat/shared.tsx)
+   Fiat screens — shared atoms (moved to src/components/molecules/fiat/)
    plus helpers reused by every screen in the directory (.fiat-*).
    Static shells only; state-driven values stay inline in the tsx.
    ===================================================================== */

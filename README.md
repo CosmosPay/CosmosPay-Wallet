@@ -55,9 +55,16 @@ Requires **Node ≥ 18**.
 npm install
 npm run dev          # http://localhost:4500 (Vite proxy: /api + /cosmos-api)
 npm run build        # dist/
+npm run test:unit    # node:test unit suite (no browser — see TESTING.md)
+npm run check:guards # repo guards: i18n completeness + cited-path existence
 npm run test:e2e     # Playwright e2e (see tests/)
 npm run demo         # dapp demo for the provider (http://127.0.0.1:4399)
 ```
+
+Testing is layered and documented in [TESTING.md](TESTING.md): a fast `node:test`
+unit suite over the pure modules (vault crypto, money rules, SEP-7, portfolio, …),
+two repo guards, and the Playwright browser tests. CI runs the unit suite and guards
+**before** the build so a money-path regression fails fast.
 
 ## Browser extension (MV3)
 
@@ -99,9 +106,11 @@ src/pages/            index (app) · approve (dapp approval) · sidepanel via bu
 src/components/       WalletApp · store.ts · parts.tsx · screens/ (Onboarding, Unlock, Main,
                       Money, Settings, Extras, Fiat, CosmosPay)
 src/lib/              wallet · crypto · vault · storage · stellar · cosmospay · endpoints ·
-                      portfolio · greeting · i18n · sep7 · qr · format …
+                      portfolio · greeting · i18n · sep7 · qr · format · validation · money …
 extension-src/        inpage.js (provider) · content.js (bridge) · sw.js (router)
-scripts/              build-extension.ts (chrome|firefox) · serve-dist · serve-demo
+scripts/              build-extension.ts (chrome|firefox) · serve-dist · serve-demo ·
+                      check-i18n.ts · check-paths.ts
+tests/unit/           node:test unit suite (loader.mjs + register.mjs bootstrap)
 demo/                 dapp-demo.html · pay.html (web+stellar bridge page)
 ```
 

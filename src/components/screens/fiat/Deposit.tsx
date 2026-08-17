@@ -4,6 +4,7 @@ import { PrimaryButton, GhostButton, BackBar, Spinner } from '@/components/parts
 import { railCurrency, PAY_METHODS } from '@/constants/fiat';
 import type { FiatToken, Payin, PayinMethod, PayinQuote, PayinQuoteInput } from '@/lib/cosmospay';
 import { fmtMinor, fmtFiat, toMinor, stableTokens } from '@/lib/fiatFormat';
+import { isValidFiatAmount } from '@/lib/validation';
 import { Field, Select, QuoteRow } from '@/components/molecules/fiat';
 import { DepositInstructions } from '@/components/organisms/fiat/DepositInstructions';
 import '@/styles/screens/fiat/deposit.css';
@@ -22,7 +23,7 @@ export function Deposit({ store }: { store: WalletStore }) {
 
   const cfg = PAY_METHODS.find((m) => m.method === method) ?? PAY_METHODS[0];
   const payerOk = (cfg.payer ?? []).every((f) => (f.options ? true : (payer[f.k] ?? '').trim()));
-  const canQuote = !!receiverId && !!token && toMinor(amount) >= 1 && payerOk && !store.busy;
+  const canQuote = !!receiverId && !!token && isValidFiatAmount(amount) && payerOk && !store.busy;
 
   const setP = (k: string, v: string) => setPayer((s) => ({ ...s, [k]: v }));
   const changeMethod = (m: string) => { setMethod(m as PayinMethod); setPayer({}); setQuote(null); };

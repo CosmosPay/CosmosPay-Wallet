@@ -2,17 +2,19 @@ import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { Criterion, Desc, PasswordField } from '@/components/molecules/onboarding';
+import { hasMinLength, hasUppercase, hasDigit, hasLowercase } from '@/lib/validation';
 import '@/styles/screens/onboarding/password-setup.css';
 
 export function PasswordSetup({ store }: { store: WalletStore }) {
   const t = store.t;
   const [pwd, setPwd] = useState('');
   const [confirm, setConfirm] = useState('');
-  // Live criteria — each row below flips to green as it's satisfied.
-  const lenOk = pwd.length >= 8;
-  const upperOk = /[A-Z]/.test(pwd);
-  const digitOk = /\d/.test(pwd);
-  const lowerOk = /[a-z]/.test(pwd);
+  // Live criteria — each row below flips to green as it's satisfied. The rules
+  // themselves live in lib/validation so the vault policy has a single source.
+  const lenOk = hasMinLength(pwd);
+  const upperOk = hasUppercase(pwd);
+  const digitOk = hasDigit(pwd);
+  const lowerOk = hasLowercase(pwd);
   const match = pwd === confirm && confirm.length > 0;
   const ok = lenOk && upperOk && digitOk && lowerOk && match && !store.busy;
 

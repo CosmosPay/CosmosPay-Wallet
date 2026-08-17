@@ -4,6 +4,7 @@ import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { Field, Select } from '@/components/molecules/fiat';
 import { PhotoStep } from './PhotoStep';
 import { COUNTRIES, DOC_TYPES } from '@/constants/fiat';
+import { isValidEmail } from '@/lib/validation';
 import '@/styles/screens/fiat/fiat.css';
 
 /** KYC wizard: personal info → doc front → doc back → selfie, then create the receiver. */
@@ -25,7 +26,8 @@ export function CreateReceiver({ store }: { store: WalletStore }) {
   const [back, setBack] = useState<string | null>(null);
   const [selfie, setSelfie] = useState<string | null>(null);
 
-  const infoOk = firstName.trim() && lastName.trim() && email.trim() && country && taxId.trim() && dob;
+  // The KYC email must be a real address (not just non-empty) — same rule as signup.
+  const infoOk = firstName.trim() && lastName.trim() && isValidEmail(email) && country && taxId.trim() && dob;
 
   const submit = async () => {
     await store.createFiatReceiver({

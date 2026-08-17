@@ -4,6 +4,7 @@ import { PrimaryButton, GhostButton, BackBar, Spinner } from '@/components/parts
 import { railLabel, railCurrency } from '@/constants/fiat';
 import type { FiatToken, PayoutQuote } from '@/lib/cosmospay';
 import { fmtMinor, fmtFiat, toMinor, stableTokens } from '@/lib/fiatFormat';
+import { decideFiatAmount } from '@/lib/money';
 import { Field, Select, QuoteRow } from '@/components/molecules/fiat';
 import '@/styles/screens/fiat/withdraw.css';
 
@@ -14,7 +15,6 @@ export function Withdraw({ store }: { store: WalletStore }) {
 
   useEffect(() => {
     if (receiverId) store.loadBankAccounts(receiverId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receiverId]);
 
   const accounts = store.bankAccounts;
@@ -30,8 +30,9 @@ export function Withdraw({ store }: { store: WalletStore }) {
   const account = accounts.find((a) => a.id === bankId) ?? null;
   const ccy = railCurrency(account?.rail ?? account?.type); // fiat currency for the amount suffix
   const bal = tokens.find((x) => x.code === token)?.balance ?? 0;
-  const insufficient = (parseFloat(amount) || 0) > bal;
-  const canQuote = !!bankId && !!token && toMinor(amount) >= 1 && !insufficient && !store.busy;
+  const fiatDecision = decideFiatAmount(amount, bal);
+  const insufficient = fiatDecision.insufficient;
+  const canQuote = !!bankId && !!token && fiatDecision.ok && !store.busy;
 
   const getQuote = async () => {
     const q = await store.quoteWithdraw({ bank_account_id: bankId, request_amount: toMinor(amount), token, cover_fees: coverFees });

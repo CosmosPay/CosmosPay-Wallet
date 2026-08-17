@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { BackBar, PrimaryButton, Spinner } from '@/components/parts';
 import { trim } from '@/lib/format';
+import { decideLpDeposit } from '@/lib/money';
 import { spendableXlm, sendableAssets, SwapTokenSelect } from '@/components/screens/money/shared';
 import '@/styles/screens/money/swap.css';
 import '@/styles/screens/money/liquidity.css';
@@ -27,15 +28,14 @@ export function Deposit({ store }: { store: WalletStore }) {
 
   const a = assets.find((x) => x.code === aCode);
   const b = assets.find((x) => x.code === bCode);
-  const amtA = parseFloat(amountA) || 0;
-  const amtB = parseFloat(amountB) || 0;
 
   const availA = a ? (a.isNative ? spendableXlm(store) : parseFloat(a.balance) || 0) : 0;
   const availB = b ? (b.isNative ? spendableXlm(store) : parseFloat(b.balance) || 0) : 0;
   const sameAsset = aCode === bCode;
-  const overA = amtA > availA;
-  const overB = amtB > availB; // amountB is optional; only guards when the user typed one
-  const canDeposit = amtA > 0 && !sameAsset && !!a && !!b && !overA && !overB;
+  const depositDecision = decideLpDeposit(amountA, amountB.trim() ? amountB : undefined, availA, availB, sameAsset);
+  const overA = depositDecision.overA;
+  const overB = depositDecision.overB; // amountB is optional; only guards when the user typed one
+  const canDeposit = !!a && !!b && depositDecision.ok;
 
   const asAsset = (x: { code: string; issuer: string | null }) => ({ code: x.code, issuer: x.issuer });
 

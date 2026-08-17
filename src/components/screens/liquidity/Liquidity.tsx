@@ -39,7 +39,6 @@ export function Liquidity({ store }: { store: WalletStore }) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, store.account]);
 
   // Lazy-load the pool explorer the first time that tab is opened.
@@ -52,7 +51,6 @@ export function Liquidity({ store }: { store: WalletStore }) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, tab]);
 
   return (

@@ -27,7 +27,6 @@ export function ReceiverHub({ store, receiverId }: { store: WalletStore; receive
   useEffect(() => {
     store.loadReceiver(receiverId); // refreshes the real KYC status from BlindPay
     store.loadBankAccounts(receiverId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [receiverId]);
 
   const receiver = store.receivers.find((r) => r.id === receiverId) ?? null;

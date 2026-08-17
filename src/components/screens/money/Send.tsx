@@ -3,6 +3,7 @@ import { PrimaryButton, BackBar } from '@/components/parts';
 import { readText } from '@/lib/clipboard';
 import { fmt, trim } from '@/lib/format';
 import { isValidPublicKey } from '@/lib/wallet';
+import { isAmountWithin, isValidAmount, sanitizeAmountInput, isWithinAmountDigitLimit, clampMemo } from '@/lib/validation';
 import { AssetPicker } from '@/components/molecules/money/AssetPicker';
 import { spendableXlm } from './shared';
 import '@/styles/screens/money/send.css';
@@ -18,16 +19,15 @@ export function Send({ store }: { store: WalletStore }) {
   const price = store.prices[code]?.usd ?? 0;
   const amt = parseFloat(s.amount) || 0;
   const addrValid = isValidPublicKey(s.to);
-  const amtValid = amt > 0 && amt <= avail;
+  const amtValid = isAmountWithin(s.amount, avail);
   const ok = addrValid && amtValid;
 
   const setPct = (p: number) => store.setSend({ ...s, amount: String(Math.floor(avail * p * 1e7) / 1e7) });
-  // Direct keyboard editing (no on-screen pad): digits + one dot, 7 decimals max.
+  // Direct keyboard editing (no on-screen pad): digits + one dot, 7 decimals max
+  // (sanitizeAmountInput), capped at 12 significant digits (isWithinAmountDigitLimit).
   const editAmountInput = (raw: string) => {
-    let v = raw.replace(',', '.').replace(/[^\d.]/g, '');
-    const dot = v.indexOf('.');
-    if (dot !== -1) v = v.slice(0, dot + 1) + v.slice(dot + 1).replace(/\./g, '').slice(0, 7);
-    if (v.replace('.', '').length > 12) return;
+    const v = sanitizeAmountInput(raw);
+    if (!isWithinAmountDigitLimit(v)) return;
     store.setSend({ ...s, amount: v });
   };
   const pastePayUrl = async () => {
@@ -97,14 +97,14 @@ export function Send({ store }: { store: WalletStore }) {
       {/* memo: standard input metrics (54px pill, 15px type) like every other field */}
       <input
         value={s.memo}
-        onChange={(e) => store.setSend({ ...s, memo: (e.target as HTMLInputElement).value.slice(0, 28) })}
+        onChange={(e) => store.setSend({ ...s, memo: clampMemo((e.target as HTMLInputElement).value) })}
         placeholder={t('send.memo')}
         className="input send-memo"
       />
 
       <div className="send-spacer" />
       <PrimaryButton disabled={!ok} onClick={() => store.setScreen('confirm')}>
-        {amt > avail && amt > 0 ? t('send.insufficient') : t('common.continue')}
+        {isValidAmount(s.amount) && !isAmountWithin(s.amount, avail) ? t('send.insufficient') : t('common.continue')}
       </PrimaryButton>
     </div>
   );

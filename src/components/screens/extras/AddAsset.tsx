@@ -4,6 +4,7 @@ import { PrimaryButton, BackBar, Spinner, AssetLogo } from '@/components/parts';
 import { Field } from '@/components/screens/Onboarding';
 import { isValidPublicKey } from '@/lib/wallet';
 import { resolveAssetIssuer } from '@/lib/stellar';
+import { isValidAssetCode } from '@/lib/validation';
 import { KNOWN_ISSUERS, COMMON_CODES, ASSET_CODE_MAX } from '@/constants/extras';
 import '@/styles/screens/extras/add-asset.css';
 
@@ -18,7 +19,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
   const [loading, setLoading] = useState(true);
 
   const issuerOk = isValidPublicKey(issuer.trim());
-  const ok = code.trim().length >= 1 && code.trim().length <= ASSET_CODE_MAX && issuerOk && !store.busy;
+  const ok = isValidAssetCode(code) && issuerOk && !store.busy;
   const held = new Set((store.account?.balances ?? []).map((b) => `${b.code}:${b.issuer ?? ''}`));
   const netKey = store.network.id === 'public' ? 'public' : store.network.id === 'testnet' ? 'testnet' : '';
 
@@ -43,7 +44,6 @@ export function AddAsset({ store }: { store: WalletStore }) {
     return () => {
       alive = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.network]);
 
   const common = COMMON_CODES.map((c) => ({ code: c, issuer: resolved[c] })).filter((a) => !!a.issuer) as {

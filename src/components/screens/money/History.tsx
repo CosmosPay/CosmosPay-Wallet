@@ -11,7 +11,6 @@ export function History({ store }: { store: WalletStore }) {
   // Refresh whenever the screen opens (or the active wallet / network changes).
   useEffect(() => {
     store.loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.meta?.id, store.network.id]);
   const items = store.history;
   return (

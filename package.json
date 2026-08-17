@@ -15,8 +15,12 @@
     "demo": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/serve-demo.ts",
     "build:ext": "astro build && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build-extension.ts",
     "build:ext:firefox": "astro build && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build-extension.ts firefox",
+    "test:unit": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tests/unit/register.mjs --test \"tests/unit/**/*.test.ts\"",
     "test:e2e": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/wallet.e2e.ts",
     "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts",
+    "check:guards": "npm run check:i18n && npm run check:paths",
+    "check:i18n": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check-i18n.ts",
+    "check:paths": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/check-paths.ts",
     "cap:sync": "astro build && cap sync",
     "cap:android": "astro build && cap sync android && cap open android",
     "cap:ios": "astro build && cap sync ios && cap open ios"

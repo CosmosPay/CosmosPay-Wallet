@@ -3,6 +3,7 @@ import type { WalletStore } from '@/components/store';
 import { PrimaryButton, Spinner } from '@/components/parts';
 import { Field } from '@/components/molecules/onboarding';
 import { changePassword } from '@/lib/vault';
+import { hasMinLength } from '@/lib/validation';
 import '@/styles/screens/settings/settings.css';
 
 /** Inline "change password" sub-form (current + new password → vault re-encrypt). */
@@ -11,7 +12,7 @@ export function ChangePassword({ store, onDone }: { store: WalletStore; onDone: 
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   const [busy, setBusy] = useState(false);
-  const ok = cur.length > 0 && next.length >= 8 && !busy;
+  const ok = cur.length > 0 && hasMinLength(next) && !busy;
 
   const submit = async () => {
     setBusy(true);

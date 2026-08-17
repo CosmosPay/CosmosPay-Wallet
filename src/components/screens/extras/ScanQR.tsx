@@ -176,7 +176,6 @@ export function ScanQR({ store }: { store: WalletStore }) {
     })();
 
     return cleanup;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retry, deviceId]);
 
   return (

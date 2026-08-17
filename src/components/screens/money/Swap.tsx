@@ -3,6 +3,7 @@ import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar, Spinner, EnableReceivingCard } from '@/components/parts';
 import { trim } from '@/lib/format';
 import { networkEnv } from '@/lib/stellar';
+import { decideSwap } from '@/lib/money';
 import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
 import type { SwapQuote } from '@/lib/cosmospay';
 import { spendableXlm, sendableAssets, SwapTokenSelect } from './shared';
@@ -48,8 +49,9 @@ export function Swap({ store }: { store: WalletStore }) {
   // Spendable amount of the source asset — XLM keeps the account's minimum reserve free,
   // so the swap (which sends the gross amount) can't exceed it. Prevents op_underfunded.
   const availFrom = from ? (from.isNative ? spendableXlm(store) : parseFloat(from.balance) || 0) : 0;
-  const insufficient = payNum > 0 && payNum > availFrom;
-  const canSwap = enabled && payNum > 0 && !sameAsset && !!from && !!to && !insufficient;
+  const swapDecision = decideSwap(pay, availFrom, sameAsset);
+  const insufficient = swapDecision.insufficient;
+  const canSwap = enabled && !!from && !!to && swapDecision.ok;
 
   // The receive amount comes straight from the gateway quote — no CoinGecko/market
   // approximation here, so what's shown is exactly what the swap routes.
@@ -90,7 +92,6 @@ export function Swap({ store }: { store: WalletStore }) {
       clearTimeout(debounce);
       clearInterval(refresh);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pay, fromCode, toCode, enabled, store.account]);
 
   // Swap the two sides (and any quote, which no longer applies).

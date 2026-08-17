@@ -55,7 +55,8 @@ export function localeOf(lang: Lang): string {
 }
 
 // Each entry: key -> { es, en, pt, de, fr }
-const T: Record<string, Record<Lang, string>> = {
+// Exported so scripts/check-i18n.ts can verify every key carries all five languages.
+export const T: Record<string, Record<Lang, string>> = {
   // ---- common ----
   'common.continue': { es: 'Continuar', en: 'Continue', pt: 'Continuar', de: 'Weiter', fr: 'Continuer' },
   'common.done': { es: 'Listo', en: 'Done', pt: 'Concluído', de: 'Fertig', fr: 'Terminé' },
@@ -387,6 +388,7 @@ const T: Record<string, Record<Lang, string>> = {
   'send.available': { es: 'Disponible', en: 'Available', pt: 'Disponível', de: 'Verfügbar', fr: 'Disponible' },
   'send.memo': { es: 'Memo (opcional)', en: 'Memo (optional)', pt: 'Memo (opcional)', de: 'Memo (optional)', fr: 'Mémo (facultatif)' },
   'send.insufficient': { es: 'Saldo insuficiente', en: 'Insufficient balance', pt: 'Saldo insuficiente', de: 'Unzureichendes Guthaben', fr: 'Solde insuffisant' },
+  'send.memoTooLong': { es: 'El memo es demasiado largo.', en: 'The memo is too long.', pt: 'O memo é muito longo.', de: 'Das Memo ist zu lang.', fr: 'Le mémo est trop long.' },
 
   // ---- confirm ----
   'confirm.title': { es: 'Confirmar envío', en: 'Confirm send', pt: 'Confirmar envio', de: 'Senden bestätigen', fr: 'Confirmer l’envoi' },
@@ -443,6 +445,7 @@ const T: Record<string, Record<Lang, string>> = {
   'swap.feeRate': { es: 'Tasa de comisión', en: 'Fee rate', pt: 'Fee rate', de: 'Fee rate', fr: 'Fee rate' },
   'swap.sameAsset': { es: 'Elegí dos tokens distintos para intercambiar.', en: 'Pick two different tokens to swap.', pt: 'Pick two different tokens to swap.', de: 'Pick two different tokens to swap.', fr: 'Pick two different tokens to swap.' },
   'swap.insufficient': { es: 'Saldo insuficiente. Disponible: {avail} {code}.', en: 'Insufficient balance. Available: {avail} {code}.', pt: 'Insufficient balance. Available: {avail} {code}.', de: 'Insufficient balance. Available: {avail} {code}.', fr: 'Insufficient balance. Available: {avail} {code}.' },
+  'swap.invalidAmount': { es: 'Importe no válido.', en: 'Invalid amount.', pt: 'Valor inválido.', de: 'Ungültiger Betrag.', fr: 'Montant invalide.' },
 
   // ---- operation history ----
   'history.title': { es: 'Historial', en: 'Activity', pt: 'Atividade', de: 'Verlauf', fr: 'Activité' },
@@ -673,6 +676,8 @@ const T: Record<string, Record<Lang, string>> = {
   'lp.sharesHeld': { es: 'Tenés', en: 'You hold', pt: 'Tens', de: 'Du hältst', fr: 'Tu détiens' },
   'lp.max': { es: 'Máx', en: 'Max', pt: 'Máx', de: 'Max', fr: 'Max' },
   'lp.overShares': { es: 'Solo tenés {held} participaciones.', en: 'You only hold {held} shares.', pt: 'Só tens {held} participações.', de: 'Du hältst nur {held} Anteile.', fr: 'Tu ne détiens que {held} parts.' },
+  'lp.invalidAmount': { es: 'Importe de depósito no válido.', en: 'Invalid deposit amount.', pt: 'Valor de depósito inválido.', de: 'Ungültiger Einzahlungsbetrag.', fr: 'Montant de dépôt invalide.' },
+  'lp.invalidShares': { es: 'Cantidad de participaciones no válida.', en: 'Invalid number of shares.', pt: 'Quantidade de participações inválida.', de: 'Ungültige Anzahl an Anteilen.', fr: 'Nombre de parts invalide.' },
   'lp.youReceiveApprox': { es: 'Recibirás (aprox.)', en: 'You’ll receive (approx.)', pt: 'Vais receber (aprox.)', de: 'Du erhältst (ca.)', fr: 'Tu recevras (env.)' },
   'lp.withdrawNote': {
     es: 'Quemás participaciones y recibís tu parte proporcional de ambos activos. Los mínimos on-chain se protegen con tu tolerancia de slippage.',

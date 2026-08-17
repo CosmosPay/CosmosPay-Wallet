@@ -3,7 +3,7 @@ import type { WalletStore } from '@/components/store';
 import type { Gender } from '@/lib/vault';
 import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { Field } from '@/components/molecules/onboarding';
-import { EMAIL_RE } from '@/constants/validation';
+import { isValidEmail, isValidName } from '@/lib/validation';
 import { ageFromBirthdate } from '@/lib/greeting';
 import '@/styles/screens/main/edit-profile.css';
 
@@ -16,8 +16,8 @@ export function EditProfile({ store }: { store: WalletStore }) {
   const [email, setEmail] = useState(store.meta?.email ?? '');
   const [gender, setGender] = useState<Gender>(store.meta?.gender ?? 'x');
   const [busy, setBusy] = useState(false);
-  const emailOk = EMAIL_RE.test(email.trim());
-  const ok = name.trim().length >= 2 && emailOk && !busy;
+  const emailOk = isValidEmail(email);
+  const ok = isValidName(name) && emailOk && !busy;
   const birthdate = store.meta?.birthdate ?? '';
   const age = ageFromBirthdate(birthdate);
 

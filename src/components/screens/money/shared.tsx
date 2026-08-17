@@ -1,4 +1,5 @@
 import type { WalletStore } from '@/components/store';
+import { spendableXlm as moneySpendableXlm } from '@/lib/money';
 
 // Presentational molecules moved to the atomic layer; re-exported here so existing
 // `from './shared'` / '@/components/screens/Money' imports keep working unchanged.
@@ -6,11 +7,11 @@ export { SwapTokenSelect } from '@/components/molecules/money/SwapTokenSelect';
 export { HistoryRow } from '@/components/molecules/money/HistoryRow';
 export { GenesisRow } from '@/components/molecules/money/GenesisRow';
 
+/** Reserve-aware XLM spendable balance — delegates to the pure rule in lib/money. */
 export function spendableXlm(store: WalletStore): number {
   const acc = store.account;
   if (!acc || !acc.exists) return 0;
-  const minBalance = (2 + acc.subentryCount) * 0.5; // base reserve
-  return Math.max(0, acc.xlm - minBalance - 0.001);
+  return moneySpendableXlm(acc.xlm, acc.subentryCount);
 }
 
 /** Assets the wallet can send: native XLM (always present) + any trustline balances. */

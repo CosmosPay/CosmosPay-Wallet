@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { PrimaryButton, BackBar, Spinner } from '@/components/parts';
 import { Field } from '@/components/screens/Onboarding';
+import { isValidEndpointUrl, isValidNetworkName, isValidNetworkPassphrase } from '@/lib/validation';
 import '@/styles/screens/extras/add-network.css';
 
 /* --------------------------- ADD NETWORK ---------------------------- */
@@ -11,7 +12,7 @@ export function AddNetwork({ store }: { store: WalletStore }) {
   const [horizon, setHorizon] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [busy, setBusy] = useState(false);
-  const ok = name.trim().length > 1 && /^https?:\/\/.+/.test(horizon.trim()) && passphrase.trim().length > 3 && !busy;
+  const ok = isValidNetworkName(name) && isValidEndpointUrl(horizon) && isValidNetworkPassphrase(passphrase) && !busy;
 
   const save = async () => {
     setBusy(true);

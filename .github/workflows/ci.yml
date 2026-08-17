@@ -26,6 +26,15 @@ jobs:
 
       - run: npm ci
 
+      # Unit tests run FIRST so a money-path regression fails fast, before the
+      # (slow) build. node:test with no extra dependencies (see tests/unit/).
+      - name: Unit tests (node:test)
+        run: npm run test:unit
+
+      # Repo guards: every i18n key in all five languages + every cited src path exists.
+      - name: Repo guards (i18n + paths)
+        run: npm run check:guards
+
       # astro check = TypeScript + Astro diagnostics (must be 0 errors)
       - name: Typecheck
         run: npm run check

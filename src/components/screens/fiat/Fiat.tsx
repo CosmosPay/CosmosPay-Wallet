@@ -16,7 +16,6 @@ export function Fiat({ store }: { store: WalletStore }) {
 
   useEffect(() => {
     if (adult) store.loadReceivers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.meta?.id, store.network.id, adult]);
 
   if (!adult) {

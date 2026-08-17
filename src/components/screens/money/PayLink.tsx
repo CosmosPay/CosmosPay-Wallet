@@ -3,6 +3,7 @@ import type { WalletStore } from '@/components/store';
 import { PrimaryButton, GhostButton, BackBar, Spinner } from '@/components/parts';
 import { copyText } from '@/lib/clipboard';
 import { trim } from '@/lib/format';
+import { clampMemo } from '@/lib/validation';
 import type { PayIntent } from '@/lib/cosmospay';
 import { sendableAssets, SwapTokenSelect } from './shared';
 import '@/styles/screens/money/pay-link.css';
@@ -60,7 +61,7 @@ export function PayLink({ store }: { store: WalletStore }) {
               <input value={amount} onChange={(e) => setAmount((e.target as HTMLInputElement).value)} inputMode="decimal" placeholder="0" className="paylink-amount-input" />
             </div>
           </div>
-          <input value={msg} onChange={(e) => setMsg((e.target as HTMLInputElement).value.slice(0, 28))} placeholder={t('paylink.msgPlaceholder')} className="input paylink-msg" />
+          <input value={msg} onChange={(e) => setMsg(clampMemo((e.target as HTMLInputElement).value))} placeholder={t('paylink.msgPlaceholder')} className="input paylink-msg" />
           <div className="paylink-spacer" />
           <PrimaryButton disabled={loading} onClick={generate}>{loading ? <Spinner /> : t('paylink.cta')}</PrimaryButton>
         </>

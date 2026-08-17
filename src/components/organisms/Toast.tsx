@@ -30,7 +30,6 @@ export function Toast({ toast }: { toast: WalletStore['toast'] }) {
     return () => {
       if (exitTimer.current) clearTimeout(exitTimer.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast]);
 
   if (!shown) return null;

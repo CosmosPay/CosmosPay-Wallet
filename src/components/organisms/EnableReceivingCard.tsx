@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/components/store';
 import { Spinner } from '@/components/atoms/Spinner';
+import { isValidLinkCode } from '@/lib/validation';
 import '@/styles/components/enable-receiving-card.css';
 
 /**
@@ -28,7 +29,7 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
 
   // Link flow — enter the emailed access code.
   if (link?.stage === 'sent') {
-    const ready = code.length === 6 && !busy;
+    const ready = isValidLinkCode(code) && !busy;
     return (
       <div className="glass card enable-receiving-card">
         <div className="enable-receiving-title">{t('cosmospay.codeTitle')}</div>
