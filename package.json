@@ -17,6 +17,8 @@
     "build:ext:firefox": "astro build && node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/build-extension.ts firefox",
     "test:e2e": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/wallet.e2e.ts",
     "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts",
+    "test:approve": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/approve.e2e.ts",
+    "test:unit": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/node-shim.test.ts && node --disable-warning=ExperimentalWarning --experimental-strip-types tests/bundle-guard.test.ts",
     "cap:sync": "astro build && cap sync",
     "cap:android": "astro build && cap sync android && cap open android",
     "cap:ios": "astro build && cap sync ios && cap open ios"
@@ -30,6 +32,7 @@
     "@stellar/stellar-sdk": "^16.2.0",
     "astro": "^7.1.6",
     "bip39": "^3.1.0",
+    "buffer": "^6.0.3",
     "country-flag-icons": "^1.6.20",
     "ed25519-hd-key": "^2.0.0",
     "jsqr": "^1.4.0",
@@ -44,12 +47,10 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "playwright": "^1.62.1",
-    "typescript": "^6.0.3",
-    "vite-plugin-node-polyfills": "^0.28.0"
+    "typescript": "^6.0.3"
   },
   "overrides": {
     "yaml": "^2.9.0",
-    "elliptic": "^6.6.1",
     "uuid": "^14.0.1"
   }
 }

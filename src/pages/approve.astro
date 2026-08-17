@@ -12,6 +12,10 @@ import ApprovePopup from '@/components/ApprovePopup.tsx';
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
+    <!-- Node-compat shim: hoisted into <head> as a module script, runs before the React island hydrates -->
+    <script>
+      import '@/lib/node-shim';
+    </script>
     <title>Cosmos Wallet · Aprobar</title>
     <style>
       html,

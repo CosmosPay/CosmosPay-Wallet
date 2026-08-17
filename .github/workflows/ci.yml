@@ -88,3 +88,13 @@ jobs:
         run: npm run test:responsive
         env:
           E2E_URL: http://127.0.0.1:4321
+
+      # Security regression tests: Node-compat shim + supply-chain bundle guard.
+      - name: Unit tests (shim + bundle guard)
+        run: npm run test:unit
+
+      # Approval window is a separate document/React root — smoke-test it too.
+      - name: Approval-window smoke test
+        run: npm run test:approve
+        env:
+          E2E_URL: http://127.0.0.1:4321
