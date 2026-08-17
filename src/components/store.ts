@@ -47,12 +47,12 @@ import {
   networkEnv,
   resolveNetwork,
   sendPayment,
-  signXdr,
   type AccountState,
   type HistoryOp,
   type NetConfig,
   type PriceInfo,
 } from '@/lib/stellar';
+import { normalizeAssetRef, signWithGuard } from '@/lib/signGuard';
 import {
   addBankAccount as cpAddBankAccount,
   addReceiverWallet as cpAddReceiverWallet,
@@ -1215,11 +1215,13 @@ export function useWalletStore() {
   );
 
   /**
-   * Full swap flow: create (server builds the XDR) -> sign locally -> submit
+   * Full swap flow: create (server builds the XDR) -> guard -> sign locally -> submit
    * (server sends it to Horizon). Lands on the success screen either way.
+   * `quote` is the quote the screen rendered (what the user approved): the guard
+   * verifies the envelope against it — never against the create-swap response.
    */
   const submitSwap = useCallback(
-    async (amount: string, from: SwapAsset, to: SwapAsset) => {
+    async (amount: string, from: SwapAsset, to: SwapAsset, quote: SwapQuote | null) => {
       if (!session) return;
       const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
       if (!apiKey) {
@@ -1242,7 +1244,26 @@ export function useWalletStore() {
           source: session.publicKey,
           slippageBps: DEFAULT_SLIPPAGE_BPS,
         });
-        const signedXdr = signXdr(network, session.secret, swap.xdr);
+        const signedXdr = signWithGuard(network, session.secret, swap.xdr, {
+          intent: 'swap',
+          source: session.publicKey,
+          assetIn: { code: from.code, issuer: from.issuer },
+          amountIn: amount,
+          assetOut: { code: to.code, issuer: to.issuer },
+          // Bounded by what the user SAW: the rendered quote. When no quote is
+          // on screen (stale / still loading) the guard refuses.
+          minOut: quote?.destination.minimum ?? '',
+          quoteAmount: quote?.source.amount,
+          // Bound the quote's own fee against the envelope; never the create-swap
+          // response's numbers.
+          fee: quote
+            ? {
+                amount: quote.fee.amount,
+                asset: normalizeAssetRef(quote.fee.asset, quote.fee.issuer),
+                wallet: quote.fee.wallet,
+              }
+            : undefined,
+        });
         const res = await cpSubmitSwap(apiKey, swap.id, signedXdr);
         if (res.submitted) {
           setSuccessInfo({
@@ -1340,7 +1361,14 @@ export function useWalletStore() {
           maxAmountB: input.maxAmountB,
           slippageBps: DEFAULT_SLIPPAGE_BPS,
         });
-        const signedXdr = signXdr(network, session.secret, op.xdr);
+        const signedXdr = signWithGuard(network, session.secret, op.xdr, {
+          intent: 'liquidityDeposit',
+          source: session.publicKey,
+          assetA: { code: input.assetA.code, issuer: input.assetA.issuer },
+          maxAmountA: input.maxAmountA,
+          assetB: { code: input.assetB.code, issuer: input.assetB.issuer },
+          maxAmountB: input.maxAmountB,
+        });
         const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
         if (res.submitted) {
           setSuccessInfo({
@@ -1370,9 +1398,15 @@ export function useWalletStore() {
     [session, cosmosApiKey, network, requestSignature, refresh, t],
   );
 
-  /** Full withdraw flow: build -> sign locally -> submit. Mirrors submitDeposit. */
+  /** Full withdraw flow: build -> guard -> sign locally -> submit. Mirrors submitDeposit.
+   *  `redeem` is what the screen rendered (the ≈ redeem preview the user approved) —
+   *  the guard bounds the envelope against it, never against the withdraw response. */
   const submitWithdraw = useCallback(
-    async (input: { poolId: string; shares: string }) => {
+    async (input: {
+      poolId: string;
+      shares: string;
+      redeem: { code: string; issuer: string | null; amount: string }[];
+    }) => {
       if (!session) return;
       const apiKey = cosmosApiKey();
       if (!apiKey) return;
@@ -1389,7 +1423,13 @@ export function useWalletStore() {
           shares: input.shares,
           slippageBps: DEFAULT_SLIPPAGE_BPS,
         });
-        const signedXdr = signXdr(network, session.secret, op.xdr);
+        const signedXdr = signWithGuard(network, session.secret, op.xdr, {
+          intent: 'liquidityWithdraw',
+          source: session.publicKey,
+          poolId: input.poolId,
+          shares: input.shares,
+          redeem: input.redeem.map((r) => ({ asset: normalizeAssetRef(r.code, r.issuer), amount: r.amount })),
+        });
         const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
         if (res.submitted) {
           setSuccessInfo({
@@ -1717,7 +1757,20 @@ export function useWalletStore() {
         const auth = await cpAuthorizePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar' });
         const xdr = extractUnsignedXdr(auth);
         if (!xdr) throw new Error(t('fiat.noXdr'));
-        const signed = signXdr(network, session.secret, xdr);
+        // The payout's token must be verified by (code, issuer) — resolve the issuer
+        // from the wallet's own balance, never from the authorize response.
+        const balance = account?.balances.find((b) => b.code === token);
+        if (!balance || balance.isNative || !balance.issuer) {
+          throw new Error(t('fiat.noTokenVerified'));
+        }
+        const signed = signWithGuard(network, session.secret, xdr, {
+          intent: 'offrampPayout',
+          source: session.publicKey,
+          token: { code: token, issuer: balance.issuer },
+          // Exact total the user approved on screen ("You send"): quote.sender_amount
+          // is minor units, so divide by 100 to get token units.
+          amountOut: String((quote.sender_amount ?? 0) / 100),
+        });
         const payout = await cpCreatePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar', signed_transaction: signed });
         const fiatMinor = quote.receiver_local_amount || quote.receiver_amount || 0;
         const sent = payout.senderAmount ?? (quote.sender_amount != null ? (quote.sender_amount / 100).toFixed(2) : '');

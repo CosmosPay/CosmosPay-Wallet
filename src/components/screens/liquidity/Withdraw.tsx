@@ -89,7 +89,22 @@ export function Withdraw({ store }: { store: WalletStore }) {
       <div className="glass swap-note">{t('lp.withdrawNote')}</div>
 
       <div className="swap-spacer" />
-      <PrimaryButton disabled={store.busy || !canWithdraw} onClick={() => store.submitWithdraw({ poolId: position.poolId, shares })}>
+      <PrimaryButton
+        disabled={store.busy || !canWithdraw}
+        onClick={() =>
+          store.submitWithdraw({
+            poolId: position.poolId,
+            shares,
+            // What the screen rendered (the ≈ redeem preview scaled by the share
+            // fraction) — the guard bounds the envelope's commission against it.
+            redeem: position.redeemable.map((r) => ({
+              code: r.asset === 'native' ? 'XLM' : r.asset,
+              issuer: r.issuer,
+              amount: String((parseFloat(r.amount) || 0) * fraction),
+            })),
+          })
+        }
+      >
         {store.busy ? <Spinner /> : t('lp.withdraw')}
       </PrimaryButton>
     </div>

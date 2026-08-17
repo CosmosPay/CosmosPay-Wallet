@@ -180,7 +180,7 @@ export function Swap({ store }: { store: WalletStore }) {
 
       <div className="swap-spacer" />
       {enabled ? (
-        <PrimaryButton disabled={store.busy || !canSwap} onClick={() => from && to && store.submitSwap(pay, asSwapAsset(from), asSwapAsset(to))}>
+        <PrimaryButton disabled={store.busy || !canSwap} onClick={() => from && to && store.submitSwap(pay, asSwapAsset(from), asSwapAsset(to), quote)}>
           {store.busy ? <Spinner /> : t('swap.cta')}
         </PrimaryButton>
       ) : (
