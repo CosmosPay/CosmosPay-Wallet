@@ -93,6 +93,28 @@ export default defineConfig({
       },
     ],
     build: {
+      // Pin the CSS minifier explicitly — DO NOT let it fall back to the Vite
+      // default. Astro 7 ships Vite 8, whose default CSS minifier is Lightning
+      // CSS, and Lightning rewrites vendor prefixes from its own feature data:
+      // for `backdrop-filter` it DELETES the unprefixed declaration and keeps
+      // only `-webkit-backdrop-filter`. Chrome and Firefox both report
+      // CSS.supports('-webkit-backdrop-filter', …) === false, so a shipped
+      // bundle loses the entire glass system (.glass, .glass-soft, .glass-bright,
+      // .input, .btn-primary, dropdowns treated as `backdrop-filter: none`)
+      // for everyone except Safari — while astro dev (unminified) looks perfect.
+      // esbuild only minifies and never adds/removes/reorders vendor prefixes,
+      // so the hand-written `-webkit-` + unprefixed pairs in src/styles survive
+      // the build verbatim. If you ever "simplify" this back to 'lightningcss',
+      // the per-browser rendering regression above comes straight back — no
+      // test in this repo catches it (the responsive suite checks layout, not
+      // appearance). This comment exists to protect the next person to do that.
+      cssMinify: 'esbuild',
+      // Pin the CSS lower browser floor to what the stylesheets already demand:
+      // color-mix() needs Chrome/Edge 111, Firefox 113, Safari 16.2, and dvh
+      // (~Chrome 108 / Firefox 101 / Safari 15.4) is below that. Explicitly
+      // pinning the cssTarget stops it silently drifting to whatever "modern
+      // browsers" Vite happens to mean in a future major.
+      cssTarget: ['chrome111', 'edge111', 'firefox113', 'safari16.2'],
       // A single WebView app: a slightly larger chunk is fine, avoid noisy warnings.
       chunkSizeWarningLimit: 1500,
     },

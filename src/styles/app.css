@@ -188,6 +188,7 @@
   border-radius: 999px;
   cursor: pointer;
   user-select: none;
+  -webkit-user-select: none; /* Safari still only honors the prefixed form */
 }
 .spinner {
   display: inline-block;
