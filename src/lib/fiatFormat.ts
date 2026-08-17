@@ -1,4 +1,4 @@
-import type { WalletStore } from '@/components/store';
+import type { AccountState } from '@/lib/stellar';
 import { STABLES } from '@/constants/fiat';
 
 /* ---- onramp/offramp amount helpers ---- */
@@ -10,8 +10,8 @@ export const fmtFiat = (n?: number | null) => (n == null ? '—' : Math.round(n 
 export const toMinor = (s: string) => Math.round((parseFloat(s) || 0) * 100);
 
 /** Trusted stablecoins on the wallet. Keeps only those with a spendable balance when asked. */
-export function stableTokens(store: WalletStore, withBalance = false): { code: string; balance: number }[] {
-  return (store.account?.balances ?? [])
+export function stableTokens(account: AccountState | null, withBalance = false): { code: string; balance: number }[] {
+  return (account?.balances ?? [])
     .filter((b) => !b.isNative && STABLES.includes(b.code))
     .map((b) => ({ code: b.code, balance: parseFloat(b.balance) || 0 }))
     .filter((b) => (withBalance ? b.balance > 0 : true));

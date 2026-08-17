@@ -205,3 +205,30 @@
 .nav-drawer .tap {
   animation: none !important;
 }
+
+.spinner { width: var(--size, 20px); height: var(--size, 20px); }
+
+.home-asset-row, .market-row, .money-history-row, .money-genesis-row { animation-delay: var(--stagger) !important; }
+
+/* Stagger ladder */
+.stagger-0 { animation-delay: 0.0s !important; }
+.stagger-1 { animation-delay: 0.05s !important; }
+.stagger-2 { animation-delay: 0.1s !important; }
+.stagger-3 { animation-delay: 0.15000000000000002s !important; }
+.stagger-4 { animation-delay: 0.2s !important; }
+.stagger-5 { animation-delay: 0.25s !important; }
+.stagger-6 { animation-delay: 0.30000000000000004s !important; }
+.stagger-7 { animation-delay: 0.35000000000000003s !important; }
+.stagger-8 { animation-delay: 0.4s !important; }
+.stagger-9 { animation-delay: 0.45s !important; }
+.stagger-10 { animation-delay: 0.5s !important; }
+.stagger-11 { animation-delay: 0.55s !important; }
+.stagger-12 { animation-delay: 0.6000000000000001s !important; }
+.stagger-13 { animation-delay: 0.65s !important; }
+.stagger-14 { animation-delay: 0.7000000000000001s !important; }
+.stagger-15 { animation-delay: 0.75s !important; }
+.stagger-16 { animation-delay: 0.8s !important; }
+.stagger-17 { animation-delay: 0.8500000000000001s !important; }
+.stagger-18 { animation-delay: 0.9s !important; }
+.stagger-19 { animation-delay: 0.9500000000000001s !important; }
+.stagger-20 { animation-delay: 1.0s !important; }

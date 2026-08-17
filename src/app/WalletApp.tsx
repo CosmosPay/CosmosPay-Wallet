@@ -1,0 +1,280 @@
+import '@/styles/app/wallet-app.css';
+import { useEffect, useRef, useState } from 'react';
+import { NAV_SCREENS, SPLASH_REVEAL_MS, SPLASH_DONE_MS } from '@/constants/app';
+import { useWalletStore, type WalletStore } from '@/state/store';
+import { buildKind } from '@/lib/platform';
+import { Shell, Spinner, Logo } from '@/ui/parts';
+import { Welcome } from '@/features/onboarding/Welcome';
+import { Backup } from '@/features/onboarding/Backup';
+import { Verify } from '@/features/onboarding/Verify';
+import { Import } from '@/features/onboarding/Import';
+import { ProfileSetup } from '@/features/onboarding/ProfileSetup';
+import { PasswordSetup } from '@/features/onboarding/PasswordSetup';
+import { Unlock } from '@/features/onboarding/Unlock';
+import { Home } from '@/features/main/Home';
+import { Earn } from '@/features/main/Earn';
+import { Markets } from '@/features/main/Markets';
+import { Profile } from '@/features/main/Profile';
+import { Asset } from '@/features/main/Asset';
+import { EditProfile } from '@/features/main/EditProfile';
+import { Receive } from '@/features/money/Receive';
+import { Send } from '@/features/money/Send';
+import { Confirm } from '@/features/money/Confirm';
+import { Success } from '@/features/money/Success';
+import { Swap } from '@/features/money/Swap';
+import { History } from '@/features/money/History';
+import { PayLink } from '@/features/money/PayLink';
+import { Settings } from '@/features/settings/Settings';
+import { Export } from '@/features/settings/Export';
+import { About } from '@/features/settings/About';
+import { AddNetwork } from '@/features/extras/AddNetwork';
+import { AddAsset } from '@/features/extras/AddAsset';
+import { ScanQR } from '@/features/extras/ScanQR';
+import { Operations } from '@/features/extras/Operations';
+import { SignTx } from '@/features/extras/SignTx';
+import { Fiat } from '@/features/fiat/Fiat';
+import { BankAccount } from '@/features/fiat/BankAccount';
+import { Deposit } from '@/features/fiat/Deposit';
+import { Withdraw } from '@/features/fiat/Withdraw';
+import { Liquidity } from '@/features/liquidity/Liquidity';
+import { Deposit as LpDeposit } from '@/features/liquidity/Deposit';
+import { Withdraw as LpWithdraw } from '@/features/liquidity/Withdraw';
+import { CosmosPay } from '@/features/cosmos-pay/CosmosPay';
+
+/** Map the Android hardware back button to a sensible in-app navigation. */
+function handleBack(store: WalletStore, exitApp: () => void) {
+  switch (store.screen) {
+    case 'welcome':
+      if (store.addingWallet) return store.cancelAddWallet();
+      return exitApp();
+    case 'backup':
+      return store.setScreen('welcome');
+    case 'verify':
+      return store.setScreen('backup');
+    case 'import':
+      return store.setScreen('welcome');
+    case 'profile-setup':
+      return store.setScreen(store.draftHasMnemonic && store.draftMnemonic ? 'verify' : 'import');
+    case 'password':
+      return store.setScreen('profile-setup');
+    case 'confirm':
+      return store.setScreen('send');
+    case 'asset':
+      return store.go(store.tab, store.tab);
+    case 'receive':
+    case 'send':
+    case 'swap':
+      return store.go('home', 'home');
+    case 'settings':
+    case 'export':
+    case 'about':
+      return store.go(store.session ? 'profile' : 'home', store.session ? 'profile' : 'home');
+    case 'operations':
+      return store.go('home', 'home');
+    case 'history':
+      return store.go('home', 'home');
+    case 'paylink':
+      return store.setScreen('receive');
+    case 'fiat':
+      return store.go('home', 'home');
+    case 'cosmospay':
+    case 'edit-profile':
+      return store.go('profile', 'profile');
+    case 'bankaccount':
+    case 'deposit':
+    case 'withdraw':
+      return store.setScreen('fiat');
+    case 'sign-tx':
+      return store.setScreen('operations');
+    case 'add-network':
+    case 'add-asset':
+      return store.go('home', 'home');
+    case 'scan':
+      return store.setScreen('send');
+    case 'liquidity':
+      return store.go('earn', 'earn');
+    case 'lp-deposit':
+    case 'lp-withdraw':
+      return store.setScreen('liquidity');
+    case 'success':
+      return store.session ? store.go('home', 'home') : store.setScreen('unlock');
+    case 'earn':
+    case 'markets':
+    case 'profile':
+      return store.go('home', 'home');
+    default:
+      // home / welcome / unlock / boot -> leave the app
+      exitApp();
+  }
+}
+
+function renderScreen(screen: WalletStore['screen'], store: WalletStore) {
+  switch (screen) {
+    case 'welcome':
+      return <Welcome store={store} />;
+    case 'backup':
+      return <Backup store={store} />;
+    case 'verify':
+      return <Verify store={store} />;
+    case 'import':
+      return <Import store={store} />;
+    case 'profile-setup':
+      return <ProfileSetup store={store} />;
+    case 'password':
+      return <PasswordSetup store={store} />;
+    case 'unlock':
+      return <Unlock store={store} />;
+    case 'home':
+      return <Home store={store} />;
+    case 'earn':
+      return <Earn store={store} />;
+    case 'liquidity':
+      return <Liquidity store={store} />;
+    case 'lp-deposit':
+      return <LpDeposit store={store} />;
+    case 'lp-withdraw':
+      return <LpWithdraw store={store} />;
+    case 'markets':
+      return <Markets store={store} />;
+    case 'profile':
+      return <Profile store={store} />;
+    case 'asset':
+      return <Asset store={store} />;
+    case 'receive':
+      return <Receive store={store} />;
+    case 'send':
+      return <Send store={store} />;
+    case 'swap':
+      return <Swap store={store} />;
+    case 'confirm':
+      return <Confirm store={store} />;
+    case 'success':
+      return <Success store={store} />;
+    case 'settings':
+      return <Settings store={store} />;
+    case 'export':
+      return <Export store={store} />;
+    case 'about':
+      return <About store={store} />;
+    case 'operations':
+      return <Operations store={store} />;
+    case 'history':
+      return <History store={store} />;
+    case 'paylink':
+      return <PayLink store={store} />;
+    case 'fiat':
+      return <Fiat store={store} />;
+    case 'cosmospay':
+      return <CosmosPay store={store} />;
+    case 'edit-profile':
+      return <EditProfile store={store} />;
+    case 'bankaccount':
+      return <BankAccount store={store} />;
+    case 'deposit':
+      return <Deposit store={store} />;
+    case 'withdraw':
+      return <Withdraw store={store} />;
+    case 'sign-tx':
+      return <SignTx store={store} />;
+    case 'add-network':
+      return <AddNetwork store={store} />;
+    case 'add-asset':
+      return <AddAsset store={store} />;
+    case 'scan':
+      return <ScanQR store={store} />;
+    default:
+      return <Home store={store} />;
+  }
+}
+
+export default function WalletApp() {
+  const store = useWalletStore();
+  const { screen } = store;
+
+  // Keep a ref to the latest store so the native listener reads current state.
+  const storeRef = useRef(store);
+  storeRef.current = store;
+
+  // Splash intro: black screen + logo, then fade away revealing the app. Skipped
+  // in the browser-extension popup: a full-screen `position: fixed` overlay + a
+  // 2s intro is poor UX in a small popup that opens/closes constantly, and keeping
+  // fixed-positioned overlays out of the auto-sizing popup avoids layout surprises.
+  const isExt = buildKind() === 'ext';
+  const [intro, setIntro] = useState<'show' | 'reveal' | 'done'>(isExt ? 'done' : 'show');
+  useEffect(() => {
+    if (isExt) return;
+    const t1 = setTimeout(() => setIntro('reveal'), SPLASH_REVEAL_MS);
+    const t2 = setTimeout(() => setIntro('done'), SPLASH_DONE_MS);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isExt]);
+
+  // Android hardware back button (native only).
+  useEffect(() => {
+    let remove: (() => void) | undefined;
+    (async () => {
+      const { Capacitor } = await import('@capacitor/core');
+      if (!Capacitor.isNativePlatform()) return;
+      const { App } = await import('@capacitor/app');
+      const handle = await App.addListener('backButton', () => {
+        handleBack(storeRef.current, () => App.exitApp());
+      });
+      remove = () => handle.remove();
+    })();
+    return () => remove?.();
+  }, []);
+
+  const showNav = NAV_SCREENS.includes(screen) && !!store.session;
+
+  return (
+    <>
+      <div
+        className="wallet-app-intro"
+        style={{
+          opacity: intro === 'show' ? 0 : 1,
+          transform: intro === 'show' ? 'scale(1.05)' : 'none',
+        }}
+      >
+        <Shell showNav={showNav} store={store}>
+          {screen === 'boot' ? (
+            <Boot />
+          ) : (
+            // key={screen} remounts on every navigation so the entrance animation replays
+            <div key={screen} className="col f1 wallet-app-screen">
+              {renderScreen(screen, store)}
+            </div>
+          )}
+        </Shell>
+      </div>
+
+      {intro !== 'done' && <Splash fading={intro !== 'show'} />}
+    </>
+  );
+}
+
+function Splash({ fading }: { fading: boolean }) {
+  return (
+    <div
+      className="center splash-overlay"
+      style={{
+        opacity: fading ? 0 : 1,
+        pointerEvents: fading ? 'none' : 'auto',
+      }}
+    >
+      <div className="splash-logo">
+        <Logo size={116} />
+      </div>
+    </div>
+  );
+}
+
+function Boot() {
+  return (
+    <div className="col center f1 boot-screen">
+      <Logo size={84} />
+      <Spinner color="var(--text)" />
+    </div>
+  );
+}
