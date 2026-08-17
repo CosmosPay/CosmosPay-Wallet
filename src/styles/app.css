@@ -118,8 +118,8 @@
 .glass,
 .input {
   background: var(--glass-bg);
-  backdrop-filter: blur(22px) saturate(150%);
   -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-border), 0 10px 30px rgba(0, 0, 0, 0.28);
 }
@@ -127,16 +127,16 @@
 .glass-soft,
 .btn-ghost {
   background: var(--glass-soft-bg);
-  backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
   border: 1px solid var(--glass-soft-border);
 }
 
 .glass-bright,
 .btn-primary {
   background: var(--primary-bg);
-  backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid var(--primary-border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 30px rgba(0, 0, 0, 0.3);
 }
@@ -273,28 +273,6 @@
   padding: 6px 0 8px;
 }
 
-.numpad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px 8px;
-}
-
-.numpad>div {
-  height: 52px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: 600;
-  border-radius: 999px;
-  cursor: pointer;
-  /* Safari only accepts the unprefixed property from 17.0 on, and iOS also pops
-     a copy/define callout on long-press — both would fire while typing a PIN */
-  -webkit-user-select: none;
-  user-select: none;
-  -webkit-touch-callout: none;
-}
-
 /* Ring spinner. The base is the 18px on-primary variant (what sits inside a
    .btn-primary); size and tone are modifier classes, never inline values. */
 .spinner {
@@ -343,4 +321,35 @@
 .nav-drawer input,
 .nav-drawer .tap {
   animation: none !important;
+}
+
+/* ---------------------------------------------------------------------
+   Shared atoms extracted from per-screen sheets that had re-declared them.
+   --------------------------------------------------------------------- */
+
+/* Error / refusal line under a field or form. Was five byte-identical copies
+   (.edit-profile-err, .profile-setup-err, .sign-tx-err, .confirm-sign-err,
+   .add-network-err); screens keep only their own margin. */
+.err-line {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--danger);
+  line-height: 1.45;
+}
+
+/* Flexible gap that pushes the primary action to the bottom of a screen column.
+   Was nine copies differing only in a min-height of 12/14/16/20px — a spread
+   nobody designed. One value now; it only takes effect when the column is short. */
+.spacer {
+  flex: 1;
+  min-height: 14px;
+}
+
+/* Muted explanatory paragraph under a screen title. Was eleven near-identical
+   rules at 12.5-13.5px; screens keep their own margin on top of this. */
+.desc {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
 }

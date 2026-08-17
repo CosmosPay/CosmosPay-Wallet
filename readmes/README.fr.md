@@ -19,6 +19,8 @@ autodétection), multi-portefeuille sous un seul mot de passe et provider dapps
 |---|---|
 | Créer / importer / exporter | BIP-39 de 12 mots + dérivation **SEP-5** (`m/44'/148'/0'`) ; import par phrase ou clé secrète (`S…`) |
 | Coffre chiffré | **AES-256-GCM**, clé dérivée via **PBKDF2** (210k itérations) ; déverrouillage en mémoire uniquement |
+| Verrouillage auto | La session est jetée après 5 minutes d’inactivité ; il faut ressaisir le mot de passe |
+| Garde de signature | `assertSafeToSign` décode chaque XDR avant de signer et refuse ce qui ne correspond pas au flux (voir Modèle de sécurité) |
 | Soldes, envoi & réception | Horizon ; QR pour recevoir ; l’envoi de XLM crée le compte destinataire si besoin |
 | Swap | Via la passerelle Cosmos Pay (devis auto, protection de slippage) |
 | Fiat (on/off-ramp) | Receiver BlindPay (KYC) — dépôts et retraits, **18+ uniquement** |
@@ -40,23 +42,39 @@ La dérivation des clés est vérifiée contre le **vecteur de test officiel SEP
 3. Le déverrouillage déchiffre **en mémoire uniquement** ; un mauvais mot de passe échoue au tag GCM.
 4. Les signatures peuvent redemander le mot de passe (réglage). La fenêtre d’approbation dapps
    signe en local — aucun secret n’atteint une page ou un serveur.
+5. **Verrouillage automatique par inactivité :** une session ouverte détient la clé déchiffrée ;
+   après 5 minutes sans interaction elle est jetée et le mot de passe redemandé.
+6. **Rien n’est signé sans avoir été décodé.** Tout ce que le portefeuille signe sans l’avoir
+   construit lui-même (l’enveloppe renvoyée par la passerelle, celle fournie par une dapp) passe
+   par `assertSafeToSign` : décodage du XDR, vérification que la source est bien nous, liste
+   blanche des seules opérations que ce flux peut contenir, refus des prises de contrôle de compte
+   (`setOptions`, `accountMerge`, parrainage, clawback), plafond de frais, refus des enveloppes
+   fee-bump et borne du montant par le devis que l’utilisateur vient de confirmer. Refuser, pas
+   avertir.
+7. La **passphrase réseau n’est jamais prise chez la contrepartie** — elle vient de la
+   configuration réseau du portefeuille, pour qu’une approbation « Testnet » ne puisse pas produire
+   une signature valide sur Mainnet. `signMessage` signe un digest à séparation de domaine, jamais
+   les octets de l’appelant.
 
 > Le mot de passe est **irrécupérable**. En cas d’oubli : supprime ce portefeuille de
 > l’appareil et restaure-le avec sa phrase (les autres portefeuilles ne sont pas affectés).
 
 ## Développement
 
-Nécessite **Node ≥ 18**.
+Nécessite **Node ≥ 22.12** (exigé par le moteur d’Astro 7 ; de plus les scripts de build et de test
+utilisent `--experimental-strip-types`, disponible depuis 22.6). La CI tourne sur Node 22.
 
 ```bash
 npm install
 npm run dev                  # http://localhost:4500
-npm run build:ext            # -> extension/          (Chrome / Edge)
-npm run build:ext:firefox    # -> extension-firefox/  (Firefox)
+npm run build                # -> dist/web/
+npm run test:unit            # node:test, sans dépendances
+npm run build:ext            # -> dist/extension/          (Chrome / Edge)
+npm run build:ext:firefox    # -> dist/extension-firefox/  (Firefox)
 ```
 
-- **Chrome / Edge :** `chrome://extensions` → mode développeur → *Charger l’extension non empaquetée* → `extension/`.
-- **Firefox :** `about:debugging#/runtime/this-firefox` → *Charger un module temporaire* → `extension-firefox/manifest.json`.
+- **Chrome / Edge :** `chrome://extensions` → mode développeur → *Charger l’extension non empaquetée* → `dist/extension/`.
+- **Firefox :** `about:debugging#/runtime/this-firefox` → *Charger un module temporaire* → `dist/extension-firefox/manifest.json`.
 
 Textes pour la boutique : [STORE_LISTING.md](../STORE_LISTING.md).
 

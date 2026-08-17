@@ -3,7 +3,7 @@
 // worker opens it when a site calls window.cosmosWallet.* and the user has to weigh in.
 // Its own lightweight page (system font, no effects) so it drags in neither the popup's
 // crash nor the full store.
-import ApprovePopup from '@/components/ApprovePopup.tsx';
+import ApprovePopup from '@/app/ApprovePopup.tsx';
 // Document chrome for this window. Kept out of the page as a stylesheet because
 // Astro scopes a <style> block's element selectors to [data-astro-cid-…], and
 // that attribute never reaches a client:only island's DOM.
@@ -16,7 +16,7 @@ import '@/styles/approve.css';
     <!-- Same as index.astro: the Node globals must exist before the island mounts. -->
 
     <script>
-      import '@/lib/node-globals';
+      import '@/lib/nodeGlobals';
     </script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

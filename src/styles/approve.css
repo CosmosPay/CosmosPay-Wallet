@@ -3,7 +3,7 @@
    That page is deliberately lightweight — system font, no effects, no store,
    no theme tokens — so this sheet uses literal colours and stays independent
    of theme.css/base.css. The window's own widgets live in
-   src/styles/components/approve-popup.css.
+   src/styles/app/approve-popup.css.
    ===================================================================== */
 
 html,

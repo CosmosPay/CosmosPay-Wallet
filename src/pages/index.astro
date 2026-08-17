@@ -1,5 +1,5 @@
 ---
-import WalletApp from '@/components/WalletApp.tsx';
+import WalletApp from '@/app/WalletApp.tsx';
 // Global stylesheets, in cascade order. Nothing is styled from this file:
 // tokens, resets, keyframes and utilities all live under src/styles/.
 import '@/styles/theme.css';
@@ -15,7 +15,7 @@ import '@/styles/app.css';
          Goes first: Astro hoists page scripts into the head and modules run in document
          order, so this lands before any island hydrates. -->
     <script>
-      import '@/lib/node-globals';
+      import '@/lib/nodeGlobals';
     </script>
     <meta charset="utf-8" />
     <meta

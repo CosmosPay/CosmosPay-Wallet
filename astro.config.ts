@@ -50,11 +50,17 @@ export default defineConfig({
         // prefix itself before forwarding upstream), so forward the prefix as-is.
         '/cosmos-api': { target: GATEWAY_TARGET, changeOrigin: true },
       },
-      allowedHosts: [env.ALLOWED_HOSTS]
+      allowedHosts: [env.ALLOWED_HOSTS],
+      // The native projects are generated inside the repo, and `cap sync` copies the
+      // whole of dist/web/ into android/app/src/main/assets/public/ — under the project
+      // root, so the dev-server watcher treats every copied file as a source edit and
+      // reloads. During `npm run dev:android` that fires on each sync, for files the app
+      // never loads in live-reload mode. Vite appends this to its own ignore defaults.
+      watch: { ignored: ['**/android/**', '**/ios/**'] },
     },
     resolve: {
-      // `@` -> src so modules can import `@/lib/...` instead of `../../lib/...`.
-      // Existing relative (`../..`) imports keep working — both resolve to the same files.
+      // `@` -> src. This is the ONLY import form allowed inside src/ (see CLAUDE.md):
+      // relative paths broke silently on file moves and read differently per depth.
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
       },

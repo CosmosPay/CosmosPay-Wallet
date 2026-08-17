@@ -2,7 +2,15 @@
 // Monochrome palette: token circles are neutral; the glyph carries the identity.
 // `tone` names a .token-avatar--* class instead of a colour string — the app
 // keeps every colour in CSS (see CLAUDE.md).
-import type { TokenAvatarTone } from '@/components/atoms/TokenAvatar';
+
+/**
+ * Surfaces a token badge can wear — each maps to a `.token-avatar--*` class.
+ *
+ * Declared here, not in `ui/TokenAvatar`, because the table below is what assigns
+ * tones and `constants/` may not import from `ui/`. The component imports it back
+ * the other way round, which the layering does allow.
+ */
+export type TokenAvatarTone = 'base' | 'brand' | 'pool';
 
 export const ASSET_META: Record<string, { name: string; glyph: string; tone: TokenAvatarTone }> = {
   XLM: { name: 'Stellar Lumens', glyph: '✦', tone: 'brand' },

@@ -1,0 +1,18 @@
+import type { ReactNode } from 'react';
+import { cx } from '@/lib/cx';
+import '@/styles/features/onboarding/atoms.css';
+
+/** Checkbox row in the app's style (used by Backup consents + optional opt-ins).
+ *  The checked look is driven by the `is-on` modifier class, not inline styles. */
+export function CheckRow({ on, onToggle, children, className }: { on: boolean; onToggle: () => void; children: ReactNode; className?: string }) {
+  return (
+    <div onClick={onToggle} className={cx('tap ob-check', className)}>
+      <div className={cx('ob-check-box', on && 'is-on')}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="ob-check-tick">
+          <path d="M5 13l4 4 10-11" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </div>
+      <span className="ob-check-text">{children}</span>
+    </div>
+  );
+}

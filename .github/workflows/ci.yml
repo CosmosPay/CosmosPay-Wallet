@@ -30,6 +30,12 @@ jobs:
       - name: Typecheck
         run: npm run check
 
+      # node:test over the pure modules — key derivation, vault crypto, amount/memo
+      # parsing, asset identity, the pre-signature guard. No browser needed, so this
+      # runs before the build and fails fast on a money-path regression.
+      - name: Unit tests
+        run: npm run test:unit
+
       # Static site -> dist/web/ (this is what Capacitor wraps for native, too)
       - name: Build web (dist/web/)
         run: npm run build

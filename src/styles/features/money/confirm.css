@@ -1,0 +1,6 @@
+/* Confirm send screen (src/features/money/Confirm.tsx). */
+.confirm-logo { margin: 20px 0 8px; } /* on .center */
+.confirm-amount { text-align: center; font-size: 30px; font-weight: 800; letter-spacing: -1px; margin-bottom: 4px; }
+.confirm-fiat { text-align: center; font-size: 14px; color: var(--dim); font-weight: 600; margin-bottom: 26px; }
+.confirm-card { border-radius: 18px; padding: 6px 18px; flex-shrink: 0; } /* on .glass */
+/* Row rules moved to styles/ui/kv-row.css — this screen uses <KVRow> now. */

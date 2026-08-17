@@ -34,6 +34,8 @@
   /* Error / refusal copy. Distinct from --down, which means "price fell": the two
      happen to be red today but must be free to diverge. */
   --danger: #ff5d5d;
+  /* Tinted fill behind a refusal mark, e.g. the error boundary's badge. */
+  --danger-soft: rgba(255, 93, 93, 0.14);
   --gb-bg-a: rgba(255, 255, 255, 0.05);
   --gb-bg-b: rgba(255, 255, 255, 0.085);
   --gb-bd-a: rgba(255, 255, 255, 0.08);
@@ -66,6 +68,7 @@
   --up: #16a34a;
   --down: #dc2626;
   --danger: #d92020;
+  --danger-soft: rgba(217, 32, 32, 0.1);
   --gb-bg-a: rgba(255, 255, 255, 0.42);
   --gb-bg-b: rgba(255, 255, 255, 0.62);
   --gb-bd-a: rgba(255, 255, 255, 0.5);

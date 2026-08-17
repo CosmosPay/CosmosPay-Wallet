@@ -1,0 +1,46 @@
+/* =====================================================================
+   KVRow — label/value line in a summary card (src/ui/KVRow.tsx).
+
+   Replaces .confirm-row / .about-row / .success-row, which were the same
+   declaration block written out three times, plus the row halves of
+   .cosmospay-row and .fiat-quote-row.
+   ===================================================================== */
+
+.kv-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 0;
+  border-bottom: 1px solid var(--hairline);
+  gap: 12px;
+}
+.kv-row:last-child {
+  border-bottom: none;
+}
+
+.kv-row-label {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.kv-row-right {
+  text-align: right;
+  min-width: 0;
+}
+
+.kv-row-val {
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.kv-row-val.is-mono {
+  font-family: monospace;
+  overflow-wrap: anywhere;
+}
+
+/* The card these rows sit in — compose on .glass. Was .confirm-card,
+   .about-card, .success-rows and .sign-tx-summary, all the same box. */
+.kv-card {
+  border-radius: 18px;
+  padding: 6px 18px;
+}

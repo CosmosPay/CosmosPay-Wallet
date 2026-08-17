@@ -1,6 +1,0 @@
-/* StellarMark — monochrome Stellar glyph (size prop drives the svg attrs). */
-.stellar-mark {
-  display: block;
-  flex-shrink: 0;
-  color: currentColor;
-}

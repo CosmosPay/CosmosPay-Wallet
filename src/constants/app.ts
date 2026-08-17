@@ -1,13 +1,30 @@
 /** App-shell constants: module-level literals moved out of
- *  src/components/WalletApp.tsx and src/components/ApprovePopup.tsx. */
+ *  src/app/WalletApp.tsx and src/app/ApprovePopup.tsx. */
 
-/** Screens that show the bottom navigation bar (when a session is open). */
-export const NAV_SCREENS = ['home', 'earn', 'markets', 'profile', 'swap'];
+// NAV_SCREENS moved to src/lib/screens.ts, where it is DERIVED from the screen
+// table (`nav: true`) instead of being a second hand-maintained list of the same
+// screens — the two had already drifted apart from `back()`'s `containers` array.
+
+/**
+ * Identity strings. These were a seven-line `config` module under `lib/`, which held
+ * no behaviour at all — data belongs here, and `lib/` is for things that do something.
+ *
+ * `APP_VERSION` had drifted to 1.1.0 while package.json said 1.2.3, so both the
+ * welcome screen and the About screen showed a version the build was not.
+ * `tests/unit/version.test.ts` now pins them together.
+ */
+export const APP_NAME = 'Cosmos Pay';
+export const APP_VERSION = '1.2.3';
+export const APP_PRODUCER = 'Un producto de Cosmos';
+
+/** Terms & Conditions of use — linked from the backup consent checkbox. Served by
+ *  the Developer Platform (a separate repo, EN/ES). */
+export const TERMS_URL = 'https://dev.cosmospay.lat/tos';
 
 /** Splash intro timing: the app starts fading in at REVEAL and the splash
  *  overlay unmounts at DONE. DONE - REVEAL = 800ms, paired with the 0.8s ease
  *  opacity/transform transition on `.wallet-app-intro` (and the 0.75s fade on
- *  `.splash-overlay`) in src/styles/components/wallet-app.css — keep in sync. */
+ *  `.splash-overlay`) in src/styles/app/wallet-app.css — keep in sync. */
 export const SPLASH_REVEAL_MS = 1300;
 export const SPLASH_DONE_MS = 2100;
 
@@ -54,7 +71,7 @@ export const OP_LABELS: Record<string, string> = {
   bumpSequence: 'Avanzar número de secuencia',
   createClaimableBalance: 'Crear saldo reclamable',
   claimClaimableBalance: 'Reclamar saldo',
-  invokeHostFunction: 'Invocar contrato (Soroban)',
+  invokeHostFunction: '⚠️ INVOCAR CONTRATO (SOROBAN) — CONTENIDO NO LEGIBLE',
   // Critical — the window renders these behind a red warning.
   setOptions: '⚠️ CAMBIAR FIRMANTES / UMBRALES DE TU CUENTA',
   accountMerge: '⚠️ FUSIONAR (VACIAR) TU CUENTA',

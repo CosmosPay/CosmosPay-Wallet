@@ -154,7 +154,7 @@ select,
    long list keeps the final delay rather than growing without bound.
    `.stagger-*` is the 50ms default (Home previews, Markets); the denser
    30ms `.stagger-dense-*` is for the full History screen.
-   Keep STAGGER_STEPS in src/constants/parts.ts equal to the ladder length. */
+   Keep STAGGER_STEPS in src/lib/stagger.ts equal to the ladder length. */
 .stagger-0 { animation-delay: 0s; }
 .stagger-1 { animation-delay: 0.05s; }
 .stagger-2 { animation-delay: 0.1s; }
