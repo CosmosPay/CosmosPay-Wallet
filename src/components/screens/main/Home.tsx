@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WalletStore } from '@/components/store';
-import { Spinner, NetworkDropdown, NavMenu, SurfaceToggle, EnableReceivingCard } from '@/components/parts';
-import { HistoryRow, GenesisRow } from '@/components/screens/Money';
+import { HistoryRow, GenesisRow } from '@/components/screens/money/shared';
 import { HomeAction } from '@/components/molecules/main/HomeAction';
 import { AssetListRow } from '@/components/molecules/main/AssetListRow';
 import { ActivateCard } from '@/components/organisms/main/ActivateCard';

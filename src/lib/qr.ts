@@ -1,7 +1,6 @@
-/** QR code generation — a real, scannable QR of the Stellar address. */
-import QRCode from 'qrcode';
-
 export async function qrDataUrl(text: string): Promise<string> {
+  const mod = await import('qrcode');
+  const QRCode = mod.default || mod;
   return QRCode.toDataURL(text, {
     errorCorrectionLevel: 'M',
     margin: 1,

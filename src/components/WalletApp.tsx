@@ -1,18 +1,136 @@
 import '@/styles/components/wallet-app.css';
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { NAV_SCREENS, SPLASH_REVEAL_MS, SPLASH_DONE_MS } from '@/constants/app';
 import { useWalletStore, type WalletStore } from '@/components/store';
 import { buildKind } from '@/lib/platform';
 import { Shell, Spinner, Logo } from '@/components/parts';
-import { Welcome, Backup, Verify, Import, ProfileSetup, PasswordSetup } from '@/components/screens/Onboarding';
+import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary';
+
+// ---------------------------------------------------------------------------
+// Eager imports (Onboarding, Unlock, and Home/Balance)
+// ---------------------------------------------------------------------------
+import {
+  Welcome,
+  Backup,
+  Verify,
+  Import,
+  ProfileSetup,
+  PasswordSetup,
+} from '@/components/screens/Onboarding';
 import { Unlock } from '@/components/screens/Unlock';
-import { Home, Earn, Markets, Profile, Asset, EditProfile } from '@/components/screens/Main';
-import { Receive, Send, Confirm, Success, Swap, History, PayLink } from '@/components/screens/Money';
-import { Settings, Export, About } from '@/components/screens/Settings';
-import { AddNetwork, AddAsset, ScanQR, Operations, SignTx } from '@/components/screens/Extras';
-import { Fiat, BankAccount, Deposit, Withdraw } from '@/components/screens/Fiat';
-import { Liquidity, LpDeposit, LpWithdraw } from '@/components/screens/Liquidity';
-import { CosmosPay } from '@/components/screens/CosmosPay';
+import { Home } from '@/components/screens/main/Home';
+
+// ---------------------------------------------------------------------------
+// Lazy-loaded screen chunks
+// ---------------------------------------------------------------------------
+const Earn = lazy(() =>
+  import('@/components/screens/main/Earn').then((m) => ({ default: m.Earn }))
+);
+const Markets = lazy(() =>
+  import('@/components/screens/main/Markets').then((m) => ({ default: m.Markets }))
+);
+const Profile = lazy(() =>
+  import('@/components/screens/main/Profile').then((m) => ({ default: m.Profile }))
+);
+const Asset = lazy(() =>
+  import('@/components/screens/main/Asset').then((m) => ({ default: m.Asset }))
+);
+const EditProfile = lazy(() =>
+  import('@/components/screens/main/EditProfile').then((m) => ({
+    default: m.EditProfile,
+  }))
+);
+
+const Receive = lazy(() =>
+  import('@/components/screens/money/Receive').then((m) => ({ default: m.Receive }))
+);
+const Send = lazy(() =>
+  import('@/components/screens/money/Send').then((m) => ({ default: m.Send }))
+);
+const Confirm = lazy(() =>
+  import('@/components/screens/money/Confirm').then((m) => ({ default: m.Confirm }))
+);
+const Success = lazy(() =>
+  import('@/components/screens/money/Success').then((m) => ({ default: m.Success }))
+);
+const Swap = lazy(() =>
+  import('@/components/screens/money/Swap').then((m) => ({ default: m.Swap }))
+);
+const History = lazy(() =>
+  import('@/components/screens/money/History').then((m) => ({ default: m.History }))
+);
+const PayLink = lazy(() =>
+  import('@/components/screens/money/PayLink').then((m) => ({ default: m.PayLink }))
+);
+
+const Settings = lazy(() =>
+  import('@/components/screens/settings/Settings').then((m) => ({
+    default: m.Settings,
+  }))
+);
+const Export = lazy(() =>
+  import('@/components/screens/settings/Export').then((m) => ({ default: m.Export }))
+);
+const About = lazy(() =>
+  import('@/components/screens/settings/About').then((m) => ({ default: m.About }))
+);
+
+const AddNetwork = lazy(() =>
+  import('@/components/screens/extras/AddNetwork').then((m) => ({
+    default: m.AddNetwork,
+  }))
+);
+const AddAsset = lazy(() =>
+  import('@/components/screens/extras/AddAsset').then((m) => ({
+    default: m.AddAsset,
+  }))
+);
+const ScanQR = lazy(() =>
+  import('@/components/screens/extras/ScanQR').then((m) => ({ default: m.ScanQR }))
+);
+const Operations = lazy(() =>
+  import('@/components/screens/extras/Operations').then((m) => ({
+    default: m.Operations,
+  }))
+);
+const SignTx = lazy(() =>
+  import('@/components/screens/extras/SignTx').then((m) => ({ default: m.SignTx }))
+);
+
+const Fiat = lazy(() =>
+  import('@/components/screens/fiat/Fiat').then((m) => ({ default: m.Fiat }))
+);
+const BankAccount = lazy(() =>
+  import('@/components/screens/fiat/BankAccount').then((m) => ({
+    default: m.BankAccount,
+  }))
+);
+const Deposit = lazy(() =>
+  import('@/components/screens/fiat/Deposit').then((m) => ({ default: m.Deposit }))
+);
+const Withdraw = lazy(() =>
+  import('@/components/screens/fiat/Withdraw').then((m) => ({ default: m.Withdraw }))
+);
+
+const Liquidity = lazy(() =>
+  import('@/components/screens/liquidity/Liquidity').then((m) => ({
+    default: m.Liquidity,
+  }))
+);
+const LpDeposit = lazy(() =>
+  import('@/components/screens/liquidity/Deposit').then((m) => ({
+    default: m.LpDeposit,
+  }))
+);
+const LpWithdraw = lazy(() =>
+  import('@/components/screens/liquidity/Withdraw').then((m) => ({
+    default: m.LpWithdraw,
+  }))
+);
+
+const CosmosPay = lazy(() =>
+  import('@/components/screens/CosmosPay').then((m) => ({ default: m.CosmosPay }))
+);
 
 /** Map the Android hardware back button to a sensible in-app navigation. */
 function handleBack(store: WalletStore, exitApp: () => void) {
@@ -27,7 +145,9 @@ function handleBack(store: WalletStore, exitApp: () => void) {
     case 'import':
       return store.setScreen('welcome');
     case 'profile-setup':
-      return store.setScreen(store.draftHasMnemonic && store.draftMnemonic ? 'verify' : 'import');
+      return store.setScreen(
+        store.draftHasMnemonic && store.draftMnemonic ? 'verify' : 'import'
+      );
     case 'password':
       return store.setScreen('profile-setup');
     case 'confirm':
@@ -41,7 +161,10 @@ function handleBack(store: WalletStore, exitApp: () => void) {
     case 'settings':
     case 'export':
     case 'about':
-      return store.go(store.session ? 'profile' : 'home', store.session ? 'profile' : 'home');
+      return store.go(
+        store.session ? 'profile' : 'home',
+        store.session ? 'profile' : 'home'
+      );
     case 'operations':
       return store.go('home', 'home');
     case 'history':
@@ -160,7 +283,24 @@ function renderScreen(screen: WalletStore['screen'], store: WalletStore) {
   }
 }
 
-export default function WalletApp() {
+function ScreenFallback() {
+  return (
+    <div
+      className="col center f1"
+      style={{
+        minHeight: '240px',
+        padding: '32px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <Spinner color="var(--text)" />
+    </div>
+  );
+}
+
+function WalletAppInner() {
   const store = useWalletStore();
   const { screen } = store;
 
@@ -168,12 +308,12 @@ export default function WalletApp() {
   const storeRef = useRef(store);
   storeRef.current = store;
 
-  // Splash intro: black screen + logo, then fade away revealing the app. Skipped
-  // in the browser-extension popup: a full-screen `position: fixed` overlay + a
-  // 2s intro is poor UX in a small popup that opens/closes constantly, and keeping
-  // fixed-positioned overlays out of the auto-sizing popup avoids layout surprises.
+  // Splash intro: black screen + logo, then fade away revealing the app.
   const isExt = buildKind() === 'ext';
-  const [intro, setIntro] = useState<'show' | 'reveal' | 'done'>(isExt ? 'done' : 'show');
+  const [intro, setIntro] = useState<'show' | 'reveal' | 'done'>(
+    isExt ? 'done' : 'show'
+  );
+
   useEffect(() => {
     if (isExt) return;
     const t1 = setTimeout(() => setIntro('reveal'), SPLASH_REVEAL_MS);
@@ -214,9 +354,10 @@ export default function WalletApp() {
           {screen === 'boot' ? (
             <Boot />
           ) : (
-            // key={screen} remounts on every navigation so the entrance animation replays
-            <div key={screen} className="col f1 wallet-app-screen">
-              {renderScreen(screen, store)}
+            <div className="col f1 wallet-app-screen">
+              <Suspense fallback={<ScreenFallback />}>
+                {renderScreen(screen, store)}
+              </Suspense>
             </div>
           )}
         </Shell>
@@ -224,6 +365,14 @@ export default function WalletApp() {
 
       {intro !== 'done' && <Splash fading={intro !== 'show'} />}
     </>
+  );
+}
+
+export default function WalletApp() {
+  return (
+    <GlobalErrorBoundary>
+      <WalletAppInner />
+    </GlobalErrorBoundary>
   );
 }
 
