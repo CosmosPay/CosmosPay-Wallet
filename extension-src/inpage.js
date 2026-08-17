@@ -20,6 +20,14 @@
   const pending = new Map();
   let seq = 0;
 
+  // Everything downstream (sw.js parking replies, content.js resuming on reconnect)
+  // is a best-effort recovery path, not a guarantee. This timeout is the guarantee:
+  // a dapp promise must always settle eventually. Approval methods wait on the user
+  // (typing a password can take a while), so they get a generous budget; read-only
+  // methods should answer almost instantly, so a short timeout catches real breakage.
+  const TIMEOUT_MS = { getNetwork: 15_000, isConnected: 15_000 };
+  const DEFAULT_TIMEOUT_MS = 5 * 60_000;
+
   window.addEventListener('message', (ev) => {
     if (ev.source !== window) return;
     const d = ev.data;
@@ -34,7 +42,20 @@
   function request(method, params) {
     return new Promise((resolve, reject) => {
       const id = `${Date.now()}.${seq++}`;
-      pending.set(id, { resolve, reject });
+      const timer = setTimeout(() => {
+        pending.delete(id);
+        reject(new Error('Cosmos Wallet: no hubo respuesta de la extensión (tiempo de espera agotado).'));
+      }, TIMEOUT_MS[method] ?? DEFAULT_TIMEOUT_MS);
+      pending.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
       window.postMessage({ target: 'cosmos-cs', id, method, params: params || {} }, window.location.origin);
     });
   }

@@ -1,0 +1,81 @@
+/* NavMenu — extension-mode full-view navigation drawer.
+   Closed off-canvas by default and slid in by .is-open; .is-instant kills the
+   transition when the drawer is restored ALREADY open (no motion on mount).
+   The `.nav-drawer` companion rule in app.css suppresses per-child pop-in so
+   the drawer moves as ONE unit. */
+.nav-menu-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.34s cubic-bezier(0.32, 0.72, 0.28, 1);
+  /* SOLID surface (no backdrop-filter): the frosted blur does not composite inside the
+     app's shell in Chrome OR Firefox, so a translucent drawer would just bleed the app
+     content through. A solid --bg drawer is a clean full-screen panel everywhere. */
+  background: var(--bg);
+}
+
+.nav-menu-drawer.is-open {
+  transform: translateX(0);
+}
+
+.nav-menu-drawer.is-instant {
+  transition: none;
+}
+
+.nav-menu-header {
+  padding: 16px 20px 8px;
+}
+.nav-menu-brand {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+.nav-menu-list {
+  min-height: 0;
+  overflow-y: auto;
+  gap: 6px;
+  padding: 14px 16px 20px;
+}
+/* Both sections share ONE row style (metrics, weight, trailing ›). The
+   active tab is distinguished by its highlighted background only (.is-on). */
+.nav-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid transparent;
+}
+.nav-menu-item.is-on {
+  background: var(--surface);
+  border-color: var(--glass-soft-border);
+}
+
+.nav-menu-item-label {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+}
+.nav-menu-chevron {
+  color: var(--dim);
+  font-size: 16px;
+}
+.nav-menu-glyph {
+  width: 20px;
+  text-align: center;
+  font-size: 16px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.nav-menu-divider {
+  height: 1px;
+  background: var(--hairline);
+  margin: 10px 4px;
+  flex-shrink: 0;
+}

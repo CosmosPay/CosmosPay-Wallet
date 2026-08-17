@@ -1,0 +1,7 @@
+/* StellarMark — src/features/wallet/StellarMark.tsx. Monochrome Stellar glyph
+   (the size prop drives the svg attrs). */
+.stellar-mark {
+  display: block;
+  flex-shrink: 0;
+  color: currentColor;
+}

@@ -67,11 +67,15 @@ await mkdir(join(OUT, 'assets'), { recursive: true });
 
 // externalise inline <script> blocks (MV3 CSP forbids inline scripts). Applied to
 // every extension HTML page: the popup (index.html) and the dapp-approval window.
+// The alternation eats HTML comments first and hands them back untouched, so a
+// comment that merely *mentions* a script tag can't open a bogus match and swallow
+// the real tag that follows it (which silently dropped a module script before).
 let n = 0;
 async function externaliseInlineScripts(pagePath: string): Promise<string> {
   let src = await readFile(pagePath, 'utf8');
   const jobs: Promise<void>[] = [];
-  src = src.replace(/<script>([\s\S]*?)<\/script>/g, (_m: string, code: string) => {
+  src = src.replace(/<!--[\s\S]*?-->|<script>([\s\S]*?)<\/script>/g, (m: string, code?: string) => {
+    if (code === undefined) return m; // HTML comment — leave as-is
     const file = `inline-${n++}.js`;
     jobs.push(writeFile(join(OUT, 'assets', file), code, 'utf8'));
     return `<script src="/assets/${file}"></script>`;
@@ -251,10 +255,13 @@ const manifest = {
       "img-src 'self' data:",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
       "font-src 'self' https://fonts.gstatic.com",
-      // `https:` (any TLS host) on top of the defaults: the wallet supports custom
-      // networks (own Horizon) and developer-mode endpoint overrides — both need to
-      // reach user-configured servers. Scripts remain locked to 'self'.
-      "connect-src 'self' https: https://horizon.stellar.org https://horizon-testnet.stellar.org https://friendbot.stellar.org https://api.coingecko.com",
+      // `https:` = any TLS host, and that is deliberate: the wallet lets the user
+      // point at their own Horizon (validated as https by lib/validate.ts) and at
+      // developer-mode endpoint overrides, so the set of hosts is not knowable at
+      // build time. The named hosts that used to follow it were decorative — the
+      // wildcard already admits them — and reading them as an allowlist is exactly
+      // the false guarantee worth removing. Scripts stay locked to 'self'.
+      "connect-src 'self' https:",
     ].join('; '),
   },
   // Firefox-only keys. On Chrome these trigger "unrecognised key" warnings and

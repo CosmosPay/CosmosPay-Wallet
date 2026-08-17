@@ -10,13 +10,27 @@
  */
 import { Capacitor } from '@capacitor/core';
 
-let prefs: typeof import('@capacitor/preferences').Preferences | null = null;
+type PreferencesPlugin = typeof import('@capacitor/preferences').Preferences;
 
-async function getPrefs() {
-  if (prefs) return prefs;
-  const mod = await import('@capacitor/preferences');
-  prefs = mod.Preferences;
-  return prefs;
+/**
+ * The plugin, kept inside a box — and it has to stay in one.
+ *
+ * A Capacitor plugin is a Proxy that turns ANY property read into a native call: its `get`
+ * trap special-cases `$$typeof`, `toJSON` and the listener pair, and nothing else. `then` is
+ * therefore a "method", so the moment the proxy becomes a promise's resolution value the
+ * runtime probes it for thenability, calls `Preferences.then()` over the bridge, and gets
+ * back `"Preferences.then()" is not implemented on android` — while the await that started
+ * it never settles. Returning the proxy from this `async function` did exactly that, so on
+ * Android every storage read hung and the app sat on its boot spinner forever.
+ *
+ * A plain object is not thenable, so the proxy travels inside one. Do not unwrap it here and
+ * return the plugin directly; the bug leaves no stack trace, only a screen that never moves.
+ */
+let boxed: { plugin: PreferencesPlugin } | null = null;
+
+async function getPrefs(): Promise<{ plugin: PreferencesPlugin }> {
+  if (!boxed) boxed = { plugin: (await import('@capacitor/preferences')).Preferences };
+  return boxed;
 }
 
 const isNative = () => {
@@ -29,8 +43,8 @@ const isNative = () => {
 
 export async function storageGet(key: string): Promise<string | null> {
   if (isNative()) {
-    const p = await getPrefs();
-    const { value } = await p.get({ key });
+    const { plugin } = await getPrefs();
+    const { value } = await plugin.get({ key });
     return value ?? null;
   }
   try {
@@ -42,8 +56,8 @@ export async function storageGet(key: string): Promise<string | null> {
 
 export async function storageSet(key: string, value: string): Promise<void> {
   if (isNative()) {
-    const p = await getPrefs();
-    await p.set({ key, value });
+    const { plugin } = await getPrefs();
+    await plugin.set({ key, value });
     return;
   }
   try {
@@ -55,8 +69,8 @@ export async function storageSet(key: string, value: string): Promise<void> {
 
 export async function storageRemove(key: string): Promise<void> {
   if (isNative()) {
-    const p = await getPrefs();
-    await p.remove({ key });
+    const { plugin } = await getPrefs();
+    await plugin.remove({ key });
     return;
   }
   try {

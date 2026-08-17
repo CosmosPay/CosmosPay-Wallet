@@ -1,0 +1,89 @@
+/* Toast — the kind (.is-ok / .is-err / neutral base) picks the surface, and
+   .is-leaving swaps the entrance animation for the exit one. TOAST_EXIT_MS in
+   TOAST_EXIT_MS in src/constants/ui.ts must match the .23s exit durations below. */
+
+/* Extension (popup/side panel): a bottom card that slides up for a moment and
+   slides back down — less intrusive than a centered overlay in a small surface.
+   Fixed to the viewport so it never sinks below the visible area. */
+.toast-ext-wrap {
+  position: fixed;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 80;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.toast-ext-card {
+  width: 100%;
+  max-width: 380px;
+  animation: toastUp 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  padding: 13px 16px;
+  font-size: 13.5px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.45;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
+}
+
+/* Flex-centered overlay so the card is centered from the first frame; only the
+   inner card scales in (animating transform on the card itself would fight the
+   centering and make it appear off to one side before snapping to the middle). */
+.toast-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: none;
+}
+.toast-ext-card.is-leaving {
+  animation: toastDown 0.23s ease forwards;
+}
+
+.toast-card {
+  max-width: 320px;
+  width: 100%;
+  animation: pop 0.28s ease;
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 18px;
+  padding: 16px 18px;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.45;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.toast-card.is-leaving {
+  animation: popOut 0.23s ease forwards;
+}
+
+/* ------------------------- kinds ------------------------- */
+/* neutral (info) is the base surface both cards share */
+.toast-card,
+.toast-ext-card {
+  background: var(--glass-bg);
+  color: var(--text);
+}
+
+.toast-card.is-ok,
+.toast-ext-card.is-ok {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.toast-card.is-err,
+.toast-ext-card.is-err {
+  background: rgba(210, 64, 64, 0.92);
+  color: #fff;
+}

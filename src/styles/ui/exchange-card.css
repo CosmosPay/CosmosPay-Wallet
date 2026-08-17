@@ -1,0 +1,63 @@
+/* =====================================================================
+   Exchange card stack — the two-glass-card form used to trade one asset
+   for another: a label, a large amount input, a balance line, plus the
+   guard/quote/note lines under it.
+
+   Shared by src/features/money/Swap.tsx and src/features/liquidity/
+   {Deposit,Withdraw}.tsx. It used to be `.swap-*` inside the money
+   feature's sheet, which meant liquidity reached across into another
+   feature's stylesheet — the one cross-feature dependency left in the
+   tree. Used by more than one feature, so it lives in ui/.
+
+   Card stacking while a token menu is open is handled with the
+   .is-open / .is-active modifiers.
+   ===================================================================== */
+
+.exchange-stack { position: relative; margin-top: 6px; }
+.exchange-stack.is-open { z-index: 50; }
+
+.exchange-card { position: relative; border-radius: 20px; padding: 18px; } /* on .glass */
+.exchange-card.is-active { z-index: 3; }
+.exchange-card--to { margin-top: 10px; }
+
+.exchange-label { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 14px; }
+.exchange-input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  text-align: right;
+  color: var(--text);
+  font-size: 28px;
+  font-weight: 800;
+  outline: none;
+  font-variant-numeric: tabular-nums;
+}
+.exchange-balance { margin-top: 10px; color: var(--dim); font-size: 12px; font-weight: 600; }
+
+/* guard line under the stack (same asset on both sides, insufficient balance…) */
+.exchange-guard { text-align: center; margin-top: 12px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.exchange-guard--danger { color: var(--danger); }
+
+/* quote breakdown */
+.exchange-quote { border-radius: 16px; padding: 6px 16px; margin-top: 12px; } /* on .glass */
+.exchange-quote-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.exchange-quote-row:last-child { border-bottom: none; }
+.exchange-quote-label { color: var(--muted); font-size: 13px; font-weight: 600; }
+.exchange-quote-val { font-size: 13.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.exchange-note {
+  border-radius: 14px;
+  padding: 14px;
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.55;
+} /* on .glass */

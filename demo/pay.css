@@ -1,0 +1,60 @@
+/* Styles for demo/pay.html — the web+stellar: bridge page.
+   Standalone on purpose: the demo is served straight from demo/ by
+   scripts/serve-demo.ts and shares nothing with the wallet's own stylesheets. */
+
+body {
+  font-family: system-ui, sans-serif;
+  background: #0d0f10;
+  color: #eef;
+  max-width: 640px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
+h1 {
+  font-size: 22px;
+}
+
+.sub {
+  color: #99a;
+  font-size: 14px;
+}
+
+button,
+a.btn {
+  display: inline-block;
+  border: 1px solid #345;
+  background: #16202a;
+  color: #eef;
+  border-radius: 10px;
+  padding: 11px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: none;
+  margin: 6px 6px 6px 0;
+}
+
+button:hover,
+a.btn:hover {
+  background: #1d2b38;
+}
+
+pre {
+  background: #05070a;
+  border: 1px solid #223;
+  border-radius: 10px;
+  padding: 14px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-height: 30px;
+}
+
+code {
+  color: #7fb0ff;
+}
+
+ol {
+  line-height: 1.7;
+}

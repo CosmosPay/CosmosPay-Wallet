@@ -31,12 +31,14 @@ jobs:
 
       - uses: android-actions/setup-android@v4
 
+      # Brings @capacitor/android too: it is a devDependency (Gradle reads it, the web
+      # bundle never does), so it is pinned by the lockfile here instead of being
+      # installed mid-run — which used to rewrite package.json inside the job.
       - run: npm ci
 
-      # The android platform package isn't a runtime dep — install it just for CI.
+      # android/ is gitignored — generated per checkout, exactly as on a dev machine.
       - name: Add Capacitor Android platform
         run: |
-          npm i -D @capacitor/android@^8
           npm run build
           npx cap add android
           npx cap sync android
