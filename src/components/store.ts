@@ -860,6 +860,14 @@ export function useWalletStore() {
 
   const addNetwork = useCallback(
     async (cfg: Omit<NetConfig, 'id' | 'custom'>) => {
+      const horizonUrl = cfg.horizon;
+      if (horizonUrl.startsWith('http://')) {
+        const urlObj = new URL(horizonUrl);
+        if (urlObj.hostname !== 'localhost' && urlObj.hostname !== '127.0.0.1') {
+          throw new Error('Custom Horizon endpoints must use https:// unless running on localhost.');
+        }
+      }
+
       const id = 'custom-' + Math.random().toString(36).slice(2, 9);
       const entry: NetConfig = { ...cfg, id, custom: true };
       const next = [...customNetworks, entry];

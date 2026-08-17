@@ -36,6 +36,7 @@ import { Keypair } from '@stellar/stellar-sdk';
 // so a dev can repoint them live from Settings without rebuilding. The gateway
 // still exposes the payments API behind an entry prefix (default `/cosmos-api`).
 import { devPlatformUrl, gatewayApi } from '@/lib/endpoints';
+import * as contracts from './contracts';
 
 /** Default slippage tolerance for swaps (0.5%). */
 export const DEFAULT_SLIPPAGE_BPS = 50;
@@ -184,6 +185,7 @@ async function postJson<T>(
   body: unknown,
   headers: Record<string, string>,
   unwrap: boolean,
+  contract: (v: unknown) => T,
 ): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
@@ -204,10 +206,11 @@ async function postJson<T>(
     throw new Error(msg);
   }
 
+  let result = json;
   if (unwrap && json && typeof json === 'object' && 'data' in (json as Envelope)) {
-    return (json as Envelope).data as T;
+    result = (json as Envelope).data;
   }
-  return json as T;
+  return contract(result);
 }
 
 /* --------------------------- provisioning ------------------------------ */
@@ -259,6 +262,7 @@ export async function registerCosmosAccount(input: {
     },
     {},
     true,
+    contracts.contractRegisterResult,
   );
 }
 
@@ -276,6 +280,7 @@ export async function claimCosmosAccount(input: {
     { stellarAddress: input.stellarAddress, claimToken: input.claimToken },
     {},
     true,
+    contracts.contractClaimResult,
   );
 }
 
@@ -318,6 +323,7 @@ export async function linkCosmosAccount(input: {
     },
     {},
     true,
+    contracts.contractLinkStartResult,
   );
 }
 
@@ -335,6 +341,7 @@ export async function verifyCosmosLink(input: {
     { stellarAddress: input.stellarAddress, claimToken: input.claimToken, code: input.code },
     {},
     true,
+    contracts.contractLinkVerifyResult,
   );
 }
 
@@ -349,12 +356,13 @@ export async function quoteSwap(apiKey: string, input: QuoteSwapInput): Promise<
     input,
     authHeaders(apiKey),
     false,
+    contracts.contractSwapQuote,
   );
 }
 
 /** Create a swap. The returned Swap carries the unsigned `xdr` to sign locally. */
 export async function createSwap(apiKey: string, input: CreateSwapInput): Promise<Swap> {
-  return postJson<Swap>(`${gatewayApi()}/v1/swaps`, input, authHeaders(apiKey), false);
+  return postJson<Swap>(`${gatewayApi()}/v1/swaps`, input, authHeaders(apiKey), false, contracts.contractSwap);
 }
 
 /** Submit a locally signed XDR for an existing swap. */
@@ -368,6 +376,7 @@ export async function submitSwap(
     { signedXdr },
     authHeaders(apiKey),
     false,
+    contracts.contractSubmitResult,
   );
 }
 
@@ -502,27 +511,27 @@ function withQuery(url: string, params: Record<string, string | number | undefin
 
 /** Browse on-chain liquidity pools (Horizon proxy). */
 export async function listLiquidityPools(apiKey: string, input: ListPoolsInput = {}): Promise<LiquidityPoolList> {
-  return getJson<LiquidityPoolList>(withQuery(`${gatewayApi()}/v1/liquidity-pools`, { ...input }), apiKey);
+  return getJson<LiquidityPoolList>(withQuery(`${gatewayApi()}/v1/liquidity-pools`, { ...input }), apiKey, contracts.contractLiquidityPoolList);
 }
 
 /** Get a single liquidity pool by its 64-char hex id. */
 export async function getLiquidityPool(apiKey: string, poolId: string): Promise<LiquidityPool> {
-  return getJson<LiquidityPool>(`${gatewayApi()}/v1/liquidity-pools/${encodeURIComponent(poolId)}`, apiKey);
+  return getJson<LiquidityPool>(`${gatewayApi()}/v1/liquidity-pools/${encodeURIComponent(poolId)}`, apiKey, contracts.contractLiquidityPool);
 }
 
 /** An account's pool share positions with redeemable amounts. */
 export async function liquidityPositions(apiKey: string, account: string): Promise<LiquidityPositionList> {
-  return getJson<LiquidityPositionList>(withQuery(`${gatewayApi()}/v1/liquidity-pools/positions`, { account }), apiKey);
+  return getJson<LiquidityPositionList>(withQuery(`${gatewayApi()}/v1/liquidity-pools/positions`, { account }), apiKey, contracts.contractLiquidityPositionList);
 }
 
 /** Build a pool deposit. The returned operation carries the unsigned `xdr` to sign. */
 export async function depositLiquidity(apiKey: string, input: DepositLiquidityInput): Promise<LiquidityOperation> {
-  return postJson<LiquidityOperation>(`${gatewayApi()}/v1/liquidity-pools/deposit`, input, authHeaders(apiKey), false);
+  return postJson<LiquidityOperation>(`${gatewayApi()}/v1/liquidity-pools/deposit`, input, authHeaders(apiKey), false, contracts.contractLiquidityOperation);
 }
 
 /** Build a pool withdrawal (burn shares). Returns the unsigned `xdr` to sign. */
 export async function withdrawLiquidity(apiKey: string, input: WithdrawLiquidityInput): Promise<LiquidityOperation> {
-  return postJson<LiquidityOperation>(`${gatewayApi()}/v1/liquidity-pools/withdraw`, input, authHeaders(apiKey), false);
+  return postJson<LiquidityOperation>(`${gatewayApi()}/v1/liquidity-pools/withdraw`, input, authHeaders(apiKey), false, contracts.contractLiquidityOperation);
 }
 
 /** Submit a locally signed XDR for an existing liquidity operation. */
@@ -532,6 +541,7 @@ export async function submitLiquidity(apiKey: string, id: string, signedXdr: str
     { signedXdr },
     authHeaders(apiKey),
     false,
+    contracts.contractLiquiditySubmitResult,
   );
 }
 
@@ -566,7 +576,7 @@ export interface PayIntent {
  * the payment reconciles, and returns the URI + QR to hand to a friend. Needs `payments:write`.
  */
 export async function createPayLink(apiKey: string, input: PayLinkInput): Promise<PayIntent> {
-  return postJson<PayIntent>(`${gatewayApi()}/v1/payment-intents/pay`, input, authHeaders(apiKey), false);
+  return postJson<PayIntent>(`${gatewayApi()}/v1/payment-intents/pay`, input, authHeaders(apiKey), false, contracts.contractPayIntent);
 }
 
 /* --------------------------- fiat (BlindPay) --------------------------- */
@@ -578,7 +588,7 @@ export async function createPayLink(apiKey: string, input: PayLinkInput): Promis
  */
 
 /** GET helper for the gateway (the payments API returns raw shapes, no envelope). */
-async function getJson<T>(url: string, apiKey: string): Promise<T> {
+async function getJson<T>(url: string, apiKey: string, contract: (v: unknown) => T): Promise<T> {
   const res = await fetch(url, { headers: authHeaders(apiKey) });
   let json: unknown = null;
   try {
@@ -590,7 +600,7 @@ async function getJson<T>(url: string, apiKey: string): Promise<T> {
     const env = (json ?? {}) as { message?: string; error?: string };
     throw new Error(env.message || env.error || `La solicitud falló (${res.status}).`);
   }
-  return json as T;
+  return contract(json);
 }
 
 export type ReceiverKycType = 'light' | 'standard' | 'enhanced';
@@ -640,7 +650,7 @@ export interface CreateReceiverInput {
  *  ID + selfie — upload them first with uploadKycDoc and pass the returned file_urls). */
 export async function createReceiver(apiKey: string, input: CreateReceiverInput): Promise<Receiver> {
   const body = { type: 'individual', kyc_type: 'standard', ...input };
-  return postJson<Receiver>(`${gatewayApi()}/v1/kyc/receivers`, body, authHeaders(apiKey), false);
+  return postJson<Receiver>(`${gatewayApi()}/v1/kyc/receivers`, body, authHeaders(apiKey), false, contracts.contractReceiver);
 }
 
 /** Upload a KYC document (multipart) and return its `file_url`. Needs `kyc:write`. */
@@ -668,12 +678,11 @@ export async function uploadKycDoc(apiKey: string, file: Blob, bucket = 'onboard
 }
 
 export async function listReceivers(apiKey: string): Promise<Receiver[]> {
-  const res = await getJson<Receiver[] | { data?: Receiver[] }>(`${gatewayApi()}/v1/kyc/receivers`, apiKey);
-  return Array.isArray(res) ? res : res.data ?? [];
+  return getJson<Receiver[]>(`${gatewayApi()}/v1/kyc/receivers`, apiKey, contracts.contractReceiverArray);
 }
 
 export async function getReceiver(apiKey: string, id: string): Promise<Receiver> {
-  return getJson<Receiver>(`${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(id)}`, apiKey);
+  return getJson<Receiver>(`${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(id)}`, apiKey, contracts.contractReceiver);
 }
 
 /** Message the wallet must sign to prove ownership when registering its Stellar address. */
@@ -681,6 +690,7 @@ export async function receiverSignMessage(apiKey: string, receiverId: string): P
   return getJson<{ message: string }>(
     `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/wallets/sign-message`,
     apiKey,
+    contracts.contractMessageObject,
   );
 }
 
@@ -704,16 +714,17 @@ export async function addReceiverWallet(
     body,
     authHeaders(apiKey),
     false,
+    contracts.contractRegisteredWallet,
   );
 }
 
 /** List the Stellar/blockchain wallets registered to a receiver. */
 export async function listReceiverWallets(apiKey: string, receiverId: string): Promise<RegisteredWallet[]> {
-  const res = await getJson<RegisteredWallet[] | { data?: RegisteredWallet[] }>(
+  return getJson<RegisteredWallet[]>(
     `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/wallets`,
     apiKey,
+    contracts.contractRegisteredWalletArray,
   );
-  return Array.isArray(res) ? res : res.data ?? [];
 }
 
 export async function requestTos(apiKey: string, receiverId: string, redirectUrl: string): Promise<{ url?: string }> {
@@ -722,6 +733,7 @@ export async function requestTos(apiKey: string, receiverId: string, redirectUrl
     { redirect_url: redirectUrl, channel: 'email' },
     authHeaders(apiKey),
     false,
+    contracts.contractUrlObject,
   );
 }
 
@@ -731,6 +743,7 @@ export async function enableReceiver(apiKey: string, receiverId: string, tosId: 
     { tos_id: tosId },
     authHeaders(apiKey),
     false,
+    contracts.contractReceiver,
   );
 }
 
@@ -753,15 +766,16 @@ export async function addBankAccount(apiKey: string, receiverId: string, body: R
     body,
     authHeaders(apiKey),
     false,
+    contracts.contractBankAccount,
   );
 }
 
 export async function listBankAccounts(apiKey: string, receiverId: string): Promise<BankAccount[]> {
-  const res = await getJson<BankAccount[] | { data?: BankAccount[] }>(
+  return getJson<BankAccount[]>(
     `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/bank-accounts`,
     apiKey,
+    contracts.contractBankAccountArray,
   );
-  return Array.isArray(res) ? res : res.data ?? [];
 }
 
 /** Delete a payout/deposit bank account from a receiver. */
@@ -796,8 +810,10 @@ export function blindpayNetwork(env: 'dev' | 'prod'): 'stellar' | 'stellar_testn
  * by the community-server, so the unsigned-XDR field name isn't fixed. Probe the common
  * candidates (and one level of nesting) and return the first base64-ish transaction string.
  */
-export function extractUnsignedXdr(obj: unknown): string | null {
-  if (!obj || typeof obj !== 'object') return null;
+export function extractUnsignedXdr(obj: unknown): string {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    throw new Error('Contract violation: expected object for extractUnsignedXdr');
+  }
   const o = obj as Record<string, unknown>;
   // `transaction_hash` is BlindPay's (misnamed) field carrying the unsigned XDR.
   const keys = ['unsigned_transaction', 'unsignedTransaction', 'transaction_hash', 'transaction', 'xdr', 'tx', 'raw_transaction', 'serialized_transaction', 'unsigned_tx'];
@@ -806,10 +822,15 @@ export function extractUnsignedXdr(obj: unknown): string | null {
     if (typeof v === 'string' && v.length > 40) return v;
   }
   for (const nest of ['data', 'result', 'payout', 'authorization']) {
-    const found = extractUnsignedXdr(o[nest]);
-    if (found) return found;
+    if (o[nest]) {
+      try {
+        return extractUnsignedXdr(o[nest]);
+      } catch {
+        // ignore and try next
+      }
+    }
   }
-  return null;
+  throw new Error('Contract violation: unsigned XDR field not found');
 }
 
 /* ---- onramp (fiat -> crypto) ---- */
@@ -845,7 +866,7 @@ export interface PayinQuote {
 }
 
 export async function onrampQuote(apiKey: string, input: PayinQuoteInput): Promise<PayinQuote> {
-  return postJson<PayinQuote>(`${gatewayApi()}/v1/onramp/quotes`, input, authHeaders(apiKey), false);
+  return postJson<PayinQuote>(`${gatewayApi()}/v1/onramp/quotes`, input, authHeaders(apiKey), false, contracts.contractPayinQuote);
 }
 
 /** Payment instructions returned to the payer (only the keys for that rail are present). */
@@ -877,7 +898,7 @@ export interface Payin {
 }
 
 export async function createPayin(apiKey: string, payinQuoteId: string): Promise<Payin> {
-  return postJson<Payin>(`${gatewayApi()}/v1/onramp/payins`, { payin_quote_id: payinQuoteId }, authHeaders(apiKey), false);
+  return postJson<Payin>(`${gatewayApi()}/v1/onramp/payins`, { payin_quote_id: payinQuoteId }, authHeaders(apiKey), false, contracts.contractPayin);
 }
 
 /* ---- offramp (crypto -> fiat) ---- */
@@ -900,7 +921,7 @@ export interface PayoutQuote {
 }
 
 export async function offrampQuote(apiKey: string, input: PayoutQuoteInput): Promise<PayoutQuote> {
-  return postJson<PayoutQuote>(`${gatewayApi()}/v1/offramp/quotes`, input, authHeaders(apiKey), false);
+  return postJson<PayoutQuote>(`${gatewayApi()}/v1/offramp/quotes`, input, authHeaders(apiKey), false, contracts.contractPayoutQuote);
 }
 
 /** Build the unsigned Stellar tx for a payout. Pass-through from BlindPay — see extractUnsignedXdr. */
@@ -908,7 +929,7 @@ export async function authorizePayout(
   apiKey: string,
   body: { quote_id: string; sender_wallet_address: string; chain: 'stellar' | 'solana' },
 ): Promise<Record<string, unknown>> {
-  return postJson<Record<string, unknown>>(`${gatewayApi()}/v1/offramp/payouts/authorize`, body, authHeaders(apiKey), false);
+  return postJson<Record<string, unknown>>(`${gatewayApi()}/v1/offramp/payouts/authorize`, body, authHeaders(apiKey), false, contracts.contractGenericRecord);
 }
 
 export interface Payout {
@@ -929,5 +950,5 @@ export async function createPayout(
   apiKey: string,
   body: { quote_id: string; sender_wallet_address: string; chain: 'stellar' | 'solana'; signed_transaction: string },
 ): Promise<Payout> {
-  return postJson<Payout>(`${gatewayApi()}/v1/offramp/payouts`, body, authHeaders(apiKey), false);
+  return postJson<Payout>(`${gatewayApi()}/v1/offramp/payouts`, body, authHeaders(apiKey), false, contracts.contractPayout);
 }
