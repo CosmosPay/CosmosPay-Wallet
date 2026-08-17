@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cosmos Pay brand background (#080808) for the adaptive launcher icon.
+         Used as @color/ic_launcher_background in the adaptive-icon XML. -->
+    <color name="ic_launcher_background">#080808</color>
+</resources>

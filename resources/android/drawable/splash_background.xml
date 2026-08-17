@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cosmos Pay splash screen background — solid brand colour.
+     Cold start: the user sees this colour immediately, then the
+     foreground logo renders on top. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@android:color/black"/>
+</layer-list>
