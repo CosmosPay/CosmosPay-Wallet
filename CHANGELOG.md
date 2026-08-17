@@ -2,6 +2,23 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.2.4] - 2026-08-17
+
+### Features
+- Implement request response handling with timeout and recovery for service worker communication (9acf979)
+- Add Node globals shim for browser compatibility (4ad49d7)
+- Implement auto-lock feature and improve network validation (c8c3c14)
+
+### Bug Fixes
+- Resolve cited paths case-sensitively so CI and Windows agree (cd1bbef)
+
+### Miscellaneous
+- Bump actions/setup-java from 5.6.0 to 5.7.0 (4c759af)
+- Bump astro from 7.1.6 to 7.2.1 in the minor-and-patch group (bbb7f62)
+
+### Refactor
+- Restructure by feature, extract styles, and harden the signing path (4dc8e66)
+
 ## [1.2.3] - 2026-08-12
 
 ### Miscellaneous
