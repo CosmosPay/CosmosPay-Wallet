@@ -62,7 +62,7 @@ export function Deposit({ store }: { store: WalletStore }) {
     if (p) setPayin(p);
   };
 
-  if (payin) return <DepositInstructions store={store} payin={payin} onDone={() => store.setScreen('fiat')} />;
+  if (payin) return <DepositInstructions store={store} payin={payin} onDone={store.goBack} />;
 
   if (!tokens.length) {
     return (

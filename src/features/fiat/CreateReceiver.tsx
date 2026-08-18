@@ -51,7 +51,7 @@ export function CreateReceiver({ store }: { store: WalletStore }) {
     });
   };
 
-  const back1 = () => (step === 0 ? store.go('home', 'home') : setStep(step - 1));
+  const back1 = () => (step === 0 ? store.goBack() : setStep(step - 1));
 
   return (
     <>

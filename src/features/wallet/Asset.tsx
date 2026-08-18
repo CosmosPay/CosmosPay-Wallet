@@ -18,7 +18,7 @@ export function Asset({ store }: { store: WalletStore }) {
   return (
     <div className="scr screen pb-30">
       <div className="asset-head">
-        <div onClick={() => store.go(store.tab, store.tab)} className="glass-soft circle-btn asset-back">‹</div>
+        <div onClick={store.goBack} className="glass-soft circle-btn asset-back">‹</div>
         <div className="row g8">
           <AssetLogo code={code} size={24} />
           <span className="asset-name">{m.name} <span className="asset-code">{code}</span></span>

@@ -23,8 +23,7 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
   const tooYoung = !!store.draftBirthdate && !dobFuture && (ageFromBirthdate(store.draftBirthdate) ?? 0) < MIN_AGE;
   // Name, email, a valid 13+ birthdate and a gender pick are all required.
   const ok = name.trim().length >= 2 && emailOk && !!store.draftBirthdate && !dobFuture && !tooYoung && !!store.draftGender;
-  const back = () =>
-    store.setScreen(store.draftHasMnemonic && store.draftMnemonic ? 'verify' : 'import');
+  const back = store.goBack;
 
   return (
     <div className="scr screen col">

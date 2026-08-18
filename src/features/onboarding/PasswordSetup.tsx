@@ -20,7 +20,7 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
   const match = pwd === confirm && confirm.length > 0;
   const ok = lenOk && upperOk && digitOk && lowerOk && match && !store.busy;
 
-  const back = () => store.setScreen('profile-setup');
+  const back = store.goBack;
 
   return (
     <div className="scr screen col">

@@ -54,7 +54,7 @@ export function PayLink({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('paylink.title')} onBack={() => (intent ? setIntent(null) : store.setScreen('receive'))} />
+      <BackBar title={t('paylink.title')} onBack={() => (intent ? setIntent(null) : store.goBack())} />
       {!intent ? (
         <>
           <div className="paylink-desc">{t('paylink.desc')}</div>
