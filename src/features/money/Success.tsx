@@ -10,11 +10,9 @@ export function Success({ store }: { store: WalletStore }) {
   const si = store.successInfo;
   const isErr = si?.kind === 'err';
   const v = isErr ? 'err' : 'ok'; // red on failure, green on success
-  const goHome = () => {
-    store.setSuccessInfo(null);
-    if (store.hasSession) store.go('home', 'home');
-    else store.setScreen('unlock');
-  };
+  // Routing lives in the store: after onboarding this detours once through the
+  // device-unlock offer, while a payment still goes straight home.
+  const goHome = store.leaveSuccess;
   return (
     <div className="col success-screen">
       <div className="f1 col center success-hero">

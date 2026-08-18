@@ -29,8 +29,15 @@ const IOS_PLIST = 'ios/App/App/Info.plist';
  * runtime request for `Manifest.permission.CAMERA`, and Android denies a request for a
  * permission the manifest never declared *without showing a dialog*. The user sees "camera
  * unavailable" and has nothing to tap.
+ *
+ * USE_BIOMETRIC is the same story for `src/lib/deviceAuth.ts`: BiometricPrompt refuses to show
+ * without it, so "unlock with your fingerprint" fails on a device that has one enrolled, and the
+ * only clue is a logcat line. It is a normal-protection permission — declaring it raises no
+ * install-time prompt and asks the user for nothing. There is deliberately no USE_FINGERPRINT
+ * here: it was deprecated in API 28, USE_BIOMETRIC covers every version this app targets, and
+ * declaring it would re-introduce the Play filtering that `required="false"` exists to undo.
  */
-const PERMISSIONS = ['android.permission.CAMERA'];
+const PERMISSIONS = ['android.permission.CAMERA', 'android.permission.USE_BIOMETRIC'];
 
 /**
  * `<uses-feature ... required="false">` entries.
@@ -40,8 +47,18 @@ const PERMISSIONS = ['android.permission.CAMERA'];
  * every device that has neither — emulators, Chromebooks, camera-less tablets. The scanner is
  * one screen out of thirty and it already ships two fallbacks (upload an image, paste one), so
  * the app must stay installable without a camera. `required="false"` is what says so.
+ *
+ * `android.hardware.fingerprint` is listed for the same defensive reason, and it matters more
+ * here than it looks: the wallet must stay installable on a phone with no sensor at all, because
+ * that phone can still use the device-credential tier in `lib/deviceAuth.ts` — and it must stay
+ * installable on one with a sensor nobody enrolled, because the password is always there.
+ * Neither device may be filtered out of the listing over a convenience feature.
  */
-const FEATURES = ['android.hardware.camera', 'android.hardware.camera.autofocus'];
+const FEATURES = [
+  'android.hardware.camera',
+  'android.hardware.camera.autofocus',
+  'android.hardware.fingerprint',
+];
 
 /**
  * `<queries>` — package visibility, API 30+.
@@ -66,6 +83,14 @@ const IOS_USAGE: { key: string; value: string }[] = [
   {
     key: 'NSCameraUsageDescription',
     value: 'Cosmos Wallet uses the camera to scan Stellar payment QR codes and to photograph the documents an identity check asks for.',
+  },
+  {
+    // Face ID only. Touch ID and the device passcode need no purpose string, but a
+    // missing NSFaceIDUsageDescription is not a denied prompt — iOS terminates the app
+    // the moment LocalAuthentication is touched, so the first Face ID unlock on a Face ID
+    // phone would be a crash rather than a refusal.
+    key: 'NSFaceIDUsageDescription',
+    value: 'Cosmos Wallet uses Face ID to unlock your wallet and confirm signatures, so you do not have to type your password every time. Your password always keeps working.',
   },
   {
     key: 'NSPhotoLibraryUsageDescription',

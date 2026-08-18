@@ -19,8 +19,21 @@ export function ChangePassword({ store, onDone }: { store: WalletStore; onDone: 
   const submit = () =>
     run(async () => {
       try {
-        await changePassword(cur, next);
-        store.flash(t('settings.pwdUpdated'), 'ok');
+        // The device-lock enrolment holds a copy of the OLD password, so it is
+        // re-sealed inside this call. It can also be dropped — the user may dismiss
+        // the prompt — and that is reported rather than thrown: the password change
+        // itself already succeeded by then.
+        const { deviceAuthDropped } = await changePassword(cur, next, {
+          title: t('devAuth.rewrapTitle'),
+          reason: t('devAuth.enrollReason'),
+          cancel: t('common.cancel'),
+        });
+        await store.refreshDeviceAuth();
+        if (deviceAuthDropped.length) {
+          store.flash(t('devAuth.droppedOnPwdChange', { names: deviceAuthDropped.join(', ') }), 'info');
+        } else {
+          store.flash(t('settings.pwdUpdated'), 'ok');
+        }
         onDone();
       } catch (e) {
         store.flash((e as Error).message, 'err');

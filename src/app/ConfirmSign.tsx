@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { Spinner } from '@/ui/Spinner';
+import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
 import { cx } from '@/lib/cx';
 import '@/styles/app/confirm-sign.css';
 
@@ -11,11 +12,13 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
   const [pwd, setPwd] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [deviceBusy, setDeviceBusy] = useState(false);
 
   useEffect(() => {
     setPwd('');
     setErr('');
     setBusy(false);
+    setDeviceBusy(false);
   }, [req]);
 
   if (!req) return null;
@@ -52,6 +55,26 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
           className={cx('input confirm-sign-input', err && 'has-err')}
         />
         {err && <div className="confirm-sign-err">{err}</div>}
+        {/* No auto-prompt here, unlike the unlock screen: this gate can be raised by
+            a dapp, and a signing sheet that appears without a tap is how a user
+            approves something they never read. */}
+        {store.deviceAuthReady && (
+          <DeviceAuthButton
+            kind={store.deviceAuthKind}
+            label={t('devAuth.signWith', { method: store.deviceAuthMethod })}
+            busy={deviceBusy || busy}
+            onClick={async () => {
+              setDeviceBusy(true);
+              setErr('');
+              try {
+                await store.confirmWithDevice();
+              } finally {
+                setDeviceBusy(false);
+              }
+            }}
+            className="confirm-sign-device"
+          />
+        )}
         <div className="flexr g10">
           <button onClick={() => store.resolveConfirm(false)} className="glass-soft confirm-sign-cancel">
             {t('common.cancel')}

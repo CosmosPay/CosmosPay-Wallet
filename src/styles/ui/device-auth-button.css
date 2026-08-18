@@ -1,0 +1,21 @@
+/* DeviceAuthButton — raises the phone's own check (src/ui/DeviceAuthButton.tsx). */
+.device-auth-btn {
+  width: 100%;
+  height: 50px;
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 15px;
+  font-weight: 600;
+  /* Deliberately one step quieter than .btn-primary: the password is the primary
+     path on every screen this appears on, and this is the shortcut beside it. */
+}
+.device-auth-btn:disabled {
+  opacity: 0.6;
+}
+.device-auth-btn-label {
+  /* The label carries a device-supplied method name ("your fingerprint"), so it can
+     be longer in some languages than the fixed copy around it. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

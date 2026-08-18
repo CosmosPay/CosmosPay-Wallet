@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Logo } from '@/ui/Logo';
 import { Spinner } from '@/ui/Spinner';
+import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
 import { EyeIcon } from '@/ui/EyeIcon';
 import { LangSelect } from '@/ui/LangSelect';
 import { getGreeting } from '@/lib/greeting';
@@ -28,6 +29,32 @@ export function Unlock({ store }: { store: WalletStore }) {
     if (!pwd) return;
     const ok = await store.unlock(pwd);
     if (!ok) setPwd('');
+  };
+
+  /**
+   * Offer the phone's own check as soon as we know it is enrolled — once.
+   *
+   * The ref, not `deviceAuthReady` alone, is what keeps it to once: the flag turns
+   * true when the async probe answers, and a user who dismisses the sheet would
+   * otherwise be handed it again on the next render. One offer, then the button
+   * below is there for a second try.
+   */
+  const offeredRef = useRef(false);
+  useEffect(() => {
+    if (!store.deviceAuthReady || offeredRef.current) return;
+    offeredRef.current = true;
+    void store.unlockWithDevice();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.deviceAuthReady]);
+
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  const deviceSubmit = async () => {
+    setDeviceBusy(true);
+    try {
+      await store.unlockWithDevice();
+    } finally {
+      setDeviceBusy(false);
+    }
   };
 
   return (
@@ -69,6 +96,16 @@ export function Unlock({ store }: { store: WalletStore }) {
         <PrimaryButton disabled={!pwd || store.busy} onClick={submit}>
           {store.busy ? <Spinner /> : t('unlock.unlock')}
         </PrimaryButton>
+        {/* Only when this wallet actually enrolled AND the device can still answer —
+            a button that can only fail is worse than no button. */}
+        {store.deviceAuthReady && (
+          <DeviceAuthButton
+            kind={store.deviceAuthKind}
+            label={t('devAuth.unlockWith', { method: store.deviceAuthMethod })}
+            busy={deviceBusy || store.busy}
+            onClick={deviceSubmit}
+          />
+        )}
         {!confirmWipe ? (
           <div onClick={() => setConfirmWipe(true)} className="tap unlock-forgot">
             {t('unlock.forgot')}

@@ -12,6 +12,7 @@ import { useCopied } from '@/hooks/useCopied';
 import { shortAddr } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import { LANGUAGES } from '@/lib/i18n';
+import { deviceAuthFailureKey } from '@/lib/deviceAuth';
 import { THEME_OPTIONS } from '@/constants/settings';
 import '@/styles/features/settings/settings.css';
 
@@ -55,6 +56,22 @@ export function Settings({ store }: { store: WalletStore }) {
 
       <SettingsSection title={t('settings.security')}>
         <ToggleRow label={t('settings.confirmSigns')} desc={t('settings.confirmSignsDesc')} on={store.requireConfirm} onChange={() => store.toggleConfirm()} />
+        {/* Absent, not disabled, off the phone build: an extension has no lock screen
+            to reach, so a greyed-out row there would only invite a support question.
+            On a phone that CAN do it but has nothing enrolled the row stays, carrying
+            the reason — that one is fixable by the user. */}
+        {store.deviceAuthPossible && (
+          <ToggleRow
+            label={t('devAuth.settingLabel')}
+            desc={
+              store.deviceAuthAvailable
+                ? t('devAuth.settingDesc', { method: store.deviceAuthMethod })
+                : t(deviceAuthFailureKey(store.deviceAuthReason ?? 'failed'))
+            }
+            on={store.deviceAuthEnabled}
+            onChange={() => store.toggleDeviceAuth()}
+          />
+        )}
         <SettingsRow label={t('settings.exportPhrase')} onClick={() => store.setScreen('export')} />
         <SettingsRow label={pwOpen ? t('settings.cancelChangePwd') : t('settings.changePwd')} onClick={() => setPwOpen((o) => !o)} last={!pwOpen} />
         {pwOpen && <ChangePassword store={store} onDone={() => setPwOpen(false)} />}

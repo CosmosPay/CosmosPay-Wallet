@@ -13,6 +13,7 @@
  * still locked and can see how many wallets exist.
  */
 import { open, seal, type SealedBox } from '@/lib/crypto';
+import { disableDeviceAuth, deviceAuthEnabled, rewrapDeviceAuth, type DeviceAuthPrompt } from '@/lib/deviceAuth';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
 
@@ -353,6 +354,11 @@ export async function removeWallet(
   id: string,
 ): Promise<{ remaining: WalletEntry[]; newActive: string | null }> {
   await storageRemove(vaultKey(id));
+  // The password sealed behind the phone's lock screen outlives the vault it opens
+  // unless it is dropped here. Ids come from crypto.randomUUID(), so a later wallet
+  // will not collide with the orphan — it would simply sit in the Keychain for the
+  // life of the install, holding a password the user believes they deleted.
+  await disableDeviceAuth(id);
   await storageRemove(cosmosPayKey(id));
   await storageRemove(cosmosPayPendingKey(id));
   const remaining = (await listWallets()).filter((w) => w.id !== id);
@@ -366,21 +372,52 @@ export async function removeWallet(
   return { remaining, newActive: active };
 }
 
-/** Re-seal every wallet under a new password (the old one must be correct). */
-export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
+/** What a password change did to the device-lock enrolments it had to touch. */
+export interface PasswordChangeResult {
+  /** Names of wallets whose device-lock enrolment could not be re-sealed and was turned off. */
+  deviceAuthDropped: string[];
+}
+
+/**
+ * Re-seal every wallet under a new password (the old one must be correct).
+ *
+ * The device-lock enrolment holds a copy of the password sealed under a key in the
+ * Keychain, so it has to be re-sealed in the same pass. Skipping it is not a
+ * cosmetic bug: the envelope would still hold the OLD password, `unlock()` would be
+ * handed a string that no longer decrypts, and the user would meet "wrong password"
+ * coming from their own fingerprint, with nothing on screen explaining why.
+ *
+ * Re-sealing needs a device prompt, which the user can dismiss. That is not a
+ * failure of the password change — the vault is already re-sealed by then — so the
+ * enrolment is dropped and reported instead, and the caller tells the user to turn
+ * it back on. Fail closed: no enrolment beats one that opens nothing.
+ */
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string,
+  prompt: DeviceAuthPrompt,
+): Promise<PasswordChangeResult> {
+  const deviceAuthDropped: string[] = [];
   for (const w of await listWallets()) {
     const secret = await unlockWallet(w.id, oldPassword); // throws on wrong password
     await storageSet(vaultKey(w.id), JSON.stringify(await seal(JSON.stringify(secret), newPassword)));
     // Re-seal the CosmosPay credential too, otherwise it would be undecryptable.
     const cp = await getCosmosPay(w.id, oldPassword);
     if (cp) await storageSet(cosmosPayKey(w.id), JSON.stringify(await seal(JSON.stringify(cp), newPassword)));
+    // Last, and only for wallets that had it: the vault must already be on the new
+    // password before anything re-seals a copy of it. Asked BEFORE re-wrapping,
+    // because re-wrapping is what makes the answer stop being true.
+    const had = await deviceAuthEnabled(w.id);
+    if (had && !(await rewrapDeviceAuth(w.id, newPassword, prompt))) deviceAuthDropped.push(w.name);
   }
+  return { deviceAuthDropped };
 }
 
 /** Wipe every wallet from this device. */
 export async function destroyAll(): Promise<void> {
   for (const w of await listWallets()) {
     await storageRemove(vaultKey(w.id));
+    await disableDeviceAuth(w.id);
     await storageRemove(cosmosPayKey(w.id));
     await storageRemove(cosmosPayPendingKey(w.id));
   }

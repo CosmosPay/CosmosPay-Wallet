@@ -1,4 +1,8 @@
 /* ConfirmSign — password gate shown before any signing action. */
+/* Device-lock shortcut, between the password field and the cancel/sign pair. */
+.confirm-sign-device {
+  margin-bottom: 12px;
+}
 .confirm-sign-overlay {
   position: absolute;
   inset: 0;

@@ -1,0 +1,42 @@
+/* DeviceAuthSetup — the one-time offer after onboarding
+   (src/features/onboarding/DeviceAuthSetup.tsx). */
+.device-auth-setup {
+  padding-bottom: 8px;
+}
+.device-auth-setup-hero {
+  gap: 14px;
+  text-align: center;
+}
+.device-auth-setup-icon {
+  width: 84px;
+  height: 84px;
+  border-radius: 999px;
+  color: var(--text);
+}
+.device-auth-setup-title {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.device-auth-setup-desc {
+  max-width: 30ch;
+}
+.device-auth-setup-note {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--dim);
+  max-width: 30ch;
+}
+/* The decline. Deliberately a full-width control of the same height as the accept:
+   a security choice whose "no" is a small grey link is not really being offered. */
+.device-auth-setup-later {
+  width: 100%;
+  height: 50px;
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 15px;
+  font-weight: 600;
+}
+.device-auth-setup-later:disabled {
+  opacity: 0.6;
+}
