@@ -111,7 +111,13 @@ comment there before changing `cssMinify` or `cssTarget`.
 
 The app is a phone-shaped column that also runs as an MV3 popup, a side panel, a
 Capacitor WebView and a web page, so viewport-relative heights go through
-`--shell-h` and safe-area padding through `env(safe-area-inset-*)`. `npm run
+`--shell-h` and the outer margin through the `--gutter` / `--safe-*` tokens in
+`src/styles/theme.css`. Never call `env(safe-area-inset-*)` from a component sheet:
+the token carries the `0px` fallback calc() needs, and the shell already applies the
+insets once — the HORIZONTAL pair on `.shell-root`, because env() measures from the
+viewport and would otherwise pad a centered column a notch never reaches, and the
+vertical pair on `.shell-content`, so the frame still paints under the status bar.
+A screen adds `--gutter` inside that; it does not repeat the insets. `npm run
 test:responsive` guards the column across 320px → 1920px.
 
 ## `android/` and `ios/` are build outputs

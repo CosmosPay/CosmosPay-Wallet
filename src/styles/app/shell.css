@@ -11,6 +11,13 @@
   align-items: stretch;
   justify-content: center;
   background: var(--bg);
+  /* The HORIZONTAL device insets belong here, on the centering box — not inside the
+     frame. env() measures from the VIEWPORT, so a landscape notch that never reaches a
+     centered 440px column would still have padded it. Insetting the box the frame is
+     centered in shrinks the frame only when it actually spans the viewport (a phone),
+     and leaves a narrower centered column on a wide screen untouched. */
+  padding-left: var(--safe-l);
+  padding-right: var(--safe-r);
 }
 
 /* Device adaptation via a fluid column width (set by media queries in
@@ -38,8 +45,11 @@
   z-index: 1;
   display: flex;
   flex-direction: column;
-  padding-top: 14px;
-  padding-bottom: env(safe-area-inset-bottom);
+  /* The VERTICAL insets stay inside the frame so its background still paints under
+     the status bar and the gesture pill — only the content clears them. Without the
+     top one the header sits under the clock on every edge-to-edge phone. */
+  padding-top: calc(14px + var(--safe-t));
+  padding-bottom: var(--safe-b);
 }
 
 /* iOS Safari resolves 100vh against the LARGE viewport (URL bar hidden), so the
