@@ -17,9 +17,9 @@ export const toMinor = (s: string) => toMinorUnits(s) ?? 0;
 
 /** Trusted stablecoins on the wallet. Keeps only those with a spendable balance when asked.
  *  Takes the balances, not the store — `lib/` must not depend on `state/`. */
-export function stableTokens(balances: TokenBalance[] | undefined, withBalance = false): { code: string; balance: number }[] {
+export function stableTokens(balances: TokenBalance[] | undefined, withBalance = false): { code: string; issuer: string | null; balance: number }[] {
   return (balances ?? [])
     .filter((b) => !b.isNative && STABLES.includes(b.code))
-    .map((b) => ({ code: b.code, balance: parseFloat(b.balance) || 0 }))
+    .map((b) => ({ code: b.code, issuer: b.issuer, balance: parseFloat(b.balance) || 0 }))
     .filter((b) => (withBalance ? b.balance > 0 : true));
 }

@@ -56,8 +56,8 @@ export function Home({ store }: { store: WalletStore }) {
   // Assets list caps at 5 rows; starred favorites always float to the top so they
   // stay visible among those 5. "Ver todo" expands the full list inline.
   const [showAllAssets, setShowAllAssets] = useState(false);
-  const favSet = new Set(store.favorites);
-  const sortedRows = [...rows].sort((a, b) => (favSet.has(b.code) ? 1 : 0) - (favSet.has(a.code) ? 1 : 0));
+  const isFav = (code: string, issuer: string | null) => store.favorites.some((x) => x.code === code && (x.issuer === issuer || x.issuer === ''));
+  const sortedRows = [...rows].sort((a, b) => (isFav(b.code, b.issuer) ? 1 : 0) - (isFav(a.code, a.issuer) ? 1 : 0));
   const visibleRows = showAllAssets ? sortedRows : sortedRows.slice(0, 5);
 
   return (
@@ -156,10 +156,10 @@ export function Home({ store }: { store: WalletStore }) {
             key={r.code}
             row={r}
             chg={store.prices[r.code]?.change24h}
-            fav={store.favorites.includes(r.code)}
-            onFav={() => store.toggleFavorite(r.code)}
+            fav={isFav(r.code, r.issuer)}
+            onFav={() => store.toggleFavorite({ code: r.code, issuer: r.issuer })}
             index={i}
-            onClick={() => { store.setSelectedAsset(r.code); store.setScreen('asset'); }}
+            onClick={() => { store.setSelectedAsset({ code: r.code, issuer: r.issuer }); store.setScreen('asset'); }}
           />
         ))}
         <div onClick={() => store.setScreen('add-asset')} className="tap home-add-asset">

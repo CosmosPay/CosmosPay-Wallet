@@ -322,7 +322,7 @@ export function useWalletStore() {
 
   // money flows
   const [send, setSend] = useState<SendDraft>({ to: '', amount: '0', memo: '', memoKind: 'text', asset: XLM });
-  const [selectedAsset, setSelectedAsset] = useState<string>('XLM');
+  const [selectedAsset, setSelectedAsset] = useState<AssetRef>({ code: 'XLM', issuer: null });
   const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
   // Liquidity-pool form target (deposit preset or the position being withdrawn).
   const [lpTarget, setLpTarget] = useState<LpTarget | null>(null);
@@ -514,23 +514,37 @@ export function useWalletStore() {
   /* --------------------------- favorite assets -------------------------- */
   // Starred asset codes (always visible among the home top-5). Per wallet,
   // plaintext (non-sensitive), persisted under cosmos.favs.<walletId>.
-  const [favorites, setFavorites] = useState<string[]>([]);
+  const [favorites, setFavorites] = useState<AssetRef[]>([]);
   useEffect(() => {
     (async () => {
       if (!meta?.id) return setFavorites([]);
       const raw = await storageGet(`cosmos.favs.${meta.id}`);
       try {
-        setFavorites(raw ? (JSON.parse(raw) as string[]) : []);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) {
+          const migrated: AssetRef[] = parsed.map((p: any) => {
+            if (typeof p === 'string') {
+              return p === 'XLM' ? { code: 'XLM', issuer: null } : { code: p, issuer: '' };
+            }
+            return p as AssetRef;
+          });
+          setFavorites(migrated);
+        } else {
+          setFavorites([]);
+        }
       } catch {
         setFavorites([]);
       }
     })();
   }, [meta?.id]);
   const toggleFavorite = useCallback(
-    (code: string) => {
+    (asset: AssetRef) => {
       if (!meta?.id) return;
       setFavorites((f) => {
-        const next = f.includes(code) ? f.filter((c) => c !== code) : [...f, code];
+        const exists = f.some((x) => x.code === asset.code && (x.issuer === asset.issuer || x.issuer === ''));
+        const next = exists
+          ? f.filter((x) => !(x.code === asset.code && (x.issuer === asset.issuer || x.issuer === '')))
+          : [...f, asset];
         void storageSet(`cosmos.favs.${meta.id}`, JSON.stringify(next));
         return next;
       });

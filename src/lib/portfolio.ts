@@ -26,7 +26,7 @@ const STABLE = new Set(['USDC', 'USD']);
  * An unknown issuer gets `price: null`, so the row still shows its balance but adds
  * nothing to the total.
  */
-function isTrustedStableIssuer(code: string, issuer: string | null, networkId?: string): boolean {
+function isTrustedIssuer(code: string, issuer: string | null, networkId?: string): boolean {
   if (!issuer) return false;
   const known = KNOWN_ISSUERS[code];
   if (!known) return false;
@@ -53,9 +53,15 @@ export function computePortfolio(
   }
   const rows: AssetRow[] = account.balances.map((b) => {
     const amount = parseFloat(b.balance) || 0;
-    let price: number | null = prices[b.code]?.usd ?? null;
-    // Parity is assumed only for a stablecoin from its recognised issuer.
-    if (price === null && STABLE.has(b.code) && isTrustedStableIssuer(b.code, b.issuer, networkId)) price = 1;
+    let price: number | null = null;
+    if (b.isNative) {
+      price = prices['XLM']?.usd ?? null;
+    } else {
+      if (isTrustedIssuer(b.code, b.issuer, networkId)) {
+        price = prices[b.code]?.usd ?? null;
+        if (price === null && STABLE.has(b.code)) price = 1;
+      }
+    }
     const value = price !== null ? amount * price : null;
     return { code: b.code, issuer: b.issuer, amount, price, value, isNative: b.isNative };
   });

@@ -25,7 +25,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
   const accounts = store.bankAccounts;
   const tokens = stableTokens(store.account?.balances, true); // must hold the token to send it
   const [bankId, setBankId] = useState('');
-  const [token, setToken] = useState<FiatToken>((tokens[0]?.code as FiatToken) ?? 'USDC');
+  const [tokenKey, setTokenKey] = useState<string>(tokens[0] ? `${tokens[0].code}:${tokens[0].issuer ?? ''}` : 'USDC:');
   const [amount, setAmount] = useState('');
   const [coverFees, setCoverFees] = useState(true);
   const [quote, setQuote] = useState<PayoutQuote | null>(null);
@@ -34,15 +34,23 @@ export function Withdraw({ store }: { store: WalletStore }) {
 
   const account = accounts.find((a) => a.id === bankId) ?? null;
   const ccy = railCurrency(account?.rail ?? account?.type); // fiat currency for the amount suffix
-  const bal = tokens.find((x) => x.code === token)?.balance ?? 0;
+  const selectedToken = tokens.find((x) => `${x.code}:${x.issuer ?? ''}` === tokenKey) ?? tokens[0];
+  const tokenCode = selectedToken?.code as FiatToken;
+  const bal = selectedToken?.balance ?? 0;
   const insufficient = (parseFloat(amount) || 0) > bal;
-  const canQuote = !!bankId && !!token && toMinor(amount) >= 1 && !insufficient && !store.busy;
+  
+  // Refuse if ambiguous:
+  let seen = 0;
+  const isAmbiguous = selectedToken && store.account?.balances.some((b) => b.code === tokenCode && ++seen > 1);
+
+  const canQuote = !!bankId && !!tokenCode && toMinor(amount) >= 1 && !insufficient && !isAmbiguous && !store.busy;
 
   const getQuote = async () => {
-    const q = await store.quoteWithdraw({ bank_account_id: bankId, request_amount: toMinor(amount), token, cover_fees: coverFees });
+    if (isAmbiguous) return;
+    const q = await store.quoteWithdraw({ bank_account_id: bankId, request_amount: toMinor(amount), token: tokenCode, cover_fees: coverFees });
     if (q) setQuote(q);
   };
-  const confirm = async () => { if (quote) await store.confirmWithdraw(quote, token, ccy); };
+  const confirm = async () => { if (quote) await store.confirmWithdraw(quote, tokenCode, ccy); };
 
   if (!accounts.length) {
     return (
@@ -70,13 +78,18 @@ export function Withdraw({ store }: { store: WalletStore }) {
       <Select label={t('fiat.bankAccount')} value={bankId} onChange={(v) => { setBankId(v); setQuote(null); }}>
         {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} · {railLabel(a.rail ?? a.type)}</option>)}
       </Select>
-      <Select label={t('fiat.token')} value={token} onChange={(v) => { setToken(v as FiatToken); setQuote(null); }}>
-        {tokens.map((x) => <option key={x.code} value={x.code}>{x.code} · {x.balance.toFixed(2)}</option>)}
+      <Select label={t('fiat.token')} value={tokenKey} onChange={(v) => { setTokenKey(v); setQuote(null); }}>
+        {tokens.map((x) => {
+           const k = `${x.code}:${x.issuer ?? ''}`;
+           const label = `${x.code} ${x.issuer ? `(${x.issuer.slice(0,4)}…${x.issuer.slice(-4)})` : ''} · ${x.balance.toFixed(2)}`;
+           return <option key={k} value={k}>{label}</option>;
+        })}
       </Select>
       <Field tone="soft" kind="amount" label={t('fiat.sendAmount')} value={amount} onChange={(v) => { setAmount(v); setQuote(null); }} placeholder="0.00" />
       <div className={cx('withdraw-balance', insufficient && 'is-insufficient')}>
-        {t('fiat.balance')}: {bal.toFixed(2)} {token}
+        {t('fiat.balance')}: {bal.toFixed(2)} {tokenCode}
       </div>
+      {isAmbiguous && <div className="fiat-note-card fiat-note-card-gap" style={{color: 'red'}}>Error: Ambiguous asset code in balances.</div>}
 
       <div onClick={() => { setCoverFees((v) => !v); setQuote(null); }} className="tap glass row between withdraw-cover">
         <span className="withdraw-cover-label">{t('fiat.coverFees')}</span>
