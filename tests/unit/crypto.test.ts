@@ -1,43 +1,69 @@
+/**
+ * Vault crypto (`lib/crypto`) + the message-signing domain separation
+ * (`lib/signMessage`). It does NOT cover `lib/vault.ts` — that one wraps storage and
+ * has no unit tests yet; the file was called vault.test.ts, which made "the vault is
+ * covered" read as true.
+ *
+ * The literal string 'Contraseña incorrecta.' is load-bearing: ApprovePopup branches
+ * on it to decide whether a failed approval is retryable (wrong password) or terminal
+ * (anything else). Reword it there and a retry becomes a hard dapp rejection.
+ */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { seal, open, toBase64, fromBase64, type SealedBox } from '@/lib/crypto';
+import { open, seal, toBase64, fromBase64 } from '@/lib/crypto';
+import { signMessagePayload, SIGN_MESSAGE_DOMAIN } from '@/lib/signMessage';
 
-test('seal/open round-trips a secret under a password', async () => {
-  const box = await seal('S3CR3T', 'hunter2');
+test('seal -> open round trips', async () => {
+  const secret = JSON.stringify({ secret: 'SABC…', mnemonic: 'a b c' });
+  const box = await seal(secret, 'correct horse battery staple');
   assert.equal(box.v, 1);
-  const plain = await open(box, 'hunter2');
-  assert.equal(plain, 'S3CR3T');
+  assert.notEqual(box.data, secret); // actually encrypted
+  assert.equal(await open(box, 'correct horse battery staple'), secret);
 });
 
-test('opening with the wrong password throws', async () => {
-  const box = await seal('secret', 'correct');
-  await assert.rejects(() => open(box, 'wrong'), /Contraseña incorrecta/);
+test('a wrong password throws the exact string ApprovePopup branches on', async () => {
+  const box = await seal('payload', 'right');
+  await assert.rejects(() => open(box, 'wrong'), (e: unknown) => {
+    assert.equal((e as Error).message, 'Contraseña incorrecta.');
+    return true;
+  });
 });
 
-test('each seal is fresh (unique salt + iv)', async () => {
+test('tampered ciphertext is rejected (AES-GCM is authenticated)', async () => {
+  const box = await seal('payload', 'pw');
+  const bytes = fromBase64(box.data);
+  bytes[0] ^= 0xff;
+  await assert.rejects(() => open({ ...box, data: toBase64(bytes) }, 'pw'));
+});
+
+test('every seal uses a fresh salt and iv', async () => {
   const a = await seal('same', 'pw');
   const b = await seal('same', 'pw');
   assert.notEqual(a.salt, b.salt);
   assert.notEqual(a.iv, b.iv);
-  // and both still decrypt
-  assert.equal(await open(a, 'pw'), 'same');
-  assert.equal(await open(b, 'pw'), 'same');
+  assert.notEqual(a.data, b.data);
 });
 
-test('a tampered ciphertext fails authentication', async () => {
-  const box = await seal('payload', 'pw');
-  const tampered: SealedBox = { ...box, data: box.data.slice(0, -2) + (box.data.endsWith('AA') ? 'BB' : 'AA') };
-  await assert.rejects(() => open(tampered, 'pw'));
+test('base64 helpers round trip binary', () => {
+  const bytes = new Uint8Array([0, 1, 127, 128, 255]);
+  assert.deepEqual([...fromBase64(toBase64(bytes))], [...bytes]);
 });
 
-test('base64 helpers round-trip arbitrary bytes', () => {
-  const bytes = new Uint8Array([0, 1, 2, 254, 255]);
-  const b64 = toBase64(bytes);
-  const back = fromBase64(b64);
-  assert.deepEqual(Array.from(back), Array.from(bytes));
+test('signMessage digest is domain-separated and 32 bytes', async () => {
+  const digest = await signMessagePayload('hello');
+  assert.equal(digest.length, 32);
+  // Different messages -> different digests.
+  assert.notDeepEqual([...digest], [...(await signMessagePayload('hello '))]);
+  // Stable for the same input.
+  assert.deepEqual([...digest], [...(await signMessagePayload('hello'))]);
 });
 
-test('unicode plaintext survives the round-trip', async () => {
-  const box = await seal('frase con ñ y emojis 🚀', 'pw');
-  assert.equal(await open(box, 'pw'), 'frase con ñ y emojis 🚀');
+test('the digest is not the raw message — a 32-byte "message" cannot be a tx hash', async () => {
+  // The attack: hand over 32 bytes that ARE a transaction hash and get back a valid
+  // transaction signature. Hashing with a domain prefix means the signed value is
+  // never the caller's bytes.
+  const txHashLike = 'A'.repeat(32);
+  const digest = await signMessagePayload(txHashLike);
+  assert.notEqual(Buffer.from(digest).toString('binary'), txHashLike);
+  assert.ok(SIGN_MESSAGE_DOMAIN.length > 0);
 });

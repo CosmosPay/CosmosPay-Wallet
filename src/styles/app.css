@@ -1,36 +1,84 @@
 /* =====================================================================
-   Cosmos Pay — atomic stylesheet.
-   Progressive migration from React inline styles, view by view.
-   Rules here are the STATIC shells; state-driven values stay inline.
-   Theme tokens + keyframes live in src/pages/index.astro (global).
+   Cosmos Pay — atomic stylesheet: the utility classes screens compose.
+   The app has NO inline styles; every variant here is a modifier class
+   (see CLAUDE.md). Tokens live in theme.css, element resets in base.css,
+   keyframes in animations.css.
    Extension-safe: MV3 only forbids inline SCRIPTS, never stylesheets.
    ===================================================================== */
 
-/* native controls (date pickers, scrollbars) follow the app theme, so a
-   date <input> no longer needs an inline color-scheme */
-:root[data-theme='light'] { color-scheme: light; }
-:root[data-theme='dark'] { color-scheme: dark; }
-
 /* ------------------------- layout atoms ------------------------- */
-.row { display: flex; align-items: center; }
-.flexr { display: flex; } /* row without centering (children stretch) */
-.t-right { text-align: right; }
-.col { display: flex; flex-direction: column; }
-.center { display: flex; align-items: center; justify-content: center; }
-.between { justify-content: space-between; }
-.f1 { flex: 1; }
-.min0 { min-width: 0; }
-.shrink0 { flex-shrink: 0; }
-.g2 { gap: 2px; }
-.g4 { gap: 4px; }
-.g6 { gap: 6px; }
-.g7 { gap: 7px; }
-.g8 { gap: 8px; }
-.g9 { gap: 9px; }
-.g10 { gap: 10px; }
-.g11 { gap: 11px; }
-.g12 { gap: 12px; }
-.g14 { gap: 14px; }
+.row {
+  display: flex;
+  align-items: center;
+}
+
+/* row without centering (children stretch) */
+.flexr {
+  display: flex;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+}
+
+.center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.between {
+  justify-content: space-between;
+}
+
+.t-right {
+  text-align: right;
+}
+
+.f1 {
+  flex: 1;
+}
+
+.min0 {
+  min-width: 0;
+}
+
+.shrink0 {
+  flex-shrink: 0;
+}
+
+.g2 {
+  gap: 2px;
+}
+
+.g6 {
+  gap: 6px;
+}
+
+.g7 {
+  gap: 7px;
+}
+
+.g8 {
+  gap: 8px;
+}
+
+.g9 {
+  gap: 9px;
+}
+
+.g10 {
+  gap: 10px;
+}
+
+.g12 {
+  gap: 12px;
+}
+
+.g14 {
+  gap: 14px;
+}
 
 /* ------------------------- screen shells ------------------------ */
 /* Scrollable screen column. Compose: class="scr screen col pb-104". */
@@ -41,54 +89,72 @@
   padding: 2px 20px 28px;
   animation: fadeUp 0.3s ease;
 }
-.pb-24 { padding-bottom: 24px; }
-.pb-30 { padding-bottom: 30px; }
-.pb-40 { padding-bottom: 40px; }
-.pb-104 { padding-bottom: 104px; }
-.pb-110 { padding-bottom: 110px; }
 
-/* ------------------------ glass surfaces ------------------------ */
-.glass {
+.pb-24 {
+  padding-bottom: 24px;
+}
+
+.pb-30 {
+  padding-bottom: 30px;
+}
+
+.pb-40 {
+  padding-bottom: 40px;
+}
+
+.pb-104 {
+  padding-bottom: 104px;
+}
+
+.pb-110 {
+  padding-bottom: 110px;
+}
+
+/* ------------------------ glass surfaces ------------------------
+   Three translucent surfaces. The full-width pill controls further down
+   (.input, .btn-primary, .btn-ghost) wear exactly the same paint, so each
+   surface is declared once for every class that uses it — only the idle
+   "breathing" animation stays exclusive to the decorative surfaces. */
+.glass,
+.input {
   background: var(--glass-bg);
-  backdrop-filter: blur(22px) saturate(150%);
   -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
   border: 1px solid var(--glass-border);
   box-shadow: inset 0 1px 0 var(--glass-border), 0 10px 30px rgba(0, 0, 0, 0.28);
-  animation: glassBreath 8s ease-in-out infinite; /* fidelity with the old C.glass */
 }
-.glass-soft {
+
+.glass-soft,
+.btn-ghost {
   background: var(--glass-soft-bg);
-  backdrop-filter: blur(16px) saturate(140%);
   -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
   border: 1px solid var(--glass-soft-border);
-  animation: glassBreath 11s ease-in-out infinite;
 }
-.glass-bright {
+
+.glass-bright,
+.btn-primary {
   background: var(--primary-bg);
-  backdrop-filter: blur(20px) saturate(160%);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid var(--primary-border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 30px rgba(0, 0, 0, 0.3);
 }
-/* full-width 54px pill input on a glass surface (was C.glass + inputStyle) */
-.input {
-  width: 100%;
-  height: 54px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  padding: 0 20px;
-  color: var(--text);
-  font-size: 15px;
-  font-weight: 600;
-  outline: none;
-  background: var(--glass-bg);
-  backdrop-filter: blur(22px) saturate(150%);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 var(--glass-border), 0 10px 30px rgba(0, 0, 0, 0.28);
+
+/* only the decorative surfaces breathe — a control that borrows their paint
+   must not pulse under the user's finger */
+.glass {
+  animation: glassBreath 8s ease-in-out infinite;
 }
-.card { border-radius: 18px; padding: 18px; }
-.card-16 { border-radius: 16px; padding: 14px 16px; }
+
+.glass-soft {
+  animation: glassBreath 11s ease-in-out infinite;
+}
+
+.card {
+  border-radius: 18px;
+  padding: 18px;
+}
 
 /* --------------------------- buttons ---------------------------- */
 /* 38px round header/control button (network, surface, menu, back…) */
@@ -103,7 +169,7 @@
   flex-shrink: 0;
   color: var(--text);
 }
-.circle-34 { width: 34px; height: 34px; }
+
 /* full-width 48px pill action (paste pay-URL, scan upload/paste…) */
 .pill-btn {
   width: 100%;
@@ -119,51 +185,66 @@
   cursor: pointer;
   color: var(--text);
 }
-/* main CTA (was C.glassBright + CONTROL) */
-.btn-primary {
-  width: 100%;
-  height: 54px;
-  box-sizing: border-box;
-  border-radius: 999px;
-  padding: 0 20px;
-  flex-shrink: 0; /* never squashed inside flex-column screens */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary-text);
-  font-size: 16px;
-  font-weight: 800;
-  cursor: pointer;
-  background: var(--primary-bg);
-  backdrop-filter: blur(20px) saturate(160%);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  border: 1px solid var(--primary-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 30px rgba(0, 0, 0, 0.3);
-}
-.btn-primary:disabled { cursor: default; opacity: 0.4; }
-/* secondary full-width action (was C.glassSoft + CONTROL) */
+
+/* the three full-width 54px pill controls share one box */
+.input,
+.btn-primary,
 .btn-ghost {
   width: 100%;
   height: 54px;
   box-sizing: border-box;
   border-radius: 999px;
   padding: 0 20px;
+}
+
+.btn-primary,
+.btn-ghost {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text);
   font-size: 16px;
   font-weight: 800;
   cursor: pointer;
-  background: var(--glass-soft-bg);
-  backdrop-filter: blur(16px) saturate(140%);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  border: 1px solid var(--glass-soft-border);
+}
+
+/* pill text field on a glass surface */
+.input {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  outline: none;
+}
+
+/* main CTA */
+.btn-primary {
+  color: var(--primary-text);
+  /* never squashed inside flex-column screens */
+  flex-shrink: 0;
+}
+
+.btn-primary:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* secondary full-width action */
+.btn-ghost {
+  color: var(--text);
 }
 
 /* -------------------------- typography -------------------------- */
-.title-30 { font-size: 30px; font-weight: 800; letter-spacing: -0.8px; }
-.title-20 { font-size: 20px; font-weight: 800; letter-spacing: -0.4px; }
+.title-30 {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.8px;
+}
+
+.title-20 {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+}
+
 .label-up {
   font-size: 12px;
   color: var(--dim);
@@ -171,31 +252,67 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
-.t-muted-13 { font-size: 13px; color: var(--muted); font-weight: 600; }
-.t-dim-12 { font-size: 12px; color: var(--dim); font-weight: 600; }
-.t-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+.t-muted-13 {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.t-dim-12 {
+  font-size: 12px;
+  color: var(--dim);
+  font-weight: 600;
+}
 
 /* ---------------------- shared components ----------------------- */
-.backbar { display: flex; align-items: center; gap: 14px; padding: 6px 0 8px; }
-.numpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px 8px; }
-.numpad > div {
-  height: 52px;
+.backbar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: 600;
-  border-radius: 999px;
-  cursor: pointer;
-  user-select: none;
+  gap: 14px;
+  padding: 6px 0 8px;
 }
+
+/* Ring spinner. The base is the 18px on-primary variant (what sits inside a
+   .btn-primary); size and tone are modifier classes, never inline values. */
 .spinner {
   display: inline-block;
+  width: 18px;
+  height: 18px;
+  color: var(--primary-text);
   border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
   vertical-align: middle;
+}
+
+.spinner--15 {
+  width: 15px;
+  height: 15px;
+}
+
+.spinner--16 {
+  width: 16px;
+  height: 16px;
+}
+
+.spinner--text {
+  color: var(--text);
+}
+
+.spinner--dim {
+  color: var(--dim);
+}
+
+.spinner--white {
+  color: #fff;
+}
+
+/* literal ink, not var(--on-accent): this one sits on the always-white QR
+   card, so it must stay dark in BOTH themes */
+.spinner--ink {
+  color: #0a0c0b;
 }
 
 /* the nav drawer moves as ONE unit — its rows/buttons must not pop in
@@ -204,4 +321,35 @@
 .nav-drawer input,
 .nav-drawer .tap {
   animation: none !important;
+}
+
+/* ---------------------------------------------------------------------
+   Shared atoms extracted from per-screen sheets that had re-declared them.
+   --------------------------------------------------------------------- */
+
+/* Error / refusal line under a field or form. Was five byte-identical copies
+   (.edit-profile-err, .profile-setup-err, .sign-tx-err, .confirm-sign-err,
+   .add-network-err); screens keep only their own margin. */
+.err-line {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--danger);
+  line-height: 1.45;
+}
+
+/* Flexible gap that pushes the primary action to the bottom of a screen column.
+   Was nine copies differing only in a min-height of 12/14/16/20px — a spread
+   nobody designed. One value now; it only takes effect when the column is short. */
+.spacer {
+  flex: 1;
+  min-height: 14px;
+}
+
+/* Muted explanatory paragraph under a screen title. Was eleven near-identical
+   rules at 12.5-13.5px; screens keep their own margin on top of this. */
+.desc {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
 }

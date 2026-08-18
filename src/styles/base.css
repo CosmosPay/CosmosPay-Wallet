@@ -1,0 +1,95 @@
+/* =====================================================================
+   Element-level baseline: document chrome, form-control resets and the
+   cross-engine fixes that have to apply before any component style.
+   No component or utility rules here — those live in app.css and the
+   per-component sheets. Loaded by src/pages/index.astro after theme.css.
+   ===================================================================== */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Poppins, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.25s ease, color 0.25s ease;
+  /* lock the mobile viewport */
+  overscroll-behavior: none;
+  /* never let a rounding overflow introduce a horizontal scrollbar */
+  overflow-x: hidden;
+  /* iOS Safari auto-inflates text in landscape unless this is pinned,
+     which would blow the fixed-width app column apart */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* iOS Safari + Android Chrome flash a grey box on every tap; the app
+     draws its own :active feedback, so suppress the native one */
+  -webkit-tap-highlight-color: transparent;
+  /* Firefox ignores ::-webkit-scrollbar — hide its bars the standard way
+     (Safari 18.2+ honours this property too) */
+  scrollbar-width: none;
+}
+
+/* all buttons are fully rounded (pill) */
+button {
+  border-radius: 999px !important;
+}
+
+/* brand logo: white asset; invert to black in light mode */
+[data-theme='light'] .brand-logo {
+  filter: invert(1);
+}
+
+/* hide scrollbars to keep the native-app feel */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* every scrollable surface carries .scr; Firefox and Safari 18.2+ honour the
+   standard property, older Edge the -ms- one */
+.scr {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
+/* iOS Safari frames every form control itself (inset shadow, forced corner
+   radius, its own date layout); that frame shows through the glass surfaces.
+   Strip the native look — each control's class supplies the real shape.
+   Firefox/Chrome accept the unprefixed property. */
+input,
+textarea,
+select,
+button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* iOS Safari renders a date value in a shrink-wrapped box that ignores the
+   pill's padding and collapses while empty. */
+input[type='date'] {
+  min-height: 1em;
+}
+
+input[type='date']::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+
+/* every engine picks a different default placeholder colour/opacity
+   (Firefox also dims it) — pin ours so the pills match everywhere */
+::placeholder {
+  color: var(--dim);
+  opacity: 1;
+}

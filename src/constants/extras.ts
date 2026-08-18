@@ -1,11 +1,11 @@
 /** Static data for the extras screens (ScanQR, AddAsset, …).
- *  Extracted from src/components/screens/extras/ — values must not change. */
+ *  Extracted from src/features/extras/ — values must not change. */
 
 /* ------------------------------ ScanQR ------------------------------ */
 /** Cap the decode working size (perf) while keeping enough pixels for dense codes. */
 export const SCAN_DECODE_MAX_PX = 1400;
-/** Stellar text memos max out at 28 chars — trim scanned memos to fit. */
-export const SCAN_MEMO_MAX = 28;
+// The memo limit lives in src/lib/memo.ts (MEMO_TEXT_MAX_BYTES): Stellar caps text
+// memos at 28 BYTES, not characters, so it needs a clamp function, not a constant.
 
 /* ----------------------------- AddAsset ----------------------------- */
 // Issuers we trust outright per network; everything else is resolved from Horizon

@@ -49,13 +49,30 @@ export function persistLang(lang: Lang): void {
   }
 }
 
+/**
+ * `t` for the two places with no store in reach: a shared `ui/` primitive whose only
+ * string is an `aria-label`, and the error boundary that sits ABOVE the store — the
+ * store being what may have thrown.
+ *
+ * Reads the persisted language on every call. A module-level cache lived here to save
+ * a `localStorage.getItem` per render of a password eye; it bought microseconds and
+ * cost a real staleness path, since any write to the key that did not go through
+ * `persistLang` left it serving the previous language until a reload.
+ *
+ * NOT reactive: everything that holds the store keeps using `store.t`, which
+ * re-renders on a language change by itself. Do not reach for this for visible copy.
+ */
+export function tNow(key: string, params?: Record<string, string | number>): string {
+  return makeT(savedLang())(key, params);
+}
+
 /** Locale tag for Intl (dates, numbers) derived from the language. */
 export function localeOf(lang: Lang): string {
   return { es: 'es-ES', en: 'en-US', pt: 'pt-BR', de: 'de-DE', fr: 'fr-FR' }[lang];
 }
 
 // Each entry: key -> { es, en, pt, de, fr }
-// Exported so scripts/check-i18n.ts can verify every key carries all five languages.
+/** Exported so tests can assert every key is complete in all five languages. */
 export const T: Record<string, Record<Lang, string>> = {
   // ---- common ----
   'common.continue': { es: 'Continuar', en: 'Continue', pt: 'Continuar', de: 'Weiter', fr: 'Continuer' },
@@ -68,6 +85,41 @@ export const T: Record<string, Record<Lang, string>> = {
   'common.delete': { es: 'Borrar', en: 'Delete', pt: 'Apagar', de: 'Löschen', fr: 'Supprimer' },
   'common.send': { es: 'Enviar', en: 'Send', pt: 'Enviar', de: 'Senden', fr: 'Envoyer' },
   'common.receive': { es: 'Recibir', en: 'Receive', pt: 'Receber', de: 'Empfangen', fr: 'Recevoir' },
+
+  // ---- accessible labels ----
+  // Screen-reader names for icon-only controls. They used to be Spanish literals
+  // inside shared primitives (ui/Field, app/NavMenu), which the i18n test cannot
+  // see: it checks that every key exists in five languages, and a string that was
+  // never a key has no key to check.
+  'a11y.show': { es: 'Mostrar', en: 'Show', pt: 'Mostrar', de: 'Anzeigen', fr: 'Afficher' },
+  'a11y.hide': { es: 'Ocultar', en: 'Hide', pt: 'Ocultar', de: 'Verbergen', fr: 'Masquer' },
+  'a11y.menu': { es: 'Menú', en: 'Menu', pt: 'Menu', de: 'Menü', fr: 'Menu' },
+  'a11y.close': { es: 'Cerrar', en: 'Close', pt: 'Fechar', de: 'Schließen', fr: 'Fermer' },
+
+  // ---- error boundary ----
+  'error.screenTitle': {
+    es: 'No se pudo cargar esta pantalla',
+    en: "This screen couldn't load",
+    pt: 'Não foi possível carregar este ecrã',
+    de: 'Dieser Bildschirm konnte nicht geladen werden',
+    fr: "Cet écran n'a pas pu se charger",
+  },
+  'error.screenMsg': {
+    es: 'Tus fondos y tus claves no se han visto afectados. Recarga la app para volver a intentarlo.',
+    en: 'Your funds and keys are untouched. Reload the app to try again.',
+    pt: 'Os teus fundos e chaves não foram afetados. Recarrega a app para tentar de novo.',
+    de: 'Deine Guthaben und Schlüssel sind unberührt. Lade die App neu, um es erneut zu versuchen.',
+    fr: 'Tes fonds et tes clés sont intacts. Recharge l’app pour réessayer.',
+  },
+  'error.appTitle': {
+    es: 'La wallet no pudo arrancar',
+    en: "The wallet couldn't start",
+    pt: 'A wallet não conseguiu arrancar',
+    de: 'Die Wallet konnte nicht starten',
+    fr: "Le portefeuille n'a pas pu démarrer",
+  },
+  'error.reload': { es: 'Recargar', en: 'Reload', pt: 'Recarregar', de: 'Neu laden', fr: 'Recharger' },
+  'error.goHome': { es: 'Volver al inicio', en: 'Back to home', pt: 'Voltar ao início', de: 'Zurück zum Start', fr: "Retour à l'accueil" },
 
   // ---- welcome ----
   'welcome.subtitle': {
@@ -243,6 +295,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'unlock.use': { es: 'Usar', en: 'Use', pt: 'Usar', de: 'Verwenden', fr: 'Utiliser' },
   'unlock.current': { es: 'Actual', en: 'Current', pt: 'Atual', de: 'Aktuell', fr: 'Actuel' },
   'unlock.removeConfirm': { es: '¿Eliminar «{name}» de este dispositivo? Asegúrate de tener su frase de recuperación.', en: 'Remove “{name}” from this device? Make sure you have its recovery phrase.', pt: 'Remover «{name}» deste dispositivo? Certifica-te de que tens a frase de recuperação.', de: '„{name}“ von diesem Gerät entfernen? Stelle sicher, dass du die Wiederherstellungsphrase hast.', fr: 'Supprimer « {name} » de cet appareil ? Assure-toi d’avoir sa phrase de récupération.' },
+  'unlock.autoLocked': { es: 'Wallet bloqueada por inactividad.', en: 'Wallet locked due to inactivity.', pt: 'Wallet bloqueada por inatividade.', de: 'Wallet wegen Inaktivität gesperrt.', fr: 'Portefeuille verrouillé pour inactivité.' },
   'unlock.happyDay': { es: '¡Feliz día!', en: 'Happy day!', pt: 'Feliz dia!', de: 'Schönen Tag!', fr: 'Joyeuse journée !' },
   'unlock.yearsOld': { es: '¡{age} años!', en: '{age} years old!', pt: '{age} anos!', de: '{age} Jahre!', fr: '{age} ans !' },
 
@@ -388,7 +441,6 @@ export const T: Record<string, Record<Lang, string>> = {
   'send.available': { es: 'Disponible', en: 'Available', pt: 'Disponível', de: 'Verfügbar', fr: 'Disponible' },
   'send.memo': { es: 'Memo (opcional)', en: 'Memo (optional)', pt: 'Memo (opcional)', de: 'Memo (optional)', fr: 'Mémo (facultatif)' },
   'send.insufficient': { es: 'Saldo insuficiente', en: 'Insufficient balance', pt: 'Saldo insuficiente', de: 'Unzureichendes Guthaben', fr: 'Solde insuffisant' },
-  'send.memoTooLong': { es: 'El memo es demasiado largo.', en: 'The memo is too long.', pt: 'O memo é muito longo.', de: 'Das Memo ist zu lang.', fr: 'Le mémo est trop long.' },
 
   // ---- confirm ----
   'confirm.title': { es: 'Confirmar envío', en: 'Confirm send', pt: 'Confirmar envio', de: 'Senden bestätigen', fr: 'Confirmer l’envoi' },
@@ -398,6 +450,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'confirm.network': { es: 'Red', en: 'Network', pt: 'Rede', de: 'Netzwerk', fr: 'Réseau' },
   'confirm.fee': { es: 'Comisión', en: 'Fee', pt: 'Taxa', de: 'Gebühr', fr: 'Frais' },
   'confirm.memo': { es: 'Memo', en: 'Memo', pt: 'Memo', de: 'Memo', fr: 'Mémo' },
+  'confirm.issuer': { es: 'Emisor', en: 'Issuer', pt: 'Emissor', de: 'Emittent', fr: 'Émetteur' },
   'confirm.yourWallet': { es: 'Tu wallet', en: 'Your wallet', pt: 'A tua wallet', de: 'Deine Wallet', fr: 'Ton portefeuille' },
   'confirm.cta': { es: 'Confirmar y enviar', en: 'Confirm & send', pt: 'Confirmar e enviar', de: 'Bestätigen & senden', fr: 'Confirmer et envoyer' },
 
@@ -445,7 +498,6 @@ export const T: Record<string, Record<Lang, string>> = {
   'swap.feeRate': { es: 'Tasa de comisión', en: 'Fee rate', pt: 'Fee rate', de: 'Fee rate', fr: 'Fee rate' },
   'swap.sameAsset': { es: 'Elegí dos tokens distintos para intercambiar.', en: 'Pick two different tokens to swap.', pt: 'Pick two different tokens to swap.', de: 'Pick two different tokens to swap.', fr: 'Pick two different tokens to swap.' },
   'swap.insufficient': { es: 'Saldo insuficiente. Disponible: {avail} {code}.', en: 'Insufficient balance. Available: {avail} {code}.', pt: 'Insufficient balance. Available: {avail} {code}.', de: 'Insufficient balance. Available: {avail} {code}.', fr: 'Insufficient balance. Available: {avail} {code}.' },
-  'swap.invalidAmount': { es: 'Importe no válido.', en: 'Invalid amount.', pt: 'Valor inválido.', de: 'Ungültiger Betrag.', fr: 'Montant invalide.' },
 
   // ---- operation history ----
   'history.title': { es: 'Historial', en: 'Activity', pt: 'Atividade', de: 'Verlauf', fr: 'Activité' },
@@ -676,8 +728,6 @@ export const T: Record<string, Record<Lang, string>> = {
   'lp.sharesHeld': { es: 'Tenés', en: 'You hold', pt: 'Tens', de: 'Du hältst', fr: 'Tu détiens' },
   'lp.max': { es: 'Máx', en: 'Max', pt: 'Máx', de: 'Max', fr: 'Max' },
   'lp.overShares': { es: 'Solo tenés {held} participaciones.', en: 'You only hold {held} shares.', pt: 'Só tens {held} participações.', de: 'Du hältst nur {held} Anteile.', fr: 'Tu ne détiens que {held} parts.' },
-  'lp.invalidAmount': { es: 'Importe de depósito no válido.', en: 'Invalid deposit amount.', pt: 'Valor de depósito inválido.', de: 'Ungültiger Einzahlungsbetrag.', fr: 'Montant de dépôt invalide.' },
-  'lp.invalidShares': { es: 'Cantidad de participaciones no válida.', en: 'Invalid number of shares.', pt: 'Quantidade de participações inválida.', de: 'Ungültige Anzahl an Anteilen.', fr: 'Nombre de parts invalide.' },
   'lp.youReceiveApprox': { es: 'Recibirás (aprox.)', en: 'You’ll receive (approx.)', pt: 'Vais receber (aprox.)', de: 'Du erhältst (ca.)', fr: 'Tu recevras (env.)' },
   'lp.withdrawNote': {
     es: 'Quemás participaciones y recibís tu parte proporcional de ambos activos. Los mínimos on-chain se protegen con tu tolerancia de slippage.',
@@ -982,6 +1032,35 @@ export const T: Record<string, Record<Lang, string>> = {
   'about.buildApp': { es: 'Aplicación móvil', en: 'Mobile app', pt: 'Aplicação móvel', de: 'Mobile App', fr: 'Application mobile' },
   'about.desc': { es: 'Tus claves se cifran y se guardan solo en este dispositivo (SEP-5 · AES-256-GCM). Cosmos nunca tiene acceso a ellas.', en: 'Your keys are encrypted and stored only on this device (SEP-5 · AES-256-GCM). Cosmos never has access to them.', pt: 'As tuas chaves são cifradas e guardadas apenas neste dispositivo (SEP-5 · AES-256-GCM). A Cosmos nunca tem acesso.', de: 'Deine Schlüssel werden verschlüsselt und nur auf diesem Gerät gespeichert (SEP-5 · AES-256-GCM). Cosmos hat nie Zugriff darauf.', fr: 'Tes clés sont chiffrées et stockées uniquement sur cet appareil (SEP-5 · AES-256-GCM). Cosmos n’y a jamais accès.' },
 
+  'fiat.noAmount': {
+    es: 'La cotización no indica cuánto se enviaría. No se ha firmado nada.',
+    en: "The quote doesn't say how much would be sent. Nothing was signed.",
+    pt: 'A cotação não indica quanto seria enviado. Não se assinou nada.',
+    de: 'Das Angebot nennt keinen Sendebetrag. Es wurde nichts signiert.',
+    fr: "Le devis n'indique pas le montant à envoyer. Rien n'a été signé.",
+  },
+  'fiat.ambiguousAsset': {
+    es: 'Tienes más de un activo llamado {code}, o ninguno. Elimina la línea de confianza que no uses antes de retirar.',
+    en: 'You hold more than one asset called {code}, or none. Remove the trustline you do not use before withdrawing.',
+    pt: 'Tens mais de um ativo chamado {code}, ou nenhum. Remove a trustline que não usas antes de levantar.',
+    de: 'Du hältst mehr als einen Vermögenswert namens {code} – oder keinen. Entferne die nicht genutzte Trustline vor der Auszahlung.',
+    fr: 'Tu détiens plus d’un actif nommé {code}, ou aucun. Supprime la trustline inutilisée avant de retirer.',
+  },
+
+  // ---- connected sites (extension only) ----
+  'settings.sites': { es: 'Webs conectadas', en: 'Connected sites', pt: 'Sites ligados', de: 'Verbundene Websites', fr: 'Sites connectés' },
+  'settings.sitesDesc': {
+    es: 'Estas webs pueden leer tu dirección pública sin volver a preguntar. Nunca pueden firmar sin tu contraseña.',
+    en: 'These sites can read your public address without asking again. They can never sign without your password.',
+    pt: 'Estes sites podem ler o teu endereço público sem voltar a perguntar. Nunca podem assinar sem a tua palavra-passe.',
+    de: 'Diese Websites können deine öffentliche Adresse ohne erneute Nachfrage lesen. Signieren können sie nie ohne dein Passwort.',
+    fr: 'Ces sites peuvent lire ton adresse publique sans redemander. Ils ne peuvent jamais signer sans ton mot de passe.',
+  },
+  'settings.sitesNone': { es: 'Ninguna web conectada.', en: 'No connected sites.', pt: 'Nenhum site ligado.', de: 'Keine verbundenen Websites.', fr: 'Aucun site connecté.' },
+  'settings.revoke': { es: 'Revocar', en: 'Revoke', pt: 'Revogar', de: 'Entziehen', fr: 'Révoquer' },
+  'settings.revokeAll': { es: 'Revocar todas', en: 'Revoke all', pt: 'Revogar todas', de: 'Alle entziehen', fr: 'Tout révoquer' },
+  'settings.sitesRevoked': { es: 'Acceso revocado.', en: 'Access revoked.', pt: 'Acesso revogado.', de: 'Zugriff entzogen.', fr: 'Accès révoqué.' },
+
   'settings.confirmSigns': { es: 'Confirmaciones manuales', en: 'Manual confirmations', pt: 'Confirmações manuais', de: 'Manuelle Bestätigungen', fr: 'Confirmations manuelles' },
   'settings.confirmSignsDesc': { es: 'Pedir la contraseña antes de firmar cualquier operación (envíos, trustlines, transacciones).', en: 'Ask for your password before signing any operation (payments, trustlines, transactions).', pt: 'Pedir a palavra-passe antes de assinar qualquer operação (envios, trustlines, transações).', de: 'Vor jedem Signieren (Zahlungen, Trustlines, Transaktionen) nach dem Passwort fragen.', fr: 'Demander le mot de passe avant de signer toute opération (paiements, trustlines, transactions).' },
 };
@@ -990,7 +1069,9 @@ export function makeT(lang: Lang) {
   return (key: string, params?: Record<string, string | number>): string => {
     const entry = T[key];
     let s = entry ? entry[lang] ?? entry.en : key;
-    if (params) for (const [k, v] of Object.entries(params)) s = s.replace(`{${k}}`, String(v));
+    // replaceAll, not replace: a string that uses the same placeholder twice used to
+    // render it once and leave the literal `{name}` visible in the second slot.
+    if (params) for (const [k, v] of Object.entries(params)) s = s.replaceAll(`{${k}}`, String(v));
     return s;
   };
 }

@@ -1,0 +1,39 @@
+/* Error boundary — src/app/ErrorBoundary.tsx. The last screen the user can see
+   when a lazy chunk fails to load, so it composes only atoms that ship in the
+   eager bundle (.col/.center/.f1/.desc/.btn-primary). */
+
+.error-boundary {
+  gap: 14px;
+  padding: 32px 24px;
+  text-align: center;
+}
+
+.error-boundary-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+}
+
+.error-boundary-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.error-boundary-desc {
+  max-width: 32ch;
+}
+
+.error-boundary-btn {
+  margin-top: 6px;
+  max-width: 240px;
+}

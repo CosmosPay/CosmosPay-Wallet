@@ -17,6 +17,8 @@ palavra-passe e provider para dapps (`window.cosmosWallet`) para pagamentos e as
 |---|---|
 | Criar / importar / exportar | BIP-39 de 12 palavras + derivação **SEP-5** (`m/44'/148'/0'`); importa de frase ou chave secreta (`S…`) |
 | Cofre cifrado | **AES-256-GCM**, chave derivada com **PBKDF2** (210k iterações); desbloqueio só em memória |
+| Bloqueio automático | A sessão é descartada após 5 minutos de inatividade; voltar exige a palavra-passe |
+| Guarda de assinatura | `assertSafeToSign` descodifica cada XDR antes de assinar e rejeita o que não encaixa no fluxo (ver Modelo de segurança) |
 | Saldos, enviar e receber | Horizon; QR para receber; o envio de XLM cria a conta destino se não existir |
 | Swap | Via gateway Cosmos Pay (cotação automática, proteção de slippage) |
 | Fiat (on/off-ramp) | Receiver BlindPay (KYC) — depósitos e levantamentos, **só 18+** |
@@ -38,23 +40,37 @@ A derivação de chaves está verificada contra o **vetor de teste oficial SEP-5
 3. Desbloquear decifra **só em memória**; palavra-passe errada falha o tag GCM e é rejeitada.
 4. As assinaturas podem exigir a palavra-passe de novo (toggle nas Definições). A janela de
    aprovação de dapps assina localmente — nenhum segredo chega a páginas ou servidores.
+5. **Bloqueio automático por inatividade:** uma sessão aberta guarda a chave decifrada, por isso ao
+   fim de 5 minutos sem interação é descartada e a palavra-passe volta a ser pedida.
+6. **Nada é assinado sem ser descodificado antes.** Tudo o que a wallet assina e não construiu ela
+   própria (o envelope devolvido pelo gateway, o entregue por uma dapp) passa por
+   `assertSafeToSign`: descodifica o XDR, confirma que a origem somos nós, permite apenas as
+   operações que aquele fluxo pode conter, recusa as de tomada de conta (`setOptions`,
+   `accountMerge`, patrocínio, clawback), limita a taxa, recusa invólucros fee-bump e limita o
+   montante pela cotação que o utilizador acabou de confirmar. Recusa, não avisa.
+7. A **passphrase de rede nunca vem da contraparte** — é lida da configuração de rede da própria
+   wallet, para que uma aprovação de "Testnet" não possa produzir uma assinatura válida na Mainnet.
+   `signMessage` assina um digest com separação de domínio, nunca os bytes de quem chama.
 
 > A palavra-passe **não é recuperável**. Se a esqueceres, remove essa carteira do dispositivo
 > e restaura-a com a frase (as outras carteiras não são afetadas).
 
 ## Desenvolvimento
 
-Requer **Node ≥ 18**.
+Requer **Node ≥ 22.12** (exigido pelo motor do Astro 7; além disso os scripts de build e teste usam
+`--experimental-strip-types`, disponível desde 22.6). O CI corre em Node 22.
 
 ```bash
 npm install
-npm run dev          # http://localhost:4500
-npm run build:ext            # -> extension/          (Chrome / Edge)
-npm run build:ext:firefox    # -> extension-firefox/  (Firefox)
+npm run dev                  # http://localhost:4500
+npm run build                # -> dist/web/
+npm run test:unit            # node:test, sem dependências
+npm run build:ext            # -> dist/extension/          (Chrome / Edge)
+npm run build:ext:firefox    # -> dist/extension-firefox/  (Firefox)
 ```
 
-- **Chrome / Edge:** `chrome://extensions` → modo de programador → *Load unpacked* → `extension/`.
-- **Firefox:** `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* → `extension-firefox/manifest.json`.
+- **Chrome / Edge:** `chrome://extensions` → modo de programador → *Load unpacked* → `dist/extension/`.
+- **Firefox:** `about:debugging#/runtime/this-firefox` → *Load Temporary Add-on* → `dist/extension-firefox/manifest.json`.
 
 Texto para a loja: [STORE_LISTING.md](../STORE_LISTING.md).
 

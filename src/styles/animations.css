@@ -1,0 +1,224 @@
+/* =====================================================================
+   Keyframes + the motion rules that apply across the whole app.
+   Every @keyframes in the project is declared here, so component sheets
+   only ever reference them by name.
+   Loaded by src/pages/index.astro after base.css.
+   ORDER MATTERS: the reduced-motion block must stay LAST — it beats the
+   `popIn` rule below on `!important` at equal specificity, so the cascade
+   resolves it by source order.
+   ===================================================================== */
+
+@keyframes pop {
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes popOut {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.86);
+    opacity: 0;
+  }
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes blink {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes ring {
+  from {
+    transform: scale(0.7);
+    opacity: 0.5;
+  }
+  to {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* extension toasts: bottom sheet slides up, then back down */
+@keyframes toastUp {
+  from {
+    opacity: 0;
+    transform: translateY(130%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes toastDown {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(130%);
+  }
+}
+
+/* breathing glass: the frosted edge + frost density gently pulse */
+@keyframes glassBreath {
+  0%,
+  100% {
+    border-color: var(--gb-bd-a);
+    background-color: var(--gb-bg-a);
+  }
+  50% {
+    border-color: var(--gb-bd-b);
+    background-color: var(--gb-bg-b);
+  }
+}
+
+/* intro splash logo */
+@keyframes splashIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.55);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.splash-logo {
+  animation: splashIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* entrance pop for buttons + input elements */
+@keyframes popIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  70% {
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+button,
+input,
+textarea,
+select,
+.tap {
+  animation: popIn 0.36s cubic-bezier(0.2, 0.9, 0.25, 1) !important;
+}
+
+/* ---------------------- staggered list entrances ----------------------
+   A row's position used to arrive as an inline animation-delay. It is a
+   fixed ladder instead: the caller clamps its index to the last step, so a
+   long list keeps the final delay rather than growing without bound.
+   `.stagger-*` is the 50ms default (Home previews, Markets); the denser
+   30ms `.stagger-dense-*` is for the full History screen.
+   Keep STAGGER_STEPS in src/lib/stagger.ts equal to the ladder length. */
+.stagger-0 { animation-delay: 0s; }
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+.stagger-7 { animation-delay: 0.35s; }
+.stagger-8 { animation-delay: 0.4s; }
+.stagger-9 { animation-delay: 0.45s; }
+.stagger-10 { animation-delay: 0.5s; }
+.stagger-11 { animation-delay: 0.55s; }
+
+.stagger-dense-0 { animation-delay: 0s; }
+.stagger-dense-1 { animation-delay: 0.03s; }
+.stagger-dense-2 { animation-delay: 0.06s; }
+.stagger-dense-3 { animation-delay: 0.09s; }
+.stagger-dense-4 { animation-delay: 0.12s; }
+.stagger-dense-5 { animation-delay: 0.15s; }
+.stagger-dense-6 { animation-delay: 0.18s; }
+.stagger-dense-7 { animation-delay: 0.21s; }
+.stagger-dense-8 { animation-delay: 0.24s; }
+.stagger-dense-9 { animation-delay: 0.27s; }
+.stagger-dense-10 { animation-delay: 0.3s; }
+.stagger-dense-11 { animation-delay: 0.33s; }
+
+/* hover + tactile press feedback on buttons and tappable elements */
+button,
+.tap {
+  transition: transform 0.13s ease, filter 0.16s ease, box-shadow 0.2s ease;
+}
+
+.tap {
+  cursor: pointer;
+}
+
+/* Real pointers only: on iOS Safari and Android Chrome a tapped element
+   keeps :hover until you tap somewhere else, so the brightness would
+   stay stuck on the last button pressed. */
+@media (hover: hover) and (pointer: fine) {
+  button:hover,
+  .tap:hover {
+    filter: brightness(1.07);
+  }
+}
+
+button:active,
+.tap:active {
+  transform: scale(0.96);
+}
+
+/* respect users who prefer less motion. MUST STAY LAST (see file header). */
+@media (prefers-reduced-motion: reduce) {
+  button,
+  input,
+  textarea,
+  select,
+  .tap,
+  .splash-logo,
+  .glass,
+  .glass-soft,
+  .success-ring,
+  .toast-card,
+  .toast-ext-card {
+    animation: none !important;
+  }
+}

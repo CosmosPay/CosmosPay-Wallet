@@ -16,6 +16,7 @@ import {
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
 import { coingeckoBase } from '@/lib/endpoints';
+import { normalizeMemo, type MemoKind } from '@/lib/memo';
 
 // A network is identified by an id; built-ins are testnet/public, plus any
 // custom networks the user adds (own Horizon + passphrase).
@@ -133,6 +134,18 @@ export interface SendParams {
   destination: string;
   amount: string; // in XLM
   memo?: string;
+  /** 'text' (default) or 'id'. A SEP-7 MEMO_ID must stay an id — see lib/memo.ts. */
+  memoKind?: MemoKind;
+}
+
+/**
+ * Turn a (value, kind) pair into the SDK memo, applying the byte-accurate limit.
+ * Returns null when there is nothing to attach.
+ */
+function buildMemo(value?: string, kind: MemoKind = 'text'): Memo | null {
+  const m = normalizeMemo(value ?? '', kind);
+  if (!m) return null;
+  return m.kind === 'id' ? Memo.id(m.value) : Memo.text(m.value);
 }
 
 /** Send native XLM. Creates the destination account if it doesn't exist yet. */
@@ -142,6 +155,7 @@ export async function sendXlm({
   destination,
   amount,
   memo,
+  memoKind,
 }: SendParams): Promise<{ hash: string }> {
   const server = getServer(cfg);
   const keypair = Keypair.fromSecret(secret);
@@ -187,7 +201,8 @@ export async function sendXlm({
     );
   }
 
-  if (memo && memo.trim()) builder.addMemo(Memo.text(memo.trim().slice(0, 28)));
+  const memoOp = buildMemo(memo, memoKind);
+  if (memoOp) builder.addMemo(memoOp);
 
   const tx = builder.setTimeout(180).build();
   tx.sign(keypair);
@@ -206,6 +221,8 @@ export interface PaymentParams {
   destination: string;
   amount: string;
   memo?: string;
+  /** 'text' (default) or 'id'. A SEP-7 MEMO_ID must stay an id — see lib/memo.ts. */
+  memoKind?: MemoKind;
   /** null/undefined = native XLM; otherwise a credit asset (requires dest trustline). */
   asset?: { code: string; issuer: string } | null;
 }
@@ -221,10 +238,11 @@ export async function sendPayment({
   destination,
   amount,
   memo,
+  memoKind,
   asset,
 }: PaymentParams): Promise<{ hash: string }> {
   if (!asset || asset.code === 'XLM' || !asset.issuer) {
-    return sendXlm({ cfg, secret, destination, amount, memo });
+    return sendXlm({ cfg, secret, destination, amount, memo, memoKind });
   }
   const server = getServer(cfg);
   const keypair = Keypair.fromSecret(secret);
@@ -244,7 +262,8 @@ export async function sendPayment({
       amount: normalizeAmount(amount),
     }),
   );
-  if (memo && memo.trim()) builder.addMemo(Memo.text(memo.trim().slice(0, 28)));
+  const memoOp = buildMemo(memo, memoKind);
+  if (memoOp) builder.addMemo(memoOp);
 
   const tx = builder.setTimeout(180).build();
   tx.sign(keypair);

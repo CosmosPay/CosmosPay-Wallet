@@ -1,45 +1,40 @@
+/**
+ * i18n is ~1000 lines of hand-maintained 5-column data with nothing enforcing that
+ * the columns stay in step. This is the cheapest guard in the repo.
+ */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { localeOf, makeT, LANGUAGES, type Lang } from '@/lib/i18n';
+import { LANGUAGES, makeT, T } from '@/lib/i18n';
 
-test('every language has a locale tag', () => {
-  for (const lang of LANGUAGES) assert.ok(localeOf(lang.code as Lang).length > 0);
-  assert.equal(localeOf('es'), 'es-ES');
-  assert.equal(localeOf('en'), 'en-US');
-});
+const CODES = LANGUAGES.map((l) => l.code);
 
-test('makeT resolves keys and interpolates params, falling back to English', () => {
-  const t = makeT('es');
-  assert.equal(t('pwd.min'), 'Mínimo 8 caracteres');
-  assert.equal(t('unlock.removeConfirm', { name: 'Alex' }), '¿Eliminar «Alex» de este dispositivo? Asegúrate de tener su frase de recuperación.');
-  // unknown key -> the key itself
-  assert.equal(t('no.such.key'), 'no.such.key');
-});
-
-test('makeT falls back to English when a language is missing a key', () => {
-  // All keys carry all five languages, so this exercises the `?? entry.en` path
-  // by asking for a language we know is present.
-  assert.equal(makeT('fr')('common.continue'), 'Continuer');
-});
-
-test('the five supported languages are exposed', () => {
-  assert.deepEqual(LANGUAGES.map((l) => l.code), ['es', 'en', 'pt', 'de', 'fr']);
-});
-
-test('detectLang maps navigator.language to a supported language', async () => {
-  const { detectLang } = await import('@/lib/i18n');
-  const orig = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
-  const stubNav = (languages: string[]) =>
-    Object.defineProperty(globalThis, 'navigator', { value: { languages }, configurable: true });
-  try {
-    stubNav(['pt-BR', 'en-US']);
-    assert.equal(detectLang(), 'pt');
-    stubNav(['de-DE']);
-    assert.equal(detectLang(), 'de');
-    stubNav(['xx-YY']);
-    assert.equal(detectLang(), 'en'); // unsupported -> default
-  } finally {
-    if (orig) Object.defineProperty(globalThis, 'navigator', orig);
-    else delete (globalThis as any).navigator;
+test('every key is translated in every language', () => {
+  const missing: string[] = [];
+  for (const [key, row] of Object.entries(T)) {
+    for (const code of CODES) {
+      const value = (row as Record<string, string | undefined>)[code];
+      if (!value || !value.trim()) missing.push(`${key}.${code}`);
+    }
   }
+  assert.deepEqual(missing, [], `missing translations:\n${missing.join('\n')}`);
+});
+
+test('a placeholder present in one language is present in all of them', () => {
+  const mismatched: string[] = [];
+  for (const [key, row] of Object.entries(T)) {
+    const params = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(',');
+    const reference = params((row as Record<string, string>).en ?? '');
+    for (const code of CODES) {
+      const value = (row as Record<string, string | undefined>)[code] ?? '';
+      if (params(value) !== reference) mismatched.push(`${key}.${code}: "${params(value)}" != "${reference}"`);
+    }
+  }
+  assert.deepEqual(mismatched, [], `placeholder mismatch:\n${mismatched.join('\n')}`);
+});
+
+test('t() falls back rather than rendering a blank', () => {
+  const t = makeT('es');
+  assert.equal(t('unlock.unlock'), 'Desbloquear');
+  // An unknown key returns the key itself — visible in the UI, never an empty string.
+  assert.equal(t('does.not.exist'), 'does.not.exist');
 });

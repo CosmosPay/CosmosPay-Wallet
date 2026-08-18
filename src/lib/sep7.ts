@@ -5,8 +5,20 @@
  * Reference: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0007.md
  */
 
+import { StrKey } from '@stellar/stellar-sdk';
+
 const SCHEME = 'web+stellar:';
+/** Shape only — `isPublicKey` adds the CRC-16 checksum StrKey actually enforces. */
 const PUBKEY_RE = /G[A-Z2-7]{55}/;
+
+/** A well-formed, checksummed Stellar account id. */
+function isPublicKey(v: string): boolean {
+  try {
+    return StrKey.isValidEd25519PublicKey(v);
+  } catch {
+    return false;
+  }
+}
 
 export interface Sep7Pay {
   destination: string;
@@ -60,23 +72,34 @@ export function parseStellarQr(raw: string): ParsedQr | null {
     const params = new URLSearchParams(qIdx === -1 ? '' : rest.slice(qIdx + 1));
     if (op === 'pay') {
       const destination = (params.get('destination') || '').trim();
-      if (PUBKEY_RE.test(destination)) {
+      if (isPublicKey(destination)) {
         const memoTypeRaw = (params.get('memo_type') || '').toUpperCase();
         // Only surface a memo we can actually attach (plain text / id).
         const memoUsable = memoTypeRaw === '' || memoTypeRaw === 'MEMO_TEXT' || memoTypeRaw === 'MEMO_ID';
+        const assetIssuer = (params.get('asset_issuer') || '').trim();
         return {
           destination,
           amount: params.get('amount') || undefined,
           memo: memoUsable ? params.get('memo') || undefined : undefined,
           memoType: memoTypeRaw || undefined,
           assetCode: params.get('asset_code') || undefined,
-          assetIssuer: params.get('asset_issuer') || undefined,
+          // An asset code without a valid issuer is not an asset — dropping the pair
+          // together stops a half-parsed link from resolving to the wrong token.
+          assetIssuer: isPublicKey(assetIssuer) ? assetIssuer : undefined,
         };
       }
     }
-    // tx op or malformed pay — fall through to a raw address scan below.
+    // A malformed `pay` (or a `tx` op) is NOT scanned for a loose address: the query
+    // string holds attacker-supplied fields like `msg`, and the old fall-through
+    // happily picked an address out of one of them — so `?destination=<invalid>
+    // &msg=G<attacker>` resolved to the attacker. A broken link is simply rejected.
+    return null;
   }
 
-  const m = text.match(PUBKEY_RE);
-  return m ? { destination: m[0] } : null;
+  // Bare `stellar:G…` / plain `G…`. Every candidate is checksum-validated, so a
+  // near-miss address is rejected rather than silently accepted.
+  for (const m of text.matchAll(new RegExp(PUBKEY_RE, 'g'))) {
+    if (isPublicKey(m[0])) return { destination: m[0] };
+  }
+  return null;
 }
