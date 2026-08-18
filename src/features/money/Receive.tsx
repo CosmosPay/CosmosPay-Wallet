@@ -5,6 +5,7 @@ import { BackBar } from '@/ui/BackBar';
 import { Spinner } from '@/ui/Spinner';
 import { qrDataUrl } from '@/lib/qr';
 import { buildSep7Pay } from '@/lib/sep7';
+import { shareText } from '@/lib/share';
 import { useCopied } from '@/hooks/useCopied';
 import { cx } from '@/lib/cx';
 import '@/styles/features/money/receive.css';
@@ -22,12 +23,9 @@ export function Receive({ store }: { store: WalletStore }) {
   }, [pub]);
 
   const share = async () => {
-    try {
-      if (navigator.share) await navigator.share({ title: t('receive.stellarAddress'), text: pub });
-      else copy(pub);
-    } catch {
-      /* user cancelled */
-    }
+    // Native share sheet where there is one, Web Share in a browser that has it, clipboard
+    // otherwise — `shareText` reports which, so the copy only happens when nothing else could.
+    if (!(await shareText(pub, t('receive.stellarAddress')))) copy(pub);
   };
 
   return (

@@ -47,6 +47,15 @@
 .scan-grant { margin-top: 14px; color: var(--primary-text); }
 .scan-retry { margin-top: 10px; color: var(--text); }
 
+/* how to reopen a permission the OS will not ask about twice (native builds only) */
+.scan-settings-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  opacity: 0.8;
+}
+
 .scan-video { width: 100%; height: 100%; object-fit: cover; }
 /* white targeting frame; the huge spread shadow dims everything around it */
 .scan-frame {

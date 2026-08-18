@@ -11,6 +11,7 @@ import { isNativeRef, XLM, type AssetRef } from '@/lib/asset';
 import { sanitizeDecimalInput } from '@/lib/amount';
 import { clampMemoText } from '@/lib/memo';
 import { sendableAssets } from '@/lib/balances';
+import { shareText } from '@/lib/share';
 import '@/styles/features/money/pay-link.css';
 
 /* ----------------------------- PAY LINK ----------------------------- */
@@ -41,15 +42,8 @@ export function PayLink({ store }: { store: WalletStore }) {
 
   const share = async () => {
     if (!intent) return;
-    try {
-      if (typeof navigator !== 'undefined' && navigator.share) {
-        await navigator.share({ text: intent.uri });
-        return;
-      }
-    } catch {
-      /* fall back to copy */
-    }
-    await copy(intent.uri);
+    // The share sheet on a phone, Web Share in a browser that has it, clipboard when neither.
+    if (!(await shareText(intent.uri))) await copy(intent.uri);
   };
 
   return (

@@ -34,3 +34,16 @@ export async function readText(): Promise<string> {
     return '';
   }
 }
+
+/**
+ * Can this platform hand us an IMAGE off the clipboard?
+ *
+ * Only the async Clipboard API can, and only where it is implemented: an Android WebView does
+ * not expose `read()` at all, and Capacitor's Clipboard plugin is no substitute — its Android
+ * `read()` coerces whatever is on the clipboard to text, so an image comes back as a `content://`
+ * string. The scanner asks before it offers the button, because a button whose only possible
+ * outcome is "there is no image in the clipboard" reads as a bug in the wallet.
+ */
+export function canReadClipboardImage(): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function';
+}
