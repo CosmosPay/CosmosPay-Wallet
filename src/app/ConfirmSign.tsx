@@ -27,14 +27,19 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
     if (!pwd || busy) return;
     setBusy(true);
     setErr('');
-    const okPwd = await store.checkPassword(pwd);
+    const res = await store.checkPassword(pwd);
     setBusy(false);
-    if (okPwd) {
-      store.resolveConfirm(true);
-    } else {
-      setErr(t('confirmSig.wrongPwd'));
-      setPwd('');
+    if (res.ok) {
+      // Answered by id: the check above is ~200ms of PBKDF2, and an auto-lock in that
+      // window empties the queue. Resolving by position would then grant whatever request
+      // arrived next.
+      store.resolveConfirm(true, req.id);
+      return;
     }
+    // The store decides the sentence — a throttled attempt is not a wrong password, and
+    // telling someone with the right password that it is wrong is worse than saying wait.
+    setErr(res.message);
+    if (res.reason === 'wrong') setPwd('');
   };
 
   return (
@@ -67,7 +72,7 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
               setDeviceBusy(true);
               setErr('');
               try {
-                await store.confirmWithDevice();
+                await store.confirmWithDevice(req.id);
               } finally {
                 setDeviceBusy(false);
               }
@@ -76,7 +81,7 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
           />
         )}
         <div className="flexr g10">
-          <button onClick={() => store.resolveConfirm(false)} className="glass-soft confirm-sign-cancel">
+          <button onClick={() => store.resolveConfirm(false, req.id)} className="glass-soft confirm-sign-cancel">
             {t('common.cancel')}
           </button>
           <button onClick={submit} disabled={!pwd || busy} className="glass-bright confirm-sign-submit">

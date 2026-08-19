@@ -13,7 +13,11 @@
  * still locked and can see how many wallets exist.
  */
 import { open, seal, type SealedBox } from '@/lib/crypto';
-import { disableDeviceAuth, deviceAuthEnabled, rewrapDeviceAuth, type DeviceAuthPrompt } from '@/lib/deviceAuth';
+// Only the prompt-free cleanup call. Re-wrapping needs an OS prompt and the copy that
+// goes on it, so `changePassword` takes it as an injected closure instead — see
+// `ChangePasswordDeps`. That is what keeps this module's own logic reachable from
+// node:test, and what stops a vault function owning UI strings.
+import { disableDeviceAuth, type RewrapOutcome } from '@/lib/deviceAuth';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
 
@@ -372,43 +376,90 @@ export async function removeWallet(
   return { remaining, newActive: active };
 }
 
+/**
+ * What `changePassword` needs from outside `lib/`.
+ *
+ * `rewrapDeviceAuth` is REQUIRED, not optional. An optional dependency makes a function
+ * only as careful as its laziest caller — the same reason `GuardOptions` in `lib/txGuard.ts`
+ * is a discriminated union rather than a bag of optionals. A caller that cannot re-wrap the
+ * enrolments must not be able to change the password and leave them holding the old one.
+ */
+export interface ChangePasswordDeps {
+  rewrapDeviceAuth: (walletId: string, newPassword: string) => Promise<RewrapOutcome>;
+}
+
 /** What a password change did to the device-lock enrolments it had to touch. */
 export interface PasswordChangeResult {
-  /** Names of wallets whose device-lock enrolment could not be re-sealed and was turned off. */
-  deviceAuthDropped: string[];
+  /**
+   * Wallets whose device-lock enrolment could not be re-sealed and was turned off.
+   * Carries the id as well as the name: the name is for the sentence shown to the user,
+   * and two wallets may share one, so the id is what a caller acts on.
+   */
+  deviceAuthDropped: { id: string; name: string }[];
 }
 
 /**
  * Re-seal every wallet under a new password (the old one must be correct).
  *
- * The device-lock enrolment holds a copy of the password sealed under a key in the
- * Keychain, so it has to be re-sealed in the same pass. Skipping it is not a
- * cosmetic bug: the envelope would still hold the OLD password, `unlock()` would be
- * handed a string that no longer decrypts, and the user would meet "wrong password"
- * coming from their own fingerprint, with nothing on screen explaining why.
+ * ATOMIC IN THE PART THAT MATTERS. This used to decrypt-and-write wallet by wallet, so a
+ * failure on wallet 3 left wallets 1 and 2 sealed under the NEW password and wallet 3
+ * under the old one, with no rollback and no way for the caller to know. Every wallet is
+ * now opened and re-sealed in memory first; the first byte is not committed until all of
+ * them have succeeded. A wrong password, a missing vault or a corrupt box therefore aborts
+ * with the device exactly as it was.
  *
- * Re-sealing needs a device prompt, which the user can dismiss. That is not a
- * failure of the password change — the vault is already re-sealed by then — so the
- * enrolment is dropped and reported instead, and the caller tells the user to turn
- * it back on. Fail closed: no enrolment beats one that opens nothing.
+ * The device-lock enrolment holds a copy of the password sealed under a key in the
+ * Keychain, so it has to be re-sealed in the same pass. Skipping it is not a cosmetic bug:
+ * the envelope would still hold the OLD password, `unlock()` would be handed a string that
+ * no longer decrypts, and the user would meet "wrong password" coming from their own
+ * fingerprint, with nothing on screen explaining why.
+ *
+ * Re-sealing needs a device prompt, which the user can dismiss. That is not a failure of
+ * the password change — the vault is already re-sealed by then — so the enrolment is
+ * dropped and reported instead, and the caller tells the user to turn it back on. Fail
+ * closed: no enrolment beats one that opens nothing.
  */
 export async function changePassword(
   oldPassword: string,
   newPassword: string,
-  prompt: DeviceAuthPrompt,
+  deps: ChangePasswordDeps,
 ): Promise<PasswordChangeResult> {
-  const deviceAuthDropped: string[] = [];
-  for (const w of await listWallets()) {
+  const wallets = await listWallets();
+
+  // 1. Open everything. Nothing is written in this pass, so `unlockWallet` throwing
+  //    "Contraseña incorrecta." on any wallet leaves the device untouched.
+  const opened = [];
+  for (const w of wallets) {
     const secret = await unlockWallet(w.id, oldPassword); // throws on wrong password
-    await storageSet(vaultKey(w.id), JSON.stringify(await seal(JSON.stringify(secret), newPassword)));
-    // Re-seal the CosmosPay credential too, otherwise it would be undecryptable.
-    const cp = await getCosmosPay(w.id, oldPassword);
-    if (cp) await storageSet(cosmosPayKey(w.id), JSON.stringify(await seal(JSON.stringify(cp), newPassword)));
-    // Last, and only for wallets that had it: the vault must already be on the new
-    // password before anything re-seals a copy of it. Asked BEFORE re-wrapping,
-    // because re-wrapping is what makes the answer stop being true.
-    const had = await deviceAuthEnabled(w.id);
-    if (had && !(await rewrapDeviceAuth(w.id, newPassword, prompt))) deviceAuthDropped.push(w.name);
+    const cosmosPay = await getCosmosPay(w.id, oldPassword);
+    opened.push({ entry: w, secret, cosmosPay });
+  }
+
+  // 2. Seal everything under the new password, still writing nothing. This is pure crypto
+  //    over data already in hand: it either all succeeds or throws before any commit.
+  const sealed = [];
+  for (const o of opened) {
+    sealed.push({
+      entry: o.entry,
+      vault: JSON.stringify(await seal(JSON.stringify(o.secret), newPassword)),
+      // Re-seal the CosmosPay credential too, otherwise it would be undecryptable.
+      cosmosPay: o.cosmosPay ? JSON.stringify(await seal(JSON.stringify(o.cosmosPay), newPassword)) : null,
+    });
+  }
+
+  // 3. Commit.
+  for (const s of sealed) {
+    await storageSet(vaultKey(s.entry.id), s.vault);
+    if (s.cosmosPay) await storageSet(cosmosPayKey(s.entry.id), s.cosmosPay);
+  }
+
+  // 4. Last, the device-lock enrolments: the vault must already be on the new password
+  //    before anything re-seals a copy of it.
+  const deviceAuthDropped: { id: string; name: string }[] = [];
+  for (const s of sealed) {
+    if ((await deps.rewrapDeviceAuth(s.entry.id, newPassword)) === 'dropped') {
+      deviceAuthDropped.push({ id: s.entry.id, name: s.entry.name });
+    }
   }
   return { deviceAuthDropped };
 }

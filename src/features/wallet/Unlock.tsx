@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Logo } from '@/ui/Logo';
@@ -32,21 +32,20 @@ export function Unlock({ store }: { store: WalletStore }) {
   };
 
   /**
-   * Offer the phone's own check as soon as we know it is enrolled — once.
+   * NO AUTO-PROMPT. The biometric sheet is raised by the button below, never by mounting.
    *
-   * The ref, not `deviceAuthReady` alone, is what keeps it to once: the flag turns
-   * true when the async probe answers, and a user who dismisses the sheet would
-   * otherwise be handed it again on the next render. One offer, then the button
-   * below is there for a second try.
+   * It used to fire on mount, guarded by a ref — but the guard was per MOUNT, and `lock()`
+   * sets the screen to `unlock`, so this component remounts on every auto-lock and the
+   * sheet came back unbidden several times a day. On a passive-face device that makes the
+   * 5-minute idle auto-lock decorative: the session ends and re-opens the moment the owner
+   * glances at the screen, which is not a lock.
+   *
+   * It also worked against `ConfirmSign`, which deliberately refuses to auto-prompt on the
+   * grounds that "a signing sheet that appears without a tap is how a user approves
+   * something they never read". That reasoning does not stop being true one screen away:
+   * a user trained by dozens of unprompted unlock sheets is exactly the user who touches
+   * the sensor before reading the signing sheet.
    */
-  const offeredRef = useRef(false);
-  useEffect(() => {
-    if (!store.deviceAuthReady || offeredRef.current) return;
-    offeredRef.current = true;
-    void store.unlockWithDevice();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.deviceAuthReady]);
-
   const [deviceBusy, setDeviceBusy] = useState(false);
   const deviceSubmit = async () => {
     setDeviceBusy(true);

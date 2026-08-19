@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Cosmos — a non-custodial Stellar wallet (Astro + Preact + Capacitor)",
   "scripts": {
+    "postinstall": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/patch-native-biometric.ts",
     "dev": "astro dev --host",
     "dev:android": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/cap-dev.ts android",
     "dev:ios": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/cap-dev.ts ios",

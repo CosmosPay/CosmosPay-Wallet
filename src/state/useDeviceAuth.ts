@@ -1,17 +1,24 @@
 /**
- * Unlocking with the phone's own lock — the state around `lib/deviceAuth.ts`.
+ * Unlocking with the phone's own biometrics — the state around `lib/deviceAuth.ts`.
  *
- * Its own slice for the reason `useSigningGate` is: it is small, but what it holds
- * is a claim about whether a second door into the wallet is open, and that claim
- * has to stay tied to ONE wallet. The enrolment is per wallet id, so a store field
- * that outlived a wallet switch would offer "unlock with your fingerprint" for the
- * wallet you just left.
+ * Its own slice for the reason `useSigningGate` is: it is small, but what it holds is a
+ * claim about whether a second door into the wallet is open, and that claim has to stay
+ * tied to ONE wallet. The enrolment is per wallet id, so a store field that outlived a
+ * wallet switch would offer "unlock with your fingerprint" for the wallet you just left.
  *
- * The slice owns no copy and raises no toast. Every action returns a discriminated
- * result and the caller decides what to say — which is what lets a dismissed prompt
+ * The slice owns no copy and raises no toast. Every action returns a discriminated result
+ * and the caller decides what to say — which is what lets a dismissed prompt
  * (`'cancelled'`) pass silently while a real failure gets a line.
+ *
+ * TWO RETURN OBJECTS, ON PURPOSE. `deviceAuthPrivileged` holds everything that can
+ * produce or consume the app password; `deviceAuthPublic` holds flags and a refresh. The
+ * store spreads only the public half into the object 56 components hold. They are two
+ * objects rather than one flat one because the previous shape was a hand-maintained
+ * allowlist in the facade: correct, but one `...deviceAuth` away from handing
+ * `deviceAuthUnlock` — which RETURNS THE APP PASSWORD — to every screen. There is no flat
+ * object to spread now, so that mistake does not typecheck into existence.
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   deviceAuthAvailability,
   deviceAuthEnabled,
@@ -21,14 +28,16 @@ import {
   deviceAuthPossible,
   disableDeviceAuth,
   enableDeviceAuth,
+  rewrapDeviceAuth,
   type DeviceAuthAvailability,
   type DeviceAuthFailure,
+  type DeviceAuthKind,
   type DeviceAuthPrompt,
 } from '@/lib/deviceAuth';
 import type { TFn } from '@/lib/i18n';
 
 /** Why the prompt is being raised — picks the wording the OS sheet shows. */
-export type DeviceAuthPurpose = 'unlock' | 'sign' | 'enroll';
+export type DeviceAuthPurpose = 'unlock' | 'sign' | 'enroll' | 'rewrap';
 
 export type DeviceAuthResult =
   | { ok: true; password: string }
@@ -36,13 +45,42 @@ export type DeviceAuthResult =
    *  unclassified bucket, where the code by itself explains nothing. */
   | { ok: false; failure: DeviceAuthFailure; detail: string | null };
 
-const OFFLINE: DeviceAuthAvailability = { available: false, tier: null, kind: 'generic', reason: 'unsupported' };
+/** The half of the slice that may cross into the store's public object. */
+export interface DeviceAuthPublic {
+  /** Can this build offer it at all? False on the extension and the web build. */
+  deviceAuthPossible: boolean;
+  /** Hardware/enrolment state of the DEVICE — not of this wallet. */
+  deviceAuthAvailable: boolean;
+  deviceAuthKind: DeviceAuthKind;
+  deviceAuthReason: DeviceAuthFailure | null;
+  /** Human name of the method, for button and settings copy. */
+  deviceAuthMethod: string;
+  /** Has THIS wallet enrolled? */
+  deviceAuthEnabled: boolean;
+  /** Enrolled and the device can still answer — the only test a button should use. */
+  deviceAuthReady: boolean;
+  refreshDeviceAuth: () => Promise<void>;
+}
+
+const OFFLINE: DeviceAuthAvailability = { available: false, kind: 'generic', reason: 'unsupported' };
 
 /** OS-sheet copy per purpose. Built here because `lib/` carries no strings. */
 function promptFor(purpose: DeviceAuthPurpose, t: TFn): DeviceAuthPrompt {
-  const titleKey = purpose === 'sign' ? 'devAuth.signTitle' : purpose === 'enroll' ? 'devAuth.enrollTitle' : 'devAuth.unlockTitle';
-  const reasonKey = purpose === 'sign' ? 'devAuth.signReason' : purpose === 'enroll' ? 'devAuth.enrollReason' : 'devAuth.unlockReason';
-  return { title: t(titleKey), reason: t(reasonKey), cancel: t('common.cancel') };
+  const TITLES: Record<DeviceAuthPurpose, string> = {
+    unlock: 'devAuth.unlockTitle',
+    sign: 'devAuth.signTitle',
+    enroll: 'devAuth.enrollTitle',
+    rewrap: 'devAuth.rewrapTitle',
+  };
+  // Enrolling and re-wrapping ask for the same thing — permission to store the password
+  // on this phone — so they share a reason and differ only in title.
+  const REASONS: Record<DeviceAuthPurpose, string> = {
+    unlock: 'devAuth.unlockReason',
+    sign: 'devAuth.signReason',
+    enroll: 'devAuth.enrollReason',
+    rewrap: 'devAuth.enrollReason',
+  };
+  return { title: t(TITLES[purpose]), reason: t(REASONS[purpose]), cancel: t('common.cancel') };
 }
 
 export function useDeviceAuth(walletId: string | null, t: TFn) {
@@ -50,11 +88,21 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
   const [enabled, setEnabled] = useState(false);
 
   /**
-   * Re-probe. Availability is not a constant even within one run: the user can
-   * enrol a fingerprint, or remove every one of them, in the Settings app while
-   * this app sits in the background.
+   * Generation counter, for the same reason `lib/query.ts` has one: the probe is async
+   * and its scope can change while it is in flight. Without it, switching wallets on the
+   * unlock screen mid-probe wrote wallet A's `enabled` into state for wallet B — which
+   * is the "offer a fingerprint for the wallet you just left" bug this slice exists to
+   * prevent, arriving through the back door.
+   */
+  const genRef = useRef(0);
+
+  /**
+   * Re-probe. Availability is not a constant even within one run: the user can enrol a
+   * fingerprint, or remove every one of them, in the Settings app while this app sits in
+   * the background.
    */
   const refreshDeviceAuth = useCallback(async () => {
+    const gen = ++genRef.current;
     if (!deviceAuthPossible()) {
       setAvailability(OFFLINE);
       setEnabled(false);
@@ -64,6 +112,7 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
       deviceAuthAvailability(),
       walletId ? deviceAuthEnabled(walletId) : Promise.resolve(false),
     ]);
+    if (gen !== genRef.current) return; // a newer probe (or a wallet switch) superseded this one
     setAvailability(avail);
     setEnabled(on);
   }, [walletId]);
@@ -76,9 +125,9 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
   /**
    * Ask the device, then hand back the app password.
    *
-   * Guarded on `enabled` as well as availability: a wallet that never enrolled has
-   * no envelope to open, and letting the call through would raise an OS prompt only
-   * to fail `'stale'` right after it succeeded.
+   * Guarded on `enabled` as well as availability: a wallet that never enrolled has no
+   * envelope to open, and letting the call through would raise an OS prompt only to fail
+   * `'stale'` right after it succeeded.
    */
   const deviceAuthUnlock = useCallback(
     async (purpose: DeviceAuthPurpose = 'unlock'): Promise<DeviceAuthResult> => {
@@ -97,8 +146,8 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
   );
 
   /**
-   * Enrol. `password` must already be verified — the store passes the live
-   * session's, which only ever comes from a successful decrypt.
+   * Enrol. `password` must already be verified — the store passes the live session's,
+   * which only ever comes from a successful decrypt.
    */
   const enableDeviceUnlock = useCallback(
     async (password: string): Promise<{ failure: DeviceAuthFailure; detail: string | null } | null> => {
@@ -123,31 +172,42 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
   }, [walletId]);
 
   /**
-   * Memoised because the store spreads these into `useCallback` dependency lists.
-   * A fresh object every render made `unlockWithDevice`, `confirmWithDevice`,
-   * `toggleDeviceAuth`, `acceptDeviceAuthOffer` and `finishOnboarding` new on every
-   * render too — no loop, but every consumer of those re-rendered for nothing.
+   * Re-seal one wallet's enrolment under a new password, for `changePassword` to inject.
+   *
+   * Takes an explicit `walletId` rather than closing over this slice's: a password change
+   * re-seals EVERY wallet, not only the active one. It lives here so the prompt copy stays
+   * in `state/` — `lib/vault.ts` still imports the prompt-free `disableDeviceAuth`, but
+   * nothing that raises a sheet or needs a translated string.
    */
-  return useMemo(
+  const rewrapForPasswordChange = useCallback(
+    (id: string, newPassword: string) => rewrapDeviceAuth(id, newPassword, promptFor('rewrap', t)),
+    [t],
+  );
+
+  /**
+   * Memoised because the store spreads these into `useCallback` dependency lists. A fresh
+   * object every render made `unlockWithDevice`, `confirmWithDevice`, `toggleDeviceAuth`,
+   * `acceptDeviceAuthOffer` and `finishOnboarding` new on every render too — no loop, but
+   * every consumer of those re-rendered for nothing.
+   */
+  const deviceAuthPublic = useMemo<DeviceAuthPublic>(
     () => ({
-      /** Can this build offer it at all? False on the extension and the web build. */
       deviceAuthPossible: deviceAuthPossible(),
-      /** Hardware/enrolment state of the DEVICE — not of this wallet. */
       deviceAuthAvailable: availability.available,
       deviceAuthKind: availability.kind,
-      deviceAuthTier: availability.tier,
       deviceAuthReason: availability.reason,
-      /** Human name of the method, for button and settings copy. */
       deviceAuthMethod: t(deviceAuthKindKey(availability.kind)),
-      /** Has THIS wallet enrolled? */
       deviceAuthEnabled: enabled,
-      /** Enrolled and the device can still answer — the only test a button should use. */
       deviceAuthReady: enabled && availability.available,
-      deviceAuthUnlock,
-      enableDeviceUnlock,
-      disableDeviceUnlock,
       refreshDeviceAuth,
     }),
-    [availability, enabled, t, deviceAuthUnlock, enableDeviceUnlock, disableDeviceUnlock, refreshDeviceAuth],
+    [availability, enabled, t, refreshDeviceAuth],
   );
+
+  const deviceAuthPrivileged = useMemo(
+    () => ({ deviceAuthUnlock, enableDeviceUnlock, disableDeviceUnlock, rewrapForPasswordChange }),
+    [deviceAuthUnlock, enableDeviceUnlock, disableDeviceUnlock, rewrapForPasswordChange],
+  );
+
+  return { deviceAuthPublic, deviceAuthPrivileged };
 }

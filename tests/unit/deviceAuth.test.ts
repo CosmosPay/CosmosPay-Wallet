@@ -1,11 +1,14 @@
 /**
- * The device-unlock failure map.
+ * The device-unlock module.
  *
- * Two of these cases decide whether the wallet stays shut, so they are worth a test
- * rather than a manual pass on five phones: a dismissed prompt must not read as a
- * fault, and a changed enrolment must read as `'stale'` — which is what makes
- * `lib/deviceAuth.ts` drop the enrolment instead of offering a button that can only
- * ever fail again.
+ * The previous version of this file tested only the error-code lookup and the i18n key
+ * maps — the two things TypeScript and `i18n.test.ts` already proved. What can actually
+ * lose money here is the envelope: whether it round-trips, what it refuses, and whether
+ * any of it can touch storage on a build with no secure store to hold the other half.
+ * Those are what this covers now.
+ *
+ * `enableDeviceAuth` / `deviceAuthPassword` still need a device for their prompt-bearing
+ * half, but their fail-closed guards do not, and those are tested here.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,18 +16,27 @@ import {
   DeviceAuthError,
   deviceAuthDetail,
   deviceAuthEnabled,
+  deviceAuthBinding,
   deviceAuthFailure,
   deviceAuthFailureKey,
   deviceAuthKindKey,
   deviceAuthPossible,
-  deviceAuthTier,
+  disableDeviceAuth,
+  enableDeviceAuth,
+  parseAuthEnvelope,
+  rewrapDeviceAuth,
   type DeviceAuthFailure,
   type DeviceAuthKind,
 } from '@/lib/deviceAuth';
+import { open, seal } from '@/lib/crypto';
 import { T } from '@/lib/i18n';
 
 /** What the Capacitor bridge actually rejects with: `code` arrives as a STRING. */
 const pluginError = (code: number) => Object.assign(new Error('platform prose, varies by OS'), { code: String(code) });
+
+const PROMPT = { title: 't', reason: 'r', cancel: 'c' };
+
+/* -------------------------- classifying a rejection ------------------------- */
 
 test('a dismissed prompt is a decision, not a failure', () => {
   // 16 user cancel, 11 app cancel, 15 system cancel, 17 user chose the fallback.
@@ -64,6 +76,100 @@ test('a DeviceAuthError carries its own verdict through unchanged', () => {
   assert.equal(deviceAuthFailure(new DeviceAuthError('notEnrolled')), 'notEnrolled');
 });
 
+/* ------------------------------- the envelope ------------------------------ */
+
+/**
+ * The one cryptographic claim the whole design rests on: the sealed box holds the app
+ * password and opens with the wrapping key alone. If this ever stops holding, the feature
+ * silently becomes "the phone's lock screen IS the wallet password".
+ */
+test('a sealed envelope round-trips: the wrap key alone recovers the password', async () => {
+  const wrapKey = 'Zm9ydHktdHdvLWJ5dGVzLW9mLXJhbmRvbW5lc3M9PQ==';
+  const envelope = { v: 1 as const, binding: 'anyBiometry' as const, box: await seal('correct horse', wrapKey) };
+  const parsed = parseAuthEnvelope(JSON.stringify(envelope));
+  assert.ok(parsed, 'a well-formed envelope must parse');
+  assert.equal(await open(parsed.box, wrapKey), 'correct horse');
+});
+
+test('the wrong wrap key does not open the envelope — it throws, it does not return junk', async () => {
+  const envelope = { v: 1 as const, binding: 'anyBiometry' as const, box: await seal('correct horse', 'key-a') };
+  const parsed = parseAuthEnvelope(JSON.stringify(envelope));
+  assert.ok(parsed);
+  await assert.rejects(() => open(parsed.box, 'key-b'));
+});
+
+test('parsing fails closed: anything malformed reads as "not enrolled", never as a usable box', async () => {
+  const box = await seal('pw', 'k');
+  const rejected: [string, unknown][] = [
+    ['null', null],
+    ['empty string', ''],
+    ['not json', '{nope'],
+    ['no version', JSON.stringify({ binding: 'anyBiometry', box })],
+    ['a FUTURE version we cannot read', JSON.stringify({ v: 2, binding: 'anyBiometry', box })],
+    ['no box', JSON.stringify({ v: 1, binding: 'anyBiometry' })],
+    ['no binding', JSON.stringify({ v: 1, box })],
+    ['an unknown binding', JSON.stringify({ v: 1, binding: 'whatever', box })],
+  ];
+  for (const [why, raw] of rejected) {
+    assert.equal(parseAuthEnvelope(raw as string | null), null, why);
+  }
+});
+
+/**
+ * Two binding modes have shipped and this build can open neither. 'passcode' was the unbound
+ * tier: its key was stored with no setUserAuthenticationRequired on Android and no
+ * kSecAttrAccessible on iOS, so reading it needed no prompt at all. 'currentSet' was
+ * BIOMETRY_CURRENT_SET, whose key this plugin cannot read back - getSecureData never forwards
+ * accessControl and the decrypt path hardcodes 0, so the read mints a fresh key and fails the
+ * GCM tag with a null-message AEADBadTagException, permanently.
+ *
+ * Refusing both turns a broken enrolment into "not enrolled", which the user can fix in
+ * Settings. Honouring either would be a button that can only ever fail.
+ */
+test('envelopes from binding modes this build cannot open are refused, not migrated', async () => {
+  for (const binding of ['passcode', 'currentSet']) {
+    const stale = JSON.stringify({ v: 1, binding, box: await seal('pw', 'k') });
+    assert.equal(parseAuthEnvelope(stale), null, binding);
+  }
+  // ...and the shape the old unbound build actually wrote, which used `tier`, not `binding`.
+  const legacy = JSON.stringify({ v: 1, tier: 'passcode', box: await seal('pw', 'k') });
+  assert.equal(parseAuthEnvelope(legacy), null);
+});
+
+/* ------------------------- off the phone build ------------------------- */
+
+test('anywhere that is not the phone build, the feature is simply absent', async () => {
+  // node:test has no `window`, so buildKind() reports 'web' — the same answer the
+  // extension gets. Nothing may claim an enrolment there, and nothing may reach for the
+  // plugin: these calls must resolve, not throw on a missing native bridge.
+  assert.equal(deviceAuthPossible(), false);
+  assert.equal(await deviceAuthEnabled('any-wallet-id'), false);
+  assert.equal(await deviceAuthBinding('any-wallet-id'), null);
+  await disableDeviceAuth('any-wallet-id'); // must not throw
+});
+
+/**
+ * The guard rail the module's header promises and nothing enforced.
+ *
+ * `deviceAuthPossible()` is checked at every entry point, but `storageSet` is not gated by
+ * anything — and on a non-phone build `lib/storage.ts` is localStorage. If enrolment ever
+ * ran there, the sealed password would land beside the vault with NO secure store holding
+ * the key that opens it, which is the one arrangement the split-storage design exists to
+ * prevent.
+ */
+test('enrolment on a non-phone build refuses BEFORE it writes anything', async () => {
+  await assert.rejects(
+    () => enableDeviceAuth('w1', 'the-password', PROMPT),
+    (err: unknown) => deviceAuthFailure(err) === 'unsupported',
+  );
+  const leaked = Object.keys(globalThis.localStorage ?? {}).filter((k) => k.startsWith('cosmos.auth.'));
+  assert.deepEqual(leaked, [], 'no envelope may reach web storage');
+});
+
+test('re-wrapping a wallet that never enrolled is "none" — not a failure to report', async () => {
+  assert.equal(await rewrapDeviceAuth('never-enrolled', 'new-password', PROMPT), 'none');
+});
+
 /* --------------------------- copy, not prose --------------------------- */
 
 const FAILURES: DeviceAuthFailure[] = [
@@ -71,6 +177,7 @@ const FAILURES: DeviceAuthFailure[] = [
   'noHardware',
   'notEnrolled',
   'noPasscode',
+  'noStrongBiometry',
   'lockedOut',
   'lockedOutTemporary',
   'cancelled',
@@ -105,24 +212,13 @@ test('distinct failures get distinct messages — the map is not a decorated def
   assert.equal(new Set(keys).size, keys.length);
 });
 
-/* ------------------------- off the phone build ------------------------- */
-
-test('anywhere that is not the phone build, the feature is simply absent', async () => {
-  // node:test has no `window`, so buildKind() reports 'web' — the same answer the
-  // extension gets. Nothing may claim an enrolment there, and nothing may reach for
-  // the plugin: these calls must resolve, not throw on a missing native bridge.
-  assert.equal(deviceAuthPossible(), false);
-  assert.equal(await deviceAuthEnabled('any-wallet-id'), false);
-  assert.equal(await deviceAuthTier('any-wallet-id'), null);
-});
-
 /* ------------------- the detail behind an unclassified code ------------------ */
 
 /**
- * Three different native faults all arrive as code 0, and the one that actually bit
- * — a Keystore refusing to create the bound key — has nothing to do with the user's
- * finger. Without the detail the screen said "couldn't verify your identity" and
- * there was no way, from the app, to tell which of the three had happened.
+ * Three different native faults all arrive as code 0, and the one that actually bit — a
+ * Keystore refusing to create the bound key — has nothing to do with the user's finger.
+ * Without the detail the screen said "couldn't verify your identity" and there was no way,
+ * from the app, to tell which of the three had happened.
  */
 test('code 0 is unclassified, so the platform sentence is what carries the meaning', () => {
   const cryptoUnavailable = Object.assign(new Error('Biometric crypto object unavailable'), { code: '0' });

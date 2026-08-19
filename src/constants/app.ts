@@ -9,12 +9,19 @@
  * Identity strings. These were a seven-line `config` module under `lib/`, which held
  * no behaviour at all — data belongs here, and `lib/` is for things that do something.
  *
- * `APP_VERSION` had drifted to 1.1.0 while package.json said 1.2.3, so both the
- * welcome screen and the About screen showed a version the build was not.
- * `tests/unit/version.test.ts` now pins them together.
+ * `APP_VERSION` is DERIVED, not written: `__APP_VERSION__` is replaced at build time
+ * with package.json's version (Vite `define`, see astro.config.ts; declared in
+ * src/env.d.ts). Do not put a literal back here. It was one twice — 1.1.0 against a
+ * 1.2.3 package.json, then 1.2.3 against 1.2.4 — because the release bot bumps
+ * package.json and nothing bumped this file. The test that was supposed to pin them
+ * could not see it either: it runs in the release workflow's `verify` job, which
+ * evaluates the tree BEFORE the bump, so it passed at release time and then failed for
+ * whoever pushed next, blocking every release until someone hand-edited a string.
+ * A derived value has no second copy to drift, and it carries the `-dev.<run>`
+ * prerelease suffix that a committed literal cannot.
  */
 export const APP_NAME = 'Cosmos Pay';
-export const APP_VERSION = '1.2.3';
+export const APP_VERSION = __APP_VERSION__;
 export const APP_PRODUCER = 'Un producto de Cosmos';
 
 /** Terms & Conditions of use — linked from the backup consent checkbox. Served by

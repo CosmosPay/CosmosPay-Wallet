@@ -208,12 +208,15 @@ export const T: Record<string, Record<Lang, string>> = {
   // ---- profile setup ----
   'setup.about': { es: 'Sobre ti', en: 'About you', pt: 'Sobre ti', de: 'Über dich', fr: 'À propos de toi' },
   'setup.title': { es: '¿Cómo te llamas?', en: 'What’s your name?', pt: 'Como te chamas?', de: 'Wie heißt du?', fr: 'Comment t’appelles-tu ?' },
+  // "…only on your device" was unqualified here, and it stops being true the moment the user
+  // links a Cosmos Pay account: registerCosmosAccount sends the name and the email. The
+  // promise is now scoped to what the app actually guarantees.
   'setup.subtitle': {
-    es: 'Así te saludamos cada vez que abres la wallet. Estos datos se guardan solo en tu dispositivo.',
-    en: 'This is how we greet you each time you open the wallet. This data stays only on your device.',
-    pt: 'É assim que te saudamos sempre que abres a wallet. Estes dados ficam apenas no teu dispositivo.',
-    de: 'So begrüßen wir dich jedes Mal, wenn du die Wallet öffnest. Diese Daten bleiben nur auf deinem Gerät.',
-    fr: 'C’est ainsi que nous t’accueillons à chaque ouverture du portefeuille. Ces données restent uniquement sur ton appareil.',
+    es: 'Así te saludamos cada vez que abres la wallet. Se guardan en este dispositivo; solo salen de él si vinculas una cuenta Cosmos Pay.',
+    en: 'This is how we greet you each time you open the wallet. It is stored on this device, and only leaves it if you link a Cosmos Pay account.',
+    pt: 'É assim que te saudamos sempre que abres a wallet. Ficam guardados neste dispositivo e só saem dele se vinculares uma conta Cosmos Pay.',
+    de: 'So begrüßen wir dich jedes Mal, wenn du die Wallet öffnest. Sie bleiben auf diesem Gerät und verlassen es nur, wenn du ein Cosmos-Pay-Konto verknüpfst.',
+    fr: 'C’est ainsi que nous t’accueillons à chaque ouverture du portefeuille. Ces données sont stockées sur cet appareil et n’en sortent que si tu lies un compte Cosmos Pay.',
   },
   'setup.nameLabel': { es: 'Nombre o apodo', en: 'Name or nickname', pt: 'Nome ou alcunha', de: 'Name oder Spitzname', fr: 'Nom ou pseudo' },
   'setup.emailLabel': { es: 'Correo electrónico', en: 'Email', pt: 'E-mail', de: 'E-Mail', fr: 'E-mail' },
@@ -265,6 +268,9 @@ export const T: Record<string, Record<Lang, string>> = {
     fr: 'Ce mot de passe chiffre ton portefeuille sur cet appareil et est requis pour le déverrouiller. Il est irrécupérable — garde-le précieusement.',
   },
   'pwd.label': { es: 'Contraseña', en: 'Password', pt: 'Palavra-passe', de: 'Passwort', fr: 'Mot de passe' },
+  // Wrong-password backoff (lib/attempts.ts). Says how long, because "try again later" with
+  // no number is indistinguishable from the app being broken.
+  'pwd.tooManyAttempts': { es: 'Demasiados intentos. Espera {secs} s antes de volver a probar.', en: 'Too many attempts. Wait {secs}s before trying again.', pt: 'Demasiadas tentativas. Espera {secs} s antes de tentar de novo.', de: 'Zu viele Versuche. Warte {secs} s, bevor du es erneut versuchst.', fr: 'Trop de tentatives. Attends {secs} s avant de réessayer.' },
   'pwd.min': { es: 'Mínimo 8 caracteres', en: 'At least 8 characters', pt: 'Mínimo de 8 caracteres', de: 'Mindestens 8 Zeichen', fr: 'Au moins 8 caractères' },
   'pwd.repeat': { es: 'Repite la contraseña', en: 'Repeat the password', pt: 'Repete a palavra-passe', de: 'Passwort wiederholen', fr: 'Répète le mot de passe' },
   'pwd.show': { es: 'Mostrar contraseña', en: 'Show password', pt: 'Mostrar palavra-passe', de: 'Passwort anzeigen', fr: 'Afficher le mot de passe' },
@@ -405,6 +411,9 @@ export const T: Record<string, Record<Lang, string>> = {
   'settings.currentPwd': { es: 'Contraseña actual', en: 'Current password', pt: 'Palavra-passe atual', de: 'Aktuelles Passwort', fr: 'Mot de passe actuel' },
   'settings.newPwd': { es: 'Nueva contraseña', en: 'New password', pt: 'Nova palavra-passe', de: 'Neues Passwort', fr: 'Nouveau mot de passe' },
   'settings.savePwd': { es: 'Guardar contraseña', en: 'Save password', pt: 'Guardar palavra-passe', de: 'Passwort speichern', fr: 'Enregistrer le mot de passe' },
+  // Shown on the forced confirmation before a password change, and again after it: the
+  // change ends the session on purpose, so the user has to be told that before it happens.
+  'settings.changePwdConfirm': { es: 'Se volverán a cifrar todas tus wallets y se cerrará la sesión. Tendrás que entrar con la contraseña nueva.', en: 'Every wallet will be re-encrypted and this session will end. You will sign in again with the new password.', pt: 'Todas as tuas wallets serão novamente cifradas e a sessão terminará. Vais entrar de novo com a nova palavra-passe.', de: 'Alle Wallets werden neu verschlüsselt und diese Sitzung endet. Du meldest dich mit dem neuen Passwort erneut an.', fr: 'Tous tes portefeuilles seront rechiffrés et cette session prendra fin. Tu te reconnecteras avec le nouveau mot de passe.' },
   'settings.pwdUpdated': { es: 'Contraseña actualizada.', en: 'Password updated.', pt: 'Palavra-passe atualizada.', de: 'Passwort aktualisiert.', fr: 'Mot de passe mis à jour.' },
   // developer mode (endpoint overrides)
   'settings.devMode': { es: 'Modo desarrollador', en: 'Developer mode', pt: 'Modo de programador', de: 'Entwicklermodus', fr: 'Mode développeur' },
@@ -1107,15 +1116,24 @@ export const T: Record<string, Record<Lang, string>> = {
   'devAuth.errNoHardware': { es: 'Este teléfono no tiene lector biométrico disponible.', en: 'No biometric sensor is available on this phone.', pt: 'Este telemóvel não tem sensor biométrico disponível.', de: 'Auf diesem Gerät ist kein biometrischer Sensor verfügbar.', fr: 'Aucun capteur biométrique n’est disponible sur ce téléphone.' },
   'devAuth.errNotEnrolled': { es: 'No hay ninguna huella ni rostro registrado en el teléfono.', en: 'No fingerprint or face is enrolled on this phone.', pt: 'Não há nenhuma impressão digital ou rosto registado no telemóvel.', de: 'Auf diesem Gerät ist kein Fingerabdruck und kein Gesicht hinterlegt.', fr: 'Aucune empreinte ni visage n’est enregistré sur ce téléphone.' },
   'devAuth.errNoPasscode': { es: 'Configura un bloqueo de pantalla en tu teléfono para poder usar esto.', en: 'Set a screen lock on your phone to use this.', pt: 'Configura um bloqueio de ecrã no telemóvel para usar isto.', de: 'Richte eine Bildschirmsperre ein, um dies zu nutzen.', fr: 'Configure un verrouillage d’écran sur ton téléphone pour utiliser ceci.' },
+  // A lock screen but nothing that can BIND the key: a PIN-only phone, or one whose only
+  // sensor is a weak Class 2 face unlock. Says what the phone cannot do and that nothing
+  // is lost, because unlike errNotEnrolled there is no setting the user can go fix.
+  'devAuth.errNoStrongBiometry': { es: 'Este teléfono no puede proteger tu contraseña con biometría. Sigue entrando con tu contraseña.', en: 'This phone can’t protect your password with biometrics. Keep signing in with your password.', pt: 'Este telemóvel não consegue proteger a tua palavra-passe com biometria. Continua a entrar com a tua palavra-passe.', de: 'Dieses Gerät kann dein Passwort nicht biometrisch schützen. Melde dich weiterhin mit deinem Passwort an.', fr: 'Ce téléphone ne peut pas protéger ton mot de passe par biométrie. Continue à te connecter avec ton mot de passe.' },
   'devAuth.errLockedOut': { es: 'Demasiados intentos. Desbloquea el teléfono con su PIN y vuelve a intentarlo.', en: 'Too many attempts. Unlock your phone with its PIN and try again.', pt: 'Demasiadas tentativas. Desbloqueia o telemóvel com o PIN e tenta de novo.', de: 'Zu viele Versuche. Entsperre das Gerät mit der PIN und versuche es erneut.', fr: 'Trop de tentatives. Déverrouille ton téléphone avec son code et réessaie.' },
   'devAuth.errLockedOutTemp': { es: 'No se reconoció. Vuelve a intentarlo.', en: 'Not recognised. Try again.', pt: 'Não foi reconhecido. Tenta de novo.', de: 'Nicht erkannt. Versuche es erneut.', fr: 'Non reconnu. Réessaie.' },
   'devAuth.errCancelled': { es: 'Verificación cancelada.', en: 'Verification cancelled.', pt: 'Verificação cancelada.', de: 'Überprüfung abgebrochen.', fr: 'Vérification annulée.' },
   'devAuth.errStale': { es: 'El bloqueo del teléfono cambió. Entra con tu contraseña y vuelve a activarlo.', en: 'The phone lock changed. Sign in with your password and turn it back on.', pt: 'O bloqueio do telemóvel mudou. Entra com a palavra-passe e volta a ativá-lo.', de: 'Die Gerätesperre hat sich geändert. Melde dich mit dem Passwort an und aktiviere es erneut.', fr: 'Le verrouillage du téléphone a changé. Connecte-toi avec ton mot de passe et réactive-le.' },
-  'devAuth.errFailed': { es: 'El teléfono no pudo preparar el desbloqueo rápido.', en: 'Your phone couldn’t set up quick unlock.', pt: 'O telemóvel não conseguiu preparar o desbloqueio rápido.', de: 'Dein Gerät konnte die Schnellentsperrung nicht einrichten.', fr: 'Ton téléphone n’a pas pu préparer le déverrouillage rapide.' },
+  // Neutral on purpose: this same key is shown when ENROLLING fails and when READING the
+  // stored key fails. It used to say "couldn't set up quick unlock", which read as nonsense
+  // to a user who had set it up days ago and was merely trying to sign in.
+  'devAuth.errFailed': { es: 'El teléfono no pudo completar la verificación. Usa tu contraseña.', en: 'Your phone couldn’t complete the check. Use your password.', pt: 'O telemóvel não conseguiu concluir a verificação. Usa a tua palavra-passe.', de: 'Dein Gerät konnte die Prüfung nicht abschließen. Nutze dein Passwort.', fr: 'Ton téléphone n’a pas pu terminer la vérification. Utilise ton mot de passe.' },
   // The unclassified bucket carries the platform's own sentence, because the code
   // alone cannot separate a refusing Keystore from a bad read — and "couldn't verify
   // your identity" blamed the finger for a fault that never reached the sensor.
-  'devAuth.errDetail': { es: '{msg}', en: '{msg}', pt: '{msg}', de: '{msg}', fr: '{msg}' },
+  // Composes here rather than in TS: the store used to build this line with a template
+  // literal, which puts user-visible punctuation in a .ts file and leaves this key unused.
+  'devAuth.errDetail': { es: '{base} ({msg})', en: '{base} ({msg})', pt: '{base} ({msg})', de: '{base} ({msg})', fr: '{base} ({msg})' },
 
   'settings.confirmSignsDesc': { es: 'Pedir la contraseña antes de firmar cualquier operación (envíos, trustlines, transacciones).', en: 'Ask for your password before signing any operation (payments, trustlines, transactions).', pt: 'Pedir a palavra-passe antes de assinar qualquer operação (envios, trustlines, transações).', de: 'Vor jedem Signieren (Zahlungen, Trustlines, Transaktionen) nach dem Passwort fragen.', fr: 'Demander le mot de passe avant de signer toute opération (paiements, trustlines, transactions).' },
 };

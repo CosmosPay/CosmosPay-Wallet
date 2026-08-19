@@ -5,10 +5,17 @@ import { Spinner } from '@/ui/Spinner';
 import { Field } from '@/ui/Field';
 import { useBusy } from '@/hooks/useBusy';
 import { MIN_PWD_LEN } from '@/constants/settings';
-import { changePassword } from '@/lib/vault';
 import '@/styles/features/settings/settings.css';
 
-/** Inline "change password" sub-form (current + new password → vault re-encrypt). */
+/**
+ * Inline "change password" sub-form.
+ *
+ * The work is `store.changeAppPassword`, not a direct `lib/vault.changePassword` call.
+ * This screen used to make that call itself, which made it the one place a `.tsx` mutated
+ * state the store was still holding a stale copy of — and it also meant this file owned
+ * the OS-prompt copy for re-wrapping the device-lock enrolments. Both now live in the
+ * store; a successful change ends the session, so there is nothing to report back here.
+ */
 export function ChangePassword({ store, onDone }: { store: WalletStore; onDone: () => void }) {
   const t = store.t;
   const [cur, setCur] = useState('');
@@ -18,26 +25,7 @@ export function ChangePassword({ store, onDone }: { store: WalletStore; onDone: 
 
   const submit = () =>
     run(async () => {
-      try {
-        // The device-lock enrolment holds a copy of the OLD password, so it is
-        // re-sealed inside this call. It can also be dropped — the user may dismiss
-        // the prompt — and that is reported rather than thrown: the password change
-        // itself already succeeded by then.
-        const { deviceAuthDropped } = await changePassword(cur, next, {
-          title: t('devAuth.rewrapTitle'),
-          reason: t('devAuth.enrollReason'),
-          cancel: t('common.cancel'),
-        });
-        await store.refreshDeviceAuth();
-        if (deviceAuthDropped.length) {
-          store.flash(t('devAuth.droppedOnPwdChange', { names: deviceAuthDropped.join(', ') }), 'info');
-        } else {
-          store.flash(t('settings.pwdUpdated'), 'ok');
-        }
-        onDone();
-      } catch (e) {
-        store.flash((e as Error).message, 'err');
-      }
+      if (await store.changeAppPassword(cur, next)) onDone();
     });
 
   return (

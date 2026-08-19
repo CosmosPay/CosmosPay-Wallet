@@ -201,6 +201,36 @@ Two more that fall out of the same principle:
   A 32-byte "message" that is really a transaction hash would otherwise come back as a
   valid transaction signature.
 
+## Unlocking with the phone, and answering the gate
+
+`src/lib/deviceAuth.ts` seals the app password under a random 32-byte key and puts only that
+key in the OS secure store. Four rules, each one a hole it shipped with:
+
+- **The wrapping key is stored bound, or not at all.** Enrolment tries `accessControl`
+  `BIOMETRY_CURRENT_SET`, falls back to `BIOMETRY_ANY`, and then **refuses**. Both of those
+  keep `setUserAuthenticationRequired(true)` and a real `CryptoObject`; `NONE` — the rung it
+  used to fall to — keeps neither, skips `setUnlockedDeviceRequired` on API 31-34, and on
+  iOS is written with no `kSecAttrAccessible` at all, so it rides an encrypted backup onto
+  another device. A phone that cannot bind the key does not get the feature; it keeps its
+  password, which works everywhere. There is deliberately no `verifyIdentity()` call in the
+  module: a check that is not the same operation as the read is a check the read can skip.
+- **A prompt is answered by id, never by position.** `requestSignature` mints an id,
+  `confirmReq` carries it, and `resolveConfirm(ok, id)` discards an answer that does not
+  match the head of the queue. An OS sheet can stay open for minutes without generating an
+  input event, so the idle auto-lock fires underneath it and `cancelPending()` empties the
+  queue — after which a late "yes" used to grant whatever request had arrived since.
+- **Anything that changes how the wallet opens is `force`-gated and captures the epoch.**
+  That is `toggleDeviceAuth`, `acceptDeviceAuthOffer`, `changeAppPassword` and `signRawXdr`
+  — the last because `reviewTx` checks only the source account, so the human confirmation is
+  the only thing standing between a pasted envelope and `setOptions`.
+- **Every path that turns a typed string into the seed is throttled** (`src/lib/attempts.ts`),
+  checked *before* the derivation. `revealBackup` returns the mnemonic on a correct guess, and
+  210k PBKDF2 iterations is not a rate limit.
+
+`changePassword` re-seals every wallet, so it opens and seals all of them in memory before
+committing any, and then calls `lock()`. Do not patch `session.password` instead: a partially
+applied change would make the store assert a password true of some wallets and not others.
+
 ## Validation lives in `src/lib/`, never in a component
 
 **No `.tsx` file computes validity from a regex or a length literal.** Import a named
@@ -248,8 +278,14 @@ are silent ones:
   stylesheet header, CLAUDE.md or a README exists on disk. The refactor left 30 sheets
   pointing at deleted `src/components/…` paths and this document sending
   `staggerClass` to a module that was never created.
-- `tests/unit/version.test.ts` pins `APP_VERSION` to package.json. It had drifted two
-  releases behind, on the welcome screen and in About.
+- `tests/unit/version.test.ts` guards that `APP_VERSION` stays **derived**. It is no longer
+  a literal: `astro.config.ts` injects package.json's version as `__APP_VERSION__` (declared
+  in `src/env.d.ts`, read once in `src/constants/app.ts`, supplied to `node:test` by
+  `tests/setup.mjs`). Pinning two literals with a test could not work here — the release bot
+  bumps package.json in a job that runs *after* the suite, so the assertion always saw the
+  pre-bump tree, passed, and then failed for whoever pushed next, blocking every release
+  until someone hand-edited a constant. It drifted twice before that was noticed. Derive a
+  value rather than testing that two copies of it agree.
 
 A path test cannot see a claim that is false about a path that *does* exist. When a
 rule here can be checked by a test, prefer writing the test over writing the sentence.
