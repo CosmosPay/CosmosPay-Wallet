@@ -1,0 +1,332 @@
+name: Native builds
+
+# The one place that turns this repo into installable phone binaries.
+#
+# It is a REUSABLE workflow (`workflow_call`), not a standalone one, because the same
+# two jobs are wanted from two very different places and duplicating them is how the
+# Android job ended up being the only pipeline that never ran the biometric tripwire:
+#
+#   * .github/workflows/ci.yml — every push and PR, unsigned/debug, artifacts only.
+#   * .github/workflows/release-extension.yml — once per published release, stamped with
+#     the version that release bumped to, and attached to the GitHub Release itself.
+#
+# `workflow_dispatch` is kept so a binary can still be produced on demand from any branch.
+#
+# What comes out:
+#   Android — a debug-signed APK, always. Plus a signed release APK *and* an AAB when the
+#             keystore secrets below are configured. There is no unsigned release APK in
+#             the outputs on purpose: nothing can install one, so shipping it would be a
+#             download that only ever fails.
+#   iOS     — an unsigned .ipa. Building is all a runner without an Apple Developer account
+#             can do; a device install still needs re-signing. It earns its place anyway: it
+#             is the only thing that catches a Podfile, a purpose-string or a
+#             deployment-target break before a release, and that is exactly the class of
+#             breakage nobody on a Windows machine can reproduce.
+#
+# Signing (optional — set all four as repository secrets to get a Play-ready build):
+#   ANDROID_KEYSTORE_BASE64    base64 of your release .keystore/.jks  (`base64 -w0 release.jks`)
+#   ANDROID_KEYSTORE_PASSWORD  the store password
+#   ANDROID_KEY_ALIAS          the key alias inside the store
+#   ANDROID_KEY_PASSWORD       that key's password
+# Absent any of them the job says so in its log and falls back to the debug APK rather than
+# failing: a fork and a first-time clone must still get a testable build out of CI.
+#
+# Signing happens with apksigner/jarsigner AFTER Gradle, never by editing
+# android/app/build.gradle. That folder is a build output — see CLAUDE.md — so a signingConfig
+# written into it would be secret handling that disappears on the next clone.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to stamp into the binaries. Empty = whatever package.json says.'
+        type: string
+        required: false
+        default: ''
+      release-tag:
+        description: 'Existing GitHub Release tag to attach the binaries to. Empty = artifacts only.'
+        type: string
+        required: false
+        default: ''
+      ref:
+        description: 'Git ref to build. Empty = the ref that triggered the caller.'
+        type: string
+        required: false
+        default: ''
+      ios:
+        description: 'Also build iOS (macOS runner, several times the wall clock of the Android job).'
+        type: boolean
+        required: false
+        default: true
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
+  workflow_dispatch:
+    inputs:
+      ios:
+        description: 'Also build the iOS app (unsigned)'
+        type: boolean
+        default: true
+
+# `permissions` is deliberately NOT set here: a reusable workflow cannot request more than
+# the caller granted, so `contents: write` at this level would make ci.yml — which correctly
+# grants only read — fail to start. The caller decides; release-extension.yml grants write
+# because its run uploads to a release.
+
+jobs:
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # Capacitor 8 targets JDK 21.
+      - uses: actions/setup-java@v5.7.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v4
+
+      # Brings @capacitor/android too: it is a devDependency (Gradle reads it, the web
+      # bundle never does), so it is pinned by the lockfile here instead of being
+      # installed mid-run — which used to rewrite package.json inside the job.
+      - run: npm ci
+
+      # AFTER `npm ci`, never before: npm validates package.json against the lockfile, and
+      # the lockfile records the root package's version too. `npm version` rewrites both.
+      #
+      # This step is what makes a `dev` prerelease binary carry its real version. That branch
+      # never commits its bump — the release job sets the version in the workspace and throws
+      # it away — so a job that checked out the tag and trusted the tree would build an APK
+      # labelled with the PREVIOUS release. scripts/native-version.ts then carries the number
+      # into build.gradle from the `capacitor:sync:after` hook.
+      - name: Stamp release version
+        if: inputs.version != ''
+        run: npm version --no-git-tag-version --allow-same-version "${{ inputs.version }}"
+
+      # BEFORE Gradle, and this is the job that needs it most.
+      #
+      # `npm ci` re-runs the postinstall patch that rewrites the Keystore auth-type
+      # constants inside @capgo/capacitor-native-biometric, and Gradle compiles that Java
+      # straight out of node_modules — there is no copy under android/ to review. The
+      # assertion that the patch landed lives in tests/unit/nativeBiometric.test.ts, and the
+      # jobs that run it elsewhere install no Android toolchain and compile no Java. A plugin
+      # bump that moves or renames those constants must fail here, not on a user's phone with
+      # an enrolment that can only ever fail.
+      - name: Unit tests (incl. the native-biometric patch tripwire)
+        run: npm run test:unit
+
+      # android/ is gitignored — generated per checkout, exactly as on a dev machine. The
+      # `capacitor:sync:after` hook fires inside `cap sync` and restores the launcher icons,
+      # the manifest permissions, the backup rules and the version stamp.
+      - name: Add Capacitor Android platform
+        run: |
+          npm run build
+          npx cap add android
+          npx cap sync android
+        env:
+          PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
+          PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
+          PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
+
+      - name: Resolve build name
+        id: meta
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # Written to the runner's temp dir, which is wiped with the runner and is not the
+      # workspace — so it cannot be picked up by a later upload-artifact glob.
+      - name: Decode signing keystore
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::notice::No complete Android signing secret set — building the debug APK only."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      # Always. This is the artifact a tester can install without any secret being configured
+      # anywhere, so it is not conditional on the signed path existing.
+      - name: Assemble debug APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Assemble release APK + AAB
+        if: steps.keystore.outputs.signed == 'true'
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease bundleRelease
+
+      # apksigner (APK, v2/v3 scheme) and jarsigner (AAB, which Play re-signs anyway) —
+      # outside Gradle, so nothing about signing is written into the generated project.
+      - name: Sign release APK + AAB
+        if: steps.keystore.outputs.signed == 'true'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
+          echo "Using $BUILD_TOOLS"
+          UNSIGNED=android/app/build/outputs/apk/release/app-release-unsigned.apk
+          # Newer AGP already names it app-release.apk when a signingConfig exists; there is
+          # none here, so tolerate both rather than guessing.
+          [ -f "$UNSIGNED" ] || UNSIGNED=android/app/build/outputs/apk/release/app-release.apk
+          "$BUILD_TOOLS/zipalign" -p -f 4 "$UNSIGNED" "$RUNNER_TEMP/aligned.apk"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$RUNNER_TEMP/release.jks" \
+            --ks-pass env:KEYSTORE_PASSWORD \
+            --ks-key-alias "$KEY_ALIAS" \
+            --key-pass env:KEY_PASSWORD \
+            --out "$RUNNER_TEMP/release-signed.apk" \
+            "$RUNNER_TEMP/aligned.apk"
+          "$BUILD_TOOLS/apksigner" verify --print-certs "$RUNNER_TEMP/release-signed.apk"
+          jarsigner -keystore "$RUNNER_TEMP/release.jks" \
+            -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" \
+            -signedjar "$RUNNER_TEMP/release-signed.aab" \
+            android/app/build/outputs/bundle/release/app-release.aab "$KEY_ALIAS"
+
+      - name: Collect binaries
+        env:
+          SIGNED: ${{ steps.keystore.outputs.signed }}
+          V: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          cp android/app/build/outputs/apk/debug/app-debug.apk "out/cosmos-pay-v${V}-debug.apk"
+          if [ "$SIGNED" = "true" ]; then
+            cp "$RUNNER_TEMP/release-signed.apk" "out/cosmos-pay-v${V}.apk"
+            cp "$RUNNER_TEMP/release-signed.aab" "out/cosmos-pay-v${V}.aab"
+          fi
+          ls -lh out
+
+      - name: Upload Android artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-v${{ steps.meta.outputs.version }}
+          path: out/*
+          if-no-files-found: error
+
+      # Only when the caller published a release for these binaries to hang off. `--clobber`
+      # so re-running a failed native job replaces a partial upload instead of erroring.
+      - name: Attach to GitHub Release
+        if: inputs.release-tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.release-tag }}" out/* --clobber
+
+  ios:
+    name: iOS
+    # Both triggers declare `ios` with a default of true, so this is never undefined: a caller
+    # opts out (ci.yml does, on pull requests) rather than opting in.
+    if: inputs.ios
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Same reason as the Android job: `dev` never commits its bump, so the tag's tree carries
+      # the previous version. scripts/native-version.ts then writes MARKETING_VERSION and
+      # CURRENT_PROJECT_VERSION into the pbxproj from the `capacitor:sync:after` hook — with the
+      # prerelease suffix stripped, because Apple rejects a marketing version that is not X.Y.Z.
+      - name: Stamp release version
+        if: inputs.version != ''
+        run: npm version --no-git-tag-version --allow-same-version "${{ inputs.version }}"
+
+      # Preinstalled on GitHub's macOS images; the fallback is for a self-hosted or older one.
+      # `cap add ios` runs `pod install` and cannot start without it.
+      - name: Ensure CocoaPods
+        run: pod --version || brew install cocoapods
+
+      # ios/ is gitignored, exactly like android/. The sync hook writes the three
+      # NS*UsageDescription purpose strings into Info.plist — without them the app does not get
+      # a denial, it gets terminated the moment the camera or Face ID is touched.
+      - name: Add Capacitor iOS platform
+        run: |
+          npm run build
+          npx cap add ios
+          npx cap sync ios
+        env:
+          PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
+          PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
+          PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
+
+      - name: Resolve build name
+        id: meta
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      # No `-archivePath` / `-exportArchive`: export needs a provisioning profile, and the point
+      # of this job is to be useful WITHOUT an Apple Developer account. `CODE_SIGNING_ALLOWED=NO`
+      # compiles and links everything — which is where a Podfile, a Swift-version or a
+      # deployment-target break shows up — and stops at the signature.
+      - name: Build unsigned .app
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/ios-build" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      # An .ipa is a zip with the .app inside a top-level Payload/ directory and nothing else.
+      # Unsigned, so it installs through a re-signing tool (Sideloadly, AltStore, an MDM) rather
+      # than by tapping it — said out loud in the release notes so nobody expects more.
+      - name: Package unsigned .ipa
+        env:
+          V: ${{ steps.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/ios-build/Build/Products/Release-iphoneos/App.app"
+          [ -d "$APP" ] || { echo "::error::$APP was not produced"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/pkg/Payload" out
+          cp -R "$APP" "$RUNNER_TEMP/pkg/Payload/"
+          ( cd "$RUNNER_TEMP/pkg" && zip -qry "$GITHUB_WORKSPACE/out/cosmos-pay-v${V}-unsigned.ipa" Payload )
+          ls -lh out
+
+      - name: Upload iOS artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-v${{ steps.meta.outputs.version }}
+          path: out/*
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: inputs.release-tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.release-tag }}" out/* --clobber
