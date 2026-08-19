@@ -18,7 +18,9 @@
  */
 
 /** The flows that must not overlap. A union so a typo cannot claim a fresh slot. */
-export type FlowKey = 'send' | 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp';
+// 'password' is not a money flow, but it re-seals every wallet AND every device-lock
+// envelope, so it must not interleave with one that is mid-await holding the old password.
+export type FlowKey = 'send' | 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'password';
 
 export interface ExclusiveRunner {
   /**

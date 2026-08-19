@@ -4,27 +4,31 @@ import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Field } from '@/ui/Field';
 import { useBusy } from '@/hooks/useBusy';
-import { MIN_PWD_LEN } from '@/constants/settings';
-import { changePassword } from '@/lib/vault';
+import { appPasswordOk } from '@/lib/validate';
 import '@/styles/features/settings/settings.css';
 
-/** Inline "change password" sub-form (current + new password → vault re-encrypt). */
+/**
+ * Inline "change password" sub-form.
+ *
+ * The work is `store.changeAppPassword`, not a direct `lib/vault.changePassword` call.
+ * This screen used to make that call itself, which made it the one place a `.tsx` mutated
+ * state the store was still holding a stale copy of — and it also meant this file owned
+ * the OS-prompt copy for re-wrapping the device-lock enrolments. Both now live in the
+ * store; a successful change ends the session, so there is nothing to report back here.
+ */
 export function ChangePassword({ store, onDone }: { store: WalletStore; onDone: () => void }) {
   const t = store.t;
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   const [busy, run] = useBusy();
-  const ok = cur.length > 0 && next.length >= MIN_PWD_LEN && !busy;
+  // The SAME rule onboarding enforces. This used to be length-only, so a wallet created
+  // under "8 + upper + lower + digit" could be re-sealed under `aaaaaaaa` — and so could
+  // every device-lock envelope holding a copy of it. The store re-checks it too.
+  const ok = cur.length > 0 && appPasswordOk(next) && !busy;
 
   const submit = () =>
     run(async () => {
-      try {
-        await changePassword(cur, next);
-        store.flash(t('settings.pwdUpdated'), 'ok');
-        onDone();
-      } catch (e) {
-        store.flash((e as Error).message, 'err');
-      }
+      if (await store.changeAppPassword(cur, next)) onDone();
     });
 
   return (

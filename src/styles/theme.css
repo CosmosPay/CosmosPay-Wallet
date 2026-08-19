@@ -114,3 +114,24 @@
     --frame-max: 620px;
   }
 }
+
+/* ---------------- safe margins ----------------
+   Two different things, kept apart on purpose.
+
+   `viewport-fit=cover` (src/pages/index.astro) lets the app draw edge-to-edge, so on
+   a phone the status bar, the notch and the gesture pill sit ON TOP of it — the four
+   --safe-* insets are what the device demands back. They report 0 in portrait on most
+   phones, which is why they are never the whole answer: --gutter is the breathing room
+   the design wants regardless of hardware. A screen's outer margin is BOTH — the shell
+   applies the insets (src/styles/app/shell.css) and each screen adds the gutter inside
+   them, so content clears the hardware AND never sits against the glass.
+
+   The `0px` fallbacks are deliberate: a bare `0` is invalid inside calc(), and without
+   a fallback an engine with no env() support poisons every calc() that reads these. */
+:root {
+  --gutter: 22px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+}

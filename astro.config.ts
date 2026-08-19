@@ -1,7 +1,31 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import { loadEnv } from 'vite';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+
+/**
+ * The version the app SHOWS is the version the app IS.
+ *
+ * package.json is the single source of truth — scripts/build-extension.ts already reads
+ * it for the MV3 manifest, and src/constants/app.ts used to duplicate it as a
+ * hand-edited literal. That literal drifted two releases behind once already, and the
+ * test written to pin them could not catch the drift it was written for: the release
+ * bot bumps package.json in a job that runs AFTER the suite, so the tested tree is
+ * always the pre-bump one. Injecting the value deletes the second copy instead of
+ * guarding it, and it picks up the `-dev.<run_number>` prerelease suffix — a value no
+ * committed literal can hold, because it does not exist until the run number does.
+ *
+ * Read here rather than imported by src/constants/app.ts because package.json sits
+ * outside src/, where the `@/` alias cannot reach, and because `constants/` may not
+ * take runtime imports (see CLAUDE.md). tests/setup.mjs sets the same global from the
+ * same file, which is what keeps `@/constants/app` importable from node:test.
+ */
+const APP_VERSION = (
+  JSON.parse(readFileSync(fileURLToPath(new URL('./package.json', import.meta.url)), 'utf8')) as {
+    version: string;
+  }
+).version;
 
 // Dev-proxy targets (Node-side only — never shipped to the client). The empty
 // prefix makes loadEnv read non-PUBLIC_ vars too, so these stay server-side.
@@ -39,6 +63,9 @@ export default defineConfig({
   // Dev + preview server run on 4500.
   server: { port: 4500 },
   vite: {
+    // Build-time constants. `__APP_VERSION__` is declared ambiently in src/env.d.ts and
+    // consumed by src/constants/app.ts — see the comment on APP_VERSION above.
+    define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
     // Dev-only reverse proxy: the browser hits same-origin /api and /v1, Vite
     // forwards them to the local backends server-side — so there's no CORS
     // preflight. Production / native builds bypass this (set PUBLIC_COSMOS_*_URL

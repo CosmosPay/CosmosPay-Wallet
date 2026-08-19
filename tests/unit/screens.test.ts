@@ -96,3 +96,15 @@ test('success is terminal so back cannot re-enter the flow that produced it', ()
   assert.ok(!SCREENS.confirm.terminal);
 });
 
+/**
+ * `device-auth` is offered once, straight after onboarding's success screen, and it is the
+ * screen where accepting seals the app password behind the phone's biometrics. Back from it
+ * must not walk into the wallet-creation flow that produced it — and because it IS terminal,
+ * the hardware back button leaves without running either of its buttons, which is why the
+ * one-shot flag is cleared in `leaveSuccess` rather than in those handlers.
+ */
+test('device-auth is terminal and returns home, not into onboarding', () => {
+  assert.equal(SCREENS['device-auth'].terminal, true);
+  assert.equal(SCREENS['device-auth'].back, 'home');
+});
+

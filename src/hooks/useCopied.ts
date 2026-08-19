@@ -22,7 +22,9 @@ export function useCopied(ms = COPY_FEEDBACK_MS) {
   );
   const copy = useCallback(
     async (value: string, key = 'copied') => {
-      await copyText(value);
+      // Only on a real copy. Raising the flag unconditionally made the button claim
+      // "Copied!" over a clipboard the platform had refused to write.
+      if (!(await copyText(value))) return;
       setCopied(key);
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setCopied(''), ms);

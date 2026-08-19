@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { Keypair } from '@stellar/stellar-sdk';
 import { DAPP_MIRROR_KEY, APPROVE_TITLES, OP_LABELS } from '@/constants/app';
 import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type WalletEntry } from '@/lib/vault';
+import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
+import { WrongPasswordError } from '@/lib/crypto';
 import { resolveNetwork, signXdr, sendPayment, type NetConfig } from '@/lib/stellar';
 import { parseStellarQr, type ParsedQr } from '@/lib/sep7';
 import { reviewTx, type TxReview } from '@/lib/txGuard';
@@ -187,8 +189,21 @@ export default function ApprovePopup() {
         return;
       }
 
-      // everything below needs the secret -> unlock first
-      const { secret } = await unlockWallet(entry.id, pwd); // throws "Contraseña incorrecta." on bad pwd
+      // Everything below needs the secret -> unlock first, and THAT is a password guess
+      // like any other. This window was the one path that derived a key from a typed
+      // string with no backoff at all: same vault, same 210k iterations, same
+      // localStorage, opened on demand by any page calling window.cosmosWallet.* — an
+      // unmetered oracle sitting beside the metered ones. `beginAttempt` reserves the
+      // guess before the derivation, so concurrent windows cannot all read a clean record.
+      const wait = await beginAttempt();
+      if (wait > 0) throw new Error(`Demasiados intentos. Espera ${blockSeconds(wait)} s antes de volver a probar.`);
+      const { secret } = await unlockWallet(entry.id, pwd).catch(async (e: unknown) => {
+        // Only a failed GCM tag is a guess. A missing or unparseable vault blob must not
+        // walk the owner up the ladder while the screen blames their password.
+        if (!(e instanceof WrongPasswordError)) await releaseAttempt();
+        throw e;
+      });
+      await noteAttemptSuccess();
       // Refresh the public mirror, but do NOT grant the origin here: signing once is
       // not consent to be recognised forever. Only the explicit connect approval
       // (getAddress, above) writes to approvedOrigins.

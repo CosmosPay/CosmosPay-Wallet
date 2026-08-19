@@ -1,5 +1,5 @@
 /* Success / error result screen (src/features/money/Success.tsx). */
-.success-screen { flex: 1; min-height: 0; padding: 2px 20px 24px; } /* on .col */
+.success-screen { flex: 1; min-height: 0; padding: 2px var(--gutter) 24px; } /* on .col */
 .success-hero { text-align: center; } /* on .f1.col.center */
 .success-ring-wrap { position: relative; width: 96px; height: 96px; margin-bottom: 26px; }
 .success-ring { position: absolute; inset: 0; border-radius: 50%; animation: ring 1.6s ease-out infinite; }

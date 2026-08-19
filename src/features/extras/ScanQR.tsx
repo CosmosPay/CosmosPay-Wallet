@@ -3,6 +3,8 @@ import jsQR from 'jsqr';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { buildKind } from '@/lib/platform';
+import { cameraFailure, cameraFailureKey, openCameraStream, type CameraFailure } from '@/lib/camera';
+import { canReadClipboardImage } from '@/lib/clipboard';
 import { SCAN_DECODE_MAX_PX } from '@/constants/extras';
 import '@/styles/features/extras/scan-qr.css';
 import { cx } from '@/lib/cx';
@@ -13,7 +15,9 @@ export function ScanQR({ store }: { store: WalletStore }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
-  const [error, setError] = useState('');
+  // Why the camera is not showing, if it is not — never a pre-rendered string, so the screen
+  // can key both the message and the recovery it offers off the same classification.
+  const [failure, setFailure] = useState<CameraFailure | null>(null);
   // Bumping this re-runs the camera effect -> re-triggers the permission prompt.
   const [retry, setRetry] = useState(0);
   // Available video inputs (populated once permission is granted) + the user's pick.
@@ -111,7 +115,7 @@ export function ScanQR({ store }: { store: WalletStore }) {
     let stream: MediaStream | null = null;
     let raf = 0;
     let stopped = false;
-    setError('');
+    setFailure(null);
 
     // Accept a bare G-address or a SEP-0007 payment URI (web+stellar:pay?…).
     const finish = (text: string) => {
@@ -148,10 +152,11 @@ export function ScanQR({ store }: { store: WalletStore }) {
 
     (async () => {
       try {
-        // Explicit device when the user picked one; otherwise prefer the back camera.
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'environment' },
-        });
+        // Explicit device when the user picked one; otherwise the back camera. On a phone this
+        // is the call that raises the OS permission prompt: Capacitor's WebChromeClient turns
+        // it into a runtime request for the CAMERA permission that scripts/native-permissions.ts
+        // declares — without that declaration Android denies it silently, with no prompt.
+        stream = await openCameraStream(deviceId || undefined);
         if (stopped) {
           stream.getTracks().forEach((tr) => tr.stop());
           return;
@@ -168,8 +173,8 @@ export function ScanQR({ store }: { store: WalletStore }) {
         } catch {
           /* enumeration unavailable — keep the default camera */
         }
-      } catch {
-        setError(t('scan.denied'));
+      } catch (err) {
+        setFailure(cameraFailure(err));
       }
     })();
 
@@ -183,19 +188,23 @@ export function ScanQR({ store }: { store: WalletStore }) {
       <BackBar title={t('scan.title')} onBack={store.goBack} />
       <div className="scan-hint">{t('scan.point')}</div>
       <div className="glass center scan-viewport">
-        {error ? (
+        {failure ? (
           <div className="scan-denied">
-            {error}
-            {/* In the extension, the popup can't render the camera prompt — this opens
-                camera.html in a tab where the browser CAN ask explicitly. */}
-            {buildKind() === 'ext' && (
+            {t(cameraFailureKey(failure))}
+            {/* Only a refused permission gets recovery advice, and it differs per build:
+                the extension popup cannot render the prompt at all, while on the phone a
+                second refusal is final until the user reopens it in system settings. */}
+            {failure === 'denied' && buildKind() === 'ext' && (
               <button onClick={openGrantTab} className="glass-bright scan-cam-btn scan-grant">
                 {t('scan.grant')}
               </button>
             )}
+            {failure === 'denied' && buildKind() === 'app' && (
+              <div className="scan-settings-hint">{t('scan.settingsHint')}</div>
+            )}
             {/* Re-running the effect re-calls getUserMedia -> re-asks for permission. */}
             <button onClick={() => setRetry((r) => r + 1)} className="glass-soft scan-cam-btn scan-retry">
-              {t('scan.retry')}
+              {t(failure === 'denied' ? 'scan.retry' : 'scan.retryPlain')}
             </button>
           </div>
         ) : (
@@ -208,7 +217,7 @@ export function ScanQR({ store }: { store: WalletStore }) {
 
       {/* More than one camera? Fully-styled custom picker (no native <select> —
           its option list can't be themed), same pattern as the network dropdown. */}
-      {devices.length > 1 && !error && (
+      {devices.length > 1 && !failure && (
         <div className="shrink0 scan-device-wrap">
           <button onClick={() => setDevOpen((o) => !o)} className="glass-soft row between g10 scan-device-btn">
             <span className="scan-ellipsis">
@@ -248,10 +257,15 @@ export function ScanQR({ store }: { store: WalletStore }) {
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink0"><rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.8" /><path d="M3 16l5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" /><circle cx="9" cy="8" r="1.6" fill="currentColor" /></svg>
           {t('scan.upload')}
         </button>
-        <button onClick={pasteImage} className="glass-soft pill-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink0"><rect x="6" y="4" width="12" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="M9 4.5V3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5v1" stroke="currentColor" strokeWidth="1.8" /></svg>
-          {t('scan.paste')}
-        </button>
+        {/* Not on a phone: an Android WebView has no async clipboard read, so this button
+            could only ever answer "there is no image in the clipboard". Ctrl+V still works
+            wherever a keyboard does — that arrives as a paste event, not as a read. */}
+        {canReadClipboardImage() && (
+          <button onClick={pasteImage} className="glass-soft pill-btn">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink0"><rect x="6" y="4" width="12" height="16" rx="2.5" stroke="currentColor" strokeWidth="1.8" /><path d="M9 4.5V3.5A1.5 1.5 0 0 1 10.5 2h3A1.5 1.5 0 0 1 15 3.5v1" stroke="currentColor" strokeWidth="1.8" /></svg>
+            {t('scan.paste')}
+          </button>
+        )}
       </div>
       <input ref={fileRef} type="file" accept="image/*" onChange={onFile} className="scan-hidden" />
 

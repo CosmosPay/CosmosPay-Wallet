@@ -44,6 +44,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   import: lazy(() => import('@/features/onboarding/Import').then((m) => ({ default: m.Import }))),
   'profile-setup': lazy(() => import('@/features/onboarding/ProfileSetup').then((m) => ({ default: m.ProfileSetup }))),
   password: lazy(() => import('@/features/onboarding/PasswordSetup').then((m) => ({ default: m.PasswordSetup }))),
+  'device-auth': lazy(() => import('@/features/onboarding/DeviceAuthSetup').then((m) => ({ default: m.DeviceAuthSetup }))),
   home: Home,
   earn: Earn,
   markets: Markets,

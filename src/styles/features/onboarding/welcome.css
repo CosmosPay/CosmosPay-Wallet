@@ -4,7 +4,8 @@
 .welcome-screen {
   flex: 1;
   min-height: 0;
-  padding: 2px 26px 32px;
+  /* a touch wider than a normal screen — kept as a delta so it tracks --gutter */
+  padding: 2px calc(var(--gutter) + 4px) 32px;
   animation: fadeUp 0.3s ease;
 }
 /* top bar: right-aligned by default; space-between while adding a wallet (.is-adding) */

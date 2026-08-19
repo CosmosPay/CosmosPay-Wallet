@@ -3,6 +3,7 @@ import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Logo } from '@/ui/Logo';
 import { Spinner } from '@/ui/Spinner';
+import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
 import { EyeIcon } from '@/ui/EyeIcon';
 import { LangSelect } from '@/ui/LangSelect';
 import { getGreeting } from '@/lib/greeting';
@@ -24,10 +25,44 @@ export function Unlock({ store }: { store: WalletStore }) {
   );
   const multi = store.wallets.length > 1;
 
+  /**
+   * `store.busy` as well as the empty check — and the store holds a ref guard behind it.
+   *
+   * This fired on every Enter keydown with no re-entry guard at all, so key auto-repeat
+   * (~30/s held down) launched a fresh 210k-iteration derivation every frame. Each one is
+   * a password attempt; the backoff ladder only bounds attempts it gets to see finish.
+   */
   const submit = async () => {
-    if (!pwd) return;
-    const ok = await store.unlock(pwd);
-    if (!ok) setPwd('');
+    if (!pwd || store.busy) return;
+    const res = await store.unlock(pwd);
+    // Cleared only on a real rejection: wiping the field because the attempt was throttled
+    // or raced makes the user retype a password that was never judged.
+    if (!res.ok && res.reason === 'wrong') setPwd('');
+  };
+
+  /**
+   * NO AUTO-PROMPT. The biometric sheet is raised by the button below, never by mounting.
+   *
+   * It used to fire on mount, guarded by a ref — but the guard was per MOUNT, and `lock()`
+   * sets the screen to `unlock`, so this component remounts on every auto-lock and the
+   * sheet came back unbidden several times a day. On a passive-face device that makes the
+   * 5-minute idle auto-lock decorative: the session ends and re-opens the moment the owner
+   * glances at the screen, which is not a lock.
+   *
+   * It also worked against `ConfirmSign`, which deliberately refuses to auto-prompt on the
+   * grounds that "a signing sheet that appears without a tap is how a user approves
+   * something they never read". That reasoning does not stop being true one screen away:
+   * a user trained by dozens of unprompted unlock sheets is exactly the user who touches
+   * the sensor before reading the signing sheet.
+   */
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  const deviceSubmit = async () => {
+    setDeviceBusy(true);
+    try {
+      await store.unlockWithDevice();
+    } finally {
+      setDeviceBusy(false);
+    }
   };
 
   return (
@@ -69,6 +104,16 @@ export function Unlock({ store }: { store: WalletStore }) {
         <PrimaryButton disabled={!pwd || store.busy} onClick={submit}>
           {store.busy ? <Spinner /> : t('unlock.unlock')}
         </PrimaryButton>
+        {/* Only when this wallet actually enrolled AND the device can still answer —
+            a button that can only fail is worse than no button. */}
+        {store.deviceAuthReady && (
+          <DeviceAuthButton
+            kind={store.deviceAuthKind}
+            label={t('devAuth.unlockWith', { method: store.deviceAuthMethod })}
+            busy={deviceBusy || store.busy}
+            onClick={deviceSubmit}
+          />
+        )}
         {!confirmWipe ? (
           <div onClick={() => setConfirmWipe(true)} className="tap unlock-forgot">
             {t('unlock.forgot')}

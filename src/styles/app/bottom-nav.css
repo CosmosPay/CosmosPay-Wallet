@@ -4,9 +4,14 @@
   left: 0;
   right: 0;
   bottom: 0;
-  height: 92px;
+  /* The bar GROWS by the gesture-bar inset instead of eating into itself: with a
+     flat 92px, box-sizing: border-box let the safe padding squeeze the 72px tab
+     content box down to 38px and the 50px active dot spilled out of it. The
+     scroller above it still clears the bar — .shell-content is already inset by
+     --safe-b, so the overlap stays 92px and pb-104/pb-110 keep covering it. */
+  height: calc(92px + var(--safe-b));
   z-index: 5;
-  padding: 0 16px calc(20px + env(safe-area-inset-bottom));
+  padding: 0 16px calc(20px + var(--safe-b));
   display: flex;
   align-items: center;
   background: var(--nav-bg);
@@ -21,7 +26,7 @@
   position: absolute;
   left: 16px;
   top: 0;
-  bottom: calc(20px + env(safe-area-inset-bottom));
+  bottom: calc(20px + var(--safe-b));
   width: calc((100% - 32px) / 5);
   transition: transform 0.42s cubic-bezier(0.34, 1.3, 0.5, 1);
   display: flex;

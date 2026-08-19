@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { Spinner } from '@/ui/Spinner';
+import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
 import { cx } from '@/lib/cx';
 import '@/styles/app/confirm-sign.css';
 
@@ -11,27 +12,42 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
   const [pwd, setPwd] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [deviceBusy, setDeviceBusy] = useState(false);
+  /** Synchronous re-entry guard — see `submit`. */
+  const inFlight = useRef(false);
 
   useEffect(() => {
     setPwd('');
     setErr('');
     setBusy(false);
+    setDeviceBusy(false);
+    inFlight.current = false;
   }, [req]);
 
   if (!req) return null;
 
   const submit = async () => {
-    if (!pwd || busy) return;
+    // A ref, checked first: `busy` is React state, so two Enter keydowns in the same frame
+    // both read `false` and both start a 210k-iteration derivation — each one a password
+    // attempt against the ladder. The state flag stays for the disabled button.
+    if (!pwd || busy || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setErr('');
-    const okPwd = await store.checkPassword(pwd);
+    const res = await store.checkPassword(pwd);
+    inFlight.current = false;
     setBusy(false);
-    if (okPwd) {
-      store.resolveConfirm(true);
-    } else {
-      setErr(t('confirmSig.wrongPwd'));
-      setPwd('');
+    if (res.ok) {
+      // Answered by id: the check above is ~200ms of PBKDF2, and an auto-lock in that
+      // window empties the queue. Resolving by position would then grant whatever request
+      // arrived next.
+      store.resolveConfirm(true, req.id);
+      return;
     }
+    // The store decides the sentence — a throttled attempt is not a wrong password, and
+    // telling someone with the right password that it is wrong is worse than saying wait.
+    setErr(res.message);
+    if (res.reason === 'wrong') setPwd('');
   };
 
   return (
@@ -52,8 +68,28 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
           className={cx('input confirm-sign-input', err && 'has-err')}
         />
         {err && <div className="confirm-sign-err">{err}</div>}
+        {/* No auto-prompt here, unlike the unlock screen: this gate can be raised by
+            a dapp, and a signing sheet that appears without a tap is how a user
+            approves something they never read. */}
+        {store.deviceAuthReady && (
+          <DeviceAuthButton
+            kind={store.deviceAuthKind}
+            label={t('devAuth.signWith', { method: store.deviceAuthMethod })}
+            busy={deviceBusy || busy}
+            onClick={async () => {
+              setDeviceBusy(true);
+              setErr('');
+              try {
+                await store.confirmWithDevice(req.id);
+              } finally {
+                setDeviceBusy(false);
+              }
+            }}
+            className="confirm-sign-device"
+          />
+        )}
         <div className="flexr g10">
-          <button onClick={() => store.resolveConfirm(false)} className="glass-soft confirm-sign-cancel">
+          <button onClick={() => store.resolveConfirm(false, req.id)} className="glass-soft confirm-sign-cancel">
             {t('common.cancel')}
           </button>
           <button onClick={submit} disabled={!pwd || busy} className="glass-bright confirm-sign-submit">

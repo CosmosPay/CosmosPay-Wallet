@@ -29,6 +29,7 @@ export const SCREEN_IDS = [
   'import',
   'profile-setup',
   'password',
+  'device-auth',
   'unlock',
   'home',
   'earn',
@@ -98,6 +99,9 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   welcome: { back: (c) => (c.addingWallet ? 'profile' : 'exit') },
   backup: { back: 'welcome' },
   verify: { back: 'backup' },
+  // Terminal: it is offered once, after onboarding's success screen, and "back" from
+  // it must not walk into the flow that created the wallet.
+  'device-auth': { back: 'home', terminal: true },
   import: { back: 'welcome' },
   'profile-setup': { back: (c) => (c.hasDraftMnemonic ? 'verify' : 'import') },
   password: { back: 'profile-setup' },

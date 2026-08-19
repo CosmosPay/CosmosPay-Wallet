@@ -6,19 +6,23 @@ import { Spinner } from '@/ui/Spinner';
 import { Criterion } from '@/features/onboarding/Criterion';
 import { Desc } from '@/features/onboarding/Desc';
 import { Field } from '@/ui/Field';
+import { APP_PWD_CRITERIA, appPasswordOk } from '@/lib/validate';
 import '@/styles/features/onboarding/password-setup.css';
 
 export function PasswordSetup({ store }: { store: WalletStore }) {
   const t = store.t;
   const [pwd, setPwd] = useState('');
   const [confirm, setConfirm] = useState('');
-  // Live criteria — each row below flips to green as it's satisfied.
-  const lenOk = pwd.length >= 8;
-  const upperOk = /[A-Z]/.test(pwd);
-  const digitOk = /\d/.test(pwd);
-  const lowerOk = /[a-z]/.test(pwd);
+  // Live criteria — each row below flips to green as it's satisfied. The rules come from
+  // `lib/validate`, not from literals here: this screen and the change-password form used
+  // to define them separately and disagreed, so a password that onboarding refused could
+  // be set from Settings a minute later.
+  const lenOk = APP_PWD_CRITERIA.length(pwd);
+  const upperOk = APP_PWD_CRITERIA.upper(pwd);
+  const digitOk = APP_PWD_CRITERIA.digit(pwd);
+  const lowerOk = APP_PWD_CRITERIA.lower(pwd);
   const match = pwd === confirm && confirm.length > 0;
-  const ok = lenOk && upperOk && digitOk && lowerOk && match && !store.busy;
+  const ok = appPasswordOk(pwd) && match && !store.busy;
 
   const back = () => store.setScreen('profile-setup');
 

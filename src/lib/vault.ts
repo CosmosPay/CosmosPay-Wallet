@@ -13,6 +13,11 @@
  * still locked and can see how many wallets exist.
  */
 import { open, seal, type SealedBox } from '@/lib/crypto';
+// Only the prompt-free cleanup call. Re-wrapping needs an OS prompt and the copy that
+// goes on it, so `changePassword` takes it as an injected closure instead — see
+// `ChangePasswordDeps`. That is what keeps this module's own logic reachable from
+// node:test, and what stops a vault function owning UI strings.
+import { deviceAuthEnabled, disableDeviceAuth } from '@/lib/deviceAuth';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
 
@@ -353,6 +358,11 @@ export async function removeWallet(
   id: string,
 ): Promise<{ remaining: WalletEntry[]; newActive: string | null }> {
   await storageRemove(vaultKey(id));
+  // The password sealed behind the phone's lock screen outlives the vault it opens
+  // unless it is dropped here. Ids come from crypto.randomUUID(), so a later wallet
+  // will not collide with the orphan — it would simply sit in the Keychain for the
+  // life of the install, holding a password the user believes they deleted.
+  await disableDeviceAuth(id);
   await storageRemove(cosmosPayKey(id));
   await storageRemove(cosmosPayPendingKey(id));
   const remaining = (await listWallets()).filter((w) => w.id !== id);
@@ -366,21 +376,157 @@ export async function removeWallet(
   return { remaining, newActive: active };
 }
 
-/** Re-seal every wallet under a new password (the old one must be correct). */
-export async function changePassword(oldPassword: string, newPassword: string): Promise<void> {
-  for (const w of await listWallets()) {
-    const secret = await unlockWallet(w.id, oldPassword); // throws on wrong password
-    await storageSet(vaultKey(w.id), JSON.stringify(await seal(JSON.stringify(secret), newPassword)));
-    // Re-seal the CosmosPay credential too, otherwise it would be undecryptable.
-    const cp = await getCosmosPay(w.id, oldPassword);
-    if (cp) await storageSet(cosmosPayKey(w.id), JSON.stringify(await seal(JSON.stringify(cp), newPassword)));
+/**
+ * What `changePassword` needs from outside `lib/`.
+ *
+ * `reenrolDeviceAuth` is REQUIRED, not optional. An optional dependency makes a function
+ * only as careful as its laziest caller — the same reason `GuardOptions` in `lib/txGuard.ts`
+ * is a discriminated union rather than a bag of optionals. A caller that cannot re-enrol
+ * the device locks must not be able to change the password and leave them holding the old
+ * one. It returns whether the enrolment came back; it must not throw.
+ */
+export interface ChangePasswordDeps {
+  reenrolDeviceAuth: (walletId: string, newPassword: string) => Promise<boolean>;
+}
+
+/**
+ * Thrown when a password change fails AFTER the first byte was written.
+ *
+ * The header below promises the device is left exactly as it was on failure, and that is
+ * true only up to the commit. Past it there is no rollback: some wallets are on the new
+ * password and some on the old, and the caller's `session.password` is true of neither.
+ * A plain `Error` there let `changeAppPassword` flash a message and carry on with a
+ * session whose password no longer opens what it thinks it opens — so the class exists to
+ * make "you must end this session" a fact the caller can branch on rather than guess.
+ */
+export class PasswordChangeCommitError extends Error {
+  readonly cause: unknown;
+  constructor(cause: unknown) {
+    super((cause as Error)?.message ?? 'No se pudo completar el cambio de contraseña.');
+    this.name = 'PasswordChangeCommitError';
+    this.cause = cause;
   }
+}
+
+/** What a password change did to the device-lock enrolments it had to touch. */
+export interface PasswordChangeResult {
+  /**
+   * Wallets whose device-lock enrolment could not be re-sealed and was turned off.
+   * Carries the id as well as the name: the name is for the sentence shown to the user,
+   * and two wallets may share one, so the id is what a caller acts on.
+   */
+  deviceAuthDropped: { id: string; name: string }[];
+}
+
+/**
+ * Re-seal every wallet under a new password (the old one must be correct).
+ *
+ * ATOMIC UP TO THE FIRST COMMIT — and no further, which is why the failure past it has its
+ * own error class. This used to decrypt-and-write wallet by wallet, so a failure on wallet
+ * 3 left wallets 1 and 2 sealed under the NEW password and wallet 3 under the old one, with
+ * no rollback and no way for the caller to know. Every wallet is now opened and re-sealed
+ * in memory first; the first byte is not committed until all of them have succeeded, so a
+ * wrong password, a missing vault or a corrupt box aborts with the device exactly as it
+ * was. A failure DURING the commit loop cannot be undone, and raises
+ * `PasswordChangeCommitError` so the caller ends the session instead of carrying on with a
+ * password that is now true of only some wallets.
+ *
+ * The device-lock enrolment holds a copy of the password sealed under a key in the
+ * Keychain, so it has to move in the same pass. It is dropped BEFORE the commit and
+ * re-created after — not re-wrapped afterwards, which was the original design and had no
+ * safe interruption: an envelope left holding the OLD password hands `unlock()` a string
+ * that no longer decrypts, so the user meets "wrong password" coming from their own
+ * fingerprint and the failed-attempt ladder counts it against them.
+ *
+ * Re-enrolling needs a device prompt, which the user can dismiss. That is not a failure of
+ * the password change — the vault is already re-sealed by then — so the enrolment stays off
+ * and is reported, and the caller tells the user to turn it back on. Fail closed: no
+ * enrolment beats one that opens nothing.
+ */
+export async function changePassword(
+  oldPassword: string,
+  newPassword: string,
+  deps: ChangePasswordDeps,
+): Promise<PasswordChangeResult> {
+  const wallets = await listWallets();
+
+  // 1. Open everything. Nothing is written in this pass, so `unlockWallet` throwing
+  //    "Contraseña incorrecta." on any wallet leaves the device untouched.
+  const opened = [];
+  for (const w of wallets) {
+    const secret = await unlockWallet(w.id, oldPassword); // throws on wrong password
+    const cosmosPay = await getCosmosPay(w.id, oldPassword);
+    opened.push({ entry: w, secret, cosmosPay });
+  }
+
+  // 2. Seal everything under the new password, still writing nothing. This is pure crypto
+  //    over data already in hand: it either all succeeds or throws before any commit.
+  const sealed = [];
+  for (const o of opened) {
+    sealed.push({
+      entry: o.entry,
+      vault: JSON.stringify(await seal(JSON.stringify(o.secret), newPassword)),
+      // Re-seal the CosmosPay credential too, otherwise it would be undecryptable.
+      cosmosPay: o.cosmosPay ? JSON.stringify(await seal(JSON.stringify(o.cosmosPay), newPassword)) : null,
+    });
+  }
+
+  // 3. Turn every device-lock enrolment OFF, BEFORE the vault moves.
+  //
+  //    This used to run last, after the commit, and that ordering had no safe failure. An
+  //    envelope holds a copy of the password sealed under a Keystore key; re-wrapping it
+  //    raises an OS sheet per wallet, and anything that interrupts the pass — the process
+  //    dying, the user walking away, iOS reclaiming the app — left the envelope holding the
+  //    PRE-CHANGE password with a still-valid key beside it. Both halves consistent, so
+  //    nothing detects it: `deviceAuthPassword` returns that password happily, `unlock()`
+  //    answers "wrong password", and the ladder counts the user's own fingerprint as a
+  //    guess until they are locked out for five minutes.
+  //
+  //    Dropping first inverts that. `disableDeviceAuth` needs no prompt and cannot fail
+  //    meaningfully, so the worst interruption now leaves the feature OFF — recoverable
+  //    from Settings, with the password working throughout. Fail closed: no enrolment beats
+  //    one that opens nothing.
+  const enrolled: WalletEntry[] = [];
+  for (const s of sealed) {
+    if (await deviceAuthEnabled(s.entry.id)) enrolled.push(s.entry);
+    await disableDeviceAuth(s.entry.id);
+  }
+
+  // 4. Commit. Past this line the device is in a state no rollback can undo, so any
+  //    failure is reported as a commit failure and the caller must end the session.
+  try {
+    for (const s of sealed) {
+      await storageSet(vaultKey(s.entry.id), s.vault);
+      if (s.cosmosPay) await storageSet(cosmosPayKey(s.entry.id), s.cosmosPay);
+    }
+  } catch (err) {
+    throw new PasswordChangeCommitError(err);
+  }
+
+  // 5. Re-enrol whatever was on, under the new password. A dismissed prompt is not a
+  //    failure of the password change — the vault is already re-sealed — so it is reported
+  //    and the wallet simply stays off.
+  const deviceAuthDropped: { id: string; name: string }[] = [];
+  for (const entry of enrolled) {
+    let back = false;
+    try {
+      back = await deps.reenrolDeviceAuth(entry.id, newPassword);
+    } catch {
+      // The contract says it does not throw, and it does not — but its cleanup path touches
+      // storage, and storage can reject. An escape here would abort a change that has
+      // already committed, which is the one outcome step 4 exists to make impossible.
+      back = false;
+    }
+    if (!back) deviceAuthDropped.push({ id: entry.id, name: entry.name });
+  }
+  return { deviceAuthDropped };
 }
 
 /** Wipe every wallet from this device. */
 export async function destroyAll(): Promise<void> {
   for (const w of await listWallets()) {
     await storageRemove(vaultKey(w.id));
+    await disableDeviceAuth(w.id);
     await storageRemove(cosmosPayKey(w.id));
     await storageRemove(cosmosPayPendingKey(w.id));
   }

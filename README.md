@@ -125,9 +125,32 @@ guarantees), **opaque** flat icons for API < 26 and for previews that fall back 
 `ic_launcher_round`, and the splash ladder. A white-on-transparent flat icon is invisible against a
 light surface, and that is what "the icon did not get set" looks like.
 
+### Permissions
+
+Same problem as the launcher icon, sharper consequences: the generated manifest declares INTERNET
+and nothing else, so the camera the QR scanner opens is refused *without a prompt* — Android denies
+a runtime request for a permission the manifest never declared. `npm run native:perms`
+([scripts/native-permissions.ts](scripts/native-permissions.ts)) puts the declarations back, from
+the same `capacitor:sync:after` hook, and is a no-op when they are already there.
+
+| Declaration | Why |
+| --- | --- |
+| `android.permission.CAMERA` | `getUserMedia` in [src/features/extras/ScanQR.tsx](src/features/extras/ScanQR.tsx). Capacitor raises the runtime prompt itself; the manifest is what makes the prompt possible. |
+| `uses-feature camera`, `camera.autofocus`, `required="false"` | Play reads the CAMERA permission as *requiring* a camera and hides the listing from devices without one. The scanner has two fallbacks, so it does not require one. |
+| `<queries>` ACTION_IMAGE_CAPTURE | Package visibility, API 30+. Without it `<input capture>` in the KYC step resolves no camera app and silently becomes a gallery picker. |
+| `NSCameraUsageDescription`, `NSPhotoLibraryUsageDescription` | iOS, when `ios/` exists. A missing purpose string there is a crash, not a denial. |
+
+Nothing is granted at build time — the user is still asked, once, on first use. The scanner
+classifies a refusal ([src/lib/camera.ts](src/lib/camera.ts)) instead of blaming permissions for
+every failure: no camera on the device, one held by another app, and a WebView served over plain
+`http` (the `--live --lan` mode below, where `navigator.mediaDevices` does not exist) each say what
+actually happened.
+
 `@capacitor/android` and `@capacitor/ios` are **devDependencies**, next to `@capacitor/cli`: they
 ship no JavaScript into `dist/web/`, only Gradle and Xcode ever read them. `@capacitor/core` and the
-plugins (`app`, `clipboard`, `preferences`) stay in `dependencies` because their JS *is* bundled.
+plugins (`app`, `clipboard`, `preferences`, `share`) stay in `dependencies` because their JS *is*
+bundled — each behind a dynamic import taken only on a native platform, so the web and extension
+bundles do not carry them.
 
 `dev:android` ([scripts/cap-dev.ts](scripts/cap-dev.ts)) starts `astro dev --host`, points the
 WebView at `http://<LAN-IP>:4500` via `cap run --live-reload`, and deploys a debug build — so the
