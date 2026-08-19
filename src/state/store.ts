@@ -12,6 +12,7 @@ const walletLib = () => import('@/lib/wallet');
 import {
   addWallet as vaultAddWallet,
   changePassword,
+  PasswordChangeCommitError,
   clearPendingCosmosPay,
   getActiveEntry,
   getCosmosPay,
@@ -38,9 +39,10 @@ import {
   type WalletEntry,
 } from '@/lib/vault';
 import { storageGet, storageSet } from '@/lib/storage';
-import { attemptBlockMs, blockSeconds, noteAttemptFailure, noteAttemptSuccess } from '@/lib/attempts';
+import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
+import { WrongPasswordError } from '@/lib/crypto';
 import { assertSafeToSign, reviewTx } from '@/lib/txGuard';
-import { isSafeHorizonUrl } from '@/lib/validate';
+import { appPasswordOk, isSafeHorizonUrl } from '@/lib/validate';
 import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
 import { codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
 import { FIAT_DECIMALS, fromMinorUnits } from '@/lib/amount';
@@ -157,6 +159,19 @@ export interface SuccessInfo {
 export type PasswordCheck =
   | { ok: true }
   | { ok: false; reason: 'wrong' | 'throttled'; message: string };
+
+/**
+ * Outcome of an unlock attempt.
+ *
+ * The reason is not decoration. `unlockWithDevice` deletes the device enrolment when the
+ * password it recovered does not decrypt — that password came from the envelope, so it
+ * cannot be a typo — and it must NOT do that when the attempt was merely throttled or
+ * raced. A boolean could not tell those apart, and the wrong reading costs the user a
+ * working enrolment.
+ */
+export type UnlockResult =
+  | { ok: true }
+  | { ok: false; reason: 'wrong' | 'throttled' | 'busy' | 'other' };
 
 export type { Toast } from '@/state/useToast';
 
@@ -717,30 +732,66 @@ export function useWalletStore() {
   /* ----------------------------- unlock --------------------------- */
 
   /**
-   * Wrong-password backoff, shared by every path that turns a typed string into the seed.
+   * CLAIM one password attempt, for every path that turns a typed string into the seed.
    *
-   * Checked BEFORE the derivation, because after it the PBKDF2 run the backoff exists to
-   * deny has already been paid. Returns the message to show, or null when the attempt may
-   * proceed. See lib/attempts.ts for why the ladder is shaped the way it is.
+   * Not a read: it counts the guess as it checks the ladder, in one step, BEFORE the
+   * derivation. Checking first and counting afterwards left the ~250ms of PBKDF2 between
+   * the two, so every attempt launched inside that window read a clean record. Returns the
+   * message to show, or null when the attempt may proceed — a caller that gets null owes
+   * either `noteAttemptSuccess` or `forgetAttempt`. See lib/attempts.ts for the ladder.
    */
-  const attemptBlocked = useCallback(async (): Promise<string | null> => {
-    const ms = await attemptBlockMs();
+  const claimAttempt = useCallback(async (): Promise<string | null> => {
+    const ms = await beginAttempt();
     return ms > 0 ? t('pwd.tooManyAttempts', { secs: String(blockSeconds(ms)) }) : null;
   }, [t]);
 
+  /**
+   * Undo the reservation `claimAttempt` took, when the attempt was never really made.
+   *
+   * `beginAttempt` counts the guess UP FRONT — that is what closed the window where every
+   * attempt launched during one PBKDF2 run saw a clean record. The cost is that a failure
+   * which was not a wrong password (no wallet on the device, a storage fault, an
+   * unparseable vault blob) would otherwise walk the owner up the ladder while the screen
+   * blames something else entirely. Only `WrongPasswordError` — the GCM tag failing to
+   * verify — is a guess.
+   */
+  const forgetAttempt = useCallback(async (err: unknown) => {
+    if (!(err instanceof WrongPasswordError)) await releaseAttempt();
+  }, []);
+
+  /**
+   * Serialises unlock attempts within this document.
+   *
+   * A ref, not `busy`: `busy` is React state, so two Enter keydowns in the same frame both
+   * read the pre-update value and both start a derivation. Holding Enter down with key
+   * auto-repeat launched roughly eight per PBKDF2 window, and CPU contention made the
+   * window longer, which admitted more — a loop with no ceiling in code. The ladder in
+   * `lib/attempts.ts` now reserves before deriving, so those attempts would all be counted;
+   * this stops them being started at all, which is what keeps the phone responsive.
+   */
+  const unlockInFlight = useRef(false);
+
   const unlock = useCallback(
-    async (password: string) => {
+    async (password: string): Promise<UnlockResult> => {
+      if (unlockInFlight.current) return { ok: false, reason: 'busy' };
+      unlockInFlight.current = true;
       setBusy(true);
       try {
-        const blocked = await attemptBlocked();
-        if (blocked) throw new Error(blocked);
+        const blocked = await claimAttempt();
+        if (blocked) {
+          flash(blocked, 'err');
+          return { ok: false, reason: 'throttled' };
+        }
         const active = await getActiveEntry();
-        if (!active) throw new Error('No hay ninguna wallet guardada en este dispositivo.');
-        // The entry exists and its box is present, so a throw from here is an authentication
-        // failure rather than a missing wallet — which is what makes it countable without
-        // matching on an error message.
+        if (!active) {
+          await releaseAttempt(); // nothing was guessed — see forgetAttempt
+          throw new Error('No hay ninguna wallet guardada en este dispositivo.');
+        }
+        // `getActiveEntry` checks neither that the vault blob exists nor that it parses —
+        // it falls back to `list[0]`. So a throw here is NOT necessarily a wrong password,
+        // and `forgetAttempt` is what keeps a corrupt blob from counting as a guess.
         const secret = await unlockWallet(active.id, password).catch(async (err: unknown) => {
-          await noteAttemptFailure();
+          await forgetAttempt(err);
           throw err;
         });
         await noteAttemptSuccess();
@@ -751,15 +802,20 @@ export function useWalletStore() {
         setCosmosPayPending(await getPendingCosmosPay(active.id));
         setTab('home');
         setScreen('home');
-        return true;
+        return { ok: true };
       } catch (e) {
         flash((e as Error).message, 'err');
-        return false;
+        // The reason travels back because `unlockWithDevice` acts on it: a password the
+        // envelope produced and that does not decrypt means the enrolment is stale, but a
+        // THROTTLED attempt says nothing about the envelope, and treating the two alike
+        // would delete a working enrolment over a backoff the user triggered by typing.
+        return { ok: false, reason: e instanceof WrongPasswordError ? 'wrong' : 'other' };
       } finally {
+        unlockInFlight.current = false;
         setBusy(false);
       }
     },
-    [flash, attemptBlocked],
+    [flash, claimAttempt, forgetAttempt],
   );
 
   /**
@@ -1000,6 +1056,11 @@ export function useWalletStore() {
   const addAssetTrustline = useCallback(
     async (code: string, issuer: string) => {
       if (!session) return false;
+      // Captured before the gate for the same reason the money flows do it: the gate can
+      // now be answered by an OS biometric sheet, which generates no input events and can
+      // stay open past the 5-minute idle auto-lock. Without this, `session.secret` was used
+      // out of a closure belonging to a session that had already ended.
+      const epoch = sessionEpochRef.current;
       const okSig = await requestSignature({
         title: t('confirmSig.trustTitle'),
         message: t('confirmSig.trustMsg', { code: code.trim() }),
@@ -1007,6 +1068,7 @@ export function useWalletStore() {
       if (!okSig) return false;
       setBusy(true);
       try {
+        guardSession(epoch);
         await stellarAddTrustline({ cfg: network, secret: session.secret, code: code.trim(), issuer: issuer.trim() });
         await refresh(true);
         flash(t('toast.assetAdded', { code: code.trim() }), 'ok');
@@ -1018,7 +1080,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [session, network, refresh, requestSignature, t, flash],
+    [session, network, refresh, requestSignature, guardSession, t, flash],
   );
 
   /* ----------------------------- money ---------------------------- */
@@ -1109,6 +1171,7 @@ export function useWalletStore() {
       return;
     }
     // Signing the registration needs the secret, so always password-gate it.
+    const epoch = sessionEpochRef.current;
     const ok = await requestSignature({
       title: t('cosmospay.enableTitle'),
       message: t('cosmospay.enableConfirm'),
@@ -1116,6 +1179,7 @@ export function useWalletStore() {
     if (!ok) return;
     setBusy(true);
     try {
+      guardSession(epoch);
       const res = await registerCosmosAccount({
         email: meta.email,
         name: meta.name,
@@ -1143,7 +1207,7 @@ export function useWalletStore() {
     } finally {
       setBusy(false);
     }
-  }, [session, meta, requestSignature, t, flash]);
+  }, [session, meta, requestSignature, guardSession, t, flash]);
 
   /**
    * Re-send the confirmation email: drops the stale pending registration (e.g. it
@@ -1166,12 +1230,19 @@ export function useWalletStore() {
     async (silent = false) => {
       if (!session || !meta || !cosmosPayPending) return;
       const pending = cosmosPayPending;
+      // A background poller drives this every few seconds, so its closure routinely
+      // outlives the session it captured — and it re-seals the CosmosPay bearer key with
+      // `session.password`. After a password change that string is superseded: the write
+      // would succeed, `getCosmosPay` would swallow the decrypt failure as "none", and the
+      // wallet would show receiving as enabled with a credential nothing can open.
+      const epoch = sessionEpochRef.current;
       if (!silent) setBusy(true);
       try {
         const res = await claimCosmosAccount({
           stellarAddress: pending.stellarAddress,
           claimToken: pending.claimToken,
         });
+        guardSession(epoch);
         if (res.status === 'ready') {
           const account: CosmosPayAccount = {
             keys: res.keys,
@@ -1202,7 +1273,7 @@ export function useWalletStore() {
         if (!silent) setBusy(false);
       }
     },
-    [session, meta, cosmosPayPending, t, flash],
+    [session, meta, cosmosPayPending, guardSession, t, flash],
   );
 
   /**
@@ -1212,6 +1283,7 @@ export function useWalletStore() {
    */
   const linkReceiving = useCallback(async () => {
     if (!session || !meta || !meta.email) return;
+    const epoch = sessionEpochRef.current;
     const ok = await requestSignature({
       title: t('cosmospay.linkTitle'),
       message: t('cosmospay.linkConfirm'),
@@ -1219,6 +1291,7 @@ export function useWalletStore() {
     if (!ok) return;
     setBusy(true);
     try {
+      guardSession(epoch);
       const res = await linkCosmosAccount({
         email: meta.email,
         name: meta.name,
@@ -1242,7 +1315,7 @@ export function useWalletStore() {
     } finally {
       setBusy(false);
     }
-  }, [session, meta, requestSignature, t, flash]);
+  }, [session, meta, requestSignature, guardSession, t, flash]);
 
   /**
    * Verify the emailed access code. On success, store the linked account's API key sealed
@@ -1993,17 +2066,19 @@ export function useWalletStore() {
    */
   const checkPassword = useCallback(
     async (pwd: string): Promise<PasswordCheck> => {
-      const blocked = await attemptBlocked();
+      const blocked = await claimAttempt();
       if (blocked) return { ok: false, reason: 'throttled', message: blocked };
       const ok = await verifyPassword(pwd);
       if (ok) {
         await noteAttemptSuccess();
         return { ok: true };
       }
-      await noteAttemptFailure();
+      // The guess is already counted — `claimAttempt` reserves it before the derivation.
+      // `verifyPassword` folds every cause into `false`, so there is nothing to unwind
+      // here; a device with no active wallet cannot reach this prompt.
       return { ok: false, reason: 'wrong', message: t('confirmSig.wrongPwd') };
     },
-    [attemptBlocked, t],
+    [claimAttempt, t],
   );
 
   /* ---------------- unlocking with the phone's own lock ---------------- */
@@ -2038,7 +2113,18 @@ export function useWalletStore() {
       flashDeviceAuth(res.failure, res.detail);
       return false;
     }
-    return unlock(res.password);
+    const out = await unlock(res.password);
+    if (!out.ok && out.reason === 'wrong') {
+      // A password the ENVELOPE produced cannot be a typo. It failing to decrypt means the
+      // envelope and the vault are out of step — a password change interrupted before the
+      // re-enrolment, or storage restored from another device — and nothing about that
+      // improves on the next attempt. Left standing, the button walks the owner up the
+      // failed-attempt ladder with their own fingerprint until they are locked out for
+      // five minutes, with "wrong password" as the only explanation.
+      await deviceAuthPrivileged.disableDeviceUnlock();
+      flashDeviceAuth('stale');
+    }
+    return out.ok;
   }, [deviceAuthPrivileged, flashDeviceAuth, unlock]);
 
   /**
@@ -2065,8 +2151,16 @@ export function useWalletStore() {
         flashDeviceAuth(res.failure, res.detail);
         return false;
       }
-      if (!(await verifyPassword(res.password))) {
-        flashDeviceAuth('stale');
+      // Through `checkPassword`, not a bare `verifyPassword`: this runs the same 210k
+      // derivation as every other password path, so leaving it outside the ladder made it
+      // the cheap one — and, because it never called `noteAttemptSuccess`, a correct
+      // biometric confirmation did not clear a backoff the user had earned by mistyping.
+      const check = await checkPassword(res.password);
+      if (!check.ok) {
+        // A stale envelope, not a wrong password: the string came from the envelope, not
+        // from a keyboard. Throttling is reported as itself.
+        if (check.reason === 'throttled') flash(check.message, 'err');
+        else flashDeviceAuth('stale');
         return false;
       }
       if (epoch !== sessionEpochRef.current) {
@@ -2077,7 +2171,7 @@ export function useWalletStore() {
       }
       return resolveConfirm(true, reqId);
     },
-    [deviceAuthPrivileged, flashDeviceAuth, resolveConfirm, flash, t],
+    [deviceAuthPrivileged, flashDeviceAuth, checkPassword, resolveConfirm, flash, t],
   );
 
   /**
@@ -2114,8 +2208,24 @@ export function useWalletStore() {
       return;
     }
     const failed = await deviceAuthPrivileged.enableDeviceUnlock(session.password);
-    if (failed) flashDeviceAuth(failed.failure, failed.detail);
-    else flash(t('devAuth.enabled', { method }), 'ok');
+    if (failed) {
+      flashDeviceAuth(failed.failure, failed.detail);
+      return;
+    }
+    // AND AGAIN, AFTER. The check above is not the one that matters: the OS sheet lives
+    // INSIDE `enableDeviceUnlock`, and the envelope is committed after it. A biometric
+    // sheet generates none of the pointer/key events the idle timer watches, so the
+    // 5-minute auto-lock fires underneath it and paints the unlock screen behind the sheet
+    // — after which whoever is holding the phone presents THEIR finger and the app password
+    // is sealed under a Keystore key bound to it. That is a permanent second door that
+    // survives every later lock. Undoing the enrolment is the only correct answer, because
+    // by this point it already exists.
+    if (epoch !== sessionEpochRef.current) {
+      await deviceAuthPrivileged.disableDeviceUnlock();
+      flash(t('unlock.autoLocked'), 'err');
+      return;
+    }
+    flash(t('devAuth.enabled', { method }), 'ok');
   }, [session, requestSignature, deviceAuthPublic, deviceAuthPrivileged, flash, flashDeviceAuth, t]);
 
   /* --------------------------- navigation ------------------------- */
@@ -2197,8 +2307,17 @@ export function useWalletStore() {
       );
       if (ok && epoch === sessionEpochRef.current) {
         const failed = await deviceAuthPrivileged.enableDeviceUnlock(session.password);
-        if (failed) flashDeviceAuth(failed.failure, failed.detail);
-        else flash(t('devAuth.enabled', { method }), 'ok');
+        if (failed) {
+          flashDeviceAuth(failed.failure, failed.detail);
+        } else if (epoch !== sessionEpochRef.current) {
+          // Same window as `toggleDeviceAuth`: the OS sheet is inside `enableDeviceUnlock`
+          // and the envelope commits after it, so the auto-lock can fire while the sheet is
+          // up and a stranger's finger completes the enrolment. Undo it.
+          await deviceAuthPrivileged.disableDeviceUnlock();
+          flash(t('unlock.autoLocked'), 'err');
+        } else {
+          flash(t('devAuth.enabled', { method }), 'ok');
+        }
       }
     }
     go('home', 'home');
@@ -2233,6 +2352,14 @@ export function useWalletStore() {
    */
   const changeAppPassword = useCallback(
     async (current: string, next: string): Promise<boolean> => {
+      // Re-checked here, not only in the form. The screen's own rule was length-only while
+      // onboarding demanded 8 + upper + lower + digit, so a wallet created under the strict
+      // rule could be re-sealed under `aaaaaaaa` — along with every device-lock envelope.
+      // A disabled button is a hint; this is the enforcement point.
+      if (!appPasswordOk(next)) {
+        flash(t('pwd.weak'), 'err');
+        return false;
+      }
       const ok = await requestSignature(
         { title: t('settings.changePwd'), message: t('settings.changePwdConfirm') },
         true,
@@ -2247,7 +2374,7 @@ export function useWalletStore() {
           // function. Every enrolled wallet raises its own prompt — they are separate
           // Keystore entries, and there is no batch form.
           const { deviceAuthDropped } = await changePassword(current, next, {
-            rewrapDeviceAuth: deviceAuthPrivileged.rewrapForPasswordChange,
+            reenrolDeviceAuth: deviceAuthPrivileged.reenrolForPasswordChange,
           });
           if (deviceAuthDropped.length) {
             flash(t('devAuth.droppedOnPwdChange', { names: deviceAuthDropped.map((w) => w.name).join(', ') }), 'info');
@@ -2260,6 +2387,14 @@ export function useWalletStore() {
           return true;
         } catch (e) {
           flash((e as Error).message, 'err');
+          // A failure PAST the commit is not recoverable and not survivable by this
+          // session: some wallets are on the new password and `session.password` is true of
+          // neither set. Carrying on would let `switchWallet` open a wallet with the wrong
+          // string, `saveCosmosPay` re-seal a bearer key under it, and a device enrolment
+          // capture it. `lock()` bumps the epoch, so every closure still holding this
+          // session fails closed; the user signs back in with whichever password works.
+          // A failure BEFORE the commit left the device untouched, so the session stands.
+          if (e instanceof PasswordChangeCommitError) lock();
           return false;
         }
       });
@@ -2337,7 +2472,7 @@ export function useWalletStore() {
   const revealBackup = useCallback(
     async (password: string): Promise<{ secret: string; mnemonic: string | null } | null> => {
       if (!meta) return null;
-      const blocked = await attemptBlocked();
+      const blocked = await claimAttempt();
       if (blocked) {
         flash(blocked, 'err');
         return null;
@@ -2346,12 +2481,14 @@ export function useWalletStore() {
         const v = await unlockWallet(meta.id, password);
         await noteAttemptSuccess();
         return { secret: v.secret, mnemonic: v.mnemonic };
-      } catch {
-        await noteAttemptFailure();
+      } catch (err) {
+        // Counted by `claimAttempt` before the derivation; released again when the throw
+        // was a missing or corrupt vault rather than a wrong guess.
+        await forgetAttempt(err);
         return null;
       }
     },
-    [meta, attemptBlocked, flash],
+    [meta, claimAttempt, forgetAttempt, flash],
   );
 
   /** What a dynamic `back` entry in the screen table may depend on. */
@@ -2371,6 +2508,14 @@ export function useWalletStore() {
    * on native — see WalletApp's hardware-button handler).
    */
   const goBack = useCallback((): boolean => {
+    // Leaving the success card or the offer screen SPENDS the one-time enrolment offer,
+    // however it is left. `leaveSuccess` cleared it, but the hardware back button does not
+    // go through `leaveSuccess` — both screens are terminal with `back: 'home'`, so this
+    // function resolves them straight to home and the flag stayed standing for the rest of
+    // the session. Every later success — a payment, a swap, an off-ramp — then routed back
+    // into the enrolment screen, which is how a security prompt ends up appearing after an
+    // unrelated transfer on a phone that may have changed hands.
+    if (screen === 'success' || screen === 'device-auth') setDeviceAuthOffer(false);
     const popped = stackRef.current.pop();
     if (popped) {
       setScreen(popped);

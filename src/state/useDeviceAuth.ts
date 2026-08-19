@@ -22,13 +22,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   deviceAuthAvailability,
   deviceAuthEnabled,
+  deviceAuthFailure,
   deviceAuthKindKey,
   deviceAuthPassword,
   deviceAuthDetail,
   deviceAuthPossible,
   disableDeviceAuth,
   enableDeviceAuth,
-  rewrapDeviceAuth,
+  reenrolDeviceAuth,
   type DeviceAuthAvailability,
   type DeviceAuthFailure,
   type DeviceAuthKind,
@@ -117,6 +118,21 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
     setEnabled(on);
   }, [walletId]);
 
+  /**
+   * Assume NOT enrolled the moment the wallet changes, then let the probe say otherwise.
+   *
+   * The generation counter stops a stale probe writing wallet A's answer onto wallet B, but
+   * it cannot un-render the frames in between: `refreshDeviceAuth` runs in an effect, after
+   * the render that already carries the new id and the OLD flag. Picking a different wallet
+   * on the lock screen therefore painted "unlock with your fingerprint" for a wallet that
+   * never enrolled — verbatim the symptom this slice exists to prevent, narrowed to a few
+   * frames rather than removed. Tapping it only ever failed 'stale', so nothing crossed
+   * wallets; the button was still a lie.
+   */
+  useEffect(() => {
+    setEnabled(false);
+  }, [walletId]);
+
   // Re-runs on a wallet switch, which is the whole point of keying this per id.
   useEffect(() => {
     void refreshDeviceAuth();
@@ -135,10 +151,19 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
       try {
         return { ok: true, password: await deviceAuthPassword(walletId, promptFor(purpose, t)) };
       } catch (err) {
-        const failure = (err as { failure?: DeviceAuthFailure }).failure ?? 'failed';
+        // `deviceAuthFailure`, not a property read: the Capacitor bridge can reject with
+        // `null`, and `(null as {failure?}).failure` throws a TypeError from inside this
+        // catch — turning a classified failure into an unhandled rejection on the one path
+        // whose whole job is to classify failures.
+        const failure = deviceAuthFailure(err);
         // 'stale' means lib/ already dropped the enrolment; mirror that here so the
-        // button disappears instead of inviting a second doomed attempt.
-        if (failure === 'stale') setEnabled(false);
+        // button disappears instead of inviting a second doomed attempt. The generation
+        // is bumped too: a probe still in flight would otherwise land afterwards and set
+        // `enabled` back to true for an enrolment that no longer exists.
+        if (failure === 'stale') {
+          genRef.current += 1;
+          setEnabled(false);
+        }
         return { ok: false, failure, detail: deviceAuthDetail(err) };
       }
     },
@@ -159,7 +184,7 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
         return null;
       } catch (err) {
         setEnabled(false);
-        return { failure: (err as { failure?: DeviceAuthFailure }).failure ?? 'failed', detail: deviceAuthDetail(err) };
+        return { failure: deviceAuthFailure(err), detail: deviceAuthDetail(err) };
       }
     },
     [walletId, t, refreshDeviceAuth],
@@ -172,15 +197,15 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
   }, [walletId]);
 
   /**
-   * Re-seal one wallet's enrolment under a new password, for `changePassword` to inject.
+   * Re-enrol one wallet under a new password, for `changePassword` to inject.
    *
    * Takes an explicit `walletId` rather than closing over this slice's: a password change
-   * re-seals EVERY wallet, not only the active one. It lives here so the prompt copy stays
+   * touches EVERY wallet, not only the active one. It lives here so the prompt copy stays
    * in `state/` — `lib/vault.ts` still imports the prompt-free `disableDeviceAuth`, but
    * nothing that raises a sheet or needs a translated string.
    */
-  const rewrapForPasswordChange = useCallback(
-    (id: string, newPassword: string) => rewrapDeviceAuth(id, newPassword, promptFor('rewrap', t)),
+  const reenrolForPasswordChange = useCallback(
+    (id: string, newPassword: string) => reenrolDeviceAuth(id, newPassword, promptFor('rewrap', t)),
     [t],
   );
 
@@ -205,8 +230,8 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
   );
 
   const deviceAuthPrivileged = useMemo(
-    () => ({ deviceAuthUnlock, enableDeviceUnlock, disableDeviceUnlock, rewrapForPasswordChange }),
-    [deviceAuthUnlock, enableDeviceUnlock, disableDeviceUnlock, rewrapForPasswordChange],
+    () => ({ deviceAuthUnlock, enableDeviceUnlock, disableDeviceUnlock, reenrolForPasswordChange }),
+    [deviceAuthUnlock, enableDeviceUnlock, disableDeviceUnlock, reenrolForPasswordChange],
   );
 
   return { deviceAuthPublic, deviceAuthPrivileged };

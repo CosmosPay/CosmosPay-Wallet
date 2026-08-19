@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { Spinner } from '@/ui/Spinner';
 import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
@@ -13,21 +13,29 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [deviceBusy, setDeviceBusy] = useState(false);
+  /** Synchronous re-entry guard — see `submit`. */
+  const inFlight = useRef(false);
 
   useEffect(() => {
     setPwd('');
     setErr('');
     setBusy(false);
     setDeviceBusy(false);
+    inFlight.current = false;
   }, [req]);
 
   if (!req) return null;
 
   const submit = async () => {
-    if (!pwd || busy) return;
+    // A ref, checked first: `busy` is React state, so two Enter keydowns in the same frame
+    // both read `false` and both start a 210k-iteration derivation — each one a password
+    // attempt against the ladder. The state flag stays for the disabled button.
+    if (!pwd || busy || inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setErr('');
     const res = await store.checkPassword(pwd);
+    inFlight.current = false;
     setBusy(false);
     if (res.ok) {
       // Answered by id: the check above is ~200ms of PBKDF2, and an auto-lock in that

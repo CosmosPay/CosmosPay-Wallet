@@ -61,6 +61,23 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
   );
 }
 
+/**
+ * The GCM tag did not verify: a wrong password, or a tampered box.
+ *
+ * A class rather than a bare `Error`, because the failed-password ladder
+ * (`lib/attempts.ts`) must count THIS and nothing else. `unlockWallet` also throws when
+ * the vault blob is missing or unparseable, and callers used to treat any throw as a wrong
+ * guess — so a scrambled storage entry walked the owner up to a five-minute lockout while
+ * the screen said "wallet not found". Matching on the message was never an option: it is
+ * Spanish user-facing copy, one translation away from disabling the counter.
+ */
+export class WrongPasswordError extends Error {
+  constructor(message = 'Contraseña incorrecta.') {
+    super(message);
+    this.name = 'WrongPasswordError';
+  }
+}
+
 export interface SealedBox {
   v: 1;
   salt: string; // base64
@@ -100,6 +117,6 @@ export async function open(box: SealedBox, password: string): Promise<string> {
     return dec.decode(plain);
   } catch {
     // GCM auth tag mismatch => wrong password (or tampered data)
-    throw new Error('Contraseña incorrecta.');
+    throw new WrongPasswordError();
   }
 }

@@ -206,29 +206,45 @@ Two more that fall out of the same principle:
 `src/lib/deviceAuth.ts` seals the app password under a random 32-byte key and puts only that
 key in the OS secure store. Four rules, each one a hole it shipped with:
 
-- **The wrapping key is stored bound, or not at all.** Enrolment tries `accessControl`
-  `BIOMETRY_CURRENT_SET`, falls back to `BIOMETRY_ANY`, and then **refuses**. Both of those
-  keep `setUserAuthenticationRequired(true)` and a real `CryptoObject`; `NONE` — the rung it
-  used to fall to — keeps neither, skips `setUnlockedDeviceRequired` on API 31-34, and on
-  iOS is written with no `kSecAttrAccessible` at all, so it rides an encrypted backup onto
-  another device. A phone that cannot bind the key does not get the feature; it keeps its
-  password, which works everywhere. There is deliberately no `verifyIdentity()` call in the
-  module: a check that is not the same operation as the read is a check the read can skip.
+- **The wrapping key is stored bound, or not at all.** Enrolment writes `accessControl`
+  `BIOMETRY_ANY` — **one rung** — and otherwise **refuses**. That rung keeps
+  `setUserAuthenticationRequired(true)` and a real `CryptoObject`; `NONE`, the rung it used
+  to fall to, keeps neither, skips `setUnlockedDeviceRequired` on API 31-34, and on iOS is
+  written with no `kSecAttrAccessible` at all, so it rides an encrypted backup onto another
+  device. **Do not add a `BIOMETRY_CURRENT_SET` rung**: the plugin's read path hardcodes
+  `getOrCreateCredentialKey(server, 0)` and never forwards `accessControl`, so a key written
+  that way can never be read back — see the 25 lines on `DeviceAuthBinding` before touching
+  it. A phone that cannot bind the key does not get the feature; it keeps its password,
+  which works everywhere. There is deliberately no `verifyIdentity()` call in the module: a
+  check that is not the same operation as the read is a check the read can skip.
 - **A prompt is answered by id, never by position.** `requestSignature` mints an id,
   `confirmReq` carries it, and `resolveConfirm(ok, id)` discards an answer that does not
   match the head of the queue. An OS sheet can stay open for minutes without generating an
   input event, so the idle auto-lock fires underneath it and `cancelPending()` empties the
   queue — after which a late "yes" used to grant whatever request had arrived since.
-- **Anything that changes how the wallet opens is `force`-gated and captures the epoch.**
-  That is `toggleDeviceAuth`, `acceptDeviceAuthOffer`, `changeAppPassword` and `signRawXdr`
-  — the last because `reviewTx` checks only the source account, so the human confirmation is
-  the only thing standing between a pasted envelope and `setOptions`.
-- **Every path that turns a typed string into the seed is throttled** (`src/lib/attempts.ts`),
-  checked *before* the derivation. `revealBackup` returns the mnemonic on a correct guess, and
-  210k PBKDF2 iterations is not a rate limit.
+- **Anything that changes how the wallet opens is `force`-gated.** That is
+  `toggleDeviceAuth`, `acceptDeviceAuthOffer`, `changeAppPassword` and `signRawXdr` — the
+  last because `reviewTx` checks only the source account, so the human confirmation is the
+  only thing standing between a pasted envelope and `setOptions`. The two enrolment paths
+  also check the epoch **on both sides of `enableDeviceUnlock`, and undo the enrolment if it
+  moved.** Checking only before is what the code did and it guarded nothing: the OS sheet
+  lives *inside* that call and the envelope commits *after* it, so the idle auto-lock fires
+  under the open sheet and a stranger's finger completes the enrolment — a permanent second
+  door that survives every later lock. `changeAppPassword` needs no epoch (both passwords
+  are typed, not closed over) but must call `lock()` on a `PasswordChangeCommitError`.
+- **Every path that turns a typed string into the seed reserves an attempt first**
+  (`src/lib/attempts.ts`). `beginAttempt` counts the guess and checks the ladder as ONE step,
+  on one serialised chain, *before* the derivation. Checking first and counting afterwards
+  put ~250ms of PBKDF2 between the two, so every attempt launched inside that window saw a
+  clean record and the ladder counted rounds instead of guesses. The paths are `unlock`,
+  `checkPassword`, `revealBackup` — which returns the mnemonic on a correct guess — and
+  `ApprovePopup`, which is the one a dapp can raise and was the one left out.
 
-`changePassword` re-seals every wallet, so it opens and seals all of them in memory before
-committing any, and then calls `lock()`. Do not patch `session.password` instead: a partially
+`changePassword` opens and re-seals every wallet in memory before committing any, drops each
+device-lock enrolment **before** the commit and re-creates it after, and the caller then
+calls `lock()`. Do not re-order those: an enrolment re-wrapped *after* the vault moves holds
+the old password if anything interrupts the pass, and the user meets "wrong password" coming
+from their own fingerprint. Do not patch `session.password` instead of locking: a partially
 applied change would make the store assert a password true of some wallets and not others.
 
 ## Validation lives in `src/lib/`, never in a component

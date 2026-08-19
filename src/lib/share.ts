@@ -18,9 +18,13 @@ export async function shareText(text: string, title?: string): Promise<boolean> 
     try {
       const { Share } = await import('@capacitor/share');
       await Share.share({ title, text });
-    } catch {
-      // Dismissing the sheet rejects ("Share canceled") rather than resolving. Reporting that
-      // as a failure would copy behind the user's back; it was handled, they said no.
+    } catch (err) {
+      // A DISMISSED sheet was handled — the user said no, and copying behind their back
+      // would be worse than doing nothing. Anything else means no sheet ever appeared (no
+      // Activity to receive the intent, a permission refusal), and reporting that as
+      // "handled" is what made the button do nothing at all: the caller skipped its
+      // clipboard fallback because this said the share had happened.
+      if (!wasCancelled(err)) return false;
     }
     return true;
   }
@@ -29,9 +33,23 @@ export async function shareText(text: string, title?: string): Promise<boolean> 
       await navigator.share(title ? { title, text } : { text });
       return true;
     }
-  } catch {
+  } catch (err) {
     // A cancelled Web Share rejects with AbortError; same reasoning as above.
-    return true;
+    return wasCancelled(err);
   }
   return false;
+}
+
+/**
+ * Did the user dismiss the sheet, as opposed to the sheet never opening?
+ *
+ * `AbortError` is the standard name for a dismissed Web Share and is what Capacitor's iOS
+ * bridge forwards. Android's plugin has no code for it and rejects with the message
+ * "Share canceled", so the string is checked as a fallback only — never as the primary
+ * signal, and never for anything the caller branches on beyond this one boolean.
+ */
+function wasCancelled(err: unknown): boolean {
+  const e = err as { name?: unknown; message?: unknown } | null;
+  if (e?.name === 'AbortError') return true;
+  return typeof e?.message === 'string' && /cancel/i.test(e.message);
 }

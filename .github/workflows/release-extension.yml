@@ -53,6 +53,15 @@ jobs:
       - name: Typecheck
         run: npm run check
 
+      # The pure modules: the AES-GCM/PBKDF2 vault, the signing guard, the response
+      # contracts, the failed-password ladder, the screen table, the i18n key coverage.
+      # This job's header called itself "the full test suite" while skipping the only
+      # suite that covers the crypto — so a release could ship with the vault broken and
+      # every gate green, because e2e and responsive both pass on a wallet that cannot
+      # decrypt anything it did not just create.
+      - name: Unit tests
+        run: npm run test:unit
+
       # Zero-tolerance on *shipped* deps: --omit=dev audits only runtime deps (what
       # actually ends up in the extension) and --audit-level=low fails on ANY advisory
       # of low severity or higher — not even low-risk vulnerabilities are allowed.

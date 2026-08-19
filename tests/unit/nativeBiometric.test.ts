@@ -22,13 +22,11 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+/** The installed package. Its presence is what turns "file missing" into a failure. */
+const PLUGIN_ROOT = join(import.meta.dirname, '..', '..', 'node_modules', '@capgo', 'capacitor-native-biometric');
+
 const PLUGIN_JAVA = join(
-  import.meta.dirname,
-  '..',
-  '..',
-  'node_modules',
-  '@capgo',
-  'capacitor-native-biometric',
+  PLUGIN_ROOT,
   'android',
   'src',
   'main',
@@ -50,10 +48,18 @@ const FILES = ['AuthActivity.java', 'BiometricAuthenticatorConfig.java'];
 for (const file of FILES) {
   test(`${file} declares the real KeyProperties auth-type values`, () => {
     const path = join(PLUGIN_JAVA, file);
-    // Not an error: the plugin is an optional native dependency and a checkout that never
-    // installed it has nothing to guard. `npm ci` in CI does install it, which is where this
-    // assertion has to hold.
-    if (!existsSync(path)) return;
+    // A checkout that never installed the plugin has nothing to guard, and that is the ONLY
+    // excuse accepted. It used to be `if (!existsSync(path)) return` on its own, which
+    // node:test records as a pass — so a plugin that restructured its package, or started
+    // shipping a prebuilt AAR, made the patch a silent no-op AND this test a vacuous green,
+    // and the key binding reverted to demanding a device credential while the prompt asked
+    // for a fingerprint. Anchoring on the package instead means "the plugin is installed but
+    // the file moved" is now a failure, which is the case that actually happens.
+    if (!existsSync(PLUGIN_ROOT)) return;
+    assert.ok(
+      existsSync(path),
+      `${file} is missing while ${PLUGIN_ROOT} is installed — the plugin changed shape, so scripts/patch-native-biometric.ts patched nothing. Re-check the Keystore auth-type flags by hand before trusting biometric unlock.`,
+    );
 
     const src = readFileSync(path, 'utf8');
     for (const [name, value] of Object.entries(EXPECTED)) {

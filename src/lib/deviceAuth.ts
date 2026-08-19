@@ -42,10 +42,17 @@
  * works everywhere. `deviceAuthAvailability()` reports `'noStrongBiometry'` and the
  * Settings row says so.
  *
- * Nothing here runs off the phone. `deviceAuthPossible()` gates every entry point, so
- * the MV3 popup and the web build never take the dynamic import and never ship the
- * plugin — an extension has no lock-screen hardware to reach.
+ * Nothing here runs off the phone. `deviceAuthPossible()` gates every entry point, so the
+ * MV3 popup and the web build never take the dynamic import.
+ *
+ * They DO ship the chunk, though — one `astro build` produces all three targets and there
+ * is no `rollup.external`, so the plugin's web stub sits in `dist/web` and
+ * `dist/extension` unreferenced. It is not inert if anything ever reaches it: it reports
+ * `strongBiometryIsAvailable: true` unconditionally and implements the secure store as a
+ * `Map`, with no prompt anywhere. That is why `deviceAuthPossible()` asks
+ * `Capacitor.getPlatform()` rather than only inferring the build kind from the URL.
  */
+import { Capacitor } from '@capacitor/core';
 import { open, seal, toBase64, type SealedBox } from '@/lib/crypto';
 import { buildKind } from '@/lib/platform';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
@@ -204,6 +211,22 @@ const UNAVAILABLE: DeviceAuthAvailability = { available: false, kind: 'generic',
  * decide whether to render anything.
  */
 export function deviceAuthPossible(): boolean {
+  // Both checks, and `getPlatform()` is the load-bearing one. `buildKind()` decides by
+  // reading `window.location.protocol` and a `window.Capacitor` shape, which is inference
+  // from things a document can present; `Capacitor.getPlatform()` is the runtime's own
+  // answer. It matters more here than anywhere else the helper is used, because the
+  // plugin's WEB STUB ships in the same bundle as the extension and the web page — one
+  // `astro build` produces all three, and there is no `rollup.external` — and that stub
+  // answers `isAvailable()` with `strongBiometryIsAvailable: true` unconditionally while
+  // `setData`/`getSecureData` are a bare `Map` with no prompt. Anything that reached it
+  // would happily write a sealed copy of the app password into localStorage and call it
+  // protected. This gate is the only thing between the two.
+  try {
+    const platform = Capacitor.getPlatform();
+    if (platform !== 'android' && platform !== 'ios') return false;
+  } catch {
+    return false;
+  }
   return buildKind() === 'app';
 }
 
@@ -388,8 +411,10 @@ function readEnvelope(raw: string | null): AuthEnvelope | null {
     if (parsed?.v !== 1 || !parsed.box) return null;
     // An allowlist, not a rejection list: an envelope whose binding this build does not
     // write is one whose key it may not be able to open, and "the feature is off" is the
-    // only safe reading of that. `REJECTED_BINDINGS` exists to document the values that
-    // have actually shipped, not to do the filtering.
+    // only safe reading of that. The two values that have shipped and are refused here are
+    // named in `DeviceAuthBinding` — `'currentSet'` and `'passcode'` — as prose, because a
+    // constant listing them would invite filtering AGAINST it, which is the rejection list
+    // this comment exists to rule out.
     if (parsed.binding !== 'anyBiometry') return null;
     return parsed;
   } catch {
@@ -428,14 +453,18 @@ function randomWrapKey(): string {
  * `verifyIdentity()` call anywhere in this module. A prompt that is not the same operation
  * as the read is a prompt the read does not need.
  *
- * DELETE FIRST, ALWAYS. The plugin's `getOrCreateCredentialKey` reuses an existing Keystore
- * alias whenever the stored `authValidityDuration` matches the requested one — it never
- * compares `accessControl`. Since every call here passes 0, a second attempt at a different
- * rung silently reused the key built for the first, so the `BIOMETRY_CURRENT_SET` ->
- * `BIOMETRY_ANY` fallback re-ran the identical operation and failed identically. The whole
- * point of the fallback is to get a key WITHOUT `setInvalidatedByBiometricEnrollment`, and
- * that only happens if the old alias is gone. `deleteData` removes the alias as well as the
- * stored blob, which is exactly what forces a fresh `buildCredentialKey`.
+ * DELETE FIRST, ALWAYS — and it is re-enrolment that needs it, not enrolment. The plugin's
+ * `getOrCreateCredentialKey` reuses an existing Keystore alias whenever the stored
+ * `authValidityDuration` matches the requested one, and never compares `accessControl`.
+ * Every call here passes 0, so without the delete a second enrolment for the same wallet
+ * silently keeps the FIRST key and `setData` writes the new wrapping key under it. That is
+ * the path a password change takes. `deleteData` removes the alias as well as the stored
+ * blob, forcing a fresh `buildCredentialKey`.
+ *
+ * The cost of deleting first is that the previous enrolment is gone before the replacement
+ * exists — so a refusal here leaves the wallet with no key, which is why `enableDeviceAuth`
+ * removes the envelope on its way out. Fail closed in that direction on purpose: the
+ * alternative is an envelope whose key belongs to a superseded password.
  */
 async function storeBound(
   plugin: Plugin,
@@ -444,8 +473,7 @@ async function storeBound(
   accessControl: number,
   prompt: DeviceAuthPrompt,
 ): Promise<void> {
-  // Nothing here is enrolled yet — the envelope is written only after this resolves — so
-  // there is no working state to lose, and a missing alias is not an error.
+  // A missing alias is not an error — on a first enrolment there is nothing to remove.
   await plugin.deleteData({ key: secureKey(walletId) }).catch(() => {});
   await plugin.setData({
     key: secureKey(walletId),
@@ -499,10 +527,18 @@ export async function enableDeviceAuth(
   } catch (err) {
     const failure = deviceAuthFailure(err);
     const detail = deviceAuthDetail(err);
+    // Drop any envelope this wallet still had. `storeBound` deletes the Keystore alias
+    // before it writes, so a failure here has already destroyed the key an EARLIER
+    // enrolment was using — and leaving that wallet's old envelope behind means the app
+    // still reports the feature as on while nothing can open it. Not hypothetical: the
+    // re-enrolment path of a password change lands here every time the user dismisses the
+    // prompt. Removing it makes the outcome "not enrolled", which Settings can fix.
+    await storageRemove(envelopeKey(walletId)).catch(() => {});
     // Logged as well as thrown: this class of fault arrives as code 0 with a message that
     // is frequently the literal string "null", because AOSP's AndroidKeyStore throws
     // `IllegalBlockSizeException` / `AEADBadTagException` with no message and the plugin
     // drops the cause. logcat still has the Keymaster's own error code; the app never does.
+    // The failure and the detail only — never `password`, never `wrapKey`.
     console.warn('deviceAuth: BIOMETRY_ANY refused, refusing to enrol —', failure, detail);
     throw new DeviceAuthError(failure, detail);
   }
@@ -573,39 +609,42 @@ export async function disableDeviceAuth(walletId: string): Promise<void> {
   }
 }
 
-/** What re-wrapping one wallet's enrolment did. Three outcomes, because the caller has to
- *  tell "there was nothing to re-wrap" from "there was, and it is now off". */
-export type RewrapOutcome =
-  | 'none' // the wallet had no enrolment — nothing to do, nothing to report
-  | 'rewrapped' // now holds the new password
-  | 'dropped'; // could not be re-sealed, so it was turned off
-
 /**
- * Re-seal the enrolment under a new app password. Reached from `vault.changePassword`
- * through an injected closure (`ChangePasswordDeps`), so that function owns no prompt copy.
+ * Enrol again under a new app password, for `vault.changePassword` to inject
+ * (`ChangePasswordDeps`) so that function owns no prompt copy.
  *
  * A fresh wrapping key rather than the old one: reading the old key needs a prompt of its
  * own, so re-using it would cost two prompts to save nothing.
  *
- * Returns `'dropped'` — having disabled the feature — when re-sealing failed. Refusing to
- * leave a stale envelope is the whole job: it holds the OLD password, so a wallet that
- * changed its password and kept the old envelope would hand `unlock()` a password that no
- * longer decrypts, and the user would meet "wrong password" from their own fingerprint.
- * `'none'` is NOT a failure — it is the answer for a wallet that never enrolled, and
- * collapsing the two into `false` is what made the old caller ask `deviceAuthEnabled()`
- * separately, one line before re-wrapping made the answer stop being true.
+ * It takes no view on whether the wallet WAS enrolled, and that is the change that made
+ * the ordering in `changePassword` safe. This used to be `rewrapDeviceAuth`, which read
+ * `deviceAuthEnabled` itself and ran after the vault had already moved — so an interrupted
+ * pass left an envelope holding the superseded password. The caller now drops every
+ * enrolment before it commits and calls this afterwards with the list it captured; a
+ * function that decides for itself cannot be sequenced that way.
+ *
+ * Never throws: the password change it belongs to has already committed by the time this
+ * runs, so an escaping error would abort a change that cannot be undone. `false` means the
+ * enrolment is off and the user has to turn it back on — which is also what happens when
+ * they dismiss the prompt, and is a perfectly good outcome. Fail closed: no enrolment beats
+ * one that opens nothing.
  */
-export async function rewrapDeviceAuth(
+export async function reenrolDeviceAuth(
   walletId: string,
   newPassword: string,
   prompt: DeviceAuthPrompt,
-): Promise<RewrapOutcome> {
-  if (!(await deviceAuthEnabled(walletId))) return 'none';
+): Promise<boolean> {
   try {
     await enableDeviceAuth(walletId, newPassword, prompt);
-    return 'rewrapped';
+    return true;
   } catch {
-    await disableDeviceAuth(walletId);
-    return 'dropped';
+    try {
+      await disableDeviceAuth(walletId);
+    } catch {
+      // Storage refused. The envelope may survive, but `enableDeviceAuth` already removed
+      // it on its own failure path, and an envelope with no Keystore key reads as 'stale'
+      // on the next attempt — which turns itself off. Nothing here is worth throwing over.
+    }
+    return false;
   }
 }

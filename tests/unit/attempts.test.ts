@@ -12,11 +12,13 @@ import {
   MAX_ATTEMPT_DELAY_MS,
   NO_ATTEMPTS,
   attemptBlockMs,
+  beginAttempt,
   blockSeconds,
   noteAttemptFailure,
   noteAttemptSuccess,
   parseAttempts,
   recordFailure,
+  releaseAttempt,
   remainingBlockMs,
 } from '@/lib/attempts';
 
@@ -104,4 +106,82 @@ test('failures persist and accumulate; a success wipes the history clean', async
   assert.equal(await attemptBlockMs(now), 0);
   await noteAttemptFailure(now);
   assert.equal(await attemptBlockMs(now), 0, 'the count restarted, so this is failure #1');
+});
+
+/* --------------------------- the concurrent case --------------------------- */
+
+/**
+ * The property the serial tests above cannot see, and the one the ladder was losing.
+ *
+ * `attemptBlockMs` + `noteAttemptFailure` is check → derive → write, and storage is async,
+ * so every attempt launched inside one PBKDF2 window read the same pre-increment record
+ * and wrote the same `fails + 1`. The ladder counted ROUNDS, not GUESSES: holding Enter
+ * down on the unlock screen launched roughly eight derivations per window, and CPU
+ * contention lengthened the window, which admitted more. `beginAttempt` closes it by
+ * doing the check and the reservation as one step on a single chain.
+ */
+test('concurrent attempts each cost a rung — the ladder counts guesses, not rounds', async () => {
+  await noteAttemptSuccess();
+  const now = 3_000_000;
+
+  // Ten attempts fired without awaiting each other, exactly as a held-down Enter key does.
+  const waits = await Promise.all(Array.from({ length: 10 }, () => beginAttempt(now)));
+
+  const allowed = waits.filter((ms) => ms === 0).length;
+  assert.equal(allowed, 4, 'only the three free guesses plus the one that arms the ladder may pass');
+  assert.ok(
+    waits.filter((ms) => ms > 0).length === 6,
+    'every attempt past the fourth must be told to wait',
+  );
+});
+
+test('a reservation is not released by a later attempt failing to get one', async () => {
+  await noteAttemptSuccess();
+  const now = 4_000_000;
+  for (let i = 0; i < 4; i++) assert.equal(await beginAttempt(now), 0, `attempt ${i + 1} is free`);
+  // Blocked now — and being refused must not reset the count, or a caller could clear its
+  // own backoff simply by asking again.
+  assert.equal(await beginAttempt(now), 1_000);
+  assert.equal(await beginAttempt(now), 1_000, 'still blocked, still counted');
+  // Past the rung, the next one is allowed and arms the one after it.
+  assert.equal(await beginAttempt(now + 1_001), 0);
+  assert.equal(await beginAttempt(now + 1_001), 5_000, 'the fifth failure arms the 5s rung');
+});
+
+test('a correct password clears a reservation that was taken up front', async () => {
+  await noteAttemptSuccess();
+  const now = 5_000_000;
+  assert.equal(await beginAttempt(now), 0);
+  await noteAttemptSuccess(); // the guess was right
+  assert.equal(await attemptBlockMs(now), 0);
+  // ...and the count really restarted: four more must still be free.
+  for (let i = 0; i < 4; i++) assert.equal(await beginAttempt(now), 0, `attempt ${i + 1}`);
+});
+
+test('a released reservation gives back exactly one guess, not the whole history', async () => {
+  await noteAttemptSuccess();
+  const now = 6_000_000;
+  for (let i = 0; i < 3; i++) await beginAttempt(now); // three real guesses, all free
+
+  // The fourth attempt reserves and then turns out never to have been a guess — a missing
+  // vault blob, a storage fault. Giving it back must not wipe the three that were real:
+  // a caller could otherwise clear an accumulated backoff by provoking a non-password
+  // failure instead of guessing.
+  await beginAttempt(now);
+  await releaseAttempt();
+
+  assert.equal(await attemptBlockMs(now), 0, 'three failures still do not block');
+  await beginAttempt(now); // this is failure #4 again
+  assert.equal(await attemptBlockMs(now), 1_000, 'and it arms the first rung, as it should');
+});
+
+test('releasing more than was taken cannot go negative', async () => {
+  await noteAttemptSuccess();
+  await releaseAttempt();
+  await releaseAttempt();
+  assert.equal(await attemptBlockMs(), 0);
+  // ...and the ladder still starts from the top afterwards.
+  const now = 7_000_000;
+  for (let i = 0; i < 4; i++) assert.equal(await beginAttempt(now), 0, `attempt ${i + 1} is free`);
+  assert.equal(await beginAttempt(now), 1_000);
 });

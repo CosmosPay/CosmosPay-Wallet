@@ -24,7 +24,7 @@ import {
   disableDeviceAuth,
   enableDeviceAuth,
   parseAuthEnvelope,
-  rewrapDeviceAuth,
+  reenrolDeviceAuth,
   type DeviceAuthFailure,
   type DeviceAuthKind,
 } from '@/lib/deviceAuth';
@@ -166,8 +166,13 @@ test('enrolment on a non-phone build refuses BEFORE it writes anything', async (
   assert.deepEqual(leaked, [], 'no envelope may reach web storage');
 });
 
-test('re-wrapping a wallet that never enrolled is "none" — not a failure to report', async () => {
-  assert.equal(await rewrapDeviceAuth('never-enrolled', 'new-password', PROMPT), 'none');
+test('re-enrolling never throws — a password change has already committed by then', async () => {
+  // Off-phone, so `enableDeviceAuth` refuses with 'unsupported'. The contract is that the
+  // refusal is reported as `false` and swallowed: `vault.changePassword` calls this AFTER
+  // the vault is re-sealed, so an escaping error would abort a change nothing can undo.
+  assert.equal(await reenrolDeviceAuth('never-enrolled', 'new-password', PROMPT), false);
+  const leaked = Object.keys(globalThis.localStorage ?? {}).filter((k) => k.startsWith('cosmos.auth.'));
+  assert.deepEqual(leaked, [], 'a failed re-enrolment must leave no envelope behind');
 });
 
 /* --------------------------- copy, not prose --------------------------- */

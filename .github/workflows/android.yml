@@ -36,6 +36,20 @@ jobs:
       # installed mid-run — which used to rewrite package.json inside the job.
       - run: npm ci
 
+      # BEFORE Gradle, and this is the job that needs it most.
+      #
+      # `npm ci` re-runs the postinstall patch that rewrites the Keystore auth-type
+      # constants inside @capgo/capacitor-native-biometric, and Gradle compiles that Java
+      # straight out of node_modules — there is no copy under android/ to review. The
+      # assertion that the patch landed lives in tests/unit/nativeBiometric.test.ts, which
+      # until now only ran in ci.yml: a job that installs no Android toolchain and compiles
+      # no Java. So the one pipeline that produced an APK was the one that never checked
+      # whether that APK's biometric key binding was correct. A plugin bump that moves or
+      # renames those constants must fail here, not on a user's phone with an enrolment
+      # that can only ever fail.
+      - name: Unit tests (incl. the native-biometric patch tripwire)
+        run: npm run test:unit
+
       # android/ is gitignored — generated per checkout, exactly as on a dev machine.
       - name: Add Capacitor Android platform
         run: |

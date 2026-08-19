@@ -4,7 +4,7 @@ import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Field } from '@/ui/Field';
 import { useBusy } from '@/hooks/useBusy';
-import { MIN_PWD_LEN } from '@/constants/settings';
+import { appPasswordOk } from '@/lib/validate';
 import '@/styles/features/settings/settings.css';
 
 /**
@@ -21,7 +21,10 @@ export function ChangePassword({ store, onDone }: { store: WalletStore; onDone: 
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
   const [busy, run] = useBusy();
-  const ok = cur.length > 0 && next.length >= MIN_PWD_LEN && !busy;
+  // The SAME rule onboarding enforces. This used to be length-only, so a wallet created
+  // under "8 + upper + lower + digit" could be re-sealed under `aaaaaaaa` — and so could
+  // every device-lock envelope holding a copy of it. The store re-checks it too.
+  const ok = cur.length > 0 && appPasswordOk(next) && !busy;
 
   const submit = () =>
     run(async () => {

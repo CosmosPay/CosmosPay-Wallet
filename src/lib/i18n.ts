@@ -278,6 +278,9 @@ export const T: Record<string, Record<Lang, string>> = {
   'pwd.lenErr': { es: 'La contraseña debe tener al menos 8 caracteres', en: 'The password must be at least 8 characters', pt: 'A palavra-passe deve ter pelo menos 8 caracteres', de: 'Das Passwort muss mindestens 8 Zeichen haben', fr: 'Le mot de passe doit comporter au moins 8 caractères' },
   'pwd.mismatch': { es: 'Las contraseñas no coinciden', en: 'The passwords don’t match', pt: 'As palavras-passe não coincidem', de: 'Die Passwörter stimmen nicht überein', fr: 'Les mots de passe ne correspondent pas' },
   // live password criteria (PasswordSetup checklist)
+  // Shown when the store refuses a password the form should already have blocked — the
+  // enforcement point is `changeAppPassword`, not the disabled button.
+  'pwd.weak': { es: 'La contraseña necesita 8 caracteres, una mayúscula, una minúscula y un número.', en: 'The password needs 8 characters, an uppercase letter, a lowercase letter and a digit.', pt: 'A palavra-passe precisa de 8 caracteres, uma maiúscula, uma minúscula e um número.', de: 'Das Passwort braucht 8 Zeichen, einen Groß-, einen Kleinbuchstaben und eine Ziffer.', fr: 'Le mot de passe doit contenir 8 caractères, une majuscule, une minuscule et un chiffre.' },
   'pwd.critLen': { es: 'Mínimo 8 caracteres', en: 'At least 8 characters', pt: 'Mínimo de 8 caracteres', de: 'Mindestens 8 Zeichen', fr: 'Au moins 8 caractères' },
   'pwd.critUpper': { es: 'Al menos una mayúscula (A-Z)', en: 'At least one uppercase letter (A-Z)', pt: 'Pelo menos uma maiúscula (A-Z)', de: 'Mindestens ein Großbuchstabe (A-Z)', fr: 'Au moins une majuscule (A-Z)' },
   'pwd.critDigit': { es: 'Al menos un número (0-9)', en: 'At least one number (0-9)', pt: 'Pelo menos um número (0-9)', de: 'Mindestens eine Zahl (0-9)', fr: 'Au moins un chiffre (0-9)' },

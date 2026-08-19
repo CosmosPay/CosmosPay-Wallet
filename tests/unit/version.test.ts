@@ -39,3 +39,22 @@ test('APP_VERSION stays derived — no version literal in src/constants/app.ts',
     'APP_VERSION must read the injected __APP_VERSION__, never a literal — a literal is a second copy, and the release bot only bumps package.json',
   );
 });
+
+/**
+ * The other half of "derived", and the half nothing was watching.
+ *
+ * Both tests above pass with `vite.define` deleted from astro.config.ts — `tests/setup.mjs`
+ * supplies `__APP_VERSION__` for node:test, so the suite never notices. In a real build the
+ * identifier would then survive to runtime undeclared, `src/constants/app.ts` would throw a
+ * ReferenceError at module scope, and `src/app/ApprovePopup.tsx` imports that module: the
+ * approval window would render blank, which is the one screen where a blank render means
+ * the user approves what they cannot see.
+ */
+test('the build still injects __APP_VERSION__ — the test harness is not the only supplier', () => {
+  const cfg = readFileSync(join(repoRoot, 'astro.config.ts'), 'utf8');
+  assert.match(
+    cfg,
+    /define:\s*\{[^}]*__APP_VERSION__/,
+    'astro.config.ts must keep __APP_VERSION__ in vite.define — without it APP_VERSION is an undeclared identifier at runtime',
+  );
+});

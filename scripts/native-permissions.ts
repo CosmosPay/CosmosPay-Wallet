@@ -260,6 +260,21 @@ async function patchAndroidBackup(): Promise<void> {
   // leaves an already-false manifest untouched.
   after = after.replace(/android:allowBackup="true"/g, 'android:allowBackup="false"');
 
+  // FAIL LOUD, NOT OPEN. Everything below anchors on `android:allowBackup="false"` being
+  // present. If a future Capacitor template stops writing the attribute at all, the replace
+  // above matches nothing, both insertions find no anchor, `after === before`, and the old
+  // code logged "already keeps app data out of backups." for a build shipping the platform
+  // default — which is `true`. The whole point of this function is that the sealed seed does
+  // not go to Google Drive; a silent no-op is the one outcome it must never have.
+  if (!after.includes('android:allowBackup="false"')) {
+    log(`ERROR — ${ANDROID_MANIFEST} declares no android:allowBackup attribute.`);
+    log('  The Capacitor template changed shape. Android Auto Backup defaults to ON, which');
+    log('  uploads the sealed vault and the plaintext wallet list to the user\'s Drive.');
+    log('  Add android:allowBackup="false" to <application> before shipping this build.');
+    process.exitCode = 1;
+    return;
+  }
+
   for (const [attr, value] of [
     ['android:dataExtractionRules', '@xml/data_extraction_rules'],
     ['android:fullBackupContent', '@xml/backup_rules'],
@@ -339,7 +354,38 @@ async function patchIosPrivacyManifest(): Promise<void> {
   }
 }
 
+/**
+ * The half of the backup story this script CANNOT write, said out loud on every sync.
+ *
+ * `patchAndroidBackup` keeps the sealed vault off Google Drive with three mechanisms and a
+ * paragraph explaining why a non-custodial wallet's storage must not leave the device. iOS
+ * gets none of it: `@capacitor/preferences` is `UserDefaults`, which lands in
+ * `Library/Preferences/<bundle>.plist`, which iCloud and iTunes back up by default and
+ * restore onto a DIFFERENT device. What restores is `cosmos.w.<id>` — the AES-GCM sealed
+ * seed and mnemonic, grindable offline against an 8-character minimum password — plus
+ * `cosmos.wallets` in the clear: name, email, birthdate, gender, avatar.
+ *
+ * The device-unlock envelope is the one part that does NOT travel: its wrapping key is
+ * written `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`, so the restored copy opens
+ * nothing. The gap is the vault the envelope was built to sit beside.
+ *
+ * There is no Info.plist key for this — the fix is native, either moving iOS storage to a
+ * Keychain item under `…ThisDeviceOnly` or setting `NSURLIsExcludedFromBackupKey` on the
+ * preferences file at startup. Both need a device to verify, so this script reports rather
+ * than guesses, in the same shape as the PrivacyInfo notice above.
+ */
+async function reportIosBackupGap(): Promise<void> {
+  if (!(await exists(IOS_PLIST))) return; // patchIos() already said so
+  log('ACTION REQUIRED — iOS storage is still backup-eligible.');
+  log('  UserDefaults (Library/Preferences/<bundle>.plist) holds the sealed vault and the');
+  log('  plaintext wallet list, and iCloud restores it onto another device. Android is');
+  log('  covered by allowBackup=false + dataExtractionRules; iOS needs native work:');
+  log('  move storage to a Keychain item with kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,');
+  log('  or set NSURLIsExcludedFromBackupKey on the preferences file at startup.');
+}
+
 await patchAndroid();
 await patchAndroidBackup();
 await patchIos();
 await patchIosPrivacyManifest();
+await reportIosBackupGap();
