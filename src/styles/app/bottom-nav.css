@@ -19,6 +19,13 @@
   -webkit-backdrop-filter: blur(24px) saturate(150%);
   border-top: 1px solid var(--hairline);
 }
+
+/* A tab bar is dead weight while the keyboard is up: nothing on it is reachable
+   without dismissing the keyboard first, and on an engine that resized the frame for
+   us (Android) it would otherwise eat 92px of the little height that is left. */
+html.kb-open .bottom-nav {
+  display: none;
+}
 /* Sliding active indicator. nav.tsx ships a FIXED five-tab bar, so the width is
    a constant and the slide is one class per tab index — add a rung here if the
    tab list ever grows. */

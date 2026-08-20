@@ -1,7 +1,13 @@
 /* Unlock screen (src/features/wallet/Unlock.tsx). */
-.unlock-screen { padding: 2px 26px 32px; } /* on .scr.screen.col */
+/* Its own margin, declared as the token rather than a literal so .kb-dock's
+   full-bleed background still reaches the edges of THIS screen. */
+.unlock-screen { --gutter: 26px; padding: 2px var(--gutter) 32px; } /* on .scr.screen.col */
 .unlock-langbar { display: flex; justify-content: flex-end; padding-top: 8px; flex-shrink: 0; }
-.unlock-hero { text-align: center; min-height: 0; } /* on .f1.col.center */
+/* NO min-height: 0 here. A column flex item defaults to min-height:auto, which is the
+   only thing stopping this from collapsing under its own logo, greeting and field when
+   the keyboard takes half the screen. With it, the hero collapsed toward zero and the
+   footer buttons rode up over the logo they were supposed to sit below. Let it keep its content and let .screen scroll. */
+.unlock-hero { text-align: center; } /* on .f1.col.center */
 .unlock-logo { margin-bottom: 24px; }
 .unlock-birthday { font-size: 13px; font-weight: 800; color: var(--accent); margin-bottom: 8px; letter-spacing: 0.3px; }
 .unlock-line { font-size: 27px; font-weight: 800; letter-spacing: -0.7px; margin-bottom: 12px; line-height: 1.2; }

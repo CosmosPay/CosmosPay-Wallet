@@ -76,6 +76,15 @@ button {
   appearance: none;
 }
 
+/* Breathing room for the scroll that brings a focused field back above the
+   keyboard (src/lib/viewport.ts): `block: 'nearest'` stops the moment the field is
+   technically visible, which is flush against the edge of the scroll area. */
+input,
+textarea,
+select {
+  scroll-margin-block: 16px;
+}
+
 /* iOS Safari renders a date value in a shrink-wrapped box that ignores the
    pill's padding and collapses while empty. */
 input[type='date'] {

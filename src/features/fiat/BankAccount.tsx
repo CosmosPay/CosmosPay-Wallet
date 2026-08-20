@@ -63,7 +63,9 @@ export function BankAccount({ store }: { store: WalletStore }) {
         ),
       )}
       <div className="spacer" />
-      <PrimaryButton disabled={!ok || store.busy} onClick={submit}>{store.busy ? <Spinner /> : t('fiat.addAccount')}</PrimaryButton>
+      <div className="kb-dock">
+        <PrimaryButton disabled={!ok || store.busy} onClick={submit}>{store.busy ? <Spinner /> : t('fiat.addAccount')}</PrimaryButton>
+      </div>
     </div>
   );
 }

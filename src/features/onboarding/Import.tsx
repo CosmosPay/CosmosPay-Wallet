@@ -37,9 +37,11 @@ export function Import({ store }: { store: WalletStore }) {
         </svg>
         {t('import.paste')}
       </button>
-      <PrimaryButton disabled={!valid} onClick={() => store.submitImport()}>
-        {t('import.cta')}
-      </PrimaryButton>
+      <div className="kb-dock">
+        <PrimaryButton disabled={!valid} onClick={() => store.submitImport()}>
+          {t('import.cta')}
+        </PrimaryButton>
+      </div>
     </div>
   );
 }

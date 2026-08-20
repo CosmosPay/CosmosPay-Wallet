@@ -127,7 +127,9 @@ export function AddAsset({ store }: { store: WalletStore }) {
           <div className={`add-asset-valid add-asset-valid--${!issuer ? 'none' : issuerOk ? 'ok' : 'bad'}`}>
             {!issuer ? '·' : issuerOk ? '✓' : t('addAsset.invalidIssuer')}
           </div>
-          <PrimaryButton disabled={!ok} onClick={addManual}>{store.busy && !adding ? <Spinner /> : t('addAsset.add')}</PrimaryButton>
+          <div className="kb-dock">
+            <PrimaryButton disabled={!ok} onClick={addManual}>{store.busy && !adding ? <Spinner /> : t('addAsset.add')}</PrimaryButton>
+          </div>
         </>
       )}
     </div>

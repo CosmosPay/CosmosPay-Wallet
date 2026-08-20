@@ -100,9 +100,11 @@ export function Deposit({ store }: { store: WalletStore }) {
       <div className="glass exchange-note">{t('lp.depositNote')}</div>
 
       <div className="spacer" />
-      <PrimaryButton disabled={store.busy || !canDeposit} onClick={submit}>
-        {store.busy ? <Spinner /> : t('lp.deposit')}
-      </PrimaryButton>
+      <div className="kb-dock">
+        <PrimaryButton disabled={store.busy || !canDeposit} onClick={submit}>
+          {store.busy ? <Spinner /> : t('lp.deposit')}
+        </PrimaryButton>
+      </div>
     </div>
   );
 }

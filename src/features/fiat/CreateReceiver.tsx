@@ -88,7 +88,9 @@ export function CreateReceiver({ store }: { store: WalletStore }) {
             <div className="f1"><Field tone="soft" label={t('fiat.postal')} value={postal} onChange={setPostal} /></div>
           </div>
           <div className="fiat-gap-6" />
-          <PrimaryButton disabled={!infoOk} onClick={() => setStep(1)}>{t('common.continue')}</PrimaryButton>
+          <div className="kb-dock">
+            <PrimaryButton disabled={!infoOk} onClick={() => setStep(1)}>{t('common.continue')}</PrimaryButton>
+          </div>
         </>
       )}
 

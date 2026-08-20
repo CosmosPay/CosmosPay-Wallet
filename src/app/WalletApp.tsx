@@ -16,6 +16,7 @@ import { Markets } from '@/features/wallet/Markets';
 import { Profile } from '@/features/wallet/Profile';
 import { cx } from '@/lib/cx';
 import { tNow } from '@/lib/i18n';
+import { useKeyboardInset } from '@/hooks/useKeyboardInset';
 
 type ScreenComponent = ComponentType<{ store: WalletStore }> | LazyExoticComponent<ComponentType<{ store: WalletStore }>>;
 
@@ -106,6 +107,10 @@ export default function WalletApp() {
 function WalletAppShell() {
   const store = useWalletStore();
   const { screen } = store;
+
+  // Publishes --kb-h / .kb-open for the whole document, so every screen's footer can
+  // stay above the on-screen keyboard instead of being pushed up over its own content.
+  useKeyboardInset();
 
   // Keep a ref to the latest store so the native listener reads current state.
   const storeRef = useRef(store);

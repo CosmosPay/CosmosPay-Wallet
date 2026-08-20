@@ -18,9 +18,14 @@ import '@/styles/app.css';
       import '@/lib/nodeGlobals';
     </script>
     <meta charset="utf-8" />
+    <!-- interactive-widget=resizes-content makes the on-screen keyboard shrink the
+         LAYOUT viewport, so `100dvh` — and the shell frame with it — ends at the top of
+         the keys the way the Capacitor WebView already does. The default (resizes-visual)
+         leaves the frame full height with its footer behind the keyboard; src/lib/viewport.ts
+         covers that case anyway, for iOS, which ignores this key. -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
     <meta name="theme-color" content="#080808" />
     <meta name="color-scheme" content="dark" />

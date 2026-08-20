@@ -111,7 +111,9 @@ export function Deposit({ store }: { store: WalletStore }) {
           <GhostButton onClick={() => setQuote(null)}>{t('fiat.editQuote')}</GhostButton>
         </>
       ) : (
-        <PrimaryButton disabled={!canQuote} onClick={getQuote}>{store.busy ? <Spinner /> : t('fiat.getQuote')}</PrimaryButton>
+        <div className="kb-dock">
+          <PrimaryButton disabled={!canQuote} onClick={getQuote}>{store.busy ? <Spinner /> : t('fiat.getQuote')}</PrimaryButton>
+        </div>
       )}
       <div className="fiat-footnote">{t('fiat.quoteNote')}</div>
     </div>

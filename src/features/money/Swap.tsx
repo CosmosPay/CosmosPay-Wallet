@@ -192,9 +192,11 @@ export function Swap({ store }: { store: WalletStore }) {
         // The quote travels with the submit: the guard bounds the envelope by what THIS
         // card showed (pay, and the "minimum received" row), never by the create
         // response that carries the XDR.
-        <PrimaryButton disabled={store.busy || !canSwap} onClick={() => from && to && quote && store.submitSwap(pay, from, to, quote)}>
-          {store.busy ? <Spinner /> : t('swap.cta')}
-        </PrimaryButton>
+        <div className="kb-dock">
+          <PrimaryButton disabled={store.busy || !canSwap} onClick={() => from && to && quote && store.submitSwap(pay, from, to, quote)}>
+            {store.busy ? <Spinner /> : t('swap.cta')}
+          </PrimaryButton>
+        </div>
       ) : (
         // Not provisioned/linked yet — route through the same Cosmos account flow as Home
         // (enable → confirm email, or link an existing account via a one-time access code).

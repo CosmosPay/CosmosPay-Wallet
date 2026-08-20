@@ -46,7 +46,9 @@ export function Export({ store }: { store: WalletStore }) {
             {t('export.enterPwd')}
           </div>
           <input type="password" value={pwd} placeholder={t('pwd.label')} onChange={(e) => setPwd((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} className="input export-pwd-input" />
-          <PrimaryButton disabled={!pwd || busy} onClick={unlock}>{busy ? <Spinner /> : t('export.reveal')}</PrimaryButton>
+          <div className="kb-dock">
+            <PrimaryButton disabled={!pwd || busy} onClick={unlock}>{busy ? <Spinner /> : t('export.reveal')}</PrimaryButton>
+          </div>
         </>
       ) : (
         <>

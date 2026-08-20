@@ -49,7 +49,11 @@
      the status bar and the gesture pill — only the content clears them. Without the
      top one the header sits under the clock on every edge-to-edge phone. */
   padding-top: calc(14px + var(--safe-t));
-  padding-bottom: var(--safe-b);
+  /* The keyboard's overlap, not the sum: an iOS keyboard already covers the home
+     indicator, so adding both would reserve the gesture pill twice and float every
+     footer a thumb's width above the keys. --kb-h is 0px on every engine that
+     resized the frame for us, which leaves the inset alone. */
+  padding-bottom: max(var(--safe-b), var(--kb-h));
 }
 
 /* iOS Safari resolves 100vh against the LARGE viewport (URL bar hidden), so the

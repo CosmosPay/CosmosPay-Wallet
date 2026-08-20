@@ -90,6 +90,18 @@
   animation: fadeUp 0.3s ease;
 }
 
+/* A vertical squeeze — a short window, or the on-screen keyboard taking half the phone —
+   eats WHITESPACE, never content. A flex item's automatic minimum keeps a text block from
+   collapsing, but it does not keep a control's shape: an <input>'s min-content height is
+   one line box, so the send screen's 54px memo pill came out 25px tall at 508px of
+   viewport. Nothing in a screen shrinks now; the fillers (.spacer, .f1) just stop growing,
+   and past that the screen scrolls, which is what its overflow-y is already for.
+   Direct children only, and that is enough: an item that keeps its own height never puts
+   its contents under pressure either. */
+.screen > * {
+  flex-shrink: 0;
+}
+
 .pb-24 {
   padding-bottom: 24px;
 }
@@ -343,6 +355,37 @@
 .spacer {
   flex: 1;
   min-height: 14px;
+}
+
+/* ------------------- keyboard-docked footer ------------------- */
+/* Wraps the block a screen keeps its primary action in — the thing after the .spacer.
+   Off-keyboard it is a plain unshrinkable box: the footer stays exactly where the
+   screen's flex column already put it.
+   With the keyboard up, .shell-content has ended the scroll area at the top of the
+   keys, so a screen whose content no longer fits pushes its own CTA below the fold.
+   Sticky pins it to that edge instead, and that is what stops the footer being the
+   thing that moves: the whitespace above it absorbs the squeeze and scrolls away, the
+   button does not.
+   It must wrap the button rather than be it — the backing below is opaque, and painted
+   on the button itself it would replace .btn-primary's own glass surface.
+   Sticky is bounded by its flex container, so this belongs on a DIRECT child of
+   .screen; nested in a card it can only travel as far as the card. */
+.kb-dock {
+  flex-shrink: 0;
+}
+
+/* Opaque, and bleeding into the gutters, because content now scrolls behind it and the
+   gutters are part of what would show through. --gutter is read from the screen, so a
+   screen with a margin of its own (.unlock-screen) sets the token rather than
+   overriding this rule. */
+html.kb-open .kb-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin-left: calc(var(--gutter) * -1);
+  margin-right: calc(var(--gutter) * -1);
+  padding: 10px var(--gutter);
+  background: var(--bg);
 }
 
 /* Muted explanatory paragraph under a screen title. Was eleven near-identical

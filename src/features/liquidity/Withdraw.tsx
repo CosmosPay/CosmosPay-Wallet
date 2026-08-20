@@ -93,9 +93,11 @@ export function Withdraw({ store }: { store: WalletStore }) {
       <div className="glass exchange-note">{t('lp.withdrawNote')}</div>
 
       <div className="spacer" />
-      <PrimaryButton disabled={store.busy || !canWithdraw} onClick={() => store.submitWithdraw({ poolId: position.poolId, shares })}>
-        {store.busy ? <Spinner /> : t('lp.withdraw')}
-      </PrimaryButton>
+      <div className="kb-dock">
+        <PrimaryButton disabled={store.busy || !canWithdraw} onClick={() => store.submitWithdraw({ poolId: position.poolId, shares })}>
+          {store.busy ? <Spinner /> : t('lp.withdraw')}
+        </PrimaryButton>
+      </div>
     </div>
   );
 }

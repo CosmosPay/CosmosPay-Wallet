@@ -10,7 +10,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  /* Centred in what is VISIBLE, not in the frame: this overlay is a sibling of
+     .shell-content, so the keyboard inset that sheet applies never reaches it, and a
+     dialog centred in the full frame puts its password field under the keys. */
+  padding: 24px 24px calc(24px + var(--kb-h));
   /* Strong opaque scrim (backdrop-filter blur doesn't composite in this app's shell,
      so we darken the background hard instead to clearly separate the dialog). */
   background: rgba(0, 0, 0, 0.72);

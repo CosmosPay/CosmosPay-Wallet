@@ -134,4 +134,9 @@
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
+  /* How much of the layout viewport the on-screen keyboard covers WITHOUT the engine
+     having already resized it — see src/lib/viewport.ts, which is what writes it. The
+     `0px` here is the whole value on a desktop and the starting value everywhere else;
+     it must stay a length, for the same calc() reason as the --safe-* fallbacks. */
+  --kb-h: 0px;
 }

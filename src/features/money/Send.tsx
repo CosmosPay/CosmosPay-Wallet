@@ -115,9 +115,11 @@ export function Send({ store }: { store: WalletStore }) {
       {memoErr && <div className="send-memo-err">{memoErr}</div>}
 
       <div className="spacer" />
-      <PrimaryButton disabled={!ok} onClick={() => store.setScreen('confirm')}>
-        {amt > avail && amt > 0 ? t('send.insufficient') : t('common.continue')}
-      </PrimaryButton>
+      <div className="kb-dock">
+        <PrimaryButton disabled={!ok} onClick={() => store.setScreen('confirm')}>
+          {amt > avail && amt > 0 ? t('send.insufficient') : t('common.continue')}
+        </PrimaryButton>
+      </div>
     </div>
   );
 }

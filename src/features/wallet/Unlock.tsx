@@ -100,7 +100,7 @@ export function Unlock({ store }: { store: WalletStore }) {
         </div>
       </div>
 
-      <div className="col g12">
+      <div className="col g12 kb-dock">
         <PrimaryButton disabled={!pwd || store.busy} onClick={submit}>
           {store.busy ? <Spinner /> : t('unlock.unlock')}
         </PrimaryButton>
