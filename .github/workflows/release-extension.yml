@@ -1,6 +1,6 @@
-name: Release extension (.zip)
+name: Release (extension + apps)
 
-# Auto-versioned, packaged browser-extension releases.
+# Auto-versioned, packaged releases: the two browser extensions and the phone binaries.
 #
 # On every push to main/dev this:
 #   0. Runs the full test suite + a dependency security audit (`verify` job). The
@@ -16,6 +16,15 @@ name: Release extension (.zip)
 #   4. Zips each one (manifest at the zip root, ready to load/upload).
 #   5. Publishes a GitHub Release with the .zip files attached, so testers just
 #      download the package and load it — no build step on their side.
+#   6. Runs .github/workflows/native.yml against the tag it just pushed and appends the
+#      Android and iOS binaries to that same release.
+#
+# Step 6 runs AFTER the release is published rather than gating it, so the release exists
+# with its extensions for the few minutes the native builds take. That order is deliberate:
+# the extension zips are the artifact people wait on, and blocking them behind a macOS
+# toolchain hiccup would trade a complete release for no release at all. The native job is
+# still required to be green — it just fails loudly next to a published release instead of
+# silently withholding one.
 #
 # The bump commit on main carries `[skip ci]`, which GitHub honours to avoid an
 # infinite release loop.
@@ -95,6 +104,10 @@ jobs:
     name: Version, package & release
     needs: verify # only runs if the tests + security audit above passed
     runs-on: ubuntu-latest
+    outputs:
+      # Consumed by the `native` job below, which has to stamp the same number into the APK
+      # and the .ipa. It cannot read it off the checkout: on `dev` the bump is never committed.
+      version: ${{ steps.ver.outputs.version }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -165,11 +178,15 @@ jobs:
           cat >> RELEASE_NOTES.md <<'MD'
 
           ---
-          **How to test (unsigned / unpacked):**
+          **Browser extension (unsigned / unpacked):**
           - **Chrome / Edge:** download `cosmos-pay-chrome-v${{ steps.ver.outputs.version }}.zip`, unzip it, then open `chrome://extensions` → enable *Developer mode* → *Load unpacked* → pick the folder.
           - **Firefox:** download `cosmos-pay-firefox-v${{ steps.ver.outputs.version }}.zip`, then open `about:debugging` → *This Firefox* → *Load Temporary Add-on* → pick the `manifest.json` inside the zip.
 
           The .zip is also ready to upload as-is to the Chrome Web Store / Firefox AMO.
+
+          **Phone apps** (attached a few minutes after this release is published — the native builds run once the tag exists):
+          - **Android:** `cosmos-pay-v${{ steps.ver.outputs.version }}-debug.apk` installs on any device with *Install unknown apps* enabled. `cosmos-pay-v${{ steps.ver.outputs.version }}.apk` (release-signed) and the matching `.aab` for Play Console appear only when the repository has the release keystore configured.
+          - **iOS:** `cosmos-pay-v${{ steps.ver.outputs.version }}-unsigned.ipa` is built without an Apple signature, so it does **not** install by tapping it — it needs re-signing with your own account (Sideloadly, AltStore, or an MDM). It is published so the build is reproducible and inspectable, not as a one-tap install.
           MD
           echo "=== RELEASE_NOTES.md ===" && cat RELEASE_NOTES.md
 
@@ -232,3 +249,21 @@ jobs:
           files: |
             dist/release/cosmos-pay-chrome-v${{ steps.ver.outputs.version }}.zip
             dist/release/cosmos-pay-firefox-v${{ steps.ver.outputs.version }}.zip
+
+  # ---- 6. Build the phone binaries against the tag and append them to that release ----
+  #
+  # `ref` is the tag rather than the branch, so a push landing while this runs cannot swap the
+  # tree underneath the APK. On `main` that tag already carries the bumped package.json; on
+  # `dev` it does not — the bump lives only in the release job's workspace — which is why
+  # `version` is passed explicitly and re-stamped inside the native workflow.
+  native:
+    name: Native binaries
+    needs: release
+    permissions:
+      contents: write # `gh release upload` onto the release the job above published
+    uses: ./.github/workflows/native.yml
+    with:
+      version: ${{ needs.release.outputs.version }}
+      release-tag: v${{ needs.release.outputs.version }}
+      ref: v${{ needs.release.outputs.version }}
+    secrets: inherit
