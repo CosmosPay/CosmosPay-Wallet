@@ -47,6 +47,7 @@ import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
 import { codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
 import { FIAT_DECIMALS, fromMinorUnits } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
+import { createSessionEpoch } from '@/lib/epoch';
 import { sendableAssets, spendableCeiling } from '@/lib/balances';
 import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
 import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
@@ -383,7 +384,7 @@ export function useWalletStore() {
   }, []);
 
   // The signing gate (prompt + queue) lives in its own slice — see useSigningGate.
-  const { confirmReq, requestSignature, resolveConfirm, cancelPending } = useSigningGate();
+  const { confirmReq, requestSignature, resolveConfirm, cancelPending } = useSigningGate(requireConfirm);
 
   /**
    * Unlocking with the phone's own biometrics. Keyed on the ACTIVE wallet, because the
@@ -410,10 +411,10 @@ export function useWalletStore() {
    * on top. Each flow captures the epoch before its first await and re-checks it
    * immediately before the key is used.
    */
-  const sessionEpochRef = useRef(0);
+  const epochRef = useRef(createSessionEpoch());
   const guardSession = useCallback(
     (epoch: number) => {
-      if (epoch !== sessionEpochRef.current) throw new Error(t('unlock.autoLocked'));
+      epochRef.current.guard(epoch, t('unlock.autoLocked'));
     },
     [t],
   );
@@ -844,7 +845,7 @@ export function useWalletStore() {
     setSession(null);
     // Anything already past the signing gate is now working for a session that no
     // longer exists; the epoch is how it finds out before it uses the key.
-    sessionEpochRef.current += 1;
+    epochRef.current.increment();
     exclusive.clear();
     cancelPending();
     // Drop every account-scoped read: a locked wallet must not leave balances or
@@ -1060,7 +1061,7 @@ export function useWalletStore() {
       // now be answered by an OS biometric sheet, which generates no input events and can
       // stay open past the 5-minute idle auto-lock. Without this, `session.secret` was used
       // out of a closure belonging to a session that had already ended.
-      const epoch = sessionEpochRef.current;
+      const epoch = epochRef.current.get();
       const okSig = await requestSignature({
         title: t('confirmSig.trustTitle'),
         message: t('confirmSig.trustMsg', { code: code.trim() }),
@@ -1106,7 +1107,7 @@ export function useWalletStore() {
   const submitSend = useCallback(async () => {
     if (!session) return;
     await exclusive.run('send', async () => {
-      const epoch = sessionEpochRef.current;
+      const epoch = epochRef.current.get();
       const code = send.asset.code;
       const okSig = await requestSignature({
         title: t('confirmSig.sendTitle'),
@@ -1171,7 +1172,7 @@ export function useWalletStore() {
       return;
     }
     // Signing the registration needs the secret, so always password-gate it.
-    const epoch = sessionEpochRef.current;
+    const epoch = epochRef.current.get();
     const ok = await requestSignature({
       title: t('cosmospay.enableTitle'),
       message: t('cosmospay.enableConfirm'),
@@ -1235,7 +1236,7 @@ export function useWalletStore() {
       // `session.password`. After a password change that string is superseded: the write
       // would succeed, `getCosmosPay` would swallow the decrypt failure as "none", and the
       // wallet would show receiving as enabled with a credential nothing can open.
-      const epoch = sessionEpochRef.current;
+      const epoch = epochRef.current.get();
       if (!silent) setBusy(true);
       try {
         const res = await claimCosmosAccount({
@@ -1283,7 +1284,7 @@ export function useWalletStore() {
    */
   const linkReceiving = useCallback(async () => {
     if (!session || !meta || !meta.email) return;
-    const epoch = sessionEpochRef.current;
+    const epoch = epochRef.current.get();
     const ok = await requestSignature({
       title: t('cosmospay.linkTitle'),
       message: t('cosmospay.linkConfirm'),
@@ -1420,7 +1421,7 @@ export function useWalletStore() {
         return;
       }
       await exclusive.run('swap', async () => {
-        const epoch = sessionEpochRef.current;
+        const epoch = epochRef.current.get();
         const okSig = await requestSignature({
           title: t('confirmSig.swapTitle'),
           message: t('confirmSig.swapMsg', { amount, code: to.code }),
@@ -1545,7 +1546,7 @@ export function useWalletStore() {
       const apiKey = cosmosApiKey();
       if (!apiKey) return;
       await exclusive.run('lp-deposit', async () => {
-        const epoch = sessionEpochRef.current;
+        const epoch = epochRef.current.get();
         const okSig = await requestSignature({
           title: t('confirmSig.lpDepositTitle'),
           message: t('confirmSig.lpDepositMsg', { a: input.assetA.code, b: input.assetB.code }),
@@ -1621,7 +1622,7 @@ export function useWalletStore() {
       const apiKey = cosmosApiKey();
       if (!apiKey) return;
       await exclusive.run('lp-withdraw', async () => {
-        const epoch = sessionEpochRef.current;
+        const epoch = epochRef.current.get();
         const okSig = await requestSignature({
           title: t('confirmSig.lpWithdrawTitle'),
           message: t('confirmSig.lpWithdrawMsg', { shares: input.shares }),
@@ -1971,7 +1972,7 @@ export function useWalletStore() {
         return false;
       }
       const run = await exclusive.run('offramp', async (): Promise<boolean> => {
-        const epoch = sessionEpochRef.current;
+        const epoch = epochRef.current.get();
         const okSig = await requestSignature({ title: t('confirmSig.withdrawTitle'), message: t('confirmSig.withdrawMsg') });
         if (!okSig) return false;
         setBusy(true);
@@ -2145,7 +2146,7 @@ export function useWalletStore() {
    */
   const confirmWithDevice = useCallback(
     async (reqId: number) => {
-      const epoch = sessionEpochRef.current;
+      const epoch = epochRef.current.get();
       const res = await deviceAuthPrivileged.deviceAuthUnlock('sign');
       if (!res.ok) {
         flashDeviceAuth(res.failure, res.detail);
@@ -2163,7 +2164,7 @@ export function useWalletStore() {
         else flashDeviceAuth('stale');
         return false;
       }
-      if (epoch !== sessionEpochRef.current) {
+      if (epoch !== epochRef.current.get()) {
         // Auto-locked while the sheet was open. The gate was already answered "no" by
         // cancelPending(); say why rather than failing silently.
         flash(t('unlock.autoLocked'), 'err');
@@ -2191,7 +2192,7 @@ export function useWalletStore() {
    */
   const toggleDeviceAuth = useCallback(async () => {
     if (!session) return;
-    const epoch = sessionEpochRef.current;
+    const epoch = epochRef.current.get();
     const method = deviceAuthPublic.deviceAuthMethod;
     const ok = await requestSignature(
       { title: t('devAuth.settingLabel'), message: t('devAuth.settingDesc', { method }) },
@@ -2203,7 +2204,7 @@ export function useWalletStore() {
       flash(t('devAuth.disabled'), 'ok');
       return;
     }
-    if (epoch !== sessionEpochRef.current) {
+    if (epoch !== epochRef.current.get()) {
       flash(t('unlock.autoLocked'), 'err');
       return;
     }
@@ -2220,7 +2221,7 @@ export function useWalletStore() {
     // is sealed under a Keystore key bound to it. That is a permanent second door that
     // survives every later lock. Undoing the enrolment is the only correct answer, because
     // by this point it already exists.
-    if (epoch !== sessionEpochRef.current) {
+    if (epoch !== epochRef.current.get()) {
       await deviceAuthPrivileged.disableDeviceUnlock();
       flash(t('unlock.autoLocked'), 'err');
       return;
@@ -2299,17 +2300,17 @@ export function useWalletStore() {
   const acceptDeviceAuthOffer = useCallback(async () => {
     setDeviceAuthOffer(false);
     if (session) {
-      const epoch = sessionEpochRef.current;
+      const epoch = epochRef.current.get();
       const method = deviceAuthPublic.deviceAuthMethod;
       const ok = await requestSignature(
         { title: t('devAuth.settingLabel'), message: t('devAuth.settingDesc', { method }) },
         true,
       );
-      if (ok && epoch === sessionEpochRef.current) {
+      if (ok && epoch === epochRef.current.get()) {
         const failed = await deviceAuthPrivileged.enableDeviceUnlock(session.password);
         if (failed) {
           flashDeviceAuth(failed.failure, failed.detail);
-        } else if (epoch !== sessionEpochRef.current) {
+        } else if (epoch !== epochRef.current.get()) {
           // Same window as `toggleDeviceAuth`: the OS sheet is inside `enableDeviceUnlock`
           // and the envelope commits after it, so the auto-lock can fire while the sheet is
           // up and a stranger's finger completes the enrolment. Undo it.
@@ -2440,7 +2441,7 @@ export function useWalletStore() {
   const signRawXdr = useCallback(
     async (xdr: string): Promise<string | null> => {
       if (!session) return null;
-      const epoch = sessionEpochRef.current;
+      const epoch = epochRef.current.get();
       const ok = await requestSignature(
         { title: t('confirmSig.signTitle'), message: t('confirmSig.signMsg') },
         true,

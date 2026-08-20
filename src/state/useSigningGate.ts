@@ -26,7 +26,6 @@
  * cannot name what it is answering must not be able to answer.
  */
 import { useCallback, useRef, useState } from 'react';
-import { savedRequireConfirm } from '@/state/usePreferences';
 
 export interface ConfirmRequest {
   /** Identifies THIS prompt. Pass it back to `resolveConfirm`. */
@@ -35,11 +34,14 @@ export interface ConfirmRequest {
   message?: string;
 }
 
-export function useSigningGate() {
+export function useSigningGate(requireConfirm: boolean) {
   const [confirmReq, setConfirmReq] = useState<ConfirmRequest | null>(null);
   /** Pending requests, oldest first. More than one is rare but must not deadlock. */
   const queue = useRef<{ req: ConfirmRequest; resolve: (ok: boolean) => void }[]>([]);
   const nextId = useRef(1);
+
+  const requireConfirmRef = useRef(requireConfirm);
+  requireConfirmRef.current = requireConfirm;
 
   const pump = useCallback(() => {
     setConfirmReq(queue.current[0]?.req ?? null);
@@ -47,9 +49,9 @@ export function useSigningGate() {
 
   const requestSignature = useCallback(
     (opts: Omit<ConfirmRequest, 'id'>, force = false): Promise<boolean> => {
-      // Read the persisted flag, not React state: this must reflect the value at the
-      // moment of the action, even if the toggle changed in the same tick.
-      if (!force && !savedRequireConfirm()) return Promise.resolve(true);
+      // Read the React state ref, not localStorage directly. This stops an attacker
+      // from bypassing the password prompt by writing 'off' to localStorage.
+      if (!force && !requireConfirmRef.current) return Promise.resolve(true);
       return new Promise<boolean>((resolve) => {
         queue.current.push({ req: { ...opts, id: nextId.current++ }, resolve });
         pump();
