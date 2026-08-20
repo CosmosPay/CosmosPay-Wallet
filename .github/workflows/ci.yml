@@ -106,7 +106,7 @@ jobs:
   #
   # iOS is skipped on pull requests, and that is a cost decision rather than a taste one: a
   # macOS runner bills at ten times a Linux one and the free-tier pool allows few of them at
-  # once, so it runs on pushes to main/dev — where a broken Podfile still gets caught before
+  # once, so it runs on pushes to main/dev — where a broken Package.swift still gets caught before
   # a release — instead of on every push to every open branch. Drop the `ios:` line to build
   # it on PRs as well.
   native:
