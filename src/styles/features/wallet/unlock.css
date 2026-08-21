@@ -1,6 +1,6 @@
 /* Unlock screen (src/features/wallet/Unlock.tsx). */
-/* Its own margin, declared as the token rather than a literal so .kb-dock's
-   full-bleed background still reaches the edges of THIS screen. */
+/* Its own margin, declared as the token rather than a literal so anything that measures
+   a screen's gutter (a full-bleed rule, a negative margin) reads 26 here and not 22. */
 .unlock-screen { --gutter: 26px; padding: 2px var(--gutter) 32px; } /* on .scr.screen.col */
 .unlock-langbar { display: flex; justify-content: flex-end; padding-top: 8px; flex-shrink: 0; }
 /* NO min-height: 0 here. A column flex item defaults to min-height:auto, which is the
@@ -16,6 +16,11 @@
 /* password field + eye toggle (colour flips via .is-shown) */
 .unlock-pwd-wrap { position: relative; width: 100%; }
 .unlock-pwd-input { font-size: 16px; text-align: center; padding: 0 52px; } /* on .input */
+
+/* The field and its actions, as one block inside the centred hero (which centres its
+   children, so this has to claim the width back). Keeping them together is what makes the
+   keyboard move ALL of it by the same amount — see the comment in Unlock.tsx. */
+.unlock-controls { width: 100%; } /* on .col.g12 */
 .unlock-eye { position: absolute; right: 7px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; border: none; background: transparent; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--dim); }
 .unlock-eye.is-shown { color: var(--text); }
 

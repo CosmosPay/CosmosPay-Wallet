@@ -20,11 +20,21 @@
   border-top: 1px solid var(--hairline);
 }
 
-/* A tab bar is dead weight while the keyboard is up: nothing on it is reachable
-   without dismissing the keyboard first, and on an engine that resized the frame for
-   us (Android) it would otherwise eat 92px of the little height that is left. */
+/* A tab bar is dead weight while the keyboard is up: nothing on it is reachable without
+   dismissing the keyboard first, so it slides out under the frame — which clips it — and
+   comes back the same way. Not `display: none`: that cannot be transitioned, and the bar
+   vanishing mid-frame is exactly the hard cut this avoids. `visibility` is what actually
+   takes it out of the tab order, and it flips discretely at the END of the slide out and
+   at the START of the slide back in. */
+.bottom-nav {
+  transition: transform 0.24s ease, opacity 0.18s ease, visibility 0.24s;
+}
+
 html.kb-open .bottom-nav {
-  display: none;
+  transform: translateY(100%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 /* Sliding active indicator. nav.tsx ships a FIXED five-tab bar, so the width is
    a constant and the slide is one class per tab index — add a rung here if the

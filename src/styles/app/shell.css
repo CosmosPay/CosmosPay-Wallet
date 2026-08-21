@@ -6,7 +6,7 @@
    size back into that measurement, which Chrome rejects as a bad IPC and
    kills the renderer ("se ha bloqueado"). A determinate height avoids it. */
 .shell-root {
-  min-height: var(--shell-h, 100vh);
+  min-height: calc(var(--shell-h, 100vh) + var(--kb-reflow, 0px));
   display: flex;
   align-items: stretch;
   justify-content: center;
@@ -26,11 +26,18 @@
    the whole UI with CSS `zoom` — Chrome 149 crashes its GPU compositor on
    a zoomed subtree ("se ha bloqueado" in the extension popup), so widening
    the column is the safe way to not stay a fixed size. */
+/* --kb-reflow is what an engine that resizes the LAYOUT viewport for the keyboard just
+   took out of `100dvh` — see src/lib/viewport.ts. Adding it straight back leaves this box
+   exactly the size it was, which is the whole point: a frame that changes size reflows
+   every screen inside it in one frame, with nothing to ease. Hold it still and the
+   keyboard becomes one thing, the padding on .shell-content, which CAN be eased.
+   Deliberately NOT transitioned: it has to cancel the engine's shrink in the same frame,
+   and a transition here would animate the cancellation into a flicker of its own. */
 .shell-frame {
   position: relative;
   width: 100%;
   max-width: var(--frame-max, 440px);
-  height: var(--shell-h, 100vh);
+  height: calc(var(--shell-h, 100vh) + var(--kb-reflow, 0px));
   background: var(--bg);
   overflow: hidden;
   color: var(--text);
@@ -56,6 +63,19 @@
   padding-bottom: max(var(--safe-b), var(--kb-h));
 }
 
+/* Slide the scroll area up with the keyboard instead of snapping it. Sticky recomputes
+   every frame, so the docked footer rides this transition rather than jumping to its
+   stuck position — one movement, not two.
+   The transition lives on the OPEN state on purpose: a property only animates when the
+   after-change style carries it, so this eases in and cuts straight out. On the way out
+   the class goes with it, and animating a padding whose sticky partner has already
+   returned to the flow just puts the two of them out of step.
+   KB_SETTLE_MS in src/lib/viewport.ts waits out this 0.22s before it measures where the
+   focused field ended up. */
+html.kb-open .shell-content {
+  transition: padding-bottom 0.22s ease;
+}
+
 /* iOS Safari resolves 100vh against the LARGE viewport (URL bar hidden), so the
    bottom of a `height: 100vh` frame sits UNDER the toolbar and the bottom nav is
    unreachable. `dvh` tracks the visible viewport instead. Only the FALLBACK is
@@ -63,10 +83,20 @@
    100vh side panel) and a set variable always beats a var() fallback. */
 @supports (height: 100dvh) {
   .shell-root {
-    min-height: var(--shell-h, 100dvh);
+    min-height: calc(var(--shell-h, 100dvh) + var(--kb-reflow, 0px));
   }
 
   .shell-frame {
-    height: var(--shell-h, 100dvh);
+    height: calc(var(--shell-h, 100dvh) + var(--kb-reflow, 0px));
   }
+}
+
+/* Holding the frame at its resting height means it deliberately overhangs the shortened
+   layout viewport, and the document would otherwise scroll to reach the overhang — a
+   second scroller nobody asked for, fighting the one inside .screen. Clip it: the part
+   that hangs over is the part the keyboard is covering anyway.
+   Only while a keyboard is up, so nothing about a desktop window changes. */
+html.kb-open,
+html.kb-open body {
+  overflow: hidden;
 }

@@ -14,6 +14,8 @@
      .shell-content, so the keyboard inset that sheet applies never reaches it, and a
      dialog centred in the full frame puts its password field under the keys. */
   padding: 24px 24px calc(24px + var(--kb-h));
+  /* Re-centres with the keyboard rather than jumping to the new middle. */
+  transition: padding-bottom 0.22s ease;
   /* Strong opaque scrim (backdrop-filter blur doesn't composite in this app's shell,
      so we darken the background hard instead to clearly separate the dialog). */
   background: rgba(0, 0, 0, 0.72);

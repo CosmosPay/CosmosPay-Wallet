@@ -372,6 +372,26 @@
    .screen; nested in a card it can only travel as far as the card. */
 .kb-dock {
   flex-shrink: 0;
+  /* Both directions, so the backing fades out as cleanly as it fades in. Padding is in
+     here too: it is what gives the docked bar its height, and growing it over the same
+     0.22s as the shell's inset keeps the two reading as one movement. */
+  transition: background-color 0.22s ease, padding 0.22s ease;
+}
+
+/* While the bar is stuck it IS the bottom of the screen, so the screen's own bottom
+   padding sits behind it doing nothing — and it is more dead space than the bar's own
+   padding needs, enough to tip a screen that used to fit just past the edge of its scroll
+   area. That buys a small scroll that nobody asked for, arriving just as the reshape
+   finished, which reads as a second movement. Give the padding back and the unlock screen
+   fits in one.
+   :has(), so a screen with no bar keeps its margin. Where it is unsupported the rule
+   simply drops and that small scroll comes back — the layout is never wrong, only busier. */
+html.kb-open .screen:has(.kb-dock) {
+  padding-bottom: 0;
+  /* On the same clock as .shell-content's inset, and for the same reason: handed back in
+     one frame, these 32px are a downward blip at the exact moment everything else starts
+     moving up. Eased alongside, they disappear into the one motion. */
+  transition: padding-bottom 0.22s ease;
 }
 
 /* Opaque, and bleeding into the gutters, because content now scrolls behind it and the
@@ -385,7 +405,9 @@ html.kb-open .kb-dock {
   margin-left: calc(var(--gutter) * -1);
   margin-right: calc(var(--gutter) * -1);
   padding: 10px var(--gutter);
-  background: var(--bg);
+  /* background-COLOR, not the background shorthand: the shorthand resets background-image
+     and the transition above would have nothing to interpolate. */
+  background-color: var(--bg);
 }
 
 /* Muted explanatory paragraph under a screen title. Was eleven near-identical

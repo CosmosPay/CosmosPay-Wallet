@@ -78,104 +78,112 @@ export function Unlock({ store }: { store: WalletStore }) {
         <div className="unlock-subtitle">
           {t('unlock.subtitle')}
         </div>
-        <div className="unlock-pwd-wrap">
-          <input
-            type={showPwd ? 'text' : 'password'}
-            value={pwd}
-            autoFocus
-            placeholder={t('pwd.label')}
-            onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
-            onKeyDown={(e) => e.key === 'Enter' && submit()}
-            className="input unlock-pwd-input"
-          />
-          {/* per-field eye toggle, same pattern as the password-setup screen */}
-          <button
-            type="button"
-            onClick={() => setShowPwd((v) => !v)}
-            aria-label={showPwd ? 'Ocultar' : 'Mostrar'}
-            className={cx('unlock-eye', showPwd && 'is-shown')}
-          >
-            <EyeIcon off={showPwd} />
-          </button>
-        </div>
-      </div>
 
-      <div className="col g12 kb-dock">
-        <PrimaryButton disabled={!pwd || store.busy} onClick={submit}>
-          {store.busy ? <Spinner /> : t('unlock.unlock')}
-        </PrimaryButton>
-        {/* Only when this wallet actually enrolled AND the device can still answer —
-            a button that can only fail is worse than no button. */}
-        {store.deviceAuthReady && (
-          <DeviceAuthButton
-            kind={store.deviceAuthKind}
-            label={t('devAuth.unlockWith', { method: store.deviceAuthMethod })}
-            busy={deviceBusy || store.busy}
-            onClick={deviceSubmit}
-          />
-        )}
-        {!confirmWipe ? (
-          <div onClick={() => setConfirmWipe(true)} className="tap unlock-forgot">
-            {t('unlock.forgot')}
-          </div>
-        ) : (
-          <div className="unlock-wipe">
-            {t('unlock.forgotDesc')}
-            {/* Removes ONLY the active wallet (the one whose password was forgotten) —
-                other wallets on this device are untouched. */}
-            <div onClick={() => store.meta && store.removeWalletLocked(store.meta.id)} className="tap unlock-wipe-delete">
-              {t('unlock.deleteRestore')}
-            </div>
-          </div>
-        )}
-
-        {/* Multiple wallets: compact dropdown to pick which one to unlock, or remove one. */}
-        {multi && (
-          <div className="unlock-switch">
-            <button onClick={() => setWalletOpen((o) => !o)} className="glass-soft unlock-switch-btn">
-              {t('unlock.switchTitle')}
-              <span className={cx('unlock-switch-caret', walletOpen && 'is-open')}>▼</span>
+        {/* The field and everything that acts on it, as ONE group.
+            The unlock button used to sit at the bottom of the screen. That put most of a
+            screen between it and the field, so when the keyboard came up the button had to
+            travel that whole distance while the field travelled a fraction of it — the same
+            movement, on the same clock, but not the same distance, which is what reads as
+            the two of them coming apart. Together they translate as one block.
+            `data-kb-group` is what tells src/lib/viewport.ts to bring the WHOLE group back
+            above the keyboard, not just the field it happens to be scrolling to. */}
+        <div className="col g12 unlock-controls" data-kb-group>
+          <div className="unlock-pwd-wrap">
+            <input
+              type={showPwd ? 'text' : 'password'}
+              value={pwd}
+              autoFocus
+              placeholder={t('pwd.label')}
+              onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => e.key === 'Enter' && submit()}
+              className="input unlock-pwd-input"
+            />
+            {/* per-field eye toggle, same pattern as the password-setup screen */}
+            <button
+              type="button"
+              onClick={() => setShowPwd((v) => !v)}
+              aria-label={showPwd ? 'Ocultar' : 'Mostrar'}
+              className={cx('unlock-eye', showPwd && 'is-shown')}
+            >
+              <EyeIcon off={showPwd} />
             </button>
-            {walletOpen && (
-              <>
-                <div onClick={() => { setWalletOpen(false); setDeletingId(''); }} className="unlock-switch-overlay" />
-                <div className="scr glass unlock-switch-menu">
-                  {store.wallets.map((w) => {
-                    const active = w.id === store.meta?.id;
-                    if (deletingId === w.id) {
+          </div>
+          <PrimaryButton disabled={!pwd || store.busy} onClick={submit}>
+            {store.busy ? <Spinner /> : t('unlock.unlock')}
+          </PrimaryButton>
+          {/* Only when this wallet actually enrolled AND the device can still answer —
+              a button that can only fail is worse than no button. */}
+          {store.deviceAuthReady && (
+            <DeviceAuthButton
+              kind={store.deviceAuthKind}
+              label={t('devAuth.unlockWith', { method: store.deviceAuthMethod })}
+              busy={deviceBusy || store.busy}
+              onClick={deviceSubmit}
+            />
+          )}
+          {!confirmWipe ? (
+            <div onClick={() => setConfirmWipe(true)} className="tap unlock-forgot">
+              {t('unlock.forgot')}
+            </div>
+          ) : (
+            <div className="unlock-wipe">
+              {t('unlock.forgotDesc')}
+              {/* Removes ONLY the active wallet (the one whose password was forgotten) —
+                  other wallets on this device are untouched. */}
+              <div onClick={() => store.meta && store.removeWalletLocked(store.meta.id)} className="tap unlock-wipe-delete">
+                {t('unlock.deleteRestore')}
+              </div>
+            </div>
+          )}
+
+          {/* Multiple wallets: compact dropdown to pick which one to unlock, or remove one. */}
+          {multi && (
+            <div className="unlock-switch">
+              <button onClick={() => setWalletOpen((o) => !o)} className="glass-soft unlock-switch-btn">
+                {t('unlock.switchTitle')}
+                <span className={cx('unlock-switch-caret', walletOpen && 'is-open')}>▼</span>
+              </button>
+              {walletOpen && (
+                <>
+                  <div onClick={() => { setWalletOpen(false); setDeletingId(''); }} className="unlock-switch-overlay" />
+                  <div className="scr glass unlock-switch-menu">
+                    {store.wallets.map((w) => {
+                      const active = w.id === store.meta?.id;
+                      if (deletingId === w.id) {
+                        return (
+                          <div key={w.id} className="unlock-del">
+                            <div className="unlock-del-text">{t('unlock.removeConfirm', { name: w.name })}</div>
+                            <div className="flexr g8">
+                              <button onClick={() => setDeletingId('')} className="glass-soft unlock-del-btn">{t('common.cancel')}</button>
+                              <button onClick={() => { store.removeWalletLocked(w.id); setDeletingId(''); setWalletOpen(false); }} className="unlock-del-btn unlock-del-btn--danger">{t('common.delete')}</button>
+                            </div>
+                          </div>
+                        );
+                      }
                       return (
-                        <div key={w.id} className="unlock-del">
-                          <div className="unlock-del-text">{t('unlock.removeConfirm', { name: w.name })}</div>
-                          <div className="flexr g8">
-                            <button onClick={() => setDeletingId('')} className="glass-soft unlock-del-btn">{t('common.cancel')}</button>
-                            <button onClick={() => { store.removeWalletLocked(w.id); setDeletingId(''); setWalletOpen(false); }} className="unlock-del-btn unlock-del-btn--danger">{t('common.delete')}</button>
+                        <div key={w.id} className={cx('unlock-wallet-row', active && 'is-active')}>
+                          <div onClick={() => { if (!active) store.selectWalletForUnlock(w.id); setWalletOpen(false); }} className="tap f1 row g10 min0 unlock-wallet-main">
+                            <div className="unlock-wallet-avatar">
+                              {w.avatar ? <img src={w.avatar} alt="" className="unlock-wallet-avatar-img" /> : w.name.slice(0, 1).toUpperCase()}
+                            </div>
+                            <div className="unlock-wallet-meta">
+                              <div className="unlock-wallet-name">{w.name}</div>
+                              <div className="unlock-wallet-addr">{shortAddr(w.publicKey, 5, 5)}</div>
+                            </div>
+                          </div>
+                          {active && <span className="unlock-wallet-check">✓</span>}
+                          <div onClick={() => setDeletingId(w.id)} className="tap unlock-wallet-del" title={t('common.delete')}>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
                           </div>
                         </div>
                       );
-                    }
-                    return (
-                      <div key={w.id} className={cx('unlock-wallet-row', active && 'is-active')}>
-                        <div onClick={() => { if (!active) store.selectWalletForUnlock(w.id); setWalletOpen(false); }} className="tap f1 row g10 min0 unlock-wallet-main">
-                          <div className="unlock-wallet-avatar">
-                            {w.avatar ? <img src={w.avatar} alt="" className="unlock-wallet-avatar-img" /> : w.name.slice(0, 1).toUpperCase()}
-                          </div>
-                          <div className="unlock-wallet-meta">
-                            <div className="unlock-wallet-name">{w.name}</div>
-                            <div className="unlock-wallet-addr">{shortAddr(w.publicKey, 5, 5)}</div>
-                          </div>
-                        </div>
-                        {active && <span className="unlock-wallet-check">✓</span>}
-                        <div onClick={() => setDeletingId(w.id)} className="tap unlock-wallet-del" title={t('common.delete')}>
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        )}
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

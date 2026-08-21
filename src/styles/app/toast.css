@@ -44,6 +44,8 @@
   /* Same reason as .confirm-sign-overlay: absolute inside the frame, so it has to
      clear the keyboard itself or a message lands behind the keys. */
   padding: 24px 24px calc(24px + var(--kb-h));
+  /* Re-centres with the keyboard rather than jumping to the new middle. */
+  transition: padding-bottom 0.22s ease;
   pointer-events: none;
 }
 .toast-ext-card.is-leaving {

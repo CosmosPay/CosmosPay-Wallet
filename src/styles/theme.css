@@ -134,9 +134,12 @@
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
-  /* How much of the layout viewport the on-screen keyboard covers WITHOUT the engine
-     having already resized it — see src/lib/viewport.ts, which is what writes it. The
-     `0px` here is the whole value on a desktop and the starting value everywhere else;
-     it must stay a length, for the same calc() reason as the --safe-* fallbacks. */
+  /* How much of the frame the on-screen keyboard is covering, and — of that — how much
+     the engine took by resizing the layout viewport rather than just drawing over it.
+     src/lib/viewport.ts writes both; .shell-frame gives the second one back so the frame
+     never changes size, and .shell-content eases the first one in as padding. The `0px`
+     here is the whole value on a desktop and the starting value everywhere else; both
+     must stay lengths, for the same calc() reason as the --safe-* fallbacks. */
   --kb-h: 0px;
+  --kb-reflow: 0px;
 }

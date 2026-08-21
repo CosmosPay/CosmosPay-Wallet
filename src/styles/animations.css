@@ -221,4 +221,16 @@ button:active,
   .toast-ext-card {
     animation: none !important;
   }
+
+  /* The keyboard's easing (src/lib/viewport.ts and the sheets that read --kb-h) is
+     movement too, and it is the kind this setting is about — a whole screen sliding.
+     Cut to the end state instead; the layout it lands on is identical either way. */
+  .shell-content,
+  .screen,
+  .bottom-nav,
+  .kb-dock,
+  .confirm-sign-overlay,
+  .toast-overlay {
+    transition: none !important;
+  }
 }
