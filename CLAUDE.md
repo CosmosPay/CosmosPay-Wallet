@@ -391,6 +391,38 @@ column width, not appearance.
 its literal colours are deliberate; pulling it into shared primitives would blank the
 one screen where a blank render means the user approves what they cannot see.
 
+## No Spanish in code. UI copy goes through i18n.
+
+**Every string literal in `src/` and `extension-src/` is English.** Not a preference —
+Spanish literals in code shipped a wallet whose guard refused a French user's
+transaction in Spanish, and a dapp window that decided retryable-vs-terminal by
+comparing an error against `'Contraseña incorrecta.'`.
+
+Three cases, and the difference matters:
+
+- **Anything a user reads is a key**, resolved through `src/lib/i18n.ts` — all five
+  languages, no exceptions, including error messages thrown from `lib/`. A screen with
+  the store in reach uses `store.t`; anything without one (`ui/` primitives, the error
+  boundary, `ApprovePopup`) uses `tNow`, or `makeT(savedLang())` once when it is about
+  to resolve a dozen strings.
+- **Anything a machine reads is plain English.** The strings `ApprovePopup` hands to
+  `respond()` travel to the dapp: that is API surface, and translating it would be a
+  breaking change nobody asked for. Same for `ApiShapeError`, whose audience is whoever
+  is reading a stack trace.
+- **Nothing branches on copy.** `WrongPasswordError` exists so a caller can write
+  `e instanceof WrongPasswordError`; `TxGuardError` carries `key` and `params` so a
+  test can assert *which* check fired. A comparison against a rendered string is a
+  review blocker — it is one translation away from silently inverting.
+
+`src/lib/txGuard.ts` is the worked example: ~80 `guard.*` keys, and
+`tests/unit/txGuard.test.ts` asserts refusals by key, so rewording a refusal breaks
+nothing and deleting a check breaks a test.
+
+**Not yet done, and known:** ~140 of the 600 i18n keys are still English in the `pt`,
+`de` and `fr` columns. `tests/unit/i18n.test.ts` only checks a key is non-empty in
+every language, so those pass. It is a real gap in the KYC flow especially, which
+defaults to `country='BR'`.
+
 ## Where a file goes
 
 **One taxonomy: by feature.** The tree used to run two at once — `atoms/ molecules/
@@ -456,6 +488,39 @@ hook: `src/hooks/useCopied.ts`, `src/hooks/useBusy.ts`,
 `useQuery` is in `hooks/`, not `lib/`: it calls `useSyncExternalStore`. The cache it
 binds to (`lib/query.ts`) is the part that must stay framework-free, and that split is
 already what makes it testable.
+
+### Constants live in `constants/`
+
+**A value that is data belongs in `src/constants/`, not next to the code that reads
+it.** Limits, thresholds, tunables, lookup tables, storage keys, ladders — if it is a
+literal a reviewer might want to find or change, it has a home under `constants/` named
+after the area it serves, and the module imports it.
+
+The point is not tidiness. A ceiling buried in the middle of an 800-line guard is a
+ceiling nobody audits: `BOUND_TOLERANCE_BPS` sat at `100n` — a standing 1% skim licence
+on every swap — under a comment claiming it absorbed 7-decimal rounding, and no reader
+ever put those two facts side by side. Collected in one file, the numbers can be read
+as a set.
+
+Three carve-outs, because `constants/` is data and stays data:
+
+- **Behaviour is not a constant.** `src/lib/screens.ts` keeps `SCREENS` because its rows
+  carry resolver functions and it exports `backTarget()`. `WalletApp`'s
+  `SCREEN_COMPONENTS` keeps its place because its values are `lazy()` calls — runtime
+  imports of `features/`, which `constants/` may never do.
+- **Copy is not a constant either — it is a key.** `constants/` cannot call the
+  translator (no runtime import from `lib/`), so a table of user-facing labels holds
+  i18n keys and the component resolves them. `APPROVE_TITLE_KEYS` and `OP_LABEL_KEYS`
+  are the shape; they used to be Spanish literals in `constants/app.ts`, which put copy
+  somewhere it could not be translated.
+- **A private sentinel is not a constant.** `NO_ATTEMPTS`, `EMPTY_HISTORY`, the
+  `TextEncoder` in `crypto.ts`: single-use implementation details with no reader outside
+  their module. Moving those buys nothing and costs an import.
+
+A **type-only** import from `lib/` is fine and often right (`constants/fiat.ts` types its
+rail table with `PayinMethod`); `import type` is erased at build. Runtime imports from
+`lib/`, and *any* import from `state/ features/ ui/ app/`, stay banned.
+
 
 ## Imports are always `@/`
 

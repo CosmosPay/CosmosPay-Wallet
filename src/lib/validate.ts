@@ -7,6 +7,7 @@
  * re-checks the same predicate before it acts, because a disabled button is a
  * hint, not an enforcement point.
  */
+import { tNow } from '@/lib/i18n';
 
 /** Pragmatic email check: something@something.tld — matches the signup contract. */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -71,9 +72,9 @@ export function horizonUrlProblem(raw: string): string | null {
     const url = new URL(v);
     if (url.protocol === 'https:') return null;
     if (url.protocol === 'http:' && LOOPBACK.has(url.hostname)) return null;
-    if (url.protocol === 'http:') return 'Usa https:// — con http tu saldo y tus transacciones viajan sin cifrar.';
-    return 'La dirección debe empezar por https://';
+    if (url.protocol === 'http:') return tNow('validate.needsHttps');
+    return tNow('validate.mustStartHttps');
   } catch {
-    return 'La dirección no es una URL válida.';
+    return tNow('validate.notAUrl');
   }
 }

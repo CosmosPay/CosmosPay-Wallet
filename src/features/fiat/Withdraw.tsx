@@ -3,7 +3,7 @@ import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { PrimaryButton, GhostButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
-import { railLabel, railCurrency } from '@/constants/fiat';
+import { railLabel, railCurrency } from '@/lib/fiatRails';
 import type { FiatToken, PayoutQuote } from '@/lib/cosmospay';
 import { fmtMinor, fmtFiat, toMinor, stableTokens } from '@/features/fiat/format';
 import { QuoteRow } from '@/features/fiat/QuoteRow';

@@ -98,7 +98,7 @@ export function Send({ store }: { store: WalletStore }) {
       </div>
 
       <div className="flexr g8 send-pct">
-        {([['25%', 0.25], ['50%', 0.5], ['Máx', 1]] as [string, number][]).map(([l, p]) => (
+        {([['25%', 0.25], ['50%', 0.5], [t('send.max'), 1]] as [string, number][]).map(([l, p]) => (
           <span key={l} onClick={() => setPct(p)} className="tap glass-soft send-pct-btn">{l}</span>
         ))}
       </div>

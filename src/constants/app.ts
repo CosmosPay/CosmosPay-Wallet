@@ -50,43 +50,47 @@ export const AUTO_LOCK_CHECK_MS = 15_000;
  *  this literal (extension-src/sw.js `MIRROR_KEY`) — keep both in sync. */
 export const DAPP_MIRROR_KEY = 'cosmos.dapp';
 
-/** Dapp-approval window titles per request method (see ApprovePopup). */
-export const APPROVE_TITLES: Record<
+/** i18n keys for the dapp-approval window titles per request method (see ApprovePopup).
+ *  KEYS, not copy: this file is data, and `constants/` may not import from `lib/` at
+ *  runtime — so it cannot call the translator, and holding a Spanish literal here was
+ *  the same thing as holding it in the component. The window resolves these. */
+export const APPROVE_TITLE_KEYS: Record<
   'getAddress' | 'signTransaction' | 'signMessage' | 'requestPayment',
   string
 > = {
-  getAddress: 'Conectar tu wallet',
-  signTransaction: 'Firmar transacción',
-  signMessage: 'Firmar mensaje',
-  requestPayment: 'Enviar pago',
+  getAddress: 'approve.title.getAddress',
+  signTransaction: 'approve.title.signTransaction',
+  signMessage: 'approve.title.signMessage',
+  requestPayment: 'approve.title.requestPayment',
 };
 
-/** Plain-language names for the Stellar operations the approval window renders.
- *  An unmapped type falls back to its raw SDK name — visible, never hidden. */
-export const OP_LABELS: Record<string, string> = {
-  payment: 'Pago',
-  createAccount: 'Crear cuenta',
-  pathPaymentStrictSend: 'Intercambio (envío fijo)',
-  pathPaymentStrictReceive: 'Intercambio (recepción fija)',
-  changeTrust: 'Añadir/quitar activo (trustline)',
-  manageSellOffer: 'Orden de venta',
-  manageBuyOffer: 'Orden de compra',
-  createPassiveSellOffer: 'Orden de venta pasiva',
-  liquidityPoolDeposit: 'Depósito en pool de liquidez',
-  liquidityPoolWithdraw: 'Retiro de pool de liquidez',
-  manageData: 'Escribir dato en la cuenta',
-  bumpSequence: 'Avanzar número de secuencia',
-  createClaimableBalance: 'Crear saldo reclamable',
-  claimClaimableBalance: 'Reclamar saldo',
-  invokeHostFunction: '⚠️ INVOCAR CONTRATO (SOROBAN) — CONTENIDO NO LEGIBLE',
+/** i18n keys for the Stellar operations the approval window renders, in plain language.
+ *  An unmapped type falls back to its raw SDK name — visible, never hidden. The
+ *  `⚠️` prefix on the critical ones lives in the translation, not here. */
+export const OP_LABEL_KEYS: Record<string, string> = {
+  payment: 'op.payment',
+  createAccount: 'op.createAccount',
+  pathPaymentStrictSend: 'op.pathPaymentStrictSend',
+  pathPaymentStrictReceive: 'op.pathPaymentStrictReceive',
+  changeTrust: 'op.changeTrust',
+  manageSellOffer: 'op.manageSellOffer',
+  manageBuyOffer: 'op.manageBuyOffer',
+  createPassiveSellOffer: 'op.createPassiveSellOffer',
+  liquidityPoolDeposit: 'op.liquidityPoolDeposit',
+  liquidityPoolWithdraw: 'op.liquidityPoolWithdraw',
+  manageData: 'op.manageData',
+  bumpSequence: 'op.bumpSequence',
+  createClaimableBalance: 'op.createClaimableBalance',
+  claimClaimableBalance: 'op.claimClaimableBalance',
+  invokeHostFunction: 'op.invokeHostFunction',
   // Critical — the window renders these behind a red warning.
-  setOptions: '⚠️ CAMBIAR FIRMANTES / UMBRALES DE TU CUENTA',
-  accountMerge: '⚠️ FUSIONAR (VACIAR) TU CUENTA',
-  allowTrust: '⚠️ Cambiar autorización de trustline',
-  setTrustLineFlags: '⚠️ Cambiar flags de trustline',
-  clawback: '⚠️ Clawback de activos',
-  clawbackClaimableBalance: '⚠️ Clawback de saldo reclamable',
-  beginSponsoringFutureReserves: '⚠️ Iniciar patrocinio de reservas',
-  endSponsoringFutureReserves: '⚠️ Finalizar patrocinio de reservas',
-  revokeSponsorship: '⚠️ Revocar patrocinio',
+  setOptions: 'op.setOptions',
+  accountMerge: 'op.accountMerge',
+  allowTrust: 'op.allowTrust',
+  setTrustLineFlags: 'op.setTrustLineFlags',
+  clawback: 'op.clawback',
+  clawbackClaimableBalance: 'op.clawbackClaimableBalance',
+  beginSponsoringFutureReserves: 'op.beginSponsoringFutureReserves',
+  endSponsoringFutureReserves: 'op.endSponsoringFutureReserves',
+  revokeSponsorship: 'op.revokeSponsorship',
 };

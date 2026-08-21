@@ -20,127 +20,68 @@
  * `cfg` — the user's configured network — is the only accepted source.
  *
  * IMPORTANT — every check below reads DECODED SDK FIELDS, never `OpReview.rows`.
- * `rows` is presentation: Spanish labels, formatted values. An earlier version
+ * `rows` is presentation: translated labels, formatted values. An earlier version
  * recovered the amount by looking for a row labelled `'Importe'`, which meant an
- * i18n pass would have disabled the amount cap with the whole suite green.
+ * i18n pass would have disabled the amount cap with the whole suite green. That
+ * i18n pass has since happened — every label and every refusal below is a `guard.*`
+ * key resolved through `tNow`, so the hazard is no longer hypothetical.
  *
  * IMPORTANT — the guard fails CLOSED. An operation that moves value and cannot be
  * quantified, an envelope whose validity window is missing, an asset that does not
  * match what the user confirmed: all refusals. "Could not determine" is never
  * "no limit".
  */
-import { FeeBumpTransaction, TransactionBuilder, type Transaction } from '@stellar/stellar-sdk';
+import {
+  Asset,
+  FeeBumpTransaction,
+  LiquidityPoolAsset,
+  LiquidityPoolFeeV18,
+  TransactionBuilder,
+  getLiquidityPoolId,
+  type Transaction,
+} from '@stellar/stellar-sdk';
 import type { NetConfig } from '@/lib/stellar';
 import type { AssetRef } from '@/lib/asset';
 import { shortIssuer } from '@/lib/asset';
 import { STELLAR_DECIMALS, toMinorUnitsBig } from '@/lib/amount';
+import { tNow } from '@/lib/i18n';
+import {
+  ALLOWED_OPS,
+  BOUND_TOLERANCE_BPS,
+  CLOCK_SKEW_S,
+  CRITICAL_OPS,
+  MAX_FEE_STROOPS,
+  MAX_OPS,
+  MAX_VALIDITY_S,
+  type SignIntent,
+} from '@/constants/txGuard';
+
+/* Re-exported so the guard stays the one import a signing flow needs; the values
+   themselves live in constants/, per the rule in CLAUDE.md. */
+export { CRITICAL_OPS, CLOCK_SKEW_S, MAX_FEE_STROOPS, MAX_OPS, MAX_VALIDITY_S };
+export type { SignIntent };
+
 
 /**
- * Which wallet flow is asking for a signature. `dapp` is reviewed, not allowlisted.
- *
- * `send` and `trustline` used to be here with their own `ALLOWED_OPS` rows and no
- * call site: the wallet builds both locally (`sendPayment`, `stellarAddTrustline`)
- * and never routes them through the guard. A dead row in a security allowlist reads
- * as coverage that does not exist, so they are gone until a flow needs them.
+ * A refusal. `message` is already resolved for the active language, so any caller
+ * that only knows how to show `e.message` keeps working; `key` and `params` are kept
+ * alongside it for a caller that wants to re-render on a language change, and because
+ * a `guard.*` key is what a developer greps for when a refusal reaches them.
  */
-export type SignIntent = 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'dapp';
-
-/**
- * Operations that can hand over the account itself, or move value in a way this
- * wallet cannot decode. None of the wallet's own flows ever needs one, so they are
- * refused outright; the dapp path renders them behind a red warning instead of
- * refusing, because legitimate dapps do use them.
- */
-export const CRITICAL_OPS: readonly string[] = [
-  'setOptions', // can add a signer or zero the master weight -> account takeover
-  'accountMerge', // sends the whole balance and deletes the account
-  'allowTrust',
-  'setTrustLineFlags',
-  'clawback',
-  'clawbackClaimableBalance',
-  'beginSponsoringFutureReserves',
-  'endSponsoringFutureReserves',
-  'revokeSponsorship',
-  // Soroban. The wallet decodes the contract id and the function name and nothing
-  // else, so it cannot tell "read a price" from "transfer my whole USDC balance"
-  // through the asset's SAC. Unknown intent over a value-bearing interface is the
-  // same risk class as handing over a signer.
-  'invokeHostFunction',
-  // Moves the balance out to someone else's claim, and the approval window used to
-  // render it as a friendly label with no rows at all — a total drain shown as an
-  // empty line.
-  'createClaimableBalance',
-  // Cannot take funds, but a bump to INT64_MAX makes the account permanently
-  // unusable: no later transaction can ever reach a higher sequence number.
-  'bumpSequence',
-];
-
-/**
- * Operations each internal flow may legitimately contain.
- *
- * `manageSellOffer` / `manageBuyOffer` / `createPassiveSellOffer` were removed from
- * `swap`: the gateway builds swaps as path payments, the wallet has no order-book
- * UI, and an offer's cost is a price ratio rather than a settled amount — so no
- * bound the user confirmed could be enforced against one. If a flow ever needs an
- * offer it gets its own entry with its own bound, not a hole in this one.
- */
-const ALLOWED_OPS: Record<Exclude<SignIntent, 'dapp'>, readonly string[]> = {
-  swap: ['pathPaymentStrictSend', 'pathPaymentStrictReceive', 'changeTrust'],
-  'lp-deposit': ['liquidityPoolDeposit', 'changeTrust'],
-  'lp-withdraw': ['liquidityPoolWithdraw', 'changeTrust'],
-  offramp: ['payment', 'pathPaymentStrictSend', 'pathPaymentStrictReceive'],
-};
-
-/**
- * Fee ceiling for the internal flows, in stroops (1 XLM). Base fee is 100 stroops
- * per operation, so this is ~5 orders of magnitude of headroom — it exists only to
- * stop a fee-drain envelope, not to second-guess congestion pricing.
- */
-const MAX_FEE_STROOPS = 10_000_000;
-
-/**
- * Operation ceiling for the internal flows. Stellar allows 100 per transaction; the
- * fattest thing any of these flows builds is a trustline plus a settlement, so this
- * is already generous. Without it the per-asset total below would still hold, but a
- * hundred-operation envelope is by itself evidence the gateway is not doing what the
- * screen said.
- */
-const MAX_OPS = 8;
-
-/**
- * How long a server-built envelope may stay signable, in seconds.
- *
- * An envelope with no `maxTime` never expires: the counterparty submits these, so it
- * can hold a valid signature and send it when the market has moved. Stellar's replay
- * protection is the sequence number, which only helps once the account has moved on.
- * These flows broadcast within seconds, so fifteen minutes is already generous — the
- * first version allowed 24 hours, which is 24 hours of free optionality handed to
- * the counterparty on a quote that expired in seconds.
- */
-const MAX_VALIDITY_S = 15 * 60;
-
-/**
- * Clock skew tolerated at BOTH ends of the window, in seconds.
- *
- * `Date.now()` on a phone is not NTP-disciplined. Applying the allowance only to the
- * expiry test meant a device running three minutes fast rejected every envelope the
- * gateway ever sent, with a message blaming the server. It is added to the expiry
- * check and to the validity budget alike.
- */
-const CLOCK_SKEW_S = 5 * 60;
-
-/**
- * Rounding tolerance on the confirmed bounds, in basis points. Absorbs the server
- * rounding a quote to Stellar's 7 decimal places; nothing wider.
- */
-const BOUND_TOLERANCE_BPS = 100n; // 1%
-
 export class TxGuardError extends Error {
   readonly review: TxReview | null;
-  constructor(message: string, review: TxReview | null = null) {
-    super(message);
+  readonly key: string;
+  readonly params: Record<string, string | number> | undefined;
+  constructor(
+    key: string,
+    params?: Record<string, string | number>,
+    review: TxReview | null = null,
+  ) {
+    super(tNow(key, params));
     this.name = 'TxGuardError';
     this.review = review;
+    this.key = key;
+    this.params = params;
   }
 }
 
@@ -264,8 +205,8 @@ function sorobanRows(o: Record<string, unknown>): { label: string; value: string
       const name = call.functionName?.();
       const id = typeof addr === 'string' ? addr : String((addr as { toString?: () => string })?.toString?.() ?? '');
       const fname = name instanceof Uint8Array ? new TextDecoder().decode(name) : String(name ?? '');
-      if (id) rows.push({ label: 'Contrato', value: short(id, 8) });
-      if (fname) rows.push({ label: 'Función', value: fname });
+      if (id) rows.push({ label: tNow('guard.row.contract'), value: short(id, 8) });
+      if (fname) rows.push({ label: tNow('guard.row.function'), value: fname });
     }
   } catch {
     /* the host-function union reshapes between SDK minors; a missing row is fine */
@@ -304,85 +245,85 @@ function reviewOp(raw: unknown): OpReview {
     case 'payment':
       movesValue = true;
       moves(sends, o.amount, assetRefOf(o.asset));
-      push('Destino', str(o.destination));
-      push('Importe', `${String(o.amount ?? '')} ${assetLabel(o.asset)}`.trim());
+      push(tNow('guard.row.destination'), str(o.destination));
+      push(tNow('guard.row.amount'), `${String(o.amount ?? '')} ${assetLabel(o.asset)}`.trim());
       break;
     case 'createAccount':
       movesValue = true;
       moves(sends, o.startingBalance, { code: 'XLM', issuer: null });
-      push('Cuenta nueva', str(o.destination));
-      push('Saldo inicial', `${String(o.startingBalance ?? '')} XLM`);
+      push(tNow('guard.row.newAccount'), str(o.destination));
+      push(tNow('guard.row.startingBalance'), `${String(o.startingBalance ?? '')} XLM`);
       break;
     case 'pathPaymentStrictSend':
       movesValue = true;
       moves(sends, o.sendAmount, assetRefOf(o.sendAsset));
       moves(receives, o.destMin, assetRefOf(o.destAsset));
-      push('Destino', str(o.destination));
-      push('Envías', `${String(o.sendAmount ?? '')} ${assetLabel(o.sendAsset)}`.trim());
-      push('Recibe (mínimo)', `${String(o.destMin ?? '')} ${assetLabel(o.destAsset)}`.trim());
+      push(tNow('guard.row.destination'), str(o.destination));
+      push(tNow('guard.row.youSend'), `${String(o.sendAmount ?? '')} ${assetLabel(o.sendAsset)}`.trim());
+      push(tNow('guard.row.receivesMin'), `${String(o.destMin ?? '')} ${assetLabel(o.destAsset)}`.trim());
       break;
     case 'pathPaymentStrictReceive':
       movesValue = true;
       moves(sends, o.sendMax, assetRefOf(o.sendAsset));
       moves(receives, o.destAmount, assetRefOf(o.destAsset));
-      push('Destino', str(o.destination));
-      push('Envías (máximo)', `${String(o.sendMax ?? '')} ${assetLabel(o.sendAsset)}`.trim());
-      push('Recibe', `${String(o.destAmount ?? '')} ${assetLabel(o.destAsset)}`.trim());
+      push(tNow('guard.row.destination'), str(o.destination));
+      push(tNow('guard.row.youSendMax'), `${String(o.sendMax ?? '')} ${assetLabel(o.sendAsset)}`.trim());
+      push(tNow('guard.row.receives'), `${String(o.destAmount ?? '')} ${assetLabel(o.destAsset)}`.trim());
       break;
     case 'changeTrust':
       line = assetRefOf(o.line);
       linePoolShare = isPoolShare(o.line);
       // The SDK pads the limit to 7 decimals, so "delete" arrives as "0.0000000".
       lineRemoves = toMinorUnitsBig(String(o.limit ?? ''), STELLAR_DECIMALS) === 0n;
-      push('Activo', assetLabel(o.line));
-      push('Límite', lineRemoves ? 'ELIMINAR trustline' : String(o.limit ?? ''));
+      push(tNow('guard.row.asset'), assetLabel(o.line));
+      push(tNow('guard.row.limit'), lineRemoves ? tNow('guard.val.removeTrustline') : String(o.limit ?? ''));
       break;
     case 'liquidityPoolDeposit':
       // The two sides are identified by the pool id, not by a (code, issuer) pair.
       movesValue = true;
       moves(sends, o.maxAmountA, null);
       moves(sends, o.maxAmountB, null);
-      push('Pool', short(String(o.liquidityPoolId ?? ''), 8));
-      push('Máximo A', str(o.maxAmountA));
-      push('Máximo B', str(o.maxAmountB));
+      push(tNow('guard.row.pool'), short(String(o.liquidityPoolId ?? ''), 8));
+      push(tNow('guard.row.maxA'), str(o.maxAmountA));
+      push(tNow('guard.row.maxB'), str(o.maxAmountB));
       // The price band decides the execution; it used to be decoded by nobody.
-      push('Precio mínimo', priceLabel(o.minPrice));
-      push('Precio máximo', priceLabel(o.maxPrice));
+      push(tNow('guard.row.minPrice'), priceLabel(o.minPrice));
+      push(tNow('guard.row.maxPrice'), priceLabel(o.maxPrice));
       break;
     case 'liquidityPoolWithdraw':
       movesValue = true;
       moves(sends, o.amount, null); // pool shares leave the account
       moves(receives, o.minAmountA, null);
       moves(receives, o.minAmountB, null);
-      push('Pool', short(String(o.liquidityPoolId ?? ''), 8));
-      push('Participaciones', str(o.amount));
-      push('Mínimo A', str(o.minAmountA));
-      push('Mínimo B', str(o.minAmountB));
+      push(tNow('guard.row.pool'), short(String(o.liquidityPoolId ?? ''), 8));
+      push(tNow('guard.row.shares'), str(o.amount));
+      push(tNow('guard.row.minA'), str(o.minAmountA));
+      push(tNow('guard.row.minB'), str(o.minAmountB));
       break;
     case 'createClaimableBalance':
       movesValue = true;
       moves(sends, o.amount, assetRefOf(o.asset));
-      push('Importe bloqueado', `${String(o.amount ?? '')} ${assetLabel(o.asset)}`.trim());
-      push('Reclamantes', claimantsLabel(o.claimants));
+      push(tNow('guard.row.lockedAmount'), `${String(o.amount ?? '')} ${assetLabel(o.asset)}`.trim());
+      push(tNow('guard.row.claimants'), claimantsLabel(o.claimants));
       break;
     case 'claimClaimableBalance':
-      push('Saldo reclamado', short(String(o.balanceId ?? ''), 8));
+      push(tNow('guard.row.claimedBalance'), short(String(o.balanceId ?? ''), 8));
       break;
     case 'bumpSequence':
-      push('Nueva secuencia', String(o.bumpTo ?? ''));
+      push(tNow('guard.row.newSequence'), String(o.bumpTo ?? ''));
       break;
     case 'accountMerge':
       movesValue = true; // the entire balance, unquantifiable from the envelope
-      push('Fusiona la cuenta en', str(o.destination));
+      push(tNow('guard.row.mergeInto'), str(o.destination));
       break;
     case 'setOptions': {
       const signer = o.signer as { ed25519PublicKey?: string; weight?: number } | undefined;
-      if (signer?.ed25519PublicKey) push('Añade firmante', `${signer.ed25519PublicKey} (peso ${signer.weight ?? '?'})`);
-      if (o.masterWeight != null) push('Peso de tu clave', String(o.masterWeight));
-      if (o.lowThreshold != null) push('Umbral bajo', String(o.lowThreshold));
-      if (o.medThreshold != null) push('Umbral medio', String(o.medThreshold));
-      if (o.highThreshold != null) push('Umbral alto', String(o.highThreshold));
-      if (o.homeDomain != null) push('Dominio', String(o.homeDomain));
+      if (signer?.ed25519PublicKey) push(tNow('guard.row.addsSigner'), tNow('guard.val.signerWeight', { key: signer.ed25519PublicKey, weight: String(signer.weight ?? '?') }));
+      if (o.masterWeight != null) push(tNow('guard.row.masterWeight'), String(o.masterWeight));
+      if (o.lowThreshold != null) push(tNow('guard.row.lowThreshold'), String(o.lowThreshold));
+      if (o.medThreshold != null) push(tNow('guard.row.medThreshold'), String(o.medThreshold));
+      if (o.highThreshold != null) push(tNow('guard.row.highThreshold'), String(o.highThreshold));
+      if (o.homeDomain != null) push(tNow('guard.row.homeDomain'), String(o.homeDomain));
       break;
     }
     case 'manageSellOffer':
@@ -392,20 +333,20 @@ function reviewOp(raw: unknown): OpReview {
       // depends on the book at execution time. Marked as moving value with nothing
       // quantified, so any flow that reaches one refuses it.
       movesValue = true;
-      push('Vende', assetLabel(o.selling));
-      push('Compra', assetLabel(o.buying));
-      push('Cantidad', str(o.amount) ?? str(o.buyAmount));
-      push('Precio', str(o.price));
+      push(tNow('guard.row.selling'), assetLabel(o.selling));
+      push(tNow('guard.row.buying'), assetLabel(o.buying));
+      push(tNow('guard.row.quantity'), str(o.amount) ?? str(o.buyAmount));
+      push(tNow('guard.row.price'), str(o.price));
       break;
     case 'manageData':
-      push('Clave', str(o.name));
-      push('Valor', o.value == null ? 'BORRAR' : '(binario)');
+      push(tNow('guard.row.dataName'), str(o.name));
+      push(tNow('guard.row.dataValue'), o.value == null ? tNow('guard.val.deleteEntry') : tNow('guard.val.binary'));
       break;
     case 'invokeHostFunction': {
       movesValue = true; // may transfer through an asset's SAC; not decodable here
       const soroban = sorobanRows(o);
       if (soroban.length) rows.push(...soroban);
-      else push('Contrato', 'Invocación de contrato Soroban (no legible)');
+      else push(tNow('guard.row.contract'), tNow('guard.val.sorobanOpaque'));
       break;
     }
     default:
@@ -414,7 +355,7 @@ function reviewOp(raw: unknown): OpReview {
       // harmless. An operation the wallet cannot read is the one most likely to be
       // doing something it should not.
       movesValue = true;
-      push('Operación', 'La wallet no sabe leer esta operación');
+      push(tNow('guard.row.operation'), tNow('guard.val.unreadableOp'));
       break;
   }
 
@@ -490,7 +431,7 @@ export function reviewTx(cfg: NetConfig, xdr: string): TxReview {
   try {
     parsed = TransactionBuilder.fromXDR(xdr.trim(), cfg.passphrase);
   } catch {
-    throw new TxGuardError('No se pudo decodificar la transacción (XDR inválido).');
+    throw new TxGuardError('guard.undecodable');
   }
 
   let feeBumpSource: string | null = null;
@@ -556,6 +497,46 @@ export interface AssetBound {
  */
 export type DestinationPolicy = 'self' | 'counterparty' | readonly string[];
 
+/** One side of a pool deposit: the asset confirmed, and the ceiling for that side. */
+export interface PoolSide {
+  asset: AssetBound;
+  /** The maximum of `asset` the user agreed to put in. */
+  max: string;
+}
+
+/**
+ * The pool a deposit is allowed to touch, worked out from the two assets the user
+ * confirmed — and never read out of the envelope.
+ *
+ * A constant-product pool id is a hash of its (assetA, assetB, fee) in CAP-38's
+ * canonical order, so the wallet can compute the id of the only pool those two assets
+ * can form. That is strictly stronger than asking the caller for a pool id, which for
+ * a deposit it does not have: the user picks two assets, not a pool.
+ *
+ * The canonical order is also what makes the per-side ceilings meaningful. A deposit
+ * decodes its two amounts in the pool's A/B order with no asset attached, so returning
+ * the ceilings in that same order is what lets each side be bound to its own — instead
+ * of the two being interchangeable.
+ *
+ * Returns null when the pair cannot form a pool at all (the same asset twice, an
+ * unparseable issuer). The caller refuses on null; "could not determine" is never
+ * "no limit".
+ */
+function poolPlan(sides: readonly [PoolSide, PoolSide]): { id: string; ceilings: readonly [string, string] } | null {
+  try {
+    const asset = (b: AssetBound) => (b.issuer ? new Asset(b.code, b.issuer) : Asset.native());
+    const first = asset(sides[0].asset);
+    const second = asset(sides[1].asset);
+    const inOrder = Asset.compare(first, second) <= 0;
+    const [a, b] = inOrder ? [sides[0], sides[1]] : [sides[1], sides[0]];
+    const pool = new LiquidityPoolAsset(asset(a.asset), asset(b.asset), LiquidityPoolFeeV18);
+    const id = getLiquidityPoolId('constant_product', pool.getLiquidityPoolParameters()).toString('hex');
+    return { id, ceilings: [a.max, b.max] };
+  } catch {
+    return null;
+  }
+}
+
 /** An amount the user confirmed, with the asset it is denominated in. */
 export interface AmountBound {
   amount: string;
@@ -610,11 +591,21 @@ export type GuardOptions =
   | (GuardBase & {
       intent: 'lp-deposit';
       /**
-       * The per-side ceilings the user confirmed. Pool amounts are identified by the
-       * pool id rather than by an asset, so they are matched as a multiset: each
-       * amount leaving must be covered by one of these, order-independent.
+       * The two sides the user confirmed: each asset paired with the ceiling shown
+       * under its own field.
+       *
+       * The pool is NOT a parameter — it is derived from these two assets, so the
+       * envelope cannot name a different one. This arm used to carry a bare
+       * `poolAmounts: string[]` and no pool at all, which left two holes at once:
+       * `expectedPool` was only ever set for `lp-withdraw`, so the "acts on the pool
+       * you chose" check never ran on a deposit; and because pool amounts decode with
+       * no asset attached, the ceilings were matched as an order-independent multiset.
+       * Confirm 1000 XLM / 100 USDC and a hostile gateway returns a deposit of 100 and
+       * 1000 with the sides swapped, into a pool of its own: each amount finds a
+       * ceiling that covers it, `destinations: 'self'` says nothing because the
+       * operation has no destination, and a 10x overspend passes green.
        */
-      poolAmounts: readonly string[];
+      poolSides: readonly [PoolSide, PoolSide];
     })
   | (GuardBase & {
       intent: 'lp-withdraw';
@@ -648,61 +639,68 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
   // compiler stopped narrowing after every refusal, which is why this function used to
   // need three `as bigint` casts to compile — casts that would have silently swallowed
   // a `null` the moment `fail` stopped throwing.
-  const fail: (msg: string) => never = (msg) => {
-    throw new TxGuardError(msg, review);
+  const fail: (key: string, params?: Record<string, string | number>) => never = (key, params) => {
+    throw new TxGuardError(key, params, review);
   };
 
   // A fee bump lets a third party wrap and re-broadcast; no internal flow builds one.
   if (review.feeBumpSource) {
-    fail('La transacción viene envuelta en un fee-bump. La wallet no firma envoltorios de terceros.');
+    fail('guard.feeBump');
   }
 
   if (review.source !== opts.signer) {
-    fail(`La transacción no sale de tu cuenta (origen: ${short(review.source)}). Firma rechazada.`);
+    fail('guard.foreignSource', { source: short(review.source) });
   }
 
   if (!review.operations.length) {
-    fail('La transacción no contiene ninguna operación.');
+    fail('guard.noOps');
   }
 
   if (review.operations.length > MAX_OPS) {
-    fail(`La transacción contiene ${review.operations.length} operaciones, más de las que esta acción necesita. Firma rechazada.`);
+    fail('guard.tooManyOps', { count: review.operations.length });
   }
 
   const feeNum = Number(review.fee);
   if (!Number.isFinite(feeNum) || feeNum < 0 || feeNum > MAX_FEE_STROOPS) {
-    fail(`La comisión de la transacción es anómala (${review.feeXlm} XLM). Firma rechazada.`);
+    fail('guard.feeTooHigh', { fee: review.feeXlm });
   }
 
   /* -------- validity window: a signature that never expires is a liability ------- */
   const now = opts.now ?? Math.floor(Date.now() / 1000);
   if (!review.maxTime) {
-    fail('La transacción no caduca nunca (sin límite temporal). Una firma sin caducidad puede reenviarse cuando le convenga a la contraparte. Firma rechazada.');
+    fail('guard.noExpiry');
   }
   const maxTime = Number(review.maxTime);
   if (!Number.isFinite(maxTime)) {
-    fail('El límite temporal de la transacción no es legible. Firma rechazada.');
+    fail('guard.badMaxTime');
   }
   if (maxTime + CLOCK_SKEW_S < now) {
-    fail('La transacción ya ha caducado. Vuelve a pedir la cotización.');
+    fail('guard.expired');
   }
   // A post-dated envelope is the same free option as a never-expiring one: the
   // counterparty submits these, so `minTime` in the future hands it the wait. Checked
   // before the width test so the refusal names the actual problem.
   const minTime = review.minTime ? Number(review.minTime) : 0;
   if (Number.isFinite(minTime) && minTime > now + CLOCK_SKEW_S) {
-    fail('La transacción no es válida hasta más tarde. Firma rechazada.');
+    fail('guard.notYetValid');
   }
   if (maxTime - now > MAX_VALIDITY_S + CLOCK_SKEW_S) {
-    fail('La transacción sigue siendo válida durante demasiado tiempo. Firma rechazada.');
+    fail('guard.validTooLong');
   }
 
   /* --------------------------- per-operation checks --------------------------- */
   const allowed = ALLOWED_OPS[opts.intent];
   const maxSend = opts.intent === 'swap' || opts.intent === 'offramp' ? opts.maxSend : null;
   const minReceive = opts.intent === 'swap' ? opts.minReceive : null;
-  const poolAmounts = opts.intent === 'lp-deposit' || opts.intent === 'lp-withdraw' ? opts.poolAmounts : null;
-  const expectedPool = opts.intent === 'lp-withdraw' ? opts.poolId : null;
+  // Withdraw names its pool; deposit DERIVES it from the two confirmed assets. Either
+  // way `expectedPool` is set for every liquidity intent, which is what makes the
+  // "acts on the pool you chose" check below reachable on both of them.
+  const poolAmounts = opts.intent === 'lp-withdraw' ? opts.poolAmounts : null;
+  const deposit = opts.intent === 'lp-deposit' ? poolPlan(opts.poolSides) : null;
+  if (opts.intent === 'lp-deposit' && !deposit) {
+    fail('guard.poolUncomputable');
+  }
+  const expectedPool = opts.intent === 'lp-withdraw' ? opts.poolId : (deposit?.id ?? null);
   const isLiquidity = opts.intent === 'lp-deposit' || opts.intent === 'lp-withdraw';
   const declared: AssetBound[] = [
     ...(maxSend ? [maxSend.asset] : []),
@@ -713,33 +711,33 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
 
   for (const op of review.operations) {
     if (op.critical) {
-      fail(`La transacción contiene una operación crítica (${op.type}) que podría dar control de tu cuenta a un tercero. Firma rechazada.`);
+      fail('guard.criticalOp', { op: op.type });
     }
     if (!allowed.includes(op.type)) {
-      fail(`La transacción contiene una operación inesperada para esta acción (${op.type}). Firma rechazada.`);
+      fail('guard.unexpectedOp', { op: op.type });
     }
     // An op may omit its source (inherits the tx source); if it sets one, it must be us.
     if (op.source && op.source !== opts.signer) {
-      fail(`Una operación actúa sobre otra cuenta (${short(op.source)}). Firma rechazada.`);
+      fail('guard.foreignOpSource', { source: short(op.source) });
     }
 
     /* where the money lands */
     if (op.destination && op.destination !== opts.signer) {
       if (opts.destinations === 'self') {
-        fail(`La operación envía el dinero a otra cuenta (${short(op.destination)}), no a la tuya. Firma rechazada.`);
+        fail('guard.notSelfDestination', { destination: short(op.destination) });
       } else if (opts.destinations === 'counterparty') {
         counterparties.add(op.destination);
         if (counterparties.size > 1) {
-          fail('La transacción reparte el dinero entre varios destinatarios. Firma rechazada.');
+          fail('guard.multipleDestinations');
         }
       } else if (!opts.destinations.includes(op.destination)) {
-        fail(`La operación envía el dinero a un destino que no confirmaste (${short(op.destination)}). Firma rechazada.`);
+        fail('guard.unconfirmedDestination', { destination: short(op.destination) });
       }
     }
 
     /* an operation that moves value must say how much, in what */
     if (op.movesValue && !op.sends.length) {
-      fail(`La wallet no puede determinar cuánto mueve una de las operaciones (${op.type}). Firma rechazada.`);
+      fail('guard.unquantifiable', { op: op.type });
     }
 
     /* a trustline must be one the flow confirmed */
@@ -749,31 +747,31 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
         // `changeTrust(shares, 0)` to recover the 0.5 XLM reserve, and testing removal
         // first refused every full exit.
         if (!isLiquidity) {
-          fail('La transacción abre una línea de participaciones de pool fuera de un flujo de liquidez. Firma rechazada.');
+          fail('guard.poolShareOutsideLiquidity');
         }
       } else if (op.lineRemoves) {
-        fail('La transacción elimina una línea de confianza. Firma rechazada.');
+        fail('guard.removesTrustline');
       } else if (!declared.some((b) => assetMatches(op.line, b))) {
-        fail(`La transacción abre una línea de confianza para un activo que no confirmaste (${refLabel(op.line)}). Firma rechazada.`);
+        fail('guard.unconfirmedTrustline', { asset: refLabel(op.line) });
       }
     }
 
     /* liquidity: the envelope must act on the pool the user picked */
     if (expectedPool && (op.type === 'liquidityPoolWithdraw' || op.type === 'liquidityPoolDeposit')) {
       if (op.poolId !== expectedPool) {
-        fail(`La operación actúa sobre un pool distinto del que elegiste (${short(op.poolId ?? '', 8)}). Firma rechazada.`);
+        fail('guard.wrongPool', { pool: short(op.poolId ?? '', 8) });
       }
     }
 
     /* liquidity: a withdrawal that guarantees nothing back is never legitimate */
     if (op.type === 'liquidityPoolWithdraw') {
       if (!op.receives.length) {
-        fail('El retiro de liquidez no declara un mínimo a recibir. Firma rechazada.');
+        fail('guard.withdrawNoMinimum');
       }
       for (const v of op.receives) {
         const n = stroops(v.amount);
         if (n === null || n <= 0n) {
-          fail('El retiro de liquidez garantiza recibir cero. Firma rechazada.');
+          fail('guard.withdrawZero');
         }
       }
     }
@@ -783,31 +781,31 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
   if (maxSend) {
     const cap = stroops(maxSend.amount);
     if (cap === null || cap <= 0n) {
-      fail('El importe confirmado no es legible, así que la wallet no puede acotar la transacción. Firma rechazada.');
+      fail('guard.maxSendUnreadable');
     }
     let total = 0n;
     for (const op of review.operations) {
       for (const v of op.sends) {
         if (!assetMatches(v.asset, maxSend.asset)) {
-          fail(`La transacción mueve ${refLabel(v.asset)}, que no es el activo que confirmaste (${maxSend.asset.code}). Firma rechazada.`);
+          fail('guard.wrongAsset', { moved: refLabel(v.asset), expected: maxSend.asset.code });
         }
         const n = stroops(v.amount);
         if (n === null) {
-          fail('Una de las cantidades de la transacción no es legible. Firma rechazada.');
+          fail('guard.amountUnreadable');
         }
         total += n;
       }
     }
     // Compared as integers, and against the total: `moved > cap * (1 + tolerance)`.
     if (total * 10_000n > cap * (10_000n + BOUND_TOLERANCE_BPS)) {
-      fail(`La transacción mueve más de lo confirmado (${maxSend.amount} ${maxSend.asset.code}). Firma rechazada.`);
+      fail('guard.overMaxSend', { amount: maxSend.amount, code: maxSend.asset.code });
     }
   }
 
   if (minReceive) {
     const floor = stroops(minReceive.amount);
     if (floor === null || floor <= 0n) {
-      fail('El importe a recibir no es legible, así que la wallet no puede acotar la transacción. Firma rechazada.');
+      fail('guard.minReceiveUnreadable');
     }
     let total = 0n;
     let seen = false;
@@ -816,32 +814,65 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
         if (!assetMatches(v.asset, minReceive.asset)) continue;
         const n = stroops(v.amount);
         if (n === null) {
-          fail('Una de las cantidades a recibir no es legible. Firma rechazada.');
+          fail('guard.receiveUnreadable');
         }
         total += n;
         seen = true;
       }
     }
     if (!seen) {
-      fail(`La transacción no garantiza que recibas ${minReceive.asset.code}. Firma rechazada.`);
+      fail('guard.noGuaranteedAsset', { code: minReceive.asset.code });
     }
     // `total < floor * (1 - tolerance)`, as integers.
     if (total * 10_000n < floor * (10_000n - BOUND_TOLERANCE_BPS)) {
-      fail(`La transacción sólo garantiza recibir menos de lo cotizado (${minReceive.amount} ${minReceive.asset.code}). Firma rechazada.`);
+      fail('guard.underMinReceive', { amount: minReceive.amount, code: minReceive.asset.code });
     }
   }
 
-  /* --------------------------- liquidity: pool sides -------------------------- */
+  /* ------------------------ liquidity: deposit, per side ---------------------- */
+  if (deposit) {
+    // Bound side by side, not as a multiset: `ceilings` is in the pool's canonical
+    // order and a deposit decodes `maxAmountA` then `maxAmountB` in that same order,
+    // so index i is the ceiling for the amount at index i. Swapping the two sides no
+    // longer finds a ceiling that happens to cover it.
+    for (const op of review.operations) {
+      if (op.type !== 'liquidityPoolDeposit') continue;
+      if (op.sends.length !== deposit.ceilings.length) {
+        // Defensive, and deliberately untested: a `liquidityPoolDeposit` always decodes
+        // both of its sides, so nothing the SDK can build reaches here. It exists
+        // because the alternative to refusing is worse than useless — with one side
+        // missing the positions below stop lining up, and each amount would be checked
+        // against the OTHER side's ceiling.
+        fail('guard.poolSideCount');
+      }
+      for (let i = 0; i < op.sends.length; i++) {
+        const moved = stroops(op.sends[i].amount);
+        const cap = stroops(deposit.ceilings[i]);
+        if (moved === null) {
+          fail('guard.amountUnreadable');
+        }
+        if (cap === null || cap <= 0n) {
+          fail('guard.poolAmountsUnreadable');
+        }
+        if (moved * 10_000n > cap * (10_000n + BOUND_TOLERANCE_BPS)) {
+          fail('guard.overPoolSide', { amount: op.sends[i].amount, max: deposit.ceilings[i] });
+        }
+      }
+    }
+  }
+
+  /* --------------------------- liquidity: pool shares ------------------------- */
   if (poolAmounts) {
-    // Pool amounts carry no asset, so they cannot be summed the way `maxSend` sums a
-    // single asset: 10 XLM and 5 USDC add up to nothing meaningful. They are matched
-    // as a multiset against the ceilings the user confirmed — each amount leaving must
-    // be covered by one unused ceiling, whatever order the pool's canonical A/B takes.
+    // Withdraw only. What leaves is pool SHARES, which carry no asset and cannot be
+    // summed the way `maxSend` sums a single one, so they are matched as a multiset
+    // against the ceilings the user confirmed: each amount leaving must be covered by
+    // one unused ceiling. Deposits no longer come through here — they are bound side
+    // by side above, against a pool the wallet derived rather than one it was handed.
     const ceilings: bigint[] = [];
     for (const a of poolAmounts) {
       const n = stroops(a);
       if (n === null || n <= 0n) {
-        fail('Los importes de liquidez confirmados no son legibles. Firma rechazada.');
+        fail('guard.poolAmountsUnreadable');
       }
       ceilings.push(n);
     }
@@ -850,7 +881,7 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
       for (const v of op.sends) {
         const n = stroops(v.amount);
         if (n === null) {
-          fail('Una de las cantidades de la transacción no es legible. Firma rechazada.');
+          fail('guard.amountUnreadable');
         }
         // Consume the tightest ceiling that still covers this amount.
         let best = -1;
@@ -859,7 +890,7 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
           if (best === -1 || ceilings[i] < ceilings[best]) best = i;
         }
         if (best === -1) {
-          fail(`La operación de liquidez mueve ${v.amount}, más de lo que confirmaste. Firma rechazada.`);
+          fail('guard.overPoolCeiling', { amount: v.amount });
         }
         used[best] = true;
       }

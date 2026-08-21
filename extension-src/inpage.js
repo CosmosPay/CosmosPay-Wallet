@@ -44,7 +44,7 @@
       const id = `${Date.now()}.${seq++}`;
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error('Cosmos Wallet: no hubo respuesta de la extensión (tiempo de espera agotado).'));
+        reject(new Error('Cosmos Wallet: no response from the extension (timed out).'));
       }, TIMEOUT_MS[method] ?? DEFAULT_TIMEOUT_MS);
       pending.set(id, {
         resolve: (v) => {

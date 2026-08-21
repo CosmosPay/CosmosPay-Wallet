@@ -54,28 +54,42 @@ export async function storageGet(key: string): Promise<string | null> {
   }
 }
 
+/**
+ * A WRITE THAT FAILS THROWS. Reads still fail soft — a missing value is a legitimate
+ * answer — but a write that did not happen is never one.
+ *
+ * This used to swallow the failure on the non-native path, which quietly disarmed the
+ * one place in the app that depends on knowing: `changePassword` re-seals every wallet
+ * in memory and only then commits, and its commit `try/catch` — the entire reason
+ * `PasswordChangeCommitError` exists — could not fire on web or in the extension.
+ * A blocked or quota-exceeded write there returned success while the vault stayed on
+ * the OLD password, and the user was locked out by their own password change. Native
+ * threw; the other three runtimes did not. Same function, opposite behaviour.
+ *
+ * A quota or security error is genuinely exceptional here: this stores a vault, not a
+ * cache. The two callers that really are fire-and-forget (the query cache and the
+ * favourites list) say so at their own call site with an explicit catch, which is
+ * where that decision belongs — not here, on behalf of everyone.
+ */
 export async function storageSet(key: string, value: string): Promise<void> {
   if (isNative()) {
     const { plugin } = await getPrefs();
     await plugin.set({ key, value });
     return;
   }
-  try {
-    globalThis.localStorage?.setItem(key, value);
-  } catch {
-    /* storage unavailable (private mode) — fail soft */
-  }
+  const store = globalThis.localStorage;
+  if (!store) throw new Error('localStorage is unavailable');
+  store.setItem(key, value);
 }
 
+/** Also throws: silently failing to delete a vault on "remove wallet" is worse. */
 export async function storageRemove(key: string): Promise<void> {
   if (isNative()) {
     const { plugin } = await getPrefs();
     await plugin.remove({ key });
     return;
   }
-  try {
-    globalThis.localStorage?.removeItem(key);
-  } catch {
-    /* ignore */
-  }
+  const store = globalThis.localStorage;
+  if (!store) throw new Error('localStorage is unavailable');
+  store.removeItem(key);
 }

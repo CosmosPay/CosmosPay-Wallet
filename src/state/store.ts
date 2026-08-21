@@ -573,7 +573,8 @@ export function useWalletStore() {
       if (!meta?.id) return;
       setFavorites((f) => {
         const next = f.includes(code) ? f.filter((c) => c !== code) : [...f, code];
-        void storageSet(`cosmos.favs.${meta.id}`, JSON.stringify(next));
+        // Explicitly fire-and-forget: a lost favourite is not worth an error path.
+        void storageSet(`cosmos.favs.${meta.id}`, JSON.stringify(next)).catch(() => {});
         return next;
       });
     },
@@ -1572,11 +1573,17 @@ export function useWalletStore() {
           // than a confirmation, but it is a number the user saw, and it stops a hostile
           // gateway depositing a balance the deposit was never about.
           const ceilingB = input.maxAmountB ?? spendableCeiling(account, input.assetB);
+          // Each side carries the asset it belongs to, so the guard can derive the only
+          // pool those two assets form and bind each amount to its OWN ceiling. Passing
+          // the ceilings alone let a hostile gateway swap the sides.
           assertSafeToSign(network, op.xdr, {
             signer: session.publicKey,
             intent: 'lp-deposit',
             destinations: 'self',
-            poolAmounts: [input.maxAmountA, ceilingB],
+            poolSides: [
+              { asset: { code: input.assetA.code, issuer: input.assetA.issuer }, max: input.maxAmountA },
+              { asset: { code: input.assetB.code, issuer: input.assetB.issuer }, max: ceilingB },
+            ],
             trustlines: [
               { code: input.assetA.code, issuer: input.assetA.issuer },
               { code: input.assetB.code, issuer: input.assetB.issuer },
@@ -2451,7 +2458,7 @@ export function useWalletStore() {
       // the automated flows refuse, but it must still be OUR account and decodable.
       const review = reviewTx(network, xdr.trim());
       if (review.source !== session.publicKey) {
-        throw new Error('Esa transacción no sale de tu cuenta. No se ha firmado.');
+        throw new Error(t('sign.foreignSource'));
       }
       return signXdr(network, session.secret, xdr.trim());
     },

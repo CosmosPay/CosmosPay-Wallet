@@ -10,7 +10,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { open, seal, toBase64, fromBase64 } from '@/lib/crypto';
+import { open, seal, toBase64, fromBase64, WrongPasswordError } from '@/lib/crypto';
 import { signMessagePayload, SIGN_MESSAGE_DOMAIN } from '@/lib/signMessage';
 
 test('seal -> open round trips', async () => {
@@ -21,12 +21,32 @@ test('seal -> open round trips', async () => {
   assert.equal(await open(box, 'correct horse battery staple'), secret);
 });
 
-test('a wrong password throws the exact string ApprovePopup branches on', async () => {
+test('a wrong password throws WrongPasswordError, which is what callers branch on', async () => {
+  // Asserted by TYPE. This asserted the exact Spanish string ApprovePopup compared
+  // against — pinning a bug in place: the popup decided retryable-vs-terminal with
+  // `message !== 'Contraseña incorrecta.'`, so one i18n pass would have turned every
+  // mistyped password in the dapp window into a terminal rejection, with this test
+  // still green because it pinned the same literal from the other side.
   const box = await seal('payload', 'right');
   await assert.rejects(() => open(box, 'wrong'), (e: unknown) => {
-    assert.equal((e as Error).message, 'Contraseña incorrecta.');
+    assert.ok(e instanceof WrongPasswordError);
     return true;
   });
+});
+
+test('a corrupted box is NOT reported as a wrong password', async () => {
+  // Only the decrypt means "wrong password". `data` used to be base64-decoded inside
+  // the try, so a damaged ciphertext threw out of atob, was caught, and came back as
+  // WrongPasswordError — and every caller reserves an attempt first, so a corrupted
+  // vault walked the owner up the backoff ladder blaming their own password.
+  const box = await seal('payload', 'pw');
+  await assert.rejects(
+    () => open({ ...box, data: 'not base64 !!!' }, 'pw'),
+    (e: unknown) => {
+      assert.ok(!(e instanceof WrongPasswordError), 'a corrupt box must not count as a guess');
+      return true;
+    },
+  );
 });
 
 test('tampered ciphertext is rejected (AES-GCM is authenticated)', async () => {

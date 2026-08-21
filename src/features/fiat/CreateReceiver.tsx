@@ -73,7 +73,7 @@ export function CreateReceiver({ store }: { store: WalletStore }) {
           <Field tone="soft" label={t('fiat.email')} value={email} onChange={setEmail} type="email" />
           <div className="flexr g10">
             <Select label={t('fiat.country')} value={country} onChange={setCountry} className="f1">
-              {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{c.name}</option>)}
+              {COUNTRIES.map((c) => <option key={c.code} value={c.code}>{t(c.nameKey)}</option>)}
             </Select>
             <Select label={t('fiat.docType')} value={docType} onChange={setDocType} className="f1">
               {DOC_TYPES.map((d) => <option key={d} value={d}>{t(`fiat.doc.${d}`)}</option>)}

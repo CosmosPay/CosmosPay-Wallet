@@ -20,6 +20,7 @@ import { open, seal, type SealedBox } from '@/lib/crypto';
 import { deviceAuthEnabled, disableDeviceAuth } from '@/lib/deviceAuth';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
+import { tNow } from '@/lib/i18n';
 
 const WALLETS_KEY = 'cosmos.wallets';
 const ACTIVE_KEY = 'cosmos.active';
@@ -233,7 +234,7 @@ export async function updateWalletMeta(
 /** Decrypt a wallet. Throws "Contraseña incorrecta." on a bad password. */
 export async function unlockWallet(id: string, password: string): Promise<VaultSecret> {
   const raw = await storageGet(vaultKey(id));
-  if (!raw) throw new Error('No se encontró la wallet en este dispositivo.');
+  if (!raw) throw new Error(tNow('vault.notFound'));
   const box = JSON.parse(raw) as SealedBox;
   return JSON.parse(await open(box, password)) as VaultSecret;
 }
@@ -402,7 +403,7 @@ export interface ChangePasswordDeps {
 export class PasswordChangeCommitError extends Error {
   readonly cause: unknown;
   constructor(cause: unknown) {
-    super((cause as Error)?.message ?? 'No se pudo completar el cambio de contraseña.');
+    super((cause as Error)?.message ?? tNow('vault.passwordChangeFailed'));
     this.name = 'PasswordChangeCommitError';
     this.cause = cause;
   }

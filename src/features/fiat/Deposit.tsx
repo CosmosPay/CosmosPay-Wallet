@@ -3,7 +3,8 @@ import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { PrimaryButton, GhostButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
-import { railCurrency, PAY_METHODS } from '@/constants/fiat';
+import { PAY_METHODS } from '@/constants/fiat';
+import { railCurrency } from '@/lib/fiatRails';
 import type { FiatToken, Payin, PayinMethod, PayinQuote, PayinQuoteInput } from '@/lib/cosmospay';
 import { fmtMinor, fmtFiat, toMinor, stableTokens } from '@/features/fiat/format';
 import { QuoteRow } from '@/features/fiat/QuoteRow';
@@ -80,7 +81,7 @@ export function Deposit({ store }: { store: WalletStore }) {
       <div className="desc deposit-desc">{t('fiat.depositDesc')}</div>
 
       <Select label={t('fiat.method')} value={method} onChange={changeMethod}>
-        {PAY_METHODS.map((m) => <option key={m.method} value={m.method}>{m.label}</option>)}
+        {PAY_METHODS.map((m) => <option key={m.method} value={m.method}>{t(m.labelKey)}</option>)}
       </Select>
       <Select label={t('fiat.token')} value={token} onChange={(v) => { setToken(v as FiatToken); setQuote(null); }}>
         {tokens.map((x) => <option key={x.code} value={x.code}>{x.code}</option>)}
@@ -88,11 +89,11 @@ export function Deposit({ store }: { store: WalletStore }) {
       <Field tone="soft" kind="amount" label={t('fiat.payAmount')} value={amount} onChange={(v) => { setAmount(v); setQuote(null); }} placeholder="0.00" />
       {(cfg.payer ?? []).map((f) =>
         f.options ? (
-          <Select key={f.k} label={f.label} value={payer[f.k] ?? f.options[0]} onChange={(v) => setP(f.k, v)}>
+          <Select key={f.k} label={t(f.labelKey)} value={payer[f.k] ?? f.options[0]} onChange={(v) => setP(f.k, v)}>
             {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
           </Select>
         ) : (
-          <Field tone="soft" key={f.k} label={f.label} value={payer[f.k] ?? ''} onChange={(v) => setP(f.k, v)} />
+          <Field tone="soft" key={f.k} label={t(f.labelKey)} value={payer[f.k] ?? ''} onChange={(v) => setP(f.k, v)} />
         ),
       )}
 

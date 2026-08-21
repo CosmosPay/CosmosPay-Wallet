@@ -1,36 +1,36 @@
 /** Fiat (BlindPay on/off-ramp) tables: countries, KYC docs, bank rails and onramp
  *  payment methods. LatAm-first. Centralised so tweaking a rail or adding a country
- *  never means digging through the Fiat screens. */
+ *  never means digging through the Fiat screens.
+ *
+ *  Every user-facing string here is an i18n KEY, never copy. `constants/` may not
+ *  import from `lib/` at runtime, so it cannot call the translator — which means a
+ *  literal in this file is a literal that can never be translated. The screens resolve
+ *  `labelKey` / `nameKey`. See "Constants live in `constants/`" in CLAUDE.md. */
 import type { PayinMethod } from '@/lib/cosmospay';
 
 export const COUNTRIES = [
-  { code: 'BR', name: 'Brasil' },
-  { code: 'CO', name: 'Colombia' },
-  { code: 'AR', name: 'Argentina' },
-  { code: 'MX', name: 'México' },
-  { code: 'CL', name: 'Chile' },
-  { code: 'PE', name: 'Perú' },
-  { code: 'UY', name: 'Uruguay' },
+  { code: 'BR', nameKey: 'fiat.country.BR' },
+  { code: 'CO', nameKey: 'fiat.country.CO' },
+  { code: 'AR', nameKey: 'fiat.country.AR' },
+  { code: 'MX', nameKey: 'fiat.country.MX' },
+  { code: 'CL', nameKey: 'fiat.country.CL' },
+  { code: 'PE', nameKey: 'fiat.country.PE' },
+  { code: 'UY', nameKey: 'fiat.country.UY' },
 ];
 
 export const DOC_TYPES = ['PASSPORT', 'ID_CARD', 'DRIVERS_LICENSE'];
 
 /* Deposit/payout rails per currency. Each `field` maps to the BlindPay
    bank-account body; `options` renders a select. */
-export type RailField = { k: string; label: string; options?: string[] };
-export const RAILS: { type: string; label: string; fields: RailField[] }[] = [
-  { type: 'pix', label: 'PIX · Brasil (BRL)', fields: [{ k: 'pix_key', label: 'Clave PIX' }, { k: 'tax_id', label: 'CPF' }] },
-  { type: 'spei_bitso', label: 'SPEI · México (MXN)', fields: [{ k: 'beneficiary_name', label: 'Beneficiario' }, { k: 'spei_clabe', label: 'CLABE (18 dígitos)' }] },
-  { type: 'transfers_bitso', label: 'Transferencia · Argentina (ARS)', fields: [{ k: 'transfers_account', label: 'CBU / CVU / Alias' }, { k: 'transfers_type', label: 'Tipo', options: ['CBU', 'CVU', 'ALIAS'] }, { k: 'tax_id', label: 'CUIT / CUIL' }] },
-  { type: 'ach_cop_bitso', label: 'ACH · Colombia (COP)', fields: [{ k: 'ach_cop_beneficiary_first_name', label: 'Nombre' }, { k: 'ach_cop_beneficiary_last_name', label: 'Apellido' }, { k: 'ach_cop_document_type', label: 'Tipo doc', options: ['CC', 'NIT', 'CE'] }, { k: 'ach_cop_document_id', label: 'Documento' }, { k: 'ach_cop_bank_code', label: 'Código de banco' }, { k: 'account_number', label: 'Nº de cuenta' }, { k: 'ach_cop_email', label: 'Email' }] },
-  { type: 'ted', label: 'TED · Brasil (BRL)', fields: [{ k: 'ted_bank_code', label: 'Código de banco' }, { k: 'ted_branch_code', label: 'Agencia' }, { k: 'account_number', label: 'Nº de cuenta' }, { k: 'ted_cpf_cnpj', label: 'CPF / CNPJ' }] },
-  { type: 'ach', label: 'ACH · EE. UU. (USD)', fields: [{ k: 'beneficiary_name', label: 'Beneficiario' }, { k: 'account_number', label: 'Account number' }, { k: 'routing_number', label: 'Routing number' }] },
+export type RailField = { k: string; labelKey: string; options?: string[] };
+export const RAILS: { type: string; labelKey: string; fields: RailField[] }[] = [
+  { type: 'pix', labelKey: 'fiat.rail.pix', fields: [{ k: 'pix_key', labelKey: 'fiat.field.pixKey' }, { k: 'tax_id', labelKey: 'fiat.field.cpf' }] },
+  { type: 'spei_bitso', labelKey: 'fiat.rail.spei', fields: [{ k: 'beneficiary_name', labelKey: 'fiat.field.beneficiary' }, { k: 'spei_clabe', labelKey: 'fiat.field.clabe' }] },
+  { type: 'transfers_bitso', labelKey: 'fiat.rail.transfers', fields: [{ k: 'transfers_account', labelKey: 'fiat.field.cbuCvuAlias' }, { k: 'transfers_type', labelKey: 'fiat.field.type', options: ['CBU', 'CVU', 'ALIAS'] }, { k: 'tax_id', labelKey: 'fiat.field.cuitCuil' }] },
+  { type: 'ach_cop_bitso', labelKey: 'fiat.rail.achCop', fields: [{ k: 'ach_cop_beneficiary_first_name', labelKey: 'fiat.field.firstName' }, { k: 'ach_cop_beneficiary_last_name', labelKey: 'fiat.field.lastName' }, { k: 'ach_cop_document_type', labelKey: 'fiat.field.docType', options: ['CC', 'NIT', 'CE'] }, { k: 'ach_cop_document_id', labelKey: 'fiat.field.document' }, { k: 'ach_cop_bank_code', labelKey: 'fiat.field.bankCode' }, { k: 'account_number', labelKey: 'fiat.field.accountNumber' }, { k: 'ach_cop_email', labelKey: 'fiat.field.email' }] },
+  { type: 'ted', labelKey: 'fiat.rail.ted', fields: [{ k: 'ted_bank_code', labelKey: 'fiat.field.bankCode' }, { k: 'ted_branch_code', labelKey: 'fiat.field.branch' }, { k: 'account_number', labelKey: 'fiat.field.accountNumber' }, { k: 'ted_cpf_cnpj', labelKey: 'fiat.field.cpfCnpj' }] },
+  { type: 'ach', labelKey: 'fiat.rail.ach', fields: [{ k: 'beneficiary_name', labelKey: 'fiat.field.beneficiary' }, { k: 'account_number', labelKey: 'fiat.field.accountNumberUs' }, { k: 'routing_number', labelKey: 'fiat.field.routingNumber' }] },
 ];
-
-/** Friendly label for a saved bank account's rail type (null-safe; falls back to the
- *  upper-cased raw type, or '' when the type is missing). */
-export const railLabel = (type?: string | null) =>
-  type ? (RAILS.find((r) => r.type === type)?.label ?? type.replace(/_/g, ' ').toUpperCase()) : '';
 
 /** ISO currency for a BlindPay rail / payin method (used as the fiat amount suffix). */
 export const RAIL_CCY: Record<string, string> = {
@@ -41,35 +41,34 @@ export const RAIL_CCY: Record<string, string> = {
   ach: 'USD', wire: 'USD', rtp: 'USD', international_swift: 'USD',
   sepa: 'EUR',
 };
-export const railCurrency = (rail?: string | null) => (rail ? RAIL_CCY[rail] ?? '' : '');
 
 /** Trusted stablecoins the wallet accepts for on/off-ramp flows. */
 export const STABLES = ['USDC', 'USDT', 'USDB'];
 
 /** Onramp payment methods (LatAm-first) with the per-method payer fields BlindPay requires. */
-export type PayerField = { k: string; label: string; options?: string[] };
-export const PAY_METHODS: { method: PayinMethod; label: string; payer?: PayerField[] }[] = [
-  { method: 'pix', label: 'PIX · Brasil (BRL)' },
-  { method: 'spei', label: 'SPEI · México (MXN)' },
+export type PayerField = { k: string; labelKey: string; options?: string[] };
+export const PAY_METHODS: { method: PayinMethod; labelKey: string; payer?: PayerField[] }[] = [
+  { method: 'pix', labelKey: 'fiat.rail.pix' },
+  { method: 'spei', labelKey: 'fiat.rail.spei' },
   {
     method: 'transfers',
-    label: 'Transferencia · Argentina (ARS)',
-    payer: [{ k: 'transfers_allowed_tax_id', label: 'CUIT/CUIL del pagador' }],
+    labelKey: 'fiat.rail.transfers',
+    payer: [{ k: 'transfers_allowed_tax_id', labelKey: 'fiat.field.payerCuit' }],
   },
   {
     method: 'pse',
-    label: 'PSE · Colombia (COP)',
+    labelKey: 'fiat.rail.pse',
     payer: [
-      { k: 'pse_full_name', label: 'Nombre completo' },
-      { k: 'pse_document_type', label: 'Tipo doc', options: ['CC', 'NIT'] },
-      { k: 'pse_document_number', label: 'Nº de documento' },
-      { k: 'pse_email', label: 'Email' },
-      { k: 'pse_phone', label: 'Teléfono' },
-      { k: 'pse_bank_code', label: 'Código de banco' },
+      { k: 'pse_full_name', labelKey: 'fiat.field.fullName' },
+      { k: 'pse_document_type', labelKey: 'fiat.field.docType', options: ['CC', 'NIT'] },
+      { k: 'pse_document_number', labelKey: 'fiat.field.documentNumber' },
+      { k: 'pse_email', labelKey: 'fiat.field.email' },
+      { k: 'pse_phone', labelKey: 'fiat.field.phone' },
+      { k: 'pse_bank_code', labelKey: 'fiat.field.bankCode' },
     ],
   },
-  { method: 'ted', label: 'TED · Brasil (BRL)' },
-  { method: 'ach', label: 'ACH · EE. UU. (USD)' },
-  { method: 'wire', label: 'Wire · EE. UU. (USD)' },
-  { method: 'rtp', label: 'RTP · EE. UU. (USD)' },
+  { method: 'ted', labelKey: 'fiat.rail.ted' },
+  { method: 'ach', labelKey: 'fiat.rail.ach' },
+  { method: 'wire', labelKey: 'fiat.rail.wire' },
+  { method: 'rtp', labelKey: 'fiat.rail.rtp' },
 ];

@@ -50,16 +50,16 @@ export function BankAccount({ store }: { store: WalletStore }) {
       <BackBar title={t('fiat.addAccount')} onBack={store.goBack} />
       <div className="desc bank-desc">{t('fiat.accountDesc')}</div>
       <Select label={t('fiat.currency')} value={railType} onChange={changeRail}>
-        {RAILS.map((r) => <option key={r.type} value={r.type}>{r.label}</option>)}
+        {RAILS.map((r) => <option key={r.type} value={r.type}>{t(r.labelKey)}</option>)}
       </Select>
       <Field tone="soft" label={t('fiat.accountName')} value={name} onChange={setName} placeholder={t('fiat.accountNamePlaceholder')} />
       {rail.fields.map((f) =>
         f.options ? (
-          <Select key={f.k} label={f.label} value={vals[f.k] ?? f.options[0]} onChange={(v) => set(f.k, v)}>
+          <Select key={f.k} label={t(f.labelKey)} value={vals[f.k] ?? f.options[0]} onChange={(v) => set(f.k, v)}>
             {f.options.map((o) => <option key={o} value={o}>{o}</option>)}
           </Select>
         ) : (
-          <Field tone="soft" key={f.k} label={f.label} value={vals[f.k] ?? ''} onChange={(v) => set(f.k, v)} />
+          <Field tone="soft" key={f.k} label={t(f.labelKey)} value={vals[f.k] ?? ''} onChange={(v) => set(f.k, v)} />
         ),
       )}
       <div className="spacer" />
