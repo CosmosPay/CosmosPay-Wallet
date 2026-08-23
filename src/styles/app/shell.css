@@ -100,3 +100,77 @@ html.kb-open,
 html.kb-open body {
   overflow: hidden;
 }
+
+/* =====================================================================
+   Desktop window — see the --desk-* block in src/styles/theme.css for what
+   this mode is and why it is gated on a class as well as a width.
+   The 1024px literal here IS --desk-min; `npm run test:responsive` asserts
+   the two agree, because a media query cannot read a custom property.
+   ===================================================================== */
+
+/* The row that holds the nav rail and the screen column. Present in EVERY mode — on a
+   phone it is a plain pass-through, which keeps one DOM shape across all five hosts
+   instead of a second tree the desktop rules would be the only reader of. */
+.shell-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .shell-root.has-desktop-mode {
+    /* Vertical padding as well as horizontal, so the card floats. `box-sizing: border-box`
+       (set globally in base.css) folds it into the min-height above, so this cannot be
+       what introduces a page scrollbar. The device insets stay on the horizontal pair for
+       the reason the base rule gives — env() measures from the viewport, and a centred
+       card never reaches the notch. */
+    align-items: center;
+    padding: var(--desk-pad) calc(var(--desk-pad) + var(--safe-r)) var(--desk-pad) calc(var(--desk-pad) + var(--safe-l));
+  }
+
+  .shell-root.has-desktop-mode .shell-frame {
+    /* No rail: the card is exactly the column. `.has-desktop-nav` widens it below. */
+    max-width: var(--desk-content-w);
+    height: min(var(--desk-frame-h), calc(var(--shell-h, 100dvh) - var(--desk-pad) * 2));
+    flex-direction: row;
+    border: 1px solid var(--glass-border);
+    border-radius: 26px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
+  }
+
+  .shell-root.has-desktop-nav .shell-frame {
+    max-width: var(--desk-frame-w);
+  }
+
+  /* Centre the column in whatever the rail left over. */
+  .shell-root.has-desktop-mode .shell-main {
+    align-items: center;
+  }
+
+  .shell-root.has-desktop-mode .shell-content {
+    width: 100%;
+    max-width: var(--desk-content-w);
+    /* A little more room than the phone gutter: the column is wider here and the same
+       22px reads as tight against a border rather than against the edge of a screen.
+       Set on the token so every screen inherits it — including .kb-dock, whose negative
+       margins must stay in step with it. */
+    --gutter: 26px;
+  }
+
+  /* The tab bar is a phone affordance. The rail replaces it, and leaving both would put
+     two navigations on one screen disagreeing about where "back" goes. */
+  .shell-root.has-desktop-mode .bottom-nav {
+    display: none;
+  }
+
+  /* .pb-104 / .pb-110 exist to clear the bottom bar that is no longer there, and 104px of
+     dead space under the last asset row reads as a screen that failed to load its footer.
+     Overridden here rather than swapped per screen: the padding is a fact about the SHELL's
+     chrome, so the shell is what should know it is gone. */
+  .shell-root.has-desktop-mode .pb-104,
+  .shell-root.has-desktop-mode .pb-110 {
+    padding-bottom: 32px;
+  }
+}

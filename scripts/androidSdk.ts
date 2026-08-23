@@ -1,7 +1,7 @@
 /**
  * Where the Android SDK is, and how to reach adb inside it.
  *
- * Shared by scripts/cap-dev.ts and scripts/adb-pair.ts. Android Studio installs the SDK
+ * Used by scripts/adb-pair.ts. Android Studio installs the SDK
  * but exports no environment variable on Windows or macOS, so Gradle, native-run and adb
  * all have to be told where it lives — and two scripts guessing separately is how one of
  * them ends up pairing a phone into an SDK the other never builds against.

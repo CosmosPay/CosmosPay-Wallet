@@ -1,0 +1,74 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Cosmos Pay",
+  "version": "../package.json",
+  "identifier": "lat.cosmospay.wallet",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:4500",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist/web"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Cosmos Pay",
+        "width": 1180,
+        "height": 820,
+        "minWidth": 400,
+        "minHeight": 560,
+        "center": true,
+        "resizable": true,
+        "backgroundColor": "#080808"
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "script-src": "'self'",
+        "style-src": "'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src": "'self' data: https://fonts.gstatic.com",
+        "img-src": "'self' data: blob:",
+        "media-src": "'self' blob:",
+        "connect-src": "'self' ipc: http://ipc.localhost https:",
+        "frame-src": "'none'",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "form-action": "'none'"
+      },
+      "assetProtocol": { "enable": false }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Finance",
+    "shortDescription": "Non-custodial Stellar wallet",
+    "longDescription": "Cosmos Pay — send, receive and swap XLM and Stellar assets, with a fiat on/off-ramp. Your keys are encrypted and never leave your device.",
+    "copyright": "Cosmos Pay",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "linux": {
+      "deb": { "depends": [] }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "nsis": { "installMode": "perMachine" }
+    },
+    "android": {
+      "minSdkVersion": 26
+    },
+    "iOS": {
+      "minimumSystemVersion": "13.0"
+    }
+  }
+}

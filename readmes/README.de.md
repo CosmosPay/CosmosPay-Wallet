@@ -4,7 +4,7 @@
 
 **Nicht-verwahrende** Wallet für das **Stellar**-Netzwerk, gebaut mit **Astro + Vite + React (TSX)**.
 Erhältlich als **Browser-Erweiterung** (MV3 · Chrome / Edge / Firefox — Popup **und** Seitenleiste),
-**Mobile App** (Capacitor · Android / iOS) und Web. Animiertes **Glassmorphism**-UI, heller und
+**Mobile App** (Tauri · Android / iOS) und Web. Animiertes **Glassmorphism**-UI, heller und
 dunkler Modus, **5 Sprachen** (EN/ES/PT/DE/FR mit Autoerkennung), Multi-Wallet unter einem
 Passwort und ein Dapp-Provider (`window.cosmosWallet`) für Zahlungen und Signaturen.
 
@@ -37,7 +37,7 @@ Die Schlüsselableitung ist gegen den offiziellen **SEP-5-Testvektor** verifizie
 
 1. Beim Erstellen/Import wählst du ein **Passwort**; der AES-Schlüssel kommt aus `PBKDF2(Passwort, Salt, 210 000, SHA-256)`.
 2. Phrase + geheimer Schlüssel werden mit `AES-256-GCM` (zufälliger IV) versiegelt und
-   verschlüsselt gespeichert (`@capacitor/preferences` mobil, `localStorage` web/Erweiterung).
+   verschlüsselt gespeichert (`tauri-plugin-store` mobil, `localStorage` web/Erweiterung).
 3. Entsperren entschlüsselt **nur im Speicher**; ein falsches Passwort scheitert am GCM-Tag.
 4. Signaturen können erneut das Passwort verlangen (Einstellung). Das Dapp-Freigabefenster
    signiert lokal — kein Geheimnis erreicht je eine Seite oder einen Server.

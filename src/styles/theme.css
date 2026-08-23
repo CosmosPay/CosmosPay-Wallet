@@ -115,6 +115,37 @@
   }
 }
 
+/* ---------------- desktop window ----------------
+   Past --desk-min the app stops being a phone column floating in the middle of a monitor
+   and becomes a window: a bounded card with a vertical nav rail down its left edge and the
+   screen column centred in what is left. Nothing about the screens themselves changes —
+   they still render into a column of roughly phone width, because that is what all forty
+   of them were designed for. What changes is the chrome around that column.
+
+   The rules live in src/styles/app/shell.css and src/styles/app/desktop-nav.css, and they
+   are gated on BOTH a width and a class (`.has-desktop-mode`, set by src/app/Shell.tsx).
+   The class is what keeps the extension out: a Chrome side panel can be dragged past
+   1024px, and it must stay a single column with its own drawer navigation.
+
+   --desk-min is not readable from a media query — CSS has no way to interpolate a custom
+   property into one — so the literal is repeated in the two sheets. `npm run
+   test:responsive` reads this token and asserts the layout actually flips at the value it
+   names, which is what stops the copies drifting apart. */
+:root {
+  --desk-min: 1024px;
+  /* The card, with a nav rail. Wide enough for a 640px column to sit centred beside a
+     252px rail without either looking squeezed against an edge. */
+  --desk-frame-w: 1120px;
+  /* The card WITHOUT a rail — onboarding, unlock. A 1120px card holding one 640px column
+     is mostly empty card, so the frame shrinks to the column instead. */
+  --desk-content-w: 640px;
+  --desk-side-w: 252px;
+  /* Breathing room between the card and the edge of the window, and the ceiling on how
+     tall the card grows on a large monitor. */
+  --desk-pad: 40px;
+  --desk-frame-h: 880px;
+}
+
 /* ---------------- safe margins ----------------
    Two different things, kept apart on purpose.
 

@@ -7,8 +7,9 @@
  * written straight into it is lost on the next clone and the app ships Capacitor's default
  * logo again. scripts/android-res.ts copies this tree back in after every sync.
  *
- * Two things this gets right that `@capacitor/assets` did not, which is why that dependency
- * is not here (it also pins an old @capacitor/cli with a critical `tar` advisory):
+ * Two things this gets right that a generic icon generator does not, and that `tauri icon`
+ * does not do either — which is why the Android art is generated here and only the DESKTOP
+ * icon set comes from the Tauri CLI (see scripts/desktop-icon.ts):
  *
  * - **The flat icons are opaque.** `ic_launcher.png` / `ic_launcher_round.png` are what
  *   Android below API 26 uses, and what several previews fall back to. Generated from a
@@ -26,10 +27,6 @@ import sharp from 'sharp';
 
 const SOURCE = 'public/logo-white.png';
 const OUT = 'resources/android';
-// --bg in src/styles/theme.css, and capacitor.config.ts's backgroundColor. The icon sits on
-// the same surface the app opens onto.
-const BG = '#080808';
-
 /** ic_launcher.png / ic_launcher_round.png — px per density bucket. */
 const FLAT = { ldpi: 36, mdpi: 48, hdpi: 72, xhdpi: 96, xxhdpi: 144, xxxhdpi: 192 };
 /** ic_launcher_foreground.png / ic_launcher_background.png — the 108dp adaptive canvas. */
@@ -51,6 +48,9 @@ const FOREGROUND_SCALE = 0.85;
 const FLAT_SCALE = 0.6;
 const SPLASH_SCALE = 0.2;
 
+// #080808 — `--bg` in src/styles/theme.css, and the window backgroundColor in
+// src-tauri/tauri.conf.json. The icon sits on the same surface the app opens onto.
+// As channels rather than a hex string because that is the only form sharp takes.
 const rgb = { r: 8, g: 8, b: 8, alpha: 1 };
 const clear = { r: 0, g: 0, b: 0, alpha: 0 };
 
@@ -82,7 +82,7 @@ async function emit(dir: string, name: string, data: Buffer) {
 }
 
 // A full rewrite, not a merge: a density dropped from the tables above must disappear from
-// the tree too, or `cap sync` keeps copying an orphan nobody generates any more.
+// the tree too, or scripts/android-res.ts keeps copying an orphan nobody generates any more.
 await rm(OUT, { recursive: true, force: true });
 
 for (const [density, size] of Object.entries(FLAT)) {
@@ -128,7 +128,7 @@ for (const [density, [w, h]] of Object.entries(SPLASH)) {
 }
 
 // The undifferentiated fallbacks, for a device that matches no density bucket. Both portrait:
-// a phone with no density qualifier is not a landscape device, and @capacitor/assets emitting
+// a phone with no density qualifier is not a landscape device, and a generator emitting
 // a 320x240 night splash next to a 320x480 day one was a quirk worth not reproducing.
 const fallback = await compose(SPLASH.mdpi[0], SPLASH.mdpi[1], SPLASH_SCALE, rgb);
 await emit('drawable', 'splash.png', fallback);

@@ -872,7 +872,7 @@ export function useWalletStore() {
   /**
    * Idle auto-lock. An open session holds the decrypted secret and the app password
    * in memory; the browser-action popup tears that down when it closes, but the side
-   * panel, the web build and the Capacitor app keep it alive until the tab dies. So
+   * panel, the web build and the native app keep it alive until the tab dies. So
    * inactivity — not just an explicit tap on "lock" — has to end the session.
    */
   const lastActiveRef = useRef(Date.now());

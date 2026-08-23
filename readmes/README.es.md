@@ -4,7 +4,8 @@
 
 Wallet **no custodial** para la red **Stellar**, construida con **Astro + Vite + React (TSX)**.
 Se distribuye como **extensión de navegador** (MV3 · Chrome / Edge / Firefox — popup **y** panel
-lateral), **app móvil** (Capacitor · Android / iOS) y web. Interfaz **glassmorphism** animada,
+lateral), **app de escritorio** (Tauri · Windows / macOS / Linux), **app móvil** (Tauri · Android /
+iOS) y web. Interfaz **glassmorphism** animada,
 tema claro y oscuro, **5 idiomas** (EN/ES/PT/DE/FR con autodetección), multi-wallet bajo una sola
 contraseña y proveedor para dapps (`window.cosmosWallet`) para que las webs pidan pagos y firmas.
 
@@ -37,7 +38,9 @@ La derivación de claves está verificada contra el **vector de prueba oficial S
 
 1. Al crear/importar eliges una **contraseña**; la clave AES se deriva con `PBKDF2(contraseña, salt, 210 000, SHA-256)`.
 2. Frase + clave secreta se sellan con `AES-256-GCM` (IV aleatorio) y se guardan cifradas
-   (`@capacitor/preferences` en móvil, `localStorage` en web/extensión).
+   (`tauri-plugin-store` en escritorio y móvil, `localStorage` en web/extensión — en
+   [src/lib/storage.ts](../src/lib/storage.ts) está por qué el almacenamiento propio de una
+   WebView no basta para guardar una bóveda).
 3. Desbloquear descifra **solo en memoria**; una contraseña incorrecta falla el tag GCM y se rechaza.
 4. Las firmas pueden exigir la contraseña de nuevo (toggle en Ajustes). La ventana de aprobación
    de dapps firma en local — ningún secreto llega a una página o servidor.
@@ -59,8 +62,8 @@ La derivación de claves está verificada contra el **vector de prueba oficial S
 ## Stack
 
 **Astro 7** + **Vite** · **React 19 (TSX)** · **@stellar/stellar-sdk** · **bip39** +
-**ed25519-hd-key** · Web Crypto (PBKDF2/AES-GCM) · **qrcode** · **Capacitor 8** · `node:test` (unit)
-· Playwright (e2e).
+**ed25519-hd-key** · Web Crypto (PBKDF2/AES-GCM) · **qrcode** · **Tauri 2** (escritorio y móvil,
+Rust) · `node:test` (unit) · Playwright (e2e).
 
 ## Desarrollo
 
@@ -70,7 +73,8 @@ Requiere **Node ≥ 22.12** (lo exige el motor de Astro 7; además los scripts d
 ```bash
 npm install
 npm run dev          # http://localhost:4500 (proxy Vite: /api + /cosmos-api)
-npm run dev:android  # el mismo dev server, con recarga en vivo dentro del móvil (ver Móvil)
+npm run desktop:dev  # la misma app en una ventana nativa (ver Escritorio)
+npm run android:dev  # ...y en un móvil conectado (ver Móvil)
 npm run build        # dist/web/
 npm run test:unit    # node:test, sin dependencias (cripto, SEP-5, importes, txGuard, i18n)
 npm run test:e2e     # e2e con Playwright (ver tests/)
@@ -98,58 +102,142 @@ Los scripts inline se externalizan en build para cumplir `script-src 'self'`; el
 localizado (`_locales/`, EN/ES/PT/DE/FR). El texto para la Store está en
 [STORE_LISTING.md](../STORE_LISTING.md).
 
-## Móvil (Capacitor)
+## Escritorio (Tauri)
 
 ```bash
-npx cap add android   # una vez por clon — /android se genera, no se versiona | npx cap add ios (macOS)
-npm run cap:android   # build de release: astro build + sync + abrir Android Studio | npm run cap:ios
-npm run dev:android   # build de desarrollo: recarga en vivo en el dispositivo      | npm run dev:ios
+npm run desktop:dev     # ventana nativa contra el dev server (HMR + los proxies /api)
+npm run desktop:build   # instaladores en src-tauri/target/release/bundle/
+npm run desktop:icons   # regenera src-tauri/icons/ desde public/logo-white.png
 ```
 
-Android necesita el SDK de Android Studio (**Android 36** + platform-tools) y un JDK 17+; iOS,
-macOS con Xcode. `dev:android` localiza el SDK en su ruta por defecto cuando `ANDROID_HOME` no está
-definida — Android Studio no la exporta — así que no hay que tocar el entorno.
+Necesita el **toolchain de Rust** (1.77.2+) y la WebView de cada plataforma: WebView2 en Windows
+(ya viene en Windows 11), WebKitGTK 4.1 + libsoup3 en Linux, nada extra en macOS. `desktop:build`
+produce un instalador NSIS y un MSI en Windows, un `.dmg` en macOS, y AppImage + `.deb` + `.rpm`
+en Linux.
 
-`@capacitor/android` y `@capacitor/ios` son **devDependencies**, junto a `@capacitor/cli`: no
-aportan JavaScript a `dist/web/`, solo los leen Gradle y Xcode. `@capacitor/core` y los plugins
-(`app`, `clipboard`, `preferences`) siguen en `dependencies` porque su JS **sí** se empaqueta.
+El lado Rust es deliberadamente pequeño — [src-tauri/src/lib.rs](../src-tauri/src/lib.rs) es una
+lista de plugins y nada más. No hay plugin de filesystem, shell, http ni process: el frontend
+sostiene material de claves descifrado, así que cada comando registrado ahí es algo que un XSS en el
+bundle también podría llamar. Qué se registra, y por qué, está documentado en ese archivo.
 
-`dev:android` ([scripts/cap-dev.ts](../scripts/cap-dev.ts)) arranca `astro dev --host`, apunta la
-WebView a `http://<IP-LAN>:4500` mediante `cap run --live-reload` y despliega un build de debug: el
-móvil recibe HMR y los proxies `/api` + `/cosmos-api`, no un bundle congelado. Solo se reescribe la
-copia *nativa* de `capacitor.config.json`, y Capacitor la restaura al pulsar `Ctrl+C`.
+Dos cosas que una WebView hace mal se tratan explícitamente. `crypto.subtle` exige un **contexto
+seguro**, y por eso la app se sirve desde el esquema propio de Tauri y no desde `file://` — ahí la
+bóveda sencillamente no descifraría. Y `target="_blank"` no tiene dónde abrirse en una ventana sin
+chrome de navegador, así que en algunos motores navega la wallet **en el sitio**, reemplazando el
+documento que sostiene la sesión; cada enlace saliente pasa por
+[src/ui/ExternalLink.tsx](../src/ui/ExternalLink.tsx).
 
-`dev:android` compila `dist/web/`, lo sincroniza en el proyecto nativo, genera un APK de debug y lo
-instala. **La app corre entonces enteramente en el dispositivo** — sin dev server, sin pedirle nada a
-tu máquina. Así es como se distribuye, así que es también la única forma de ver lo que realmente hace.
+### Diseño de escritorio
 
-El coste es que cada cambio implica otra compilación e instalación (unos segundos con Gradle
-caliente), no una recarga en caliente. `--live` devuelve el HMR y los proxies `/api` + `/cosmos-api`,
-a cambio de que la WebView dependa de un servidor que tiene que alcanzar.
+A partir de `--desk-min` (1024px) la columna de teléfono se convierte en una **ventana**: una
+tarjeta acotada con un riel de navegación en su borde izquierdo y la columna de pantalla centrada al
+lado. Ninguna de las cuarenta pantallas cambia — siguen renderizando en una columna de ancho
+aproximadamente telefónico, que es para lo que se diseñaron. Lo que cambia es el marco alrededor.
 
-| Flag | Para |
+Qué navegación se ve lo decide **el CSS**. Tanto [src/app/DesktopNav.tsx](../src/app/DesktopNav.tsx)
+como [src/app/BottomNav.tsx](../src/app/BottomNav.tsx) entran en el DOM y una media query oculta
+una, así que no hay ningún listener de resize en la app ni nada que pueda contradecirse. El riel
+está atado a la **sesión**, no al viewport: un riel de 252px que apareciera y desapareciera en cada
+navegación reflowearía la ventana entera, mientras que la barra inferior a la que sustituye solo
+flotaba sobre el contenido.
+
+Esto vale también para la build web — una pestaña de navegador a 1400px es una ventana de escritorio,
+haya Tauri o no. La extensión queda fuera por una clase y no por ancho, porque un panel lateral de
+Chrome se puede arrastrar más allá de 1024px y debe seguir siendo una sola columna con su cajón.
+
+`npm run test:responsive` recorre 320px → 1920px comprobando que nada desborda, y sondea un píxel a
+cada lado de `--desk-min` — el token y los dos literales de media query no tienen nada más que los
+mantenga sincronizados. El riel en sí se comprueba al final de `npm run test:e2e`, que para entonces
+ya tiene sesión iniciada.
+
+## Móvil (Tauri)
+
+```bash
+npm run android:init    # una vez por clon — genera src-tauri/gen/android y restaura el arte
+npm run android:dev     # compila, instala y lanza en el dispositivo conectado
+npm run android:build   # APK / AAB de release
+```
+
+`ios:init` / `ios:dev` / `ios:build` son los mismos tres en macOS. Android necesita el SDK de Android
+Studio (**Android 36** + platform-tools), un JDK 17+ y el NDK; iOS necesita Xcode. Ambos necesitan
+los targets de Rust — `rustup target add aarch64-linux-android armv7-linux-androideabi
+i686-linux-android x86_64-linux-android` y `aarch64-apple-ios aarch64-apple-ios-sim`.
+
+### El plugin nativo propio de la wallet
+
+El desbloqueo biométrico y la hoja de compartir son
+**[src-tauri/plugins/cosmos](../src-tauri/plugins/cosmos)**, escrito para esta wallet en lugar de
+tomado de un estante. No es preferencia: el contrato que necesita
+[src/lib/deviceAuth.ts](../src/lib/deviceAuth.ts) es una clave cuya lectura **es** en sí misma una
+comprobación biométrica en vivo — no una comprobación seguida de una lectura — y necesita que la
+clave se destruya cuando cambia el conjunto biométrico. El plugin al que sustituye podía escribir
+ese binding pero no volver a leerlo, así que el flag tenía que quedarse apagado.
+
+Tener las dos mitades es lo que lo hace posible: Android acuña la clave con
+`setUserAuthenticationRequired(true)`, una política de autenticación **por uso**,
+`setUnlockedDeviceRequired(true)` y `setInvalidatedByBiometricEnrollment(true)`, y la abre a través
+de un `CryptoObject` de `BiometricPrompt`; iOS la guarda `.biometryCurrentSet` bajo
+`kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`, donde `SecItemCopyMatching` levanta la hoja por sí
+mismo. Ninguna de las dos tiene una ruta de código que lea la clave sin prompt.
+
+Un mismo vocabulario abarca cuatro lenguajes (TypeScript, Rust, Kotlin, Swift) y ningún toolchain
+comprueba que las cuatro listas coincidan — renombra una variante y todo sigue compilando, mientras
+que un prompt cancelado empieza a llegar como una línea de error roja.
+`tests/unit/nativeContract.test.ts` lee los cuatro archivos y los compara.
+
+**Nota de migración.** Una inscripción hecha antes de que existiera este plugin vive en un espacio de
+nombres del almacén seguro que este no mira, así que todo móvil que tuviera desbloqueo biométrico
+aterriza una vez en "no inscrito" y lo vuelve a activar en Ajustes. La contraseña funciona en todo
+momento. Rechazar en vez de migrar es deliberado — ver `DeviceAuthBinding` en
+[src/lib/deviceAuth.ts](../src/lib/deviceAuth.ts).
+
+### Icono de launcher y splash
+
+`src-tauri/gen/` es una **salida** de Tauri: `tauri android init` la reescribe desde sus propias
+plantillas, así que lo que se edite directamente ahí sobrevive hasta el siguiente init y entonces
+desaparece. Los assets reales viven en `resources/android/`, versionado, y
+[scripts/android-res.ts](../scripts/android-res.ts) los copia de vuelta — que es lo que ejecuta
+`npm run android:init` después del generador.
+
+```bash
+npm run android:icons   # regenera resources/android/ desde public/logo-white.png
+```
+
+[scripts/android-icons.ts](../scripts/android-icons.ts) dibuja la marca blanca sobre `#080808` — el
+mismo `--bg` con el que abre la app. Emite el par adaptativo (108dp, con el inset hasta los 72dp que
+el launcher garantiza), iconos planos **opacos** para API < 26 y para las vistas previas que caen en
+ellos, un `ic_launcher_round` circular y la escalera de splash. Un icono plano blanco sobre
+transparente es invisible contra una superficie clara, y eso es lo que parece "el icono no se
+aplicó". El juego de escritorio es aparte y sale de
+[scripts/desktop-icon.ts](../scripts/desktop-icon.ts) más `tauri icon`, por la misma razón: un master
+opaco, porque ningún launcher de escritorio aplica inset al arte antes de dibujarla.
+
+### Permisos
+
+Mismo problema que el icono, con consecuencias más agudas: el manifest generado declara INTERNET y
+nada más, así que la cámara que abre el escáner QR se rechaza *sin prompt* — Android deniega una
+petición en tiempo de ejecución de un permiso que el manifest nunca declaró. `npm run native:perms`
+([scripts/native-permissions.ts](../scripts/native-permissions.ts)) repone las declaraciones y no
+hace nada cuando ya están.
+
+| Declaración | Por qué |
 | --- | --- |
-| `-- --no-build` | redesplegar el bundle que ya está en `dist/web/` |
-| `-- --list` | listar dispositivos/emuladores conectados y salir |
-| `-- --target <id>` | elegir uno cuando hay varios conectados |
-| `-- --no-pair` | fallar directamente en vez de ofrecer el QR de vinculación |
-| `-- --live` | recarga en vivo desde el dev server, a través de adb |
-| `-- --live --lan` | recarga en vivo por la LAN (`--host <ip>` fija la dirección) |
+| `android.permission.CAMERA` | `getUserMedia` en [src/features/extras/ScanQR.tsx](../src/features/extras/ScanQR.tsx). La WebView levanta el prompt; el manifest es lo que hace posible el prompt. |
+| `android.permission.USE_BIOMETRIC` | `BiometricPrompt` se niega a mostrarse sin él. También lo declara el manifest del plugin — el merger deduplica, así que ninguna de las dos declaraciones carga sola con el peso. |
+| `uses-feature camera`, `camera.autofocus`, `fingerprint`, `required="false"` | Play lee esos permisos como *exigencia* de hardware y oculta la ficha a los dispositivos que no lo tienen. Ambas funciones tienen alternativa, así que ninguna es obligatoria. |
+| `<queries>` ACTION_IMAGE_CAPTURE | Visibilidad de paquetes, API 30+. Sin ella `<input capture>` en el paso KYC no resuelve ninguna app de cámara y se convierte en silencio en un selector de galería. |
+| `NSCameraUsageDescription`, `NSFaceIDUsageDescription`, `NSPhotoLibraryUsageDescription` | iOS, cuando la plataforma está generada. Ahí una purpose string ausente es un crash, no una denegación. |
 
-Con `--live --lan` en Windows cuenta con el firewall: las reglas de entrada de `node.exe` se escriben
-para el perfil **Público** mientras que una red doméstica es **Privada**, así que nada de la LAN
-llega al puerto 4500 y la WebView muestra el `backgroundColor` de Capacitor — pantalla negra sin
-error por ningún lado. `--live` a secas tuneliza por adb y evita el problema; permitir la ruta
-directa requiere una PowerShell de administrador:
+No se concede nada en tiempo de compilación — al usuario se le sigue preguntando, una vez, al primer
+uso. El escáner clasifica el rechazo ([src/lib/camera.ts](../src/lib/camera.ts)) en vez de culpar a
+los permisos de cualquier fallo: sin cámara en el dispositivo, cámara tomada por otra app, y una
+WebView servida por `http` plano (donde `navigator.mediaDevices` no existe) dicen cada una lo que
+pasó de verdad.
 
-```powershell
-New-NetFirewallRule -DisplayName "node dev server (Private)" -Direction Inbound -Action Allow `
-  -Profile Private -Program "C:\Program Files\nodejs\node.exe"
-```
-
-No se usa `cap run android`: invoca `./gradlew`, que cmd.exe no puede ejecutar, y no hay flag para
-cambiarlo. [scripts/cap-dev.ts](../scripts/cap-dev.ts) hace los mismos tres pasos por su cuenta —
-`cap sync`, el wrapper de Gradle, y luego `native-run` para instalar y lanzar.
+El mismo script desactiva Android Auto Backup, para que la bóveda cifrada no llegue nunca a Google
+Drive, e imprime la mitad de iOS que **no** puede arreglar: el archivo del store sigue siendo
+elegible para iCloud, y cerrar eso necesita `NSURLIsExcludedFromBackupKey` puesto en un dispositivo
+que aquí nadie puede probar. Lo dice en cada ejecución en vez de adivinar.
 
 ### Vincular un móvil por Wi-Fi
 

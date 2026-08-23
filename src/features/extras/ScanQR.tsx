@@ -153,7 +153,7 @@ export function ScanQR({ store }: { store: WalletStore }) {
     (async () => {
       try {
         // Explicit device when the user picked one; otherwise the back camera. On a phone this
-        // is the call that raises the OS permission prompt: Capacitor's WebChromeClient turns
+        // is the call that raises the OS permission prompt: the Android WebView's chrome client turns
         // it into a runtime request for the CAMERA permission that scripts/native-permissions.ts
         // declares — without that declaration Android denies it silently, with no prompt.
         stream = await openCameraStream(deviceId || undefined);

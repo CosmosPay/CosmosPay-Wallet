@@ -1,10 +1,10 @@
 name: Native builds
 
-# The one place that turns this repo into installable phone binaries.
+# The one place that turns this repo into installable binaries.
 #
-# It is a REUSABLE workflow (`workflow_call`), not a standalone one, because the same
-# two jobs are wanted from two very different places and duplicating them is how the
-# Android job ended up being the only pipeline that never ran the biometric tripwire:
+# It is a REUSABLE workflow (`workflow_call`), not a standalone one, because the same jobs
+# are wanted from two very different places and duplicating them is how one pipeline ends
+# up being the only one that never runs a given check:
 #
 #   * .github/workflows/ci.yml — every push and PR, unsigned/debug, artifacts only.
 #   * .github/workflows/release-extension.yml — once per published release, stamped with
@@ -13,6 +13,10 @@ name: Native builds
 # `workflow_dispatch` is kept so a binary can still be produced on demand from any branch.
 #
 # What comes out:
+#   Desktop — Windows (NSIS + MSI), macOS (.dmg) and Linux (AppImage + .deb + .rpm), all
+#             unsigned. Unsigned is honest rather than lazy: code-signing certificates are
+#             per-organisation secrets, and a pipeline that pretended otherwise would fail
+#             on every fork.
 #   Android — a debug-signed APK, always. Plus a signed release APK *and* an AAB when the
 #             keystore secrets below are configured. There is no unsigned release APK in
 #             the outputs on purpose: nothing can install one, so shipping it would be a
@@ -20,8 +24,9 @@ name: Native builds
 #   iOS     — an unsigned .ipa. Building is all a runner without an Apple Developer account
 #             can do; a device install still needs re-signing. It earns its place anyway: it
 #             is the only thing that catches a Package.swift, a purpose-string or a
-#             deployment-target break before a release, and that is exactly the class of
-#             breakage nobody on a Windows machine can reproduce.
+#             deployment-target break before a release — exactly the class of breakage
+#             nobody on a Windows machine can reproduce, and the half of
+#             src-tauri/plugins/cosmos that no other job compiles at all.
 #
 # Signing (optional — set all four as repository secrets to get a Play-ready build):
 #   ANDROID_KEYSTORE_BASE64    base64 of your release .keystore/.jks  (`base64 -w0 release.jks`)
@@ -31,9 +36,9 @@ name: Native builds
 # Absent any of them the job says so in its log and falls back to the debug APK rather than
 # failing: a fork and a first-time clone must still get a testable build out of CI.
 #
-# Signing happens with apksigner/jarsigner AFTER Gradle, never by editing
-# android/app/build.gradle. That folder is a build output — see CLAUDE.md — so a signingConfig
-# written into it would be secret handling that disappears on the next clone.
+# Signing happens with apksigner/jarsigner AFTER Gradle, never through a signingConfig in
+# the generated project. `src-tauri/gen/` is a build output — see CLAUDE.md — so a keystore
+# path written into it would be secret handling that `tauri android init` erases.
 
 on:
   workflow_call:
@@ -53,132 +58,193 @@ on:
         type: string
         required: false
         default: ''
+      desktop:
+        description: 'Build the desktop bundles (three runners, one per OS).'
+        type: boolean
+        required: false
+        default: true
       ios:
         description: 'Also build iOS (macOS runner, several times the wall clock of the Android job).'
         type: boolean
         required: false
         default: true
-    secrets:
-      ANDROID_KEYSTORE_BASE64:
-        required: false
-      ANDROID_KEYSTORE_PASSWORD:
-        required: false
-      ANDROID_KEY_ALIAS:
-        required: false
-      ANDROID_KEY_PASSWORD:
-        required: false
   workflow_dispatch:
-    inputs:
-      ios:
-        description: 'Also build the iOS app (unsigned)'
-        type: boolean
-        default: true
 
-# `permissions` is deliberately NOT set here: a reusable workflow cannot request more than
-# the caller granted, so `contents: write` at this level would make ci.yml — which correctly
-# grants only read — fail to start. The caller decides; release-extension.yml grants write
-# because its run uploads to a release.
+# The version is a single source of truth: src-tauri/tauri.conf.json reads it from
+# package.json, so stamping a release is `npm version` and nothing else. There is no
+# separate native version script any more — there is nothing left for it to keep in sync.
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
-  android:
-    name: Android
-    runs-on: ubuntu-latest
+  # ---------------------------------------------------------------- desktop
+
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    if: inputs.desktop
+    runs-on: ${{ matrix.os }}
+    strategy:
+      # One OS failing must not cancel the other two: a WebKitGTK package rename on the
+      # Linux runner says nothing about whether the Windows bundle is fine.
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            bundles: bundle/appimage bundle/deb bundle/rpm
+          - os: macos-latest
+            bundles: bundle/dmg
+          - os: windows-latest
+            bundles: bundle/nsis bundle/msi
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref }}
+
+      # WebKitGTK and libsoup3 are what Tauri renders into on Linux; they are not on the
+      # runner image. The other two OSes ship their WebView with the system.
+      - name: Linux WebView dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+            libsoup-3.0-dev build-essential curl wget file libssl-dev
 
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
-      # Capacitor 8 targets JDK 21.
-      - uses: actions/setup-java@v5.7.0
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
         with:
-          distribution: temurin
-          java-version: 21
+          workspaces: src-tauri
 
-      - uses: android-actions/setup-android@v4
-
-      # Brings @capacitor/android too: it is a devDependency (Gradle reads it, the web
-      # bundle never does), so it is pinned by the lockfile here instead of being
-      # installed mid-run — which used to rewrite package.json inside the job.
       - run: npm ci
 
-      # AFTER `npm ci`, never before: npm validates package.json against the lockfile, and
-      # the lockfile records the root package's version too. `npm version` rewrites both.
-      #
-      # This step is what makes a `dev` prerelease binary carry its real version. That branch
-      # never commits its bump — the release job sets the version in the workspace and throws
-      # it away — so a job that checked out the tag and trusted the tree would build an APK
-      # labelled with the PREVIOUS release. scripts/native-version.ts then carries the number
-      # into build.gradle from the `capacitor:sync:after` hook.
       - name: Stamp release version
         if: inputs.version != ''
         run: npm version --no-git-tag-version --allow-same-version "${{ inputs.version }}"
 
-      # BEFORE Gradle, and this is the job that needs it most.
-      #
-      # `npm ci` re-runs the postinstall patch that rewrites the Keystore auth-type
-      # constants inside @capgo/capacitor-native-biometric, and Gradle compiles that Java
-      # straight out of node_modules — there is no copy under android/ to review. The
-      # assertion that the patch landed lives in tests/unit/nativeBiometric.test.ts, and the
-      # jobs that run it elsewhere install no Android toolchain and compile no Java. A plugin
-      # bump that moves or renames those constants must fail here, not on a user's phone with
-      # an enrolment that can only ever fail.
-      - name: Unit tests (incl. the native-biometric patch tripwire)
+      # `tauri build` runs `npm run build` itself (beforeBuildCommand), so the web bundle
+      # is never stale relative to what gets embedded.
+      - name: Build desktop bundles
+        run: npm run desktop:build
+
+      - name: Collect bundles
+        shell: bash
+        run: |
+          mkdir -p out
+          for dir in ${{ matrix.bundles }}; do
+            src="src-tauri/target/release/$dir"
+            [ -d "$src" ] || { echo "no $src — skipping"; continue; }
+            find "$src" -maxdepth 1 -type f \
+              \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
+                 -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) \
+              -exec cp {} out/ \;
+          done
+          ls -la out
+
+      - name: Upload desktop artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.os }}
+          path: out
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: inputs.release-tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: gh release upload "${{ inputs.release-tag }}" out/* --clobber
+
+  # ---------------------------------------------------------------- android
+
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      # Tauri cross-compiles the Rust core for four ABIs; without the targets the build
+      # fails deep inside cargo with a message about a missing std, which reads like a
+      # toolchain corruption rather than a missing `rustup target add`.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install Android NDK
+        run: |
+          sdkmanager --install "ndk;27.0.12077973"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.0.12077973" >> "$GITHUB_ENV"
+
+      - run: npm ci
+
+      - name: Stamp release version
+        if: inputs.version != ''
+        run: npm version --no-git-tag-version --allow-same-version "${{ inputs.version }}"
+
+      # The four-language contract test lives here. Rust cannot see the Kotlin, TypeScript
+      # cannot see either, and this is the only job that would notice the drift at all.
+      - name: Unit tests
         run: npm run test:unit
 
-      # android/ is gitignored — generated per checkout, exactly as on a dev machine. The
-      # `capacitor:sync:after` hook fires inside `cap sync` and restores the launcher icons,
-      # the manifest permissions, the backup rules and the version stamp.
-      - name: Add Capacitor Android platform
-        run: |
-          npm run build
-          npx cap add android
-          npx cap sync android
-        env:
-          PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
-          PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
-          PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
+      # Generates src-tauri/gen/android from the Tauri templates and then restores the
+      # committed launcher art over it (npm run android:res, wired into android:init).
+      - name: Generate the Android project
+        run: npm run android:init
+
+      # Declarations the generated manifest does not carry: CAMERA, USE_BIOMETRIC, the
+      # uses-feature rows that keep the Play listing visible, and allowBackup="false".
+      - name: Restore native permissions
+        run: npm run native:perms
 
       - name: Resolve build name
-        id: meta
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "BUILD_NAME=cosmos-pay-$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
 
-      # Written to the runner's temp dir, which is wiped with the runner and is not the
-      # workspace — so it cannot be picked up by a later upload-artifact glob.
       - name: Decode signing keystore
         id: keystore
         env:
-          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          set -euo pipefail
-          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
-            echo "::notice::No complete Android signing secret set — building the debug APK only."
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "signing secrets absent — this run produces the debug APK only."
             echo "signed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "signed=true" >> "$GITHUB_OUTPUT"
 
-      # Always. This is the artifact a tester can install without any secret being configured
-      # anywhere, so it is not conditional on the signed path existing.
-      - name: Assemble debug APK
-        working-directory: android
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Build debug APK
+        run: npm run android:build -- --debug --apk
 
-      - name: Assemble release APK + AAB
+      - name: Build release APK + AAB
         if: steps.keystore.outputs.signed == 'true'
-        working-directory: android
-        run: ./gradlew --no-daemon assembleRelease bundleRelease
+        run: npm run android:build -- --apk --aab
 
-      # apksigner (APK, v2/v3 scheme) and jarsigner (AAB, which Play re-signs anyway) —
-      # outside Gradle, so nothing about signing is written into the generated project.
       - name: Sign release APK + AAB
         if: steps.keystore.outputs.signed == 'true'
         env:
@@ -187,182 +253,148 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          BUILD_TOOLS="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)"
-          echo "Using $BUILD_TOOLS"
-          UNSIGNED=android/app/build/outputs/apk/release/app-release-unsigned.apk
-          # Newer AGP already names it app-release.apk when a signingConfig exists; there is
-          # none here, so tolerate both rather than guessing.
-          [ -f "$UNSIGNED" ] || UNSIGNED=android/app/build/outputs/apk/release/app-release.apk
-          "$BUILD_TOOLS/zipalign" -p -f 4 "$UNSIGNED" "$RUNNER_TEMP/aligned.apk"
-          "$BUILD_TOOLS/apksigner" sign \
-            --ks "$RUNNER_TEMP/release.jks" \
-            --ks-pass env:KEYSTORE_PASSWORD \
-            --ks-key-alias "$KEY_ALIAS" \
-            --key-pass env:KEY_PASSWORD \
-            --out "$RUNNER_TEMP/release-signed.apk" \
-            "$RUNNER_TEMP/aligned.apk"
-          "$BUILD_TOOLS/apksigner" verify --print-certs "$RUNNER_TEMP/release-signed.apk"
-          jarsigner -keystore "$RUNNER_TEMP/release.jks" \
-            -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" \
-            -signedjar "$RUNNER_TEMP/release-signed.aab" \
-            android/app/build/outputs/bundle/release/app-release.aab "$KEY_ALIAS"
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          OUTPUTS=src-tauri/gen/android/app/build/outputs
+
+          # apksigner for the APK (v2/v3 scheme), jarsigner for the bundle — an AAB is a
+          # jar and apksigner refuses it outright.
+          find "$OUTPUTS/apk/universal/release" -name '*.apk' | while read -r apk; do
+            "$BUILD_TOOLS/zipalign" -p -f 4 "$apk" "$apk.aligned"
+            "$BUILD_TOOLS/apksigner" sign \
+              --ks "$RUNNER_TEMP/release.jks" \
+              --ks-pass "pass:$KEYSTORE_PASSWORD" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --key-pass "pass:$KEY_PASSWORD" \
+              --out "$apk" "$apk.aligned"
+            rm -f "$apk.aligned"
+          done
+
+          find "$OUTPUTS/bundle" -name '*.aab' | while read -r aab; do
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore "$RUNNER_TEMP/release.jks" \
+              -storepass "$KEYSTORE_PASSWORD" -keypass "$KEY_PASSWORD" \
+              "$aab" "$KEY_ALIAS"
+          done
 
       - name: Collect binaries
-        env:
-          SIGNED: ${{ steps.keystore.outputs.signed }}
-          V: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p out
-          cp android/app/build/outputs/apk/debug/app-debug.apk "out/cosmos-pay-v${V}-debug.apk"
-          if [ "$SIGNED" = "true" ]; then
-            cp "$RUNNER_TEMP/release-signed.apk" "out/cosmos-pay-v${V}.apk"
-            cp "$RUNNER_TEMP/release-signed.aab" "out/cosmos-pay-v${V}.aab"
+          OUTPUTS=src-tauri/gen/android/app/build/outputs
+          # The debug APK is the one output that always exists, so it is never conditional.
+          find "$OUTPUTS/apk" -name '*debug*.apk' -exec cp {} "out/$BUILD_NAME-debug.apk" \;
+          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+            find "$OUTPUTS/apk" -path '*release*' -name '*.apk' -exec cp {} "out/$BUILD_NAME.apk" \;
+            find "$OUTPUTS/bundle" -name '*.aab' -exec cp {} "out/$BUILD_NAME.aab" \;
           fi
-          ls -lh out
+          ls -la out
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: android-v${{ steps.meta.outputs.version }}
-          path: out/*
+          name: android
+          path: out
           if-no-files-found: error
 
-      # Only when the caller published a release for these binaries to hang off. `--clobber`
-      # so re-running a failed native job replaces a partial upload instead of erroring.
       - name: Attach to GitHub Release
         if: inputs.release-tag != ''
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ inputs.release-tag }}" out/* --clobber
+
+  # ------------------------------------------------------------------- ios
 
   ios:
     name: iOS
-    # Both triggers declare `ios` with a default of true, so this is never undefined: a caller
-    # opts out (ci.yml does, on pull requests) rather than opting in.
     if: inputs.ios
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.ref }}
 
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
 
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
       - run: npm ci
 
-      # Same reason as the Android job: `dev` never commits its bump, so the tag's tree carries
-      # the previous version. scripts/native-version.ts then writes MARKETING_VERSION and
-      # CURRENT_PROJECT_VERSION into the pbxproj from the `capacitor:sync:after` hook — with the
-      # prerelease suffix stripped, because Apple rejects a marketing version that is not X.Y.Z.
       - name: Stamp release version
         if: inputs.version != ''
         run: npm version --no-git-tag-version --allow-same-version "${{ inputs.version }}"
 
-      # ios/ is gitignored, exactly like android/. The sync hook writes the three
-      # NS*UsageDescription purpose strings into Info.plist — without them the app does not get
-      # a denial, it gets terminated the moment the camera or Face ID is touched.
-      #
-      # There is deliberately no CocoaPods step here. Capacitor 8 defaults to Swift Package
-      # Manager (`ios-spm-template.tar.gz` in @capacitor/cli/dist/config.js), which generates
-      # ios/App/CapApp-SPM/Package.swift and NO .xcworkspace — the workspace only exists under
-      # the `--packagemanager cocoapods` template. Forcing pods here would make CI validate a
-      # project layout no developer on this repo has, since `npm run cap:ios` gets the SPM one.
-      # All five native plugins ship a Package.swift, @capgo/capacitor-native-biometric included,
-      # so nothing is silently dropped from the SPM build.
-      - name: Add Capacitor iOS platform
-        run: |
-          npm run build
-          npx cap add ios
-          npx cap sync ios
-        env:
-          PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
-          PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
-          PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
+      - name: Build the web bundle
+        run: npm run build
+
+      - name: Generate the Xcode project
+        run: npm run ios:init
+
+      # Purpose strings. On iOS a missing one is not a denied prompt — the OS terminates
+      # the app the moment the API is touched, so the first Face ID unlock would be a crash.
+      - name: Restore native permissions
+        run: npm run native:perms
 
       - name: Resolve build name
-        id: meta
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: echo "BUILD_NAME=cosmos-pay-$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
 
-      # `npx cap add ios` exits 0 even when what it produced is not what the next step expects,
-      # and the mismatch then surfaces two steps later as xcodebuild reporting that a path "does
-      # not exist" — with no hint about which of the two iOS templates ran. Name it here instead.
-      # `-list` doubles as the check that the App scheme resolves: neither template ships an
-      # .xcscheme, so it is autocreated from the target, and a failure to do that is exactly the
-      # kind of thing that should stop the job before a twelve-minute compile.
-      - name: Verify the generated Xcode project
-        run: |
-          set -euo pipefail
-          if [ ! -f ios/App/App.xcodeproj/project.pbxproj ]; then
-            echo "::error::cap add ios produced no ios/App/App.xcodeproj — layout below"
-            ls -R ios || true
-            exit 1
-          fi
-          xcodebuild -project ios/App/App.xcodeproj -list
-
-      # Split out of the build so a network or SPM-resolution failure names itself instead of
-      # scrolling past inside a compile log. The plugins resolve from local paths, but the base
-      # package (ionic-team/capacitor-swift-pm) is fetched over the network, so this step is the
-      # one that needs the runner to reach GitHub.
-      - name: Resolve Swift package dependencies
-        run: |
-          set -euo pipefail
-          xcodebuild \
-            -project ios/App/App.xcodeproj \
-            -scheme App \
-            -derivedDataPath "$RUNNER_TEMP/ios-build" \
-            -resolvePackageDependencies
-
-      # `-project`, not `-workspace`: the SPM template has no App.xcworkspace at all — the only
-      # workspace in it is App.xcodeproj/project.xcworkspace, which is Xcode's internal one and
-      # not a build input.
+      # `tauri ios build` drives xcodebuild with an export step that needs a signing team,
+      # which a runner without an Apple Developer account does not have. xcodebuild directly,
+      # with signing switched off, is what a CI can actually produce — and it still compiles
+      # every Swift file in src-tauri/plugins/cosmos, which is the point of this job.
       #
-      # No `-archivePath` / `-exportArchive`: export needs a provisioning profile, and the point
-      # of this job is to be useful WITHOUT an Apple Developer account. `CODE_SIGNING_ALLOWED=NO`
-      # compiles and links everything — which is where a Package.swift, a Swift-version or a
-      # deployment-target break shows up — and stops at the signature.
+      # The scheme name follows `productName` in tauri.conf.json and contains a space, so it
+      # is discovered rather than hardcoded: a rename would otherwise fail here with
+      # "scheme not found" long after the change that caused it.
       - name: Build unsigned .app
         run: |
           set -euo pipefail
+          PROJECT=$(ls -d src-tauri/gen/apple/*.xcodeproj | head -1)
+          SCHEME=$(xcodebuild -list -project "$PROJECT" -json \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+                const schemes = JSON.parse(s).project.schemes;
+                const ios = schemes.find(x => x.endsWith('_iOS')) || schemes[0];
+                process.stdout.write(ios);
+              })")
+          echo "building scheme: $SCHEME"
           xcodebuild \
-            -project ios/App/App.xcodeproj \
-            -scheme App \
+            -project "$PROJECT" \
+            -scheme "$SCHEME" \
             -configuration Release \
-            -destination 'generic/platform=iOS' \
-            -derivedDataPath "$RUNNER_TEMP/ios-build" \
-            ONLY_ACTIVE_ARCH=NO \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             build
 
-      # An .ipa is a zip with the .app inside a top-level Payload/ directory and nothing else.
-      # Unsigned, so it installs through a re-signing tool (Sideloadly, AltStore, an MDM) rather
-      # than by tapping it — said out loud in the release notes so nobody expects more.
+      # An .ipa is a zip with the .app inside a Payload/ directory and nothing else. Made by
+      # hand because `-exportArchive` needs the signing identity this job does not have.
       - name: Package unsigned .ipa
-        env:
-          V: ${{ steps.meta.outputs.version }}
         run: |
           set -euo pipefail
-          APP="$RUNNER_TEMP/ios-build/Build/Products/Release-iphoneos/App.app"
-          [ -d "$APP" ] || { echo "::error::$APP was not produced"; exit 1; }
-          mkdir -p "$RUNNER_TEMP/pkg/Payload" out
-          cp -R "$APP" "$RUNNER_TEMP/pkg/Payload/"
-          ( cd "$RUNNER_TEMP/pkg" && zip -qry "$GITHUB_WORKSPACE/out/cosmos-pay-v${V}-unsigned.ipa" Payload )
-          ls -lh out
+          APP=$(find build/Build/Products -maxdepth 2 -name '*.app' | head -1)
+          [ -n "$APP" ] || { echo "no .app was produced"; exit 1; }
+          mkdir -p Payload out
+          cp -R "$APP" Payload/
+          zip -qr "out/$BUILD_NAME-unsigned.ipa" Payload
+          ls -la out
 
       - name: Upload iOS artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: ios-v${{ steps.meta.outputs.version }}
-          path: out/*
+          name: ios
+          path: out
           if-no-files-found: error
 
       - name: Attach to GitHub Release
         if: inputs.release-tag != ''
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${{ inputs.release-tag }}" out/* --clobber

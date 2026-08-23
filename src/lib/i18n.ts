@@ -1052,6 +1052,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'about.buildWeb': { es: 'Aplicación web', en: 'Web app', pt: 'Aplicação web', de: 'Web-App', fr: 'Application web' },
   'about.buildExt': { es: 'Extensión de navegador', en: 'Browser extension', pt: 'Extensão de navegador', de: 'Browser-Erweiterung', fr: 'Extension de navigateur' },
   'about.buildApp': { es: 'Aplicación móvil', en: 'Mobile app', pt: 'Aplicação móvel', de: 'Mobile App', fr: 'Application mobile' },
+  'about.buildDesktop': { es: 'Aplicación de escritorio', en: 'Desktop app', pt: 'Aplicação de ambiente de trabalho', de: 'Desktop-App', fr: 'Application de bureau' },
   'about.desc': { es: 'Tus claves se cifran y se guardan solo en este dispositivo (SEP-5 · AES-256-GCM). Cosmos nunca tiene acceso a ellas.', en: 'Your keys are encrypted and stored only on this device (SEP-5 · AES-256-GCM). Cosmos never has access to them.', pt: 'As tuas chaves são cifradas e guardadas apenas neste dispositivo (SEP-5 · AES-256-GCM). A Cosmos nunca tem acesso.', de: 'Deine Schlüssel werden verschlüsselt und nur auf diesem Gerät gespeichert (SEP-5 · AES-256-GCM). Cosmos hat nie Zugriff darauf.', fr: 'Tes clés sont chiffrées et stockées uniquement sur cet appareil (SEP-5 · AES-256-GCM). Cosmos n’y a jamais accès.' },
 
   'fiat.noAmount': {

@@ -39,8 +39,18 @@ const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', '.astro', 'android', 
  * so it catches those without matching every `host/path.html` in a URL.
  */
 const SRC_DIRS = 'app|ui|features|state|hooks|lib|constants|styles|pages|components|molecules|atoms|organisms';
-const EXT = '(?:ts|tsx|css|astro|mjs|json|html)';
-const PATH_RE = new RegExp(String.raw`\b(?:(?:src|scripts|tests)|(?:${SRC_DIRS}))\/[A-Za-z0-9_@./-]+\.${EXT}\b`, 'g');
+const EXT = '(?:ts|tsx|css|astro|mjs|json|html|rs|kt|swift)';
+/**
+ * `src-tauri` comes FIRST in the alternation, and that ordering is load-bearing.
+ *
+ * The character class swallows `-` and `/`, so with `src` first the engine fails at
+ * `src-tauri` (there is no slash after `src`), scans on, and matches the `src/<file>.rs`
+ * sitting INSIDE a `src-tauri/plugins/…/src/<file>.rs` citation — a path that does not
+ * exist, reported against a citation that was perfectly correct. Matching the longer
+ * prefix first consumes the whole token, so the inner one is never reached.
+ */
+const ROOT_DIRS = 'src-tauri|src|scripts|tests';
+const PATH_RE = new RegExp(String.raw`\b(?:(?:${ROOT_DIRS})|(?:${SRC_DIRS}))\/[A-Za-z0-9_@./-]+\.${EXT}\b`, 'g');
 
 /** Placeholders and globs are documentation, not references. */
 const isTemplate = (p: string) => /[<>*${}…]/.test(p);

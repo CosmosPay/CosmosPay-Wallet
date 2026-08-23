@@ -1,3 +1,4 @@
+import { ExternalLink } from '@/ui/ExternalLink';
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
@@ -49,15 +50,9 @@ export function Backup({ store }: { store: WalletStore }) {
           The T&C part is a real link (opens in a new tab, doesn't toggle the box). */}
       <CheckRow on={terms} onToggle={() => setTerms((s) => !s)} className="backup-check-terms">
         {t('backup.terms')}
-        <a
-          href={TERMS_URL}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="backup-terms-link"
-        >
+        <ExternalLink href={TERMS_URL} className="backup-terms-link">
           {t('backup.termsLink')}
-        </a>
+        </ExternalLink>
         .
       </CheckRow>
       <PrimaryButton disabled={!saved || !terms} onClick={() => store.beginVerify()}>

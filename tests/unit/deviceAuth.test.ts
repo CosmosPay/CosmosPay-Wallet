@@ -31,45 +31,59 @@ import {
 import { open, seal } from '@/lib/crypto';
 import { T } from '@/lib/i18n';
 
-/** What the Capacitor bridge actually rejects with: `code` arrives as a STRING. */
-const pluginError = (code: number) => Object.assign(new Error('platform prose, varies by OS'), { code: String(code) });
+/**
+ * What `tauri-plugin-cosmos` actually rejects with.
+ *
+ * An OBJECT, not a decorated Error: `src-tauri/plugins/cosmos/src/error.rs` serialises
+ * `{ failure, detail }`, and a Tauri rejection arrives as that plain value rather than as
+ * an `Error` instance. Building the fixture the way the bridge builds it is the point —
+ * the previous shape (a numeric `code` stringified onto an Error) is what the wallet used
+ * to parse, and a test that kept using it would go on passing after the contract moved.
+ */
+const pluginError = (failure: string, detail = 'platform prose, varies by OS') => ({ failure, detail });
 
 const PROMPT = { title: 't', reason: 'r', cancel: 'c' };
 
 /* -------------------------- classifying a rejection ------------------------- */
 
 test('a dismissed prompt is a decision, not a failure', () => {
-  // 16 user cancel, 11 app cancel, 15 system cancel, 17 user chose the fallback.
-  for (const code of [11, 15, 16, 17]) {
-    assert.equal(deviceAuthFailure(pluginError(code)), 'cancelled', `code ${code}`);
-  }
+  // Both platforms fold their several dismissal codes into this one token before it ever
+  // crosses the bridge — Android's ERROR_NEGATIVE_BUTTON / USER_CANCELED / CANCELED and
+  // iOS's userCancel / appCancel / systemCancel / userFallback.
+  assert.equal(deviceAuthFailure(pluginError('cancelled')), 'cancelled');
 });
 
 test('a changed enrolment is "stale", which is what disables the feature', () => {
-  assert.equal(deviceAuthFailure(pluginError(21)), 'stale');
+  assert.equal(deviceAuthFailure(pluginError('stale')), 'stale');
 });
 
 test('the three "you can fix this" cases stay distinct', () => {
-  assert.equal(deviceAuthFailure(pluginError(1)), 'noHardware');
-  assert.equal(deviceAuthFailure(pluginError(3)), 'notEnrolled');
-  assert.equal(deviceAuthFailure(pluginError(14)), 'noPasscode');
+  assert.equal(deviceAuthFailure(pluginError('noHardware')), 'noHardware');
+  assert.equal(deviceAuthFailure(pluginError('notEnrolled')), 'notEnrolled');
+  assert.equal(deviceAuthFailure(pluginError('noPasscode')), 'noPasscode');
 });
 
 test('a permanent lockout is not the 30-second one — only one of them says "wait"', () => {
-  assert.equal(deviceAuthFailure(pluginError(2)), 'lockedOut');
-  assert.equal(deviceAuthFailure(pluginError(4)), 'lockedOutTemporary');
+  assert.equal(deviceAuthFailure(pluginError('lockedOut')), 'lockedOut');
+  assert.equal(deviceAuthFailure(pluginError('lockedOutTemporary')), 'lockedOutTemporary');
 });
 
-test('a numeric code works too — the bridge is not the only caller', () => {
-  assert.equal(deviceAuthFailure({ code: 21 }), 'stale');
+test('a device that cannot bind a key is not a device with no sensor', () => {
+  // The distinction the whole "no unbound tier" argument rests on: `noStrongBiometry` is a
+  // permanent fact about the hardware, `notEnrolled` is a trip to Settings.
+  assert.equal(deviceAuthFailure(pluginError('noStrongBiometry')), 'noStrongBiometry');
+  assert.notEqual(deviceAuthFailure(pluginError('noStrongBiometry')), 'notEnrolled');
 });
 
 test('anything unrecognised fails closed as a plain failure, never as success', () => {
-  assert.equal(deviceAuthFailure(pluginError(999)), 'failed');
-  assert.equal(deviceAuthFailure(new Error('no code at all')), 'failed');
+  assert.equal(deviceAuthFailure(pluginError('somethingNewFromAFutureBuild')), 'failed');
+  assert.equal(deviceAuthFailure(new Error('no token at all')), 'failed');
   assert.equal(deviceAuthFailure(null), 'failed');
   assert.equal(deviceAuthFailure(undefined), 'failed');
-  assert.equal(deviceAuthFailure({ code: 'not a number' }), 'failed');
+  assert.equal(deviceAuthFailure({ failure: 42 }), 'failed');
+  // The SHAPE that used to work must not: a numeric `code` was the old plugin's contract,
+  // and quietly honouring it would let a stale caller keep classifying by accident.
+  assert.equal(deviceAuthFailure({ code: '21' }), 'failed');
 });
 
 test('a DeviceAuthError carries its own verdict through unchanged', () => {
@@ -85,14 +99,14 @@ test('a DeviceAuthError carries its own verdict through unchanged', () => {
  */
 test('a sealed envelope round-trips: the wrap key alone recovers the password', async () => {
   const wrapKey = 'Zm9ydHktdHdvLWJ5dGVzLW9mLXJhbmRvbW5lc3M9PQ==';
-  const envelope = { v: 1 as const, binding: 'anyBiometry' as const, box: await seal('correct horse', wrapKey) };
+  const envelope = { v: 1 as const, binding: 'boundCurrentSet' as const, box: await seal('correct horse', wrapKey) };
   const parsed = parseAuthEnvelope(JSON.stringify(envelope));
   assert.ok(parsed, 'a well-formed envelope must parse');
   assert.equal(await open(parsed.box, wrapKey), 'correct horse');
 });
 
 test('the wrong wrap key does not open the envelope — it throws, it does not return junk', async () => {
-  const envelope = { v: 1 as const, binding: 'anyBiometry' as const, box: await seal('correct horse', 'key-a') };
+  const envelope = { v: 1 as const, binding: 'boundCurrentSet' as const, box: await seal('correct horse', 'key-a') };
   const parsed = parseAuthEnvelope(JSON.stringify(envelope));
   assert.ok(parsed);
   await assert.rejects(() => open(parsed.box, 'key-b'));
@@ -104,9 +118,9 @@ test('parsing fails closed: anything malformed reads as "not enrolled", never as
     ['null', null],
     ['empty string', ''],
     ['not json', '{nope'],
-    ['no version', JSON.stringify({ binding: 'anyBiometry', box })],
-    ['a FUTURE version we cannot read', JSON.stringify({ v: 2, binding: 'anyBiometry', box })],
-    ['no box', JSON.stringify({ v: 1, binding: 'anyBiometry' })],
+    ['no version', JSON.stringify({ binding: 'boundCurrentSet', box })],
+    ['a FUTURE version we cannot read', JSON.stringify({ v: 2, binding: 'boundCurrentSet', box })],
+    ['no box', JSON.stringify({ v: 1, binding: 'boundCurrentSet' })],
     ['no binding', JSON.stringify({ v: 1, box })],
     ['an unknown binding', JSON.stringify({ v: 1, binding: 'whatever', box })],
   ];
@@ -116,18 +130,21 @@ test('parsing fails closed: anything malformed reads as "not enrolled", never as
 });
 
 /**
- * Two binding modes have shipped and this build can open neither. 'passcode' was the unbound
- * tier: its key was stored with no setUserAuthenticationRequired on Android and no
- * kSecAttrAccessible on iOS, so reading it needed no prompt at all. 'currentSet' was
- * BIOMETRY_CURRENT_SET, whose key this plugin cannot read back - getSecureData never forwards
- * accessControl and the decrypt path hardcodes 0, so the read mints a fresh key and fails the
- * GCM tag with a null-message AEADBadTagException, permanently.
+ * Three binding modes have shipped and this build can open none of them.
  *
- * Refusing both turns a broken enrolment into "not enrolled", which the user can fix in
- * Settings. Honouring either would be a button that can only ever fail.
+ * 'passcode' was the unbound tier: its key was stored with no setUserAuthenticationRequired
+ * on Android and no kSecAttrAccessible on iOS, so reading it needed no prompt at all.
+ * 'currentSet' was written by a plugin whose own read path could not open it. 'anyBiometry'
+ * was genuinely bound and genuinely readable — by the PREVIOUS native half, which kept its
+ * key under a secure-store namespace `tauri-plugin-cosmos` does not look at. That one is the
+ * migration case: every phone that had the feature before this plugin existed lands there.
+ *
+ * Refusing all three turns a stale enrolment into "not enrolled", which the user fixes in
+ * Settings with their password working throughout. Honouring any of them would be a button
+ * that can only ever fail.
  */
 test('envelopes from binding modes this build cannot open are refused, not migrated', async () => {
-  for (const binding of ['passcode', 'currentSet']) {
+  for (const binding of ['passcode', 'currentSet', 'anyBiometry']) {
     const stale = JSON.stringify({ v: 1, binding, box: await seal('pw', 'k') });
     assert.equal(parseAuthEnvelope(stale), null, binding);
   }
@@ -220,13 +237,13 @@ test('distinct failures get distinct messages — the map is not a decorated def
 /* ------------------- the detail behind an unclassified code ------------------ */
 
 /**
- * Three different native faults all arrive as code 0, and the one that actually bit — a
+ * Several distinct native faults all arrive as `failed`, and the one that actually bit — a
  * Keystore refusing to create the bound key — has nothing to do with the user's finger.
- * Without the detail the screen said "couldn't verify your identity" and there was no way,
- * from the app, to tell which of the three had happened.
+ * Without the detail the screen said "we could not verify your identity" and there was no
+ * way, from inside the app, to tell which of them had happened.
  */
-test('code 0 is unclassified, so the platform sentence is what carries the meaning', () => {
-  const cryptoUnavailable = Object.assign(new Error('Biometric crypto object unavailable'), { code: '0' });
+test('"failed" is unclassified, so the platform sentence is what carries the meaning', () => {
+  const cryptoUnavailable = pluginError('failed', 'Biometric crypto object unavailable');
   assert.equal(deviceAuthFailure(cryptoUnavailable), 'failed');
   assert.equal(deviceAuthDetail(cryptoUnavailable), 'Biometric crypto object unavailable');
 });
@@ -240,8 +257,14 @@ test('a classified failure carries no detail to append', () => {
   assert.equal(deviceAuthDetail(new DeviceAuthError('notEnrolled')), null);
 });
 
-test('an empty or absent message is null, not an empty parenthesis on screen', () => {
-  assert.equal(deviceAuthDetail({ code: '0', message: '   ' }), null);
-  assert.equal(deviceAuthDetail({ code: '0' }), null);
+test('an empty or absent detail is null, not an empty parenthesis on screen', () => {
+  assert.equal(deviceAuthDetail({ failure: 'failed', detail: '   ' }), null);
+  assert.equal(deviceAuthDetail({ failure: 'failed' }), null);
   assert.equal(deviceAuthDetail(null), null);
+});
+
+test('a plain Error still yields its message — not every caller is the bridge', () => {
+  // `enableDeviceAuth` logs whatever it caught, and a throw from inside the wallet
+  // (a storage refusal, a serialisation fault) carries a `message` and no `detail`.
+  assert.equal(deviceAuthDetail(new Error('localStorage is unavailable')), 'localStorage is unavailable');
 });

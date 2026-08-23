@@ -11,12 +11,21 @@ import { KVRow } from '@/ui/KVRow';
 export function About({ store }: { store: WalletStore }) {
   const t = store.t;
   const kind = buildKind();
-  const buildLabel = kind === 'ext' ? t('about.buildExt') : kind === 'app' ? t('about.buildApp') : t('about.buildWeb');
+  // Keyed off the union so a new BuildKind is a missing key rather than a silent
+  // "Web app" on a build that is nothing of the sort.
+  const BUILD_KEYS: Record<typeof kind, string> = {
+    web: 'about.buildWeb',
+    ext: 'about.buildExt',
+    app: 'about.buildApp',
+    desktop: 'about.buildDesktop',
+  };
   const rows: [string, string][] = [
     [t('about.version'), 'v' + APP_VERSION],
-    [t('about.build'), buildLabel],
+    [t('about.build'), t(BUILD_KEYS[kind])],
   ];
-  if (kind === 'app') rows.push([t('about.platform'), platformName()]);
+  // Both Tauri builds know their OS; a browser tab does not, and `platformName()` would
+  // only report the string 'web' back at a row already labelled "Web app".
+  if (kind === 'app' || kind === 'desktop') rows.push([t('about.platform'), platformName()]);
 
   return (
     <div className="scr screen col pb-30">

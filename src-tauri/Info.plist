@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS purpose strings. Tauri merges this file into the .app bundle's Info.plist.
+
+  The mac build needs its own copy because scripts/native-permissions.ts writes the iOS
+  one, under src-tauri/gen/apple/, and that project does not exist on a desktop build.
+  Same consequence as on iOS and worth repeating: a missing purpose string is not a denied
+  prompt, it is the OS terminating the app the moment the API is touched. The QR scanner
+  calls getUserMedia, so without this the first tap on "Escanear" closes the wallet.
+
+  Only the camera is listed. The desktop build has no biometric unlock (see
+  src-tauri/plugins/cosmos/src/desktop.rs for why), and it reads images through a normal
+  file picker, which needs no declaration.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Cosmos Pay uses the camera to scan Stellar payment QR codes and to photograph the documents an identity check asks for.</string>
+</dict>
+</plist>

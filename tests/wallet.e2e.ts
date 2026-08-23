@@ -85,6 +85,48 @@ try {
   await page.getByRole('button', { name: 'Desbloquear' }).click();
   await page.getByText('Valor del portafolio').waitFor({ timeout: 10000 });
   ok(true, 'Reload -> unlock (decrypt) -> home');
+
+  /* ------------------------- desktop navigation ------------------------- */
+  /**
+   * The one place the navigation rail can be seen at all.
+   *
+   * It is tied to the SESSION rather than to the viewport (src/app/Shell.tsx says why), so
+   * tests/responsive.e2e.ts — which measures the welcome screen — never has one to look at.
+   * By this point the wallet is unlocked and on Home, so widening the window is the whole
+   * setup cost.
+   *
+   * What matters is that EXACTLY ONE navigation is visible at each width. Two would be two
+   * things claiming to say where the user is; zero would be a wallet with no way out of the
+   * screen it is on, and both failures are invisible to a build that compiles.
+   */
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(400); // let the media query settle before measuring
+  const wide = await page.evaluate(() => {
+    const shown = (sel: string) => {
+      const el = document.querySelector(sel);
+      return !!el && getComputedStyle(el).display !== 'none';
+    };
+    return {
+      rail: shown('.shell-side'),
+      bar: shown('.bottom-nav'),
+      active: document.querySelector('.desk-nav-item.is-on')?.textContent?.trim() ?? '',
+    };
+  });
+  ok(wide.rail, 'Desktop: the navigation rail is visible');
+  ok(!wide.bar, 'Desktop: the bottom tab bar is hidden — only one navigation at a time');
+  ok(wide.active === 'Inicio', `Desktop: the rail marks the current tab (${wide.active || 'none'})`);
+
+  await page.setViewportSize({ width: 440, height: 880 });
+  await page.waitForTimeout(400);
+  const narrow = await page.evaluate(() => {
+    const shown = (sel: string) => {
+      const el = document.querySelector(sel);
+      return !!el && getComputedStyle(el).display !== 'none';
+    };
+    return { rail: shown('.shell-side'), bar: shown('.bottom-nav') };
+  });
+  ok(narrow.bar, 'Phone: the bottom tab bar is back');
+  ok(!narrow.rail, 'Phone: the rail is hidden — the switch goes both ways');
 } catch (e) {
   const msg = (e as Error).message;
   fails.push('exception: ' + msg);

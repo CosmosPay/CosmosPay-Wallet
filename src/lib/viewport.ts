@@ -6,7 +6,7 @@
  * number so the app moves the same way either way — through a single transition rather
  * than one motion the engine imposes and another the app adds on top:
  *
- * - Android — Chrome with `interactive-widget=resizes-content`, and the Capacitor WebView,
+ * - Android — Chrome with `interactive-widget=resizes-content`, and the Tauri WebView,
  *   which the activity resizes — shrinks the LAYOUT viewport. `100dvh` goes with it, so
  *   the whole frame reflows in one frame, with nothing to ease. `--kb-reflow` is exactly
  *   what the engine took, and `.shell-frame` adds it straight back (no transition, same
