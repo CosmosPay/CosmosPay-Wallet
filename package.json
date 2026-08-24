@@ -32,7 +32,7 @@
     "cap:ios": "astro build && cap sync ios && cap open ios"
   },
   "dependencies": {
-    "@astrojs/react": "^6.0.2",
+    "@astrojs/react": "^6.0.4",
     "@capacitor/app": "^8.1.1",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.5.0",
@@ -40,7 +40,7 @@
     "@capacitor/share": "^8.0.1",
     "@capgo/capacitor-native-biometric": "^8.6.6",
     "@stellar/stellar-sdk": "^16.2.0",
-    "astro": "^7.2.1",
+    "astro": "^7.2.4",
     "bip39": "^3.1.0",
     "buffer": "^6.0.3",
     "country-flag-icons": "^1.6.20",
