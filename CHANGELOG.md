@@ -2,6 +2,11 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.5.0] - 2026-08-25
+
+### Bug Fixes
+- Restore package-lock.json, corrupted by the Capacitor/Tauri merge (b2f5a20)
+
 ## [1.4.1] - 2026-08-24
 
 ### Miscellaneous
@@ -11,9 +16,23 @@ Generated from [Conventional Commits](https://www.conventionalcommits.org) by [g
 
 ### Features
 - Implement native build workflows for Android and iOS, including version stamping (0c195fa)
+- Implement keyboard handling for better UI interaction and footer positioning (679fc21)
+- Mejorar la gestión del teclado para una mejor experiencia de usuario y animaciones de interfaz (df55a20)
+- Internationalization updates and error handling improvements (3c51fb5)
+- Agregar archivos de configuración y bloqueos para la gestión de Gradle en Android (b784f2e)
+- Actualizar configuraciones de CI y mejorar la gestión de ventanas en el diseño de escritorio (74c9cdf)
 
 ### Bug Fixes
 - Update references from Podfile to Package.swift in CI workflows (a561c5c)
+- Unblock the pipeline — missing script, locale-bound tests, target/ in the typecheck (7a35ed0)
+- Write android:allowBackup="false" when the manifest has none (a7f4643)
+- Build iOS in the release configuration, and drop the MSI on a prerelease (4cca39c)
+- Derive the version from the tags, and build every platform on every run (527cbb7)
+- Stop xcodebuild's env dump from truncating the iOS error out of the log (bd43575)
+- Compile both iOS halves instead of building an .ipa that cannot be built (d17f6d2)
+
+### Refactor
+- Enhance responsive and device authentication tests (1a658b7)
 
 ## [1.3.0] - 2026-08-19
 
