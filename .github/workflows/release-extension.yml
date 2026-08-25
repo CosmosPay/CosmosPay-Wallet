@@ -204,7 +204,7 @@ jobs:
           The .zip is also ready to upload as-is to the Chrome Web Store / Firefox AMO.
 
           **Desktop apps** (attached a few minutes after this release is published — the native builds run once the tag exists). All unsigned, so the OS will warn on first launch:
-          - **Windows:** `cosmos-pay-v${{ steps.ver.outputs.version }}-windows-x86_64-setup.exe` (installer) or the `.msi`. SmartScreen shows *"Windows protected your PC"* → *More info* → *Run anyway*.
+          - **Windows:** `cosmos-pay-v${{ steps.ver.outputs.version }}-windows-x86_64-setup.exe` (installer), plus the `.msi` on stable releases — an MSI version is three numeric fields, so it cannot carry a `-dev.N` prerelease. SmartScreen shows *"Windows protected your PC"* → *More info* → *Run anyway*.
           - **Linux:** `cosmos-pay-v${{ steps.ver.outputs.version }}-linux-x86_64.AppImage` (`chmod +x`, then run — no install; built on Ubuntu 24.04, so it needs glibc 2.39+), or the `.deb` / `.rpm` for a system package.
           - **macOS:** `cosmos-pay-v${{ steps.ver.outputs.version }}-macos-arm64.dmg`. Gatekeeper blocks it on first open → right-click the app → *Open*.
 

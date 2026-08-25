@@ -143,8 +143,36 @@ jobs:
 
       # `tauri build` runs `npm run build` itself (beforeBuildCommand), so the web bundle
       # is never stale relative to what gets embedded.
+      #
+      # THE MSI IS DROPPED ON A PRERELEASE, and only there. An MSI's ProductVersion is three
+      # numeric fields, so WiX cannot encode `1.3.1-dev.55` and refuses the whole bundle:
+      #
+      #     failed to bundle project: `optional pre-release identifier in app version must
+      #     be numeric-only and cannot be greater than 65535 for msi target`
+      #
+      # Every dev push carries exactly that shape — release-extension.yml stamps
+      # `X.Y.Z-dev.<run_number>` — so the Windows leg failed on all of them while `main`,
+      # which has no prerelease, was fine. NSIS has no such rule and still ships, so a dev
+      # build keeps its installer; a stable release still gets both.
+      #
+      # Renaming the version to something numeric would ALSO satisfy WiX and is not the fix:
+      # cliff.toml keeps dev tags out of the changelog with `ignore_tags = '.*-dev.*'`, so a
+      # scheme without that substring would quietly write every dev push into CHANGELOG.md.
       - name: Build desktop bundles
-        run: npm run desktop:build
+        shell: bash
+        run: |
+          set -euo pipefail
+          ARGS=""
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            VERSION=$(node -p "require('./package.json').version")
+            PRE="${VERSION#*-}"
+            if [ "$PRE" != "$VERSION" ] && ! printf '%s' "$PRE" | grep -qE '^[0-9]+$'; then
+              echo "version $VERSION carries a non-numeric prerelease ('$PRE') — MSI cannot"
+              echo "encode it; building the NSIS installer only."
+              ARGS="--bundles nsis"
+            fi
+          fi
+          npm run desktop:build -- $ARGS
 
       # Tauri names every bundle after `productName`, so they come out as
       # "Cosmos Pay_1.3.0_x64-setup.exe" — spaces included, which GitHub then silently
@@ -396,21 +424,46 @@ jobs:
       # The scheme name follows `productName` in tauri.conf.json and contains a space, so it
       # is discovered rather than hardcoded: a rename would otherwise fail here with
       # "scheme not found" long after the change that caused it.
+      #
+      # THE CONFIGURATION IS DISCOVERED FOR A SHARPER REASON. cargo-mobile2 names the two
+      # build configurations `debug` and `release`, in LOWER CASE, so the `-configuration
+      # Release` this step used to pass matched nothing — and xcodebuild did not say so. It
+      # fell back to the project default, which is `debug`, and the Rust script phase then
+      # asked the Tauri CLI for a DEV build: it went looking for the `tauri ios dev` server
+      # address file, found none on a CI runner, and aborted with a panic naming neither the
+      # configuration nor the fallback:
+      #
+      #     panicked at crates/tauri-cli/src/mobile/mod.rs:386:59:
+      #     failed to read missing addr file …/lat.cosmospay.wallet-server-addr
+      #
+      # Matching case-insensitively, and REFUSING when the project has no release
+      # configuration at all, is what keeps that from silently shipping a debug .ipa.
       - name: Build unsigned .app
         run: |
           set -euo pipefail
           PROJECT=$(ls -d src-tauri/gen/apple/*.xcodeproj | head -1)
-          SCHEME=$(xcodebuild -list -project "$PROJECT" -json \
+          LIST=$(xcodebuild -list -project "$PROJECT" -json)
+          SCHEME=$(printf '%s' "$LIST" \
             | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
                 const schemes = JSON.parse(s).project.schemes;
                 const ios = schemes.find(x => x.endsWith('_iOS')) || schemes[0];
                 process.stdout.write(ios);
               })")
-          echo "building scheme: $SCHEME"
+          CONFIG=$(printf '%s' "$LIST" \
+            | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{
+                const cfgs = JSON.parse(s).project.configurations || [];
+                const rel = cfgs.find(c => c.toLowerCase() === 'release');
+                if (!rel) {
+                  process.stderr.write('no release configuration; project has: ' + cfgs.join(', ') + '\n');
+                  process.exit(1);
+                }
+                process.stdout.write(rel);
+              })")
+          echo "building scheme: $SCHEME (configuration: $CONFIG)"
           xcodebuild \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
-            -configuration Release \
+            -configuration "$CONFIG" \
             -sdk iphoneos \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
