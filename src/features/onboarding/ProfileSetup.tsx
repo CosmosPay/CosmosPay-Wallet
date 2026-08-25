@@ -88,12 +88,14 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
       </CheckRow>
 
       <div className="spacer" />
-      <PrimaryButton
-        disabled={!ok || store.busy}
-        onClick={() => (store.addingWallet ? store.finishOnboarding() : store.setScreen('password'))}
-      >
-        {store.addingWallet ? (store.busy ? <Spinner /> : t('setup.addWallet')) : t('common.continue')}
-      </PrimaryButton>
+      <div className="kb-dock">
+        <PrimaryButton
+          disabled={!ok || store.busy}
+          onClick={() => (store.addingWallet ? store.finishOnboarding() : store.setScreen('password'))}
+        >
+          {store.addingWallet ? (store.busy ? <Spinner /> : t('setup.addWallet')) : t('common.continue')}
+        </PrimaryButton>
+      </div>
     </div>
   );
 }

@@ -1,9 +1,9 @@
 // Self-contained stylesheet: approve.astro does not load app.css nor the theme
 // CSS variables, so this sheet uses literal colors only (see its header).
 import '@/styles/app/approve-popup.css';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Keypair } from '@stellar/stellar-sdk';
-import { DAPP_MIRROR_KEY, APPROVE_TITLES, OP_LABELS } from '@/constants/app';
+import { DAPP_MIRROR_KEY, APPROVE_TITLE_KEYS, OP_LABEL_KEYS } from '@/constants/app';
 import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type WalletEntry } from '@/lib/vault';
 import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
 import { WrongPasswordError } from '@/lib/crypto';
@@ -13,6 +13,7 @@ import { reviewTx, type TxReview } from '@/lib/txGuard';
 import { signMessagePayload, SIGN_MESSAGE_DOMAIN } from '@/lib/signMessage';
 import { memoKindFromSep7 } from '@/lib/memo';
 import { cx } from '@/lib/cx';
+import { makeT, savedLang, type TFn } from '@/lib/i18n';
 
 // Extension API — no @types/chrome in this project; the popup only runs as an
 // extension page where `chrome` exists (guarded by hasChrome()).
@@ -99,9 +100,12 @@ export default function ApprovePopup() {
   // Nothing can be approved in that state; only Reject stays available.
   const [netMismatch, setNetMismatch] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const t = useMemo(() => makeT(savedLang()), []);
   const [pwd, setPwd] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  /** Explicit acknowledgement for a takeover-capable or co-signed envelope. */
+  const [ack, setAck] = useState(false);
   // Set after an address-bar payment succeeds: keeps the window open showing the hash.
   const [doneHash, setDoneHash] = useState('');
 
@@ -117,7 +121,7 @@ export default function ApprovePopup() {
         if (r && r.method === 'requestPayment') {
           const parsed = parseStellarQr(String(r.params.uri || ''));
           if (parsed) setPay(parsed);
-          else setPayErr('El enlace SEP-7 no contiene un pago válido.');
+          else setPayErr(t('approve.badSep7'));
         }
         if (r && r.method === 'signTransaction') {
           // A dapp may state which network it built for, but it does NOT get to
@@ -126,9 +130,7 @@ export default function ApprovePopup() {
           // valid mainnet signature. Mismatch => refuse, don't silently re-target.
           const asked = String(r.params.networkPassphrase || '');
           if (asked && asked !== c.passphrase) {
-            setNetMismatch(
-              `La web pide firmar en una red distinta a la tuya (${c.label}). Cambia de red en la wallet si realmente quieres operar ahí.`,
-            );
+            setNetMismatch(t('approve.netMismatch', { network: c.label }));
           } else {
             try {
               setReview(reviewTx(c, String(r.params.xdr || '')));
@@ -144,14 +146,14 @@ export default function ApprovePopup() {
     })();
   }, []);
 
-  if (!loaded) return <Frame><p className="approve-muted">Cargando…</p></Frame>;
-  if (!req) return <Frame><Title>Solicitud no encontrada</Title><p className="approve-muted">La solicitud caducó o ya se resolvió. Puedes cerrar esta ventana.</p></Frame>;
+  if (!loaded) return <Frame><p className="approve-muted">{t('approve.loading')}</p></Frame>;
+  if (!req) return <Frame><Title>{t('approve.notFound')}</Title><p className="approve-muted">{t('approve.notFoundBody')}</p></Frame>;
   if (!entry || !cfg) {
     return (
       <Frame>
-        <Title>No hay wallet</Title>
+        <Title>{t('approve.noWallet')}</Title>
         <p className="approve-muted">Abre Cosmos Wallet y crea o importa una wallet antes de conectar con una web.</p>
-        <Btn kind="reject" onClick={() => respond(req.id, false, undefined, 'No hay wallet en este dispositivo.')}>Cerrar</Btn>
+        <Btn kind="reject" onClick={() => respond(req.id, false, undefined, 'No wallet on this device.')}>{t('approve.close')}</Btn>
       </Frame>
     );
   }
@@ -160,14 +162,14 @@ export default function ApprovePopup() {
   const isPay = req.method === 'requestPayment';
   const short = (s: string, n = 10) => (s.length > n * 2 ? `${s.slice(0, n)}…${s.slice(-n)}` : s);
   const payAsset = pay ? (pay.assetCode && pay.assetIssuer ? pay.assetCode : 'XLM') : '';
-  const originLabel = req.origin === 'address-bar' ? 'Barra de direcciones' : req.origin;
+  const originLabel = req.origin === 'address-bar' ? t('approve.addressBar') : req.origin;
 
   if (doneHash) {
     return (
       <Frame>
         <Title>Pago enviado ✓</Title>
         <div className="approve-card">
-          <Row label="Hash" value={short(doneHash, 12)} mono />
+          <Row label={t('approve.rowHash')} value={short(doneHash, 12)} mono />
           <Row label="Red" value={cfg.label} />
         </div>
         <p className="approve-success">La transacción se firmó en tu dispositivo y se envió a la red.</p>
@@ -231,7 +233,7 @@ export default function ApprovePopup() {
         return;
       }
       if (req.method === 'requestPayment') {
-        if (!pay) throw new Error(payErr || 'Enlace de pago inválido.');
+        if (!pay) throw new Error(payErr || t('approve.badPayLink'));
         const { hash } = await sendPayment({
           cfg,
           secret,
@@ -252,7 +254,8 @@ export default function ApprovePopup() {
         return;
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
+      const wrongPwd = e instanceof WrongPasswordError;
+      const message = wrongPwd ? t('confirmSig.wrongPwd') : e instanceof Error ? e.message : String(e);
       setErr(message);
       setBusy(false);
       // A wrong password is retryable — leave the request pending so the user can just
@@ -260,7 +263,12 @@ export default function ApprovePopup() {
       // missing vault entry, …) is terminal: nothing will ever retry it, so without a
       // reply here the dapp's promise would hang forever. Keep the window open so the
       // user still sees the message; respond() unblocks the dapp regardless.
-      if (message !== 'Contraseña incorrecta.') respond(req.id, false, undefined, message, true);
+      //
+      // Branched on `message !== 'Contraseña incorrecta.'` until now: a comparison
+      // against Spanish UI copy, deciding retryable-vs-terminal. One i18n pass and every
+      // mistyped password here became a terminal rejection — and that pass has now
+      // happened. `WrongPasswordError` is imported two lines above and exists for this.
+      if (!wrongPwd) respond(req.id, false, undefined, message, true);
     }
   };
 
@@ -268,9 +276,26 @@ export default function ApprovePopup() {
   // is never approvable: the only honest action left is Reject.
   const isSignTx = req.method === 'signTransaction';
   const foreignSource = !!review && review.source !== entry.publicKey;
+  /**
+   * The two conditions that can hand the account away, and the only ones this window
+   * asks the user to say out loud.
+   *
+   * `foreignSource` was computed one line up and then *not used* — a check by
+   * appearance only. `hasCritical` was never consulted either, so a `setOptions`
+   * adding an attacker's signer was one password and one click, behind a red banner
+   * that the Approve button ignored. This is the path an arbitrary website reaches,
+   * and it was the least guarded one in the wallet.
+   *
+   * NOT a refusal, deliberately: legitimate dapps do set signers and do co-sign, and
+   * refusing outright would break them. It is a separate, explicit acknowledgement
+   * instead — the button stays dead until the user ticks it, so approving one of these
+   * can no longer happen on the same reflex as approving anything else.
+   */
+  const needsAck = !!review && (review.hasCritical || foreignSource);
   const canApprove =
     !netMismatch &&
     !reviewErr &&
+    (!needsAck || ack) &&
     (isConnect || (isPay ? !!pay && !!pwd : isSignTx ? !!review && !!pwd : !!pwd));
 
   return (
@@ -280,19 +305,19 @@ export default function ApprovePopup() {
         <div className="approve-origin-host">{originLabel}</div>
       </div>
 
-      <Title>{APPROVE_TITLES[req.method]}</Title>
+      <Title>{t(APPROVE_TITLE_KEYS[req.method])}</Title>
 
       <div className="approve-card">
-        <Row label="Wallet" value={entry.name || 'astronauta'} />
-        <Row label="Tu dirección" value={short(entry.publicKey)} mono />
+        <Row label={t('approve.rowWallet')} value={entry.name || t('approve.defaultWalletName')} />
+        <Row label={t('approve.rowYourAddress')} value={short(entry.publicKey)} mono />
         <Row label="Red" value={cfg.label} />
 
         {isPay && pay && (
           <>
             <div className="approve-divider" />
-            <Row label="Enviar a" value={short(pay.destination)} mono />
-            <Row label="Importe" value={`${pay.amount || '—'} ${payAsset}`} />
-            {pay.memo && <Row label="Memo" value={pay.memo} />}
+            <Row label={t('approve.rowSendTo')} value={short(pay.destination)} mono />
+            <Row label={t('approve.rowAmount')} value={`${pay.amount || '—'} ${payAsset}`} />
+            {pay.memo && <Row label={t('approve.rowMemo')} value={pay.memo} />}
           </>
         )}
         {isPay && payErr && <div className="approve-pay-error">{payErr}</div>}
@@ -311,18 +336,18 @@ export default function ApprovePopup() {
             {/* The window used to decode `source`, `feeBumpSource`, `sequence` and
                 `signatures` and then render none of them: it consumed only
                 `hasCritical`. Everything the envelope commits you to is shown. */}
-            <Row label="Origen" value={foreignSource ? short(review.source) : 'Tu cuenta'} mono={foreignSource} />
-            <Row label="Comisión" value={`${review.feeXlm} XLM`} />
-            <Row label="Secuencia" value={review.sequence || '—'} mono />
-            <Row label="Caduca" value={expiryLabel(review.maxTime)} />
-            {review.signatures > 0 && <Row label="Firmas ya presentes" value={String(review.signatures)} />}
-            {review.feeBumpSource && <Row label="Fee-bump de" value={short(review.feeBumpSource)} mono />}
-            {review.memo && <Row label="Memo" value={`${review.memo} (${review.memoType})`} />}
+            <Row label={t('approve.rowSource')} value={foreignSource ? short(review.source) : t('approve.yourAccount')} mono={foreignSource} />
+            <Row label={t('approve.rowFee')} value={`${review.feeXlm} XLM`} />
+            <Row label={t('approve.rowSequence')} value={review.sequence || '—'} mono />
+            <Row label={t('approve.rowExpires')} value={expiryLabel(t, review.maxTime)} />
+            {review.signatures > 0 && <Row label={t('approve.rowSignatures')} value={String(review.signatures)} />}
+            {review.feeBumpSource && <Row label={t('approve.rowFeeBumpFrom')} value={short(review.feeBumpSource)} mono />}
+            {review.memo && <Row label={t('approve.rowMemo')} value={`${review.memo} (${review.memoType})`} />}
             <div className="approve-ops">
               {review.operations.map((op, i) => (
                 <div key={i} className={cx('approve-op', op.critical && 'is-critical')}>
                   <div className="approve-op-type">
-                    {i + 1}. {OP_LABELS[op.type] ?? op.type}
+                    {i + 1}. {OP_LABEL_KEYS[op.type] ? t(OP_LABEL_KEYS[op.type]) : op.type}
                   </div>
                   {op.rows.map((r) => (
                     <div key={r.label} className="approve-row">
@@ -338,34 +363,46 @@ export default function ApprovePopup() {
       </div>
 
       {netMismatch && <div className="approve-danger">⛔ {netMismatch}</div>}
-      {reviewErr && <div className="approve-danger">⛔ No se pudo leer la transacción: {reviewErr}</div>}
+      {reviewErr && <div className="approve-danger">⛔ {t('approve.readFailed', { msg: reviewErr })}</div>}
       {review?.hasCritical && (
         <div className="approve-danger">
-          ⚠️ Esta transacción incluye una operación que puede dar control de tu cuenta a un tercero, o invoca un contrato que esta ventana no puede leer. No la apruebes salvo que sepas exactamente qué estás haciendo.
+          ⚠️ {t('approve.warnCritical')}
         </div>
       )}
       {foreignSource && (
         <div className="approve-danger">
-          ⚠️ Esta transacción no sale de tu cuenta. Tu firma se añadiría a la de otra persona.
+          ⚠️ {t('approve.warnForeignSource')}
         </div>
       )}
       {review?.feeBumpSource && (
         <div className="approve-danger">
-          ⚠️ Es un envoltorio fee-bump: un tercero paga la comisión y decide cuándo reenviarla.
+          ⚠️ {t('approve.warnFeeBump')}
         </div>
       )}
       {review && !review.maxTime && (
         <div className="approve-danger">
-          ⚠️ Esta transacción no caduca nunca. Una vez firmada, quien la tenga puede enviarla en cualquier momento.
+          ⚠️ {t('approve.warnNoExpiry')}
         </div>
+      )}
+
+      {needsAck && (
+        <label className="approve-ack">
+          <input
+            type="checkbox"
+            checked={ack}
+            onChange={(e) => setAck((e.target as HTMLInputElement).checked)}
+            className="approve-ack-box"
+          />
+          <span className="approve-ack-text">{t('approve.ack')}</span>
+        </label>
       )}
 
       <p className="approve-note">
         {isConnect
-          ? 'Se compartirá tu dirección pública con esta web. No se expone ninguna clave.'
+          ? t('approve.noteConnect')
           : isPay
-            ? 'Se construirá, firmará y enviará este pago desde tu wallet. Revisa el destino y el importe.'
-            : 'La firma se hace en tu dispositivo con tu clave; nunca sale de aquí.'}
+            ? t('approve.notePay')
+            : t('approve.noteSign')}
       </p>
 
       {!isConnect && (
@@ -373,7 +410,7 @@ export default function ApprovePopup() {
           type="password"
           value={pwd}
           autoFocus
-          placeholder="Contraseña de la wallet"
+          placeholder={t('approve.pwdPlaceholder')}
           onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => e.key === 'Enter' && canApprove && approve()}
           className="approve-input"
@@ -383,24 +420,32 @@ export default function ApprovePopup() {
       {err && <div className="approve-error">{err}</div>}
 
       <div className="approve-actions">
-        <Btn kind="reject" onClick={() => respond(req.id, false, undefined, 'Rechazado por el usuario.')}>Rechazar</Btn>
+        <Btn kind="reject" onClick={() => respond(req.id, false, undefined, 'Rejected by the user.')}>{t('approve.reject')}</Btn>
         <Btn kind="approve" onClick={approve} disabled={busy || !canApprove}>
-          {busy ? (isPay ? 'Enviando…' : 'Firmando…') : isConnect ? 'Conectar' : isPay ? 'Enviar' : 'Aprobar'}
+          {busy
+            ? isPay
+              ? t('approve.sending')
+              : t('approve.signing')
+            : isConnect
+              ? t('approve.connect')
+              : isPay
+                ? t('approve.send')
+                : t('approve.approve')}
         </Btn>
       </div>
     </Frame>
   );
 }
 
-/** "en 4 min" / "hace 2 min" / "sin caducidad", from a unix-second string. */
-function expiryLabel(maxTime: string | null): string {
-  if (!maxTime) return 'Nunca (sin caducidad)';
+/** "in 4 min" / "already expired" / "never", from a unix-second string. */
+function expiryLabel(t: TFn, maxTime: string | null): string {
+  if (!maxTime) return t('approve.expiryNever');
   const secs = Number(maxTime) - Math.floor(Date.now() / 1000);
   if (!Number.isFinite(secs)) return '—';
-  if (secs <= 0) return 'Ya ha caducado';
-  if (secs < 90) return `en ${secs} s`;
-  if (secs < 5400) return `en ${Math.round(secs / 60)} min`;
-  return `en ${Math.round(secs / 3600)} h`;
+  if (secs <= 0) return t('approve.expiryPast');
+  if (secs < 90) return t('approve.expirySecs', { n: secs });
+  if (secs < 5400) return t('approve.expiryMins', { n: Math.round(secs / 60) });
+  return t('approve.expiryHours', { n: Math.round(secs / 3600) });
 }
 
 function Frame({ children }: { children: React.ReactNode }) {

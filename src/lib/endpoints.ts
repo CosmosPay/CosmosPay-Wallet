@@ -17,9 +17,13 @@ const ENV = (import.meta as unknown as { env?: Record<string, string | undefined
 
 /**
  * Production bases. Same-origin ('') only works in the WEB dev server, where the
- * Vite proxy forwards /api and /cosmos-api. The extension (chrome-extension://)
- * and the native app (capacitor://) have no proxy — '' would point nowhere — so
- * outside 'web' these production URLs are the default (env/dev-mode still win).
+ * Vite proxy forwards /api and /cosmos-api. The extension (chrome-extension://) and
+ * every Tauri build — mobile and desktop alike, on tauri://localhost — have no proxy,
+ * so '' would point nowhere and these production URLs are the default outside 'web'
+ * (env/dev-mode still win).
+ *
+ * Those origins are also what the gateway's CORS policy has to allow: a Tauri window is
+ * a cross-origin caller exactly as the extension popup already is.
  */
 const PROD_DEV_PLATFORM = 'https://dev.cosmospay.lat';
 const PROD_GATEWAY = 'https://api.cosmospay.lat';

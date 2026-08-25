@@ -17,6 +17,7 @@ import {
 } from '@stellar/stellar-sdk';
 import { coingeckoBase } from '@/lib/endpoints';
 import { normalizeMemo, type MemoKind } from '@/lib/memo';
+import { tNow } from '@/lib/i18n';
 
 // A network is identified by an id; built-ins are testnet/public, plus any
 // custom networks the user adds (own Horizon + passphrase).
@@ -326,7 +327,7 @@ export async function submitXdr(cfg: NetConfig, xdr: string): Promise<{ hash: st
 /** Stellar amounts allow at most 7 decimal places. */
 export function normalizeAmount(amount: string): string {
   const n = Number(amount);
-  if (!Number.isFinite(n) || n <= 0) throw new Error('Importe no válido.');
+  if (!Number.isFinite(n) || n <= 0) throw new Error(tNow('tx.badAmount'));
   return n.toFixed(7).replace(/\.?0+$/, '') || '0';
 }
 
@@ -338,24 +339,27 @@ function parseHorizonError(err: unknown): string {
   const codes = e?.response?.data?.extras?.result_codes;
   if (codes) {
     const op = Array.isArray(codes.operations) ? codes.operations.join(', ') : '';
+    // Horizon's result codes are a stable API vocabulary, so they map to i18n keys.
+    // An unmapped code falls through to the generic line WITH the raw code in it —
+    // visible, never swallowed.
     const map: Record<string, string> = {
-      op_underfunded: 'Saldo insuficiente para cubrir el importe y la comisión.',
-      op_no_destination: 'La cuenta de destino no existe.',
-      op_low_reserve: 'El importe es menor que la reserva mínima (1 XLM) para crear la cuenta.',
-      tx_insufficient_balance: 'Saldo insuficiente.',
-      tx_bad_seq: 'Error de secuencia, inténtalo de nuevo.',
+      op_underfunded: 'tx.err.underfunded',
+      op_no_destination: 'tx.err.noDestination',
+      op_low_reserve: 'tx.err.lowReserve',
+      tx_insufficient_balance: 'tx.err.insufficientBalance',
+      tx_bad_seq: 'tx.err.badSequence',
     };
-    const key = op || codes.transaction;
-    if (key && map[key]) return map[key];
-    return `La red rechazó la transacción (${op || codes.transaction || 'error'}).`;
+    const code = op || codes.transaction;
+    if (code && map[code]) return tNow(map[code]);
+    return tNow('tx.err.rejected', { code: op || codes.transaction || 'error' });
   }
-  return e?.message || 'No se pudo enviar la transacción.';
+  return e?.message || tNow('tx.err.submitFailed');
 }
 
 /** Testnet only: fund a fresh account with free XLM via Friendbot. */
 export async function fundWithFriendbot(cfg: NetConfig, publicKey: string): Promise<void> {
   if (!cfg.friendbot) {
-    throw new Error('Friendbot solo está disponible en Testnet.');
+    throw new Error(tNow('tx.err.friendbotTestnetOnly'));
   }
   const res = await fetch(`${cfg.friendbot}/?addr=${encodeURIComponent(publicKey)}`);
   if (!res.ok) {

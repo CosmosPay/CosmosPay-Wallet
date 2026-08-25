@@ -77,6 +77,25 @@ jobs:
       - name: Security audit
         run: npm audit --omit=dev --audit-level=low
 
+      # AMO's own validator, run before the release rather than after the upload.
+      #
+      # Every check here fails in exactly one place otherwise: a submission form, days
+      # later, with a version already tagged and published. That is how
+      # "The `data_collection_permissions` property is missing" was found — a manifest key
+      # Mozilla made mandatory in November 2025, which nothing in this repo could have
+      # noticed on its own. `--warnings-as-errors` is deliberately NOT set: the build
+      # carries a known, documented warning (that key needs Firefox 140 while
+      # `strict_min_version` is 121, so older releases simply ignore it) and failing on
+      # warnings would mean deleting the key to get green.
+      - name: Build extensions
+        run: npm run build && npm run build:ext && npm run build:ext:firefox
+
+      # Firefox build only. `addons-linter` validates against Gecko's schema, so the
+      # Chrome build's `sidePanel` permission and `side_panel` key would be reported as
+      # unknown — noise about keys that are correct for the store they ship to.
+      - name: Validate the Firefox extension (addons-linter)
+        run: npx --yes addons-linter@latest dist/extension-firefox
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
@@ -121,20 +140,30 @@ jobs:
 
       - run: npm ci
 
-      # ---- 1. Decide the semver bump from the pushed commit messages ----
+      # ---- 1. Decide the semver bump from every commit since the last STABLE release ----
+      #
+      # NOT from the pushed range, which is what this used to read. `before..after` is a
+      # single push, so a push carrying a `feat:` chose minor and the next push carrying only
+      # fixes chose patch — off the same base. That is how v1.4.0-dev.47 was followed, four
+      # hours later, by v1.3.1-dev.48.
+      #
+      # The range that answers "what will the next release contain?" is everything since the
+      # last stable tag. It does not change its mind because the newest push happens to be a
+      # typo fix, and it is the same range git-cliff already uses for the changelog.
       - name: Determine version bump
         id: bump
         run: |
-          BEFORE="${{ github.event.before }}"
-          AFTER="${{ github.sha }}"
-          # First push to a branch / manual dispatch / rewritten history: the
-          # `before` SHA is missing or unreachable, so just look at HEAD.
-          if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
-            MSGS="$(git log -1 --format=%B "$AFTER")"
+          set -euo pipefail
+          # Stable tags only (vX.Y.Z, no prerelease), so `sort -V` never has to rank a
+          # `-dev.N` suffix — which it does not do the way semver says.
+          LAST=$(git tag -l | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1 || true)
+          if [ -n "$LAST" ] && git cat-file -e "${LAST}^{commit}" 2>/dev/null; then
+            RANGE="${LAST}..HEAD"
           else
-            MSGS="$(git log --format=%B "${BEFORE}..${AFTER}")"
+            RANGE="HEAD" # nothing released yet, so the whole history is unreleased
           fi
-          echo "Analyzing commits:"; echo "$MSGS"
+          echo "Analysing $RANGE"
+          MSGS="$(git log --format=%B "$RANGE")"
           if echo "$MSGS" | grep -qE '(^|[[:space:]])BREAKING CHANGE|^[a-z]+(\(.+\))?!:'; then
             BUMP=major
           elif echo "$MSGS" | grep -qiE '^feat(\(.+\))?:'; then
@@ -146,22 +175,31 @@ jobs:
           echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
 
       # ---- 2. Compute the new version (writes package.json in the workspace) ----
+      #
+      # Derived from the TAGS, never from package.json. package.json is branch-local and the
+      # release commit only ever lands on `main`, so dev's copy froze at 1.3.0 while main
+      # moved to 1.4.1 — and a patch bump off that stale base published v1.3.1-dev.55 the day
+      # after v1.4.1. scripts/release-version.ts carries the full reasoning and the rules.
+      #
+      # It REFUSES if what it built does not sort above every existing tag, so a regression
+      # stops the pipeline rather than reaching a release nobody can un-publish.
+      #
+      # `npm version` rather than `npm pkg set`: it writes package-lock.json too, and the
+      # main-only commit step below stages both.
       - name: Compute version
         id: ver
         run: |
-          # Bump the numeric core (strips any existing prerelease suffix first so a
-          # previous dev version can't leak into a stable bump).
-          npm version --no-git-tag-version --allow-same-version "$(node -p "require('./package.json').version.split('-')[0]")" >/dev/null
-          npm version --no-git-tag-version "${{ steps.bump.outputs.bump }}" >/dev/null
-          CORE="$(node -p "require('./package.json').version")"
+          set -euo pipefail
           if [ "${{ github.ref_name }}" = "dev" ]; then
-            VERSION="${CORE}-dev.${{ github.run_number }}"
-            npm pkg set "version=${VERSION}" >/dev/null   # workspace only, not committed
+            VERSION=$(git tag -l | node --disable-warning=ExperimentalWarning --experimental-strip-types \
+              scripts/release-version.ts "${{ steps.bump.outputs.bump }}" dev "${{ github.run_number }}")
             echo "prerelease=true" >> "$GITHUB_OUTPUT"
           else
-            VERSION="$CORE"
+            VERSION=$(git tag -l | node --disable-warning=ExperimentalWarning --experimental-strip-types \
+              scripts/release-version.ts "${{ steps.bump.outputs.bump }}" stable)
             echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
+          npm version --no-git-tag-version --allow-same-version "$VERSION" >/dev/null
           echo "Version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
@@ -184,9 +222,14 @@ jobs:
 
           The .zip is also ready to upload as-is to the Chrome Web Store / Firefox AMO.
 
-          **Phone apps** (attached a few minutes after this release is published — the native builds run once the tag exists):
+          **Desktop apps** (attached a few minutes after this release is published — the native builds run once the tag exists). All unsigned, so the OS will warn on first launch:
+          - **Windows:** `cosmos-pay-v${{ steps.ver.outputs.version }}-windows-x86_64-setup.exe` (installer), plus the `.msi` on stable releases — an MSI version is three numeric fields, so it cannot carry a `-dev.N` prerelease. SmartScreen shows *"Windows protected your PC"* → *More info* → *Run anyway*.
+          - **Linux:** `cosmos-pay-v${{ steps.ver.outputs.version }}-linux-x86_64.AppImage` (`chmod +x`, then run — no install; built on Ubuntu 24.04, so it needs glibc 2.39+), or the `.deb` / `.rpm` for a system package.
+          - **macOS:** `cosmos-pay-v${{ steps.ver.outputs.version }}-macos-arm64.dmg`. Gatekeeper blocks it on first open → right-click the app → *Open*.
+
+          **Phone apps** (same schedule as the desktop builds above):
           - **Android:** `cosmos-pay-v${{ steps.ver.outputs.version }}-debug.apk` installs on any device with *Install unknown apps* enabled. `cosmos-pay-v${{ steps.ver.outputs.version }}.apk` (release-signed) and the matching `.aab` for Play Console appear only when the repository has the release keystore configured.
-          - **iOS:** `cosmos-pay-v${{ steps.ver.outputs.version }}-unsigned.ipa` is built without an Apple signature, so it does **not** install by tapping it — it needs re-signing with your own account (Sideloadly, AltStore, or an MDM). It is published so the build is reproducible and inspectable, not as a one-tap install.
+          - **iOS:** no download yet. A Tauri iOS app can only be built through `tauri ios build`, whose export step needs an Apple signing identity this repository has no secrets for, so CI compiles both halves of the app to catch breakage but cannot package one. Build it yourself from the tag with `npm run ios:build` on a Mac with an Apple ID configured in Xcode.
           MD
           echo "=== RELEASE_NOTES.md ===" && cat RELEASE_NOTES.md
 

@@ -4,7 +4,7 @@
 
 Carteira **não custodial** para a rede **Stellar**, construída com **Astro + Vite + React (TSX)**.
 Distribui-se como **extensão de navegador** (MV3 · Chrome / Edge / Firefox — popup **e** painel
-lateral), **app móvel** (Capacitor · Android / iOS) e web. Interface **glassmorphism** animada,
+lateral), **app móvel** (Tauri · Android / iOS) e web. Interface **glassmorphism** animada,
 tema claro e escuro, **5 idiomas** (EN/ES/PT/DE/FR com autodeteção), multi-carteira sob uma única
 palavra-passe e provider para dapps (`window.cosmosWallet`) para pagamentos e assinaturas.
 
@@ -36,7 +36,7 @@ A derivação de chaves está verificada contra o **vetor de teste oficial SEP-5
 
 1. Ao criar/importar escolhes uma **palavra-passe**; a chave AES deriva de `PBKDF2(palavra-passe, salt, 210 000, SHA-256)`.
 2. Frase + chave secreta são seladas com `AES-256-GCM` (IV aleatório) e guardadas cifradas
-   (`@capacitor/preferences` no móvel, `localStorage` na web/extensão).
+   (`tauri-plugin-store` no móvel, `localStorage` na web/extensão).
 3. Desbloquear decifra **só em memória**; palavra-passe errada falha o tag GCM e é rejeitada.
 4. As assinaturas podem exigir a palavra-passe de novo (toggle nas Definições). A janela de
    aprovação de dapps assina localmente — nenhum segredo chega a páginas ou servidores.

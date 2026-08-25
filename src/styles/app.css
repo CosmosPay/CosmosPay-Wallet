@@ -90,6 +90,18 @@
   animation: fadeUp 0.3s ease;
 }
 
+/* A vertical squeeze — a short window, or the on-screen keyboard taking half the phone —
+   eats WHITESPACE, never content. A flex item's automatic minimum keeps a text block from
+   collapsing, but it does not keep a control's shape: an <input>'s min-content height is
+   one line box, so the send screen's 54px memo pill came out 25px tall at 508px of
+   viewport. Nothing in a screen shrinks now; the fillers (.spacer, .f1) just stop growing,
+   and past that the screen scrolls, which is what its overflow-y is already for.
+   Direct children only, and that is enough: an item that keeps its own height never puts
+   its contents under pressure either. */
+.screen > * {
+  flex-shrink: 0;
+}
+
 .pb-24 {
   padding-bottom: 24px;
 }
@@ -343,6 +355,59 @@
 .spacer {
   flex: 1;
   min-height: 14px;
+}
+
+/* ------------------- keyboard-docked footer ------------------- */
+/* Wraps the block a screen keeps its primary action in — the thing after the .spacer.
+   Off-keyboard it is a plain unshrinkable box: the footer stays exactly where the
+   screen's flex column already put it.
+   With the keyboard up, .shell-content has ended the scroll area at the top of the
+   keys, so a screen whose content no longer fits pushes its own CTA below the fold.
+   Sticky pins it to that edge instead, and that is what stops the footer being the
+   thing that moves: the whitespace above it absorbs the squeeze and scrolls away, the
+   button does not.
+   It must wrap the button rather than be it — the backing below is opaque, and painted
+   on the button itself it would replace .btn-primary's own glass surface.
+   Sticky is bounded by its flex container, so this belongs on a DIRECT child of
+   .screen; nested in a card it can only travel as far as the card. */
+.kb-dock {
+  flex-shrink: 0;
+  /* Both directions, so the backing fades out as cleanly as it fades in. Padding is in
+     here too: it is what gives the docked bar its height, and growing it over the same
+     0.22s as the shell's inset keeps the two reading as one movement. */
+  transition: background-color 0.22s ease, padding 0.22s ease;
+}
+
+/* While the bar is stuck it IS the bottom of the screen, so the screen's own bottom
+   padding sits behind it doing nothing — and it is more dead space than the bar's own
+   padding needs, enough to tip a screen that used to fit just past the edge of its scroll
+   area. That buys a small scroll that nobody asked for, arriving just as the reshape
+   finished, which reads as a second movement. Give the padding back and the unlock screen
+   fits in one.
+   :has(), so a screen with no bar keeps its margin. Where it is unsupported the rule
+   simply drops and that small scroll comes back — the layout is never wrong, only busier. */
+html.kb-open .screen:has(.kb-dock) {
+  padding-bottom: 0;
+  /* On the same clock as .shell-content's inset, and for the same reason: handed back in
+     one frame, these 32px are a downward blip at the exact moment everything else starts
+     moving up. Eased alongside, they disappear into the one motion. */
+  transition: padding-bottom 0.22s ease;
+}
+
+/* Opaque, and bleeding into the gutters, because content now scrolls behind it and the
+   gutters are part of what would show through. --gutter is read from the screen, so a
+   screen with a margin of its own (.unlock-screen) sets the token rather than
+   overriding this rule. */
+html.kb-open .kb-dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin-left: calc(var(--gutter) * -1);
+  margin-right: calc(var(--gutter) * -1);
+  padding: 10px var(--gutter);
+  /* background-COLOR, not the background shorthand: the shorthand resets background-image
+     and the transition above would have nothing to interpolate. */
+  background-color: var(--bg);
 }
 
 /* Muted explanatory paragraph under a screen title. Was eleven near-identical

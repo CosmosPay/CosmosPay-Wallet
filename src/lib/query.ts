@@ -157,7 +157,8 @@ export function run<T>(opts: QueryOptions<T>, force = false): Promise<T> {
       e.error = undefined;
       e.ts = Date.now();
       e.promise = undefined;
-      if (persisted.has(key)) void storageSet(PERSIST_PREFIX + key, JSON.stringify({ data, ts: e.ts }));
+      // Explicitly fire-and-forget: this is a cache, and storageSet throws now.
+      if (persisted.has(key)) void storageSet(PERSIST_PREFIX + key, JSON.stringify({ data, ts: e.ts })).catch(() => {});
       emit(key);
       return data;
     })

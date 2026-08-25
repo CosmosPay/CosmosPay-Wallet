@@ -194,6 +194,7 @@ import {
   SwapShape,
   TosShape,
 } from '@/lib/cosmospayShapes';
+import { tNow } from '@/lib/i18n';
 
 /* ------------------------------ transport ------------------------------ */
 
@@ -236,7 +237,7 @@ async function postJson<T>(
 
   if (!res.ok) {
     const env = (json ?? {}) as Envelope & { error?: string };
-    const msg = env.message || env.error || `La solicitud falló (${res.status}).`;
+    const msg = env.message || env.error || tNow('api.requestFailed', { status: res.status });
     throw new Error(msg);
   }
 
@@ -632,7 +633,7 @@ async function getJson<T>(url: string, apiKey: string, shape: Check<unknown>): P
   }
   if (!res.ok) {
     const env = (json ?? {}) as { message?: string; error?: string };
-    throw new Error(env.message || env.error || `La solicitud falló (${res.status}).`);
+    throw new Error(env.message || env.error || tNow('api.requestFailed', { status: res.status }));
   }
   parseShape(url, shape, json);
   return json as T;
@@ -707,7 +708,7 @@ export async function uploadKycDoc(apiKey: string, file: Blob, bucket = 'onboard
   }
   if (!res.ok) {
     const env = (json ?? {}) as { message?: string; error?: string };
-    throw new Error(env.message || env.error || `La subida falló (${res.status}).`);
+    throw new Error(env.message || env.error || tNow('api.uploadFailed', { status: res.status }));
   }
   return json as { file_url: string };
 }

@@ -10,9 +10,18 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Account, Asset, BASE_FEE, Claimant, Keypair, LiquidityPoolAsset, Networks, Operation, TimeoutInfinite, TransactionBuilder } from '@stellar/stellar-sdk';
-import { assertSafeToSign, reviewTx, CRITICAL_OPS, TxGuardError } from '@/lib/txGuard';
+import { Account, Asset, BASE_FEE, Claimant, Keypair, LiquidityPoolAsset, LiquidityPoolFeeV18, Networks, Operation, TimeoutInfinite, TransactionBuilder, getLiquidityPoolId } from '@stellar/stellar-sdk';
+import {
+  assertSafeToSign,
+  reviewTx,
+  CLOCK_SKEW_S,
+  CRITICAL_OPS,
+  MAX_FEE_STROOPS,
+  MAX_VALIDITY_S,
+  TxGuardError,
+} from '@/lib/txGuard';
 import type { NetConfig } from '@/lib/stellar';
+import { tNow } from '@/lib/i18n';
 
 const CFG: NetConfig = {
   id: 'testnet',
@@ -67,8 +76,22 @@ const SWAP_OPTS = {
 const CAP_XLM = { amount: '10', asset: { code: 'XLM', issuer: null } } as const;
 const OFFRAMP = { signer: ME, intent: 'offramp', destinations: 'counterparty', maxSend: CAP_XLM } as const;
 
-const throws = (fn: () => unknown, re: RegExp) =>
-  assert.throws(fn, (e: unknown) => e instanceof TxGuardError && re.test((e as Error).message));
+/**
+ * Assert a refusal BY KEY, not by the copy it renders to.
+ *
+ * These matched a Spanish substring of `e.message` until the guard's strings moved
+ * behind `guard.*` i18n keys — at which point every one of them would have started
+ * passing for the wrong reason or failing for a cosmetic one. The key is the stable
+ * fact: it says which check fired, and it survives both a reword and a translation.
+ */
+const throws = (fn: () => unknown, key: string, params?: Record<string, string | number>) =>
+  assert.throws(fn, (e: unknown) => {
+    assert.ok(e instanceof TxGuardError, `expected a TxGuardError, got ${String(e)}`);
+    assert.equal((e as TxGuardError).key, key);
+    // Optional, for the refusals whose value is the number they report back.
+    if (params) assert.deepEqual((e as TxGuardError).params, params);
+    return true;
+  });
 
 /* -------------------------------- baseline -------------------------------- */
 
@@ -85,17 +108,17 @@ test('a legitimate swap envelope passes', () => {
 test('a swap that pays a third party is refused — every other check passes', () => {
   // The exact quoted amount, the allowed operation type, our own source account, a
   // normal fee. Only the destination is the attacker's, and that used to be enough.
-  throws(() => assertSafeToSign(CFG, envelope([swapOp({ destination: ATTACKER })]), SWAP_OPTS), /no a la tuya/);
+  throws(() => assertSafeToSign(CFG, envelope([swapOp({ destination: ATTACKER })]), SWAP_OPTS), 'guard.notSelfDestination');
 });
 
 test('a swap that promises dust in return is refused', () => {
-  throws(() => assertSafeToSign(CFG, envelope([swapOp({ destMin: '0.0000001' })]), SWAP_OPTS), /menos de lo cotizado/);
+  throws(() => assertSafeToSign(CFG, envelope([swapOp({ destMin: '0.0000001' })]), SWAP_OPTS), 'guard.underMinReceive');
 });
 
 test('a swap that guarantees no return at all is refused', () => {
   // Sends the quoted amount to us, in the asset we are paying with: nothing comes back.
   const xdr = envelope([swapOp({ destAsset: Asset.native(), destMin: '9' })]);
-  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), /no garantiza que recibas/);
+  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), 'guard.noGuaranteedAsset');
 });
 
 test('an off-ramp may pay one counterparty, never two', () => {
@@ -105,21 +128,21 @@ test('an off-ramp may pay one counterparty, never two', () => {
   assert.doesNotThrow(() => assertSafeToSign(CFG, envelope([payment(), payment()]), opts));
   throws(
     () => assertSafeToSign(CFG, envelope([payment(), payment({ destination: ATTACKER })]), opts),
-    /varios destinatarios/,
+    'guard.multipleDestinations',
   );
 });
 
 test('a flow that names its destinations refuses any other', () => {
   const base = { signer: ME, intent: 'offramp', maxSend: CAP_XLM } as const;
   assert.doesNotThrow(() => assertSafeToSign(CFG, envelope([payment()]), { ...base, destinations: [OTHER] }));
-  throws(() => assertSafeToSign(CFG, envelope([payment()]), { ...base, destinations: [ATTACKER] }), /no confirmaste/);
+  throws(() => assertSafeToSign(CFG, envelope([payment()]), { ...base, destinations: [ATTACKER] }), 'guard.unconfirmedDestination');
 });
 
 /* ----------------------------- account takeover --------------------------- */
 
 test('setOptions adding a signer is refused', () => {
   const xdr = envelope([Operation.setOptions({ signer: { ed25519PublicKey: ATTACKER, weight: 255 } }) as never]);
-  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), /crítica/);
+  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), 'guard.criticalOp');
   // …and it is still rendered, flagged, for the dapp path.
   const review = reviewTx(CFG, xdr);
   assert.ok(review.hasCritical);
@@ -146,14 +169,14 @@ test('a Soroban invocation counts as critical', () => {
 test('a transaction sourced from another account is refused', () => {
   throws(
     () => assertSafeToSign(CFG, envelope([payment()], OTHER), { signer: ME, intent: 'offramp', destinations: 'counterparty', maxSend: CAP_XLM }),
-    /no sale de tu cuenta/,
+    'guard.foreignSource',
   );
 });
 
 test('an operation acting on another account is refused', () => {
   throws(
     () => assertSafeToSign(CFG, envelope([payment({ source: OTHER })]), { signer: ME, intent: 'offramp', destinations: 'counterparty', maxSend: CAP_XLM }),
-    /actúa sobre otra cuenta/,
+    'guard.foreignOpSource',
   );
 });
 
@@ -162,8 +185,8 @@ test('an operation acting on another account is refused', () => {
 test('an operation outside the flow allowlist is refused', () => {
   // A plain payment has no business in a liquidity-pool deposit.
   throws(
-    () => assertSafeToSign(CFG, envelope([payment()]), { signer: ME, intent: 'lp-deposit', destinations: 'self', poolAmounts: ['10'] }),
-    /inesperada/,
+    () => assertSafeToSign(CFG, envelope([payment()]), { signer: ME, intent: 'lp-deposit', destinations: 'self', poolSides: [{ asset: { code: 'XLM', issuer: null }, max: '10' }, { asset: { code: 'USDC', issuer: OTHER }, max: '20' }] }),
+    'guard.unexpectedOp',
   );
   // The same envelope is fine for the flow it belongs to.
   assert.doesNotThrow(() =>
@@ -178,7 +201,7 @@ test('order-book offers are no longer allowed in a swap', () => {
   const xdr = envelope([
     Operation.manageSellOffer({ selling: Asset.native(), buying: USDC, amount: '1000000', price: '0.0000001' }) as never,
   ]);
-  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), /inesperada/);
+  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), 'guard.unexpectedOp');
   // And the review marks it as moving value it cannot quantify, so any future flow
   // that allowlists it fails closed instead of skipping the cap.
   const op = reviewTx(CFG, xdr).operations[0];
@@ -192,7 +215,7 @@ test('a fee-bump wrapper is refused', () => {
   const bump = TransactionBuilder.buildFeeBumpTransaction(Keypair.random(), String(Number(BASE_FEE) * 4), inner as never, CFG.passphrase);
   throws(
     () => assertSafeToSign(CFG, bump.toXDR(), { signer: ME, intent: 'offramp', destinations: 'counterparty', maxSend: CAP_XLM }),
-    /fee-bump/,
+    'guard.feeBump',
   );
 });
 
@@ -200,7 +223,8 @@ test('more operations than the flow needs is refused', () => {
   const xdr = envelope(Array.from({ length: 9 }, () => payment()));
   throws(
     () => assertSafeToSign(CFG, xdr, { signer: ME, intent: 'offramp', destinations: 'counterparty', maxSend: CAP_XLM }),
-    /9 operaciones/,
+    'guard.tooManyOps',
+    { count: 9 },
   );
 });
 
@@ -210,7 +234,7 @@ test('more operations than the flow needs is refused', () => {
 test('an amount above the confirmed quote is refused', () => {
   throws(
     () => assertSafeToSign(CFG, envelope([payment({ amount: '500' })]), OFFRAMP),
-    /más de lo confirmado/,
+    'guard.overMaxSend',
   );
   // Within the quote (plus the 1% rounding tolerance) it passes.
   assert.doesNotThrow(() => assertSafeToSign(CFG, envelope([payment({ amount: '10' })]), OFFRAMP));
@@ -220,7 +244,7 @@ test('the cap is on the total, not on each operation', () => {
   // Stellar allows 100 operations per transaction. Comparing them one at a time made
   // the effective ceiling 100 × cap: each payment was exactly the quoted amount.
   const xdr = envelope([payment({ amount: '10' }), payment({ amount: '10' })]);
-  throws(() => assertSafeToSign(CFG, xdr, OFFRAMP), /más de lo confirmado/);
+  throws(() => assertSafeToSign(CFG, xdr, OFFRAMP), 'guard.overMaxSend');
 });
 
 test('an asset whose code merely starts with the confirmed one is refused', () => {
@@ -229,7 +253,7 @@ test('an asset whose code merely starts with the confirmed one is refused', () =
   const xdr = envelope([payment({ asset: USDC, amount: '1000000' })]);
   throws(
     () => assertSafeToSign(CFG, xdr, { ...OFFRAMP, maxSend: { amount: '10', asset: { code: 'USD' } } }),
-    /no es el activo que confirmaste/,
+    'guard.wrongAsset',
   );
 });
 
@@ -237,7 +261,7 @@ test('the same code from another issuer is refused when the flow knows the issue
   const xdr = envelope([payment({ asset: FAKE_USDC, amount: '10' })]);
   throws(
     () => assertSafeToSign(CFG, xdr, { ...OFFRAMP, maxSend: { amount: '10', asset: { code: 'USDC', issuer: OTHER } } }),
-    /no es el activo que confirmaste/,
+    'guard.wrongAsset',
   );
   assert.doesNotThrow(() =>
     assertSafeToSign(CFG, envelope([payment({ asset: USDC, amount: '10' })]), {
@@ -262,18 +286,47 @@ test('the amount is read from the decoded operation, not from a UI row', () => {
 test('an envelope that never expires is refused', () => {
   const xdr = envelope([payment()], ME, TimeoutInfinite);
   assert.equal(reviewTx(CFG, xdr).maxTime, null);
-  throws(() => assertSafeToSign(CFG, xdr, OFFRAMP), /no caduca nunca/);
+  throws(() => assertSafeToSign(CFG, xdr, OFFRAMP), 'guard.noExpiry');
 });
 
 test('an expired envelope is refused', () => {
   const xdr = envelope([payment()]);
   const future = Math.floor(Date.now() / 1000) + 3600;
-  throws(() => assertSafeToSign(CFG, xdr, { ...OFFRAMP, now: future }), /ya ha caducado/i);
+  throws(() => assertSafeToSign(CFG, xdr, { ...OFFRAMP, now: future }), 'guard.expired');
 });
 
-test('an envelope valid for longer than a day is refused', () => {
-  const xdr = envelope([payment()], ME, 60 * 60 * 48);
-  throws(() => assertSafeToSign(CFG, xdr, OFFRAMP), /demasiado tiempo/);
+test('the validity window is refused right past the documented ceiling', () => {
+  // Asserted AT the boundary, off the exported constants. This fed 48 hours against a
+  // 15-minute ceiling and was named "longer than a day", so widening MAX_VALIDITY_S
+  // back to the 24h it once was would have left it green — the exact regression the
+  // constant's own comment says already shipped once.
+  const slack = MAX_VALIDITY_S + CLOCK_SKEW_S;
+  assert.doesNotThrow(() => assertSafeToSign(CFG, envelope([payment()], ME, slack - 30), OFFRAMP));
+  throws(() => assertSafeToSign(CFG, envelope([payment()], ME, slack + 30), OFFRAMP), 'guard.validTooLong');
+});
+
+test('clock skew is tolerated on an envelope that just expired', () => {
+  // Only the rejecting direction was covered, so deleting `+ CLOCK_SKEW_S` from the
+  // expiry check broke nothing — and that is the documented incident where a phone
+  // running a few minutes fast rejects every envelope and blames the server.
+  const xdr = envelope([payment()], ME, 180);
+  const justPast = Math.floor(Date.now() / 1000) + 180 + Math.floor(CLOCK_SKEW_S / 2);
+  assert.doesNotThrow(() => assertSafeToSign(CFG, xdr, { ...OFFRAMP, now: justPast }));
+  const wellPast = Math.floor(Date.now() / 1000) + 180 + CLOCK_SKEW_S + 60;
+  throws(() => assertSafeToSign(CFG, xdr, { ...OFFRAMP, now: wellPast }), 'guard.expired');
+});
+
+test('an anomalous fee is refused', () => {
+  // MAX_FEE_STROOPS had no test at all: deleting the fee check left CI green while
+  // CLAUDE.md went on saying the guard caps the fee.
+  const overFee = String(MAX_FEE_STROOPS + 1_000_000);
+  const builder = new TransactionBuilder(new Account(ME, '1'), {
+    fee: overFee,
+    networkPassphrase: CFG.passphrase,
+  });
+  builder.addOperation(payment());
+  const xdr = builder.setTimeout(180).build().toXDR();
+  throws(() => assertSafeToSign(CFG, xdr, OFFRAMP), 'guard.feeTooHigh');
 });
 
 test('reviewTx surfaces the validity window for the approval window', () => {
@@ -288,12 +341,12 @@ test('a swap may open the trustline it needs, and no other', () => {
   assert.doesNotThrow(() => assertSafeToSign(CFG, ok, SWAP_OPTS));
 
   const impostor = envelope([Operation.changeTrust({ asset: FAKE_USDC }) as never, swapOp()]);
-  throws(() => assertSafeToSign(CFG, impostor, SWAP_OPTS), /que no confirmaste/);
+  throws(() => assertSafeToSign(CFG, impostor, SWAP_OPTS), 'guard.unconfirmedTrustline');
 });
 
 test('removing a trustline is refused outside the trustline flow', () => {
   const xdr = envelope([Operation.changeTrust({ asset: USDC, limit: '0' }) as never, swapOp()]);
-  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), /elimina una línea/);
+  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), 'guard.removesTrustline');
 });
 
 /* ------------------------------- liquidity -------------------------------- */
@@ -303,7 +356,14 @@ test('removing a trustline is refused outside the trustline flow', () => {
    handed to it. `liquidityPoolDeposit`/`Withdraw` are built by hand because the SDK
    builders want a real 64-hex pool id. */
 
-const POOL = 'a'.repeat(64);
+/* The deposit's pool is DERIVED by the guard from the two assets the user confirmed,
+   so these fixtures use the real id of the (XLM, USDC) constant-product pool rather
+   than an arbitrary 64-hex string. `OTHER_POOL` stays arbitrary on purpose: it stands
+   for whatever pool a hostile gateway would rather deposit into. */
+const POOL = getLiquidityPoolId(
+  'constant_product',
+  new LiquidityPoolAsset(Asset.native(), USDC, LiquidityPoolFeeV18).getLiquidityPoolParameters(),
+).toString('hex');
 const OTHER_POOL = 'b'.repeat(64);
 
 const poolDeposit = (o: Record<string, unknown> = {}) =>
@@ -325,7 +385,17 @@ const poolWithdraw = (o: Record<string, unknown> = {}) =>
     ...o,
   } as never);
 
-const LP_DEPOSIT = { signer: ME, intent: 'lp-deposit', destinations: 'self', poolAmounts: ['10', '20'] } as const;
+/* XLM sorts before USDC, so the canonical A side is XLM (ceiling 10) and B is USDC
+   (ceiling 20) — the same order the fixture's maxAmountA/maxAmountB decode in. */
+const LP_DEPOSIT = {
+  signer: ME,
+  intent: 'lp-deposit',
+  destinations: 'self',
+  poolSides: [
+    { asset: { code: 'XLM', issuer: null }, max: '10' },
+    { asset: { code: 'USDC', issuer: OTHER }, max: '20' },
+  ],
+} as const;
 const LP_WITHDRAW = { signer: ME, intent: 'lp-withdraw', destinations: 'self', poolId: POOL, poolAmounts: ['5'] } as const;
 
 test('a liquidity deposit within the confirmed ceilings passes', () => {
@@ -337,31 +407,46 @@ test('a liquidity deposit within the confirmed ceilings passes', () => {
 test('a liquidity deposit above the confirmed ceilings is refused', () => {
   // The whole balance into a pool of the gateway's choosing: allowed operation type,
   // our own account, no destination field for the destination policy to catch.
-  throws(() => assertSafeToSign(CFG, envelope([poolDeposit({ maxAmountA: '9999999' })]), LP_DEPOSIT), /más de lo que confirmaste/);
+  throws(() => assertSafeToSign(CFG, envelope([poolDeposit({ maxAmountA: '9999999' })]), LP_DEPOSIT), 'guard.overPoolSide');
 });
 
-test('the pool ceilings match in either canonical order', () => {
-  // Stellar orders A/B canonically, which need not match the order of the form.
-  assert.doesNotThrow(() =>
-    assertSafeToSign(CFG, envelope([poolDeposit({ maxAmountA: '20', maxAmountB: '10' })]), LP_DEPOSIT),
+test('a deposit that swaps the two sides is refused', () => {
+  // This test used to assert the OPPOSITE — that either order passes — which is exactly
+  // the hole. Ceilings were matched as an order-independent multiset, so a gateway could
+  // put the USDC ceiling's worth of XLM in: confirm 10 XLM / 20 USDC and it deposits
+  // 20 XLM, covered by the 20 that was meant for the other side. Each side is now bound
+  // to its own.
+  throws(
+    () => assertSafeToSign(CFG, envelope([poolDeposit({ maxAmountA: '20', maxAmountB: '10' })]), LP_DEPOSIT),
+    'guard.overPoolSide',
+  );
+});
+
+test('a deposit into a pool the user did not choose is refused', () => {
+  // The pool is never read out of the envelope: the guard derives the only pool the two
+  // confirmed assets can form and requires the operation to name it. Before this, the
+  // pool check ran for withdrawals only, so a deposit could land anywhere.
+  throws(
+    () => assertSafeToSign(CFG, envelope([poolDeposit({ liquidityPoolId: OTHER_POOL })]), LP_DEPOSIT),
+    'guard.wrongPool',
   );
 });
 
 test('a withdrawal from a pool the user did not choose is refused', () => {
   throws(
     () => assertSafeToSign(CFG, envelope([poolWithdraw({ liquidityPoolId: OTHER_POOL })]), LP_WITHDRAW),
-    /pool distinto/,
+    'guard.wrongPool',
   );
 });
 
 test('a withdrawal that guarantees nothing back is refused', () => {
   // Burn every share, receive one stroop. The mirror of the swap dust case, and the
   // one the suite had for swap and not here.
-  throws(() => assertSafeToSign(CFG, envelope([poolWithdraw({ minAmountA: '0' })]), LP_WITHDRAW), /garantiza recibir cero/);
+  throws(() => assertSafeToSign(CFG, envelope([poolWithdraw({ minAmountA: '0' })]), LP_WITHDRAW), 'guard.withdrawZero');
 });
 
 test('burning more shares than confirmed is refused', () => {
-  throws(() => assertSafeToSign(CFG, envelope([poolWithdraw({ amount: '500' })]), LP_WITHDRAW), /más de lo que confirmaste/);
+  throws(() => assertSafeToSign(CFG, envelope([poolWithdraw({ amount: '500' })]), LP_WITHDRAW), 'guard.overPoolCeiling');
 });
 
 test('closing a pool position may drop the share trustline', () => {
@@ -380,7 +465,7 @@ test('an operation the wallet cannot read counts as moving value', () => {
   const xdr = envelope([Operation.bumpSequence({ bumpTo: '9223372036854775807' }) as never]);
   const op = reviewTx(CFG, xdr).operations[0];
   assert.equal(op.critical, true); // bricks the account: no later sequence can be reached
-  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), /crítica/);
+  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), 'guard.criticalOp');
 });
 
 test('createClaimableBalance shows what it moves, and is refused', () => {
@@ -394,9 +479,9 @@ test('createClaimableBalance shows what it moves, and is refused', () => {
   ]);
   const op = reviewTx(CFG, xdr).operations[0];
   assert.ok(op.rows.some((r) => r.value.includes('10000')));
-  assert.ok(op.rows.some((r) => r.label === 'Reclamantes'));
+  assert.ok(op.rows.some((r) => r.label === tNow('guard.row.claimants')));
   assert.equal(op.critical, true);
-  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), /crítica/);
+  throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), 'guard.criticalOp');
 });
 
 test('a post-dated envelope is refused', () => {
@@ -407,7 +492,7 @@ test('a post-dated envelope is refused', () => {
     .addOperation(payment())
     .setTimebounds(now + 600, now + 800)
     .build();
-  throws(() => assertSafeToSign(CFG, tx.toXDR(), OFFRAMP), /no es válida hasta más tarde/);
+  throws(() => assertSafeToSign(CFG, tx.toXDR(), OFFRAMP), 'guard.notYetValid');
 });
 
 /* --------------------------------- parsing -------------------------------- */
@@ -417,7 +502,7 @@ test('an empty envelope is refused', () => {
     .setTimeout(180)
     .build()
     .toXDR();
-  throws(() => assertSafeToSign(CFG, xdr, OFFRAMP), /ninguna operación/);
+  throws(() => assertSafeToSign(CFG, xdr, OFFRAMP), 'guard.noOps');
 });
 
 test('garbage that is not an envelope is refused — this is what extractUnsignedXdr could return', () => {
@@ -428,9 +513,9 @@ test('garbage that is not an envelope is refused — this is what extractUnsigne
 test('reviewTx surfaces destination and amount for the approval window', () => {
   const review = reviewTx(CFG, envelope([payment({ destination: OTHER, amount: '42.5' })]));
   const rows = review.operations[0].rows;
-  assert.equal(rows.find((r) => r.label === 'Destino')?.value, OTHER);
+  assert.equal(rows.find((r) => r.label === tNow('guard.row.destination'))?.value, OTHER);
   // The SDK pads to Stellar's 7 decimal places — that is the value being signed,
   // so it is the value the window must show.
-  assert.equal(rows.find((r) => r.label === 'Importe')?.value, '42.5000000 XLM');
+  assert.equal(rows.find((r) => r.label === tNow('guard.row.amount'))?.value, '42.5000000 XLM');
   assert.equal(review.feeXlm, '0.00001');
 });

@@ -1,7 +1,7 @@
 {
   "extends": "astro/tsconfigs/strict",
   "include": [".astro/types.d.ts", "**/*"],
-  "exclude": ["dist", "android", "ios"],
+  "exclude": ["dist", "android", "ios", "src-tauri/target", "src-tauri/gen"],
   "compilerOptions": {
     "jsx": "react-jsx",
     "jsxImportSource": "react",

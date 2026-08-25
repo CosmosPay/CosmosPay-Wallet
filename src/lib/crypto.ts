@@ -19,7 +19,9 @@ function getCrypto(): Crypto {
   const c = globalThis.crypto;
   if (!c || !c.subtle) {
     throw new Error(
-      'Web Crypto no está disponible. Usa un contexto seguro (https/localhost) o un WebView nativo.',
+      // English, like the rest of this module: it stays dependency-free, and a missing
+      // Web Crypto is an environment fault a developer reads, not a user.
+      'Web Crypto is unavailable. Use a secure context (https/localhost) or a native WebView.',
     );
   }
   return c;
@@ -68,11 +70,15 @@ async function deriveKey(password: string, salt: Uint8Array): Promise<CryptoKey>
  * (`lib/attempts.ts`) must count THIS and nothing else. `unlockWallet` also throws when
  * the vault blob is missing or unparseable, and callers used to treat any throw as a wrong
  * guess — so a scrambled storage entry walked the owner up to a five-minute lockout while
- * the screen said "wallet not found". Matching on the message was never an option: it is
- * Spanish user-facing copy, one translation away from disabling the counter.
+ * the screen said "wallet not found". Matching on the message was never an option, and
+ * the message is no longer copy at all: this module stays dependency-free (it is the
+ * crypto core — it should not reach for i18n, and presentation is not its job), so the
+ * default below is a stable English identifier for a developer reading a stack trace.
+ * Every screen that catches this renders its own translated line and branches on
+ * `instanceof`, never on the text.
  */
 export class WrongPasswordError extends Error {
-  constructor(message = 'Contraseña incorrecta.') {
+  constructor(message = 'Wrong password.') {
     super(message);
     this.name = 'WrongPasswordError';
   }
@@ -105,14 +111,24 @@ export async function seal(plaintext: string, password: string): Promise<SealedB
 
 export async function open(box: SealedBox, password: string): Promise<string> {
   const crypto = getCrypto();
+  // ALL THREE base64 fields decode OUTSIDE the try. Only the decrypt belongs inside it,
+  // because only the decrypt failing means "wrong password".
+  //
+  // `data` used to be decoded inside, so a corrupted ciphertext threw out of `atob`, was
+  // caught here, and came back as WrongPasswordError — the very confusion this class was
+  // introduced to end, still live in the third field after the other two were moved out.
+  // The caller then counts it as a guess: `unlock`, `revealBackup` and the dapp approval
+  // window all reserve an attempt first, so a damaged vault walks the owner up the
+  // backoff ladder to a five-minute lockout while the screen blames their password.
   const salt = fromBase64(box.salt);
   const iv = fromBase64(box.iv);
+  const data = fromBase64(box.data);
   const key = await deriveKey(password, salt);
   try {
     const plain = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: iv as BufferSource },
       key,
-      fromBase64(box.data) as BufferSource,
+      data as BufferSource,
     );
     return dec.decode(plain);
   } catch {

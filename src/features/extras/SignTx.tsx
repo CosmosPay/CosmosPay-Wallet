@@ -113,7 +113,7 @@ export function SignTx({ store }: { store: WalletStore }) {
       {err && <div className="sign-tx-err">{err}</div>}
 
       <div className="f1" />
-      <div className="col g10">
+      <div className="col g10 kb-dock">
         {!signed ? (
           <PrimaryButton disabled={!summary} onClick={sign}>{t('sign.sign')}</PrimaryButton>
         ) : (

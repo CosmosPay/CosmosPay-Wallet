@@ -44,9 +44,11 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
       </div>
 
       <div className="spacer" />
-      <PrimaryButton disabled={!ok} onClick={() => store.finishOnboarding(pwd)}>
-        {store.busy ? <Spinner /> : t('pwd.create')}
-      </PrimaryButton>
+      <div className="kb-dock">
+        <PrimaryButton disabled={!ok} onClick={() => store.finishOnboarding(pwd)}>
+          {store.busy ? <Spinner /> : t('pwd.create')}
+        </PrimaryButton>
+      </div>
     </div>
   );
 }

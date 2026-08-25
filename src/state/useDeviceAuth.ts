@@ -151,7 +151,7 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
       try {
         return { ok: true, password: await deviceAuthPassword(walletId, promptFor(purpose, t)) };
       } catch (err) {
-        // `deviceAuthFailure`, not a property read: the Capacitor bridge can reject with
+        // `deviceAuthFailure`, not a property read: the native bridge can reject with
         // `null`, and `(null as {failure?}).failure` throws a TypeError from inside this
         // catch — turning a classified failure into an unhandled rejection on the one path
         // whose whole job is to classify failures.

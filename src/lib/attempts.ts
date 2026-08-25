@@ -99,7 +99,7 @@ export function recordFailure(rec: AttemptRecord, now: number): AttemptRecord {
 /**
  * Every read-modify-write below runs on one chain.
  *
- * Storage is async — a Capacitor bridge round trip on a phone — so `read; modify; write`
+ * Storage is async — an IPC round trip to the Rust side on a phone — so `read; modify; write`
  * is a window, not a step. Without this, N attempts launched inside one window all read
  * the same pre-increment record and all write `fails = N+1`: the ladder counted ROUNDS
  * instead of GUESSES, and nothing in the app serialised them. Enter with key auto-repeat

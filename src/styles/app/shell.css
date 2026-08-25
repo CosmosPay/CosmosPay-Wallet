@@ -6,7 +6,7 @@
    size back into that measurement, which Chrome rejects as a bad IPC and
    kills the renderer ("se ha bloqueado"). A determinate height avoids it. */
 .shell-root {
-  min-height: var(--shell-h, 100vh);
+  min-height: calc(var(--shell-h, 100vh) + var(--kb-reflow, 0px));
   display: flex;
   align-items: stretch;
   justify-content: center;
@@ -26,11 +26,18 @@
    the whole UI with CSS `zoom` — Chrome 149 crashes its GPU compositor on
    a zoomed subtree ("se ha bloqueado" in the extension popup), so widening
    the column is the safe way to not stay a fixed size. */
+/* --kb-reflow is what an engine that resizes the LAYOUT viewport for the keyboard just
+   took out of `100dvh` — see src/lib/viewport.ts. Adding it straight back leaves this box
+   exactly the size it was, which is the whole point: a frame that changes size reflows
+   every screen inside it in one frame, with nothing to ease. Hold it still and the
+   keyboard becomes one thing, the padding on .shell-content, which CAN be eased.
+   Deliberately NOT transitioned: it has to cancel the engine's shrink in the same frame,
+   and a transition here would animate the cancellation into a flicker of its own. */
 .shell-frame {
   position: relative;
   width: 100%;
   max-width: var(--frame-max, 440px);
-  height: var(--shell-h, 100vh);
+  height: calc(var(--shell-h, 100vh) + var(--kb-reflow, 0px));
   background: var(--bg);
   overflow: hidden;
   color: var(--text);
@@ -49,7 +56,24 @@
      the status bar and the gesture pill — only the content clears them. Without the
      top one the header sits under the clock on every edge-to-edge phone. */
   padding-top: calc(14px + var(--safe-t));
-  padding-bottom: var(--safe-b);
+  /* The keyboard's overlap, not the sum: an iOS keyboard already covers the home
+     indicator, so adding both would reserve the gesture pill twice and float every
+     footer a thumb's width above the keys. --kb-h is 0px on every engine that
+     resized the frame for us, which leaves the inset alone. */
+  padding-bottom: max(var(--safe-b), var(--kb-h));
+}
+
+/* Slide the scroll area up with the keyboard instead of snapping it. Sticky recomputes
+   every frame, so the docked footer rides this transition rather than jumping to its
+   stuck position — one movement, not two.
+   The transition lives on the OPEN state on purpose: a property only animates when the
+   after-change style carries it, so this eases in and cuts straight out. On the way out
+   the class goes with it, and animating a padding whose sticky partner has already
+   returned to the flow just puts the two of them out of step.
+   KB_SETTLE_MS in src/lib/viewport.ts waits out this 0.22s before it measures where the
+   focused field ended up. */
+html.kb-open .shell-content {
+  transition: padding-bottom 0.22s ease;
 }
 
 /* iOS Safari resolves 100vh against the LARGE viewport (URL bar hidden), so the
@@ -59,10 +83,87 @@
    100vh side panel) and a set variable always beats a var() fallback. */
 @supports (height: 100dvh) {
   .shell-root {
-    min-height: var(--shell-h, 100dvh);
+    min-height: calc(var(--shell-h, 100dvh) + var(--kb-reflow, 0px));
   }
 
   .shell-frame {
-    height: var(--shell-h, 100dvh);
+    height: calc(var(--shell-h, 100dvh) + var(--kb-reflow, 0px));
+  }
+}
+
+/* Holding the frame at its resting height means it deliberately overhangs the shortened
+   layout viewport, and the document would otherwise scroll to reach the overhang — a
+   second scroller nobody asked for, fighting the one inside .screen. Clip it: the part
+   that hangs over is the part the keyboard is covering anyway.
+   Only while a keyboard is up, so nothing about a desktop window changes. */
+html.kb-open,
+html.kb-open body {
+  overflow: hidden;
+}
+
+/* =====================================================================
+   Desktop layout — see the --desk-* block in src/styles/theme.css for what
+   this mode is and why it is gated on a class as well as a width.
+   The 1024px literal here IS --desk-min; `npm run test:responsive` asserts
+   the two agree, because a media query cannot read a custom property.
+   ===================================================================== */
+
+/* The row that holds the nav rail and the screen column. Present in EVERY mode — on a
+   phone it is a plain pass-through, which keeps one DOM shape across all five hosts
+   instead of a second tree the desktop rules would be the only reader of. */
+.shell-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  /* EDGE TO EDGE. No padding, no card, no cap: on a desktop the app IS the window, so
+     anything reserved here would be a border of empty page around a wallet that was
+     asked to fill the screen. The horizontal device insets stay — they are 0 on every
+     desktop and only mean something on the one non-desktop device that reaches this
+     breakpoint, a tablet in landscape. */
+  .shell-root.has-desktop-mode {
+    padding-left: var(--safe-l);
+    padding-right: var(--safe-r);
+  }
+
+  .shell-root.has-desktop-mode .shell-frame {
+    /* Beats the `--frame-max` ladder, which is the phone column's cap and has nothing to
+       say here. `100%` rather than `none` so the frame still cannot outgrow the padded
+       box it sits in. */
+    max-width: 100%;
+    flex-direction: row;
+  }
+
+  /* Centre the column in whatever the rail left over. */
+  .shell-root.has-desktop-mode .shell-main {
+    align-items: center;
+  }
+
+  .shell-root.has-desktop-mode .shell-content {
+    width: 100%;
+    max-width: var(--desk-content-w);
+    /* A little more room than the phone gutter: the column is wider here and the same
+       22px reads as tight. Set on the token so every screen inherits it — including
+       .kb-dock, whose negative margins must stay in step with it. */
+    --gutter: 26px;
+  }
+
+  /* The tab bar is a phone affordance. The rail replaces it, and leaving both would put
+     two navigations on one screen disagreeing about where "back" goes. */
+  .shell-root.has-desktop-mode .bottom-nav {
+    display: none;
+  }
+
+  /* .pb-104 / .pb-110 exist to clear the bottom bar that is no longer there, and 104px of
+     dead space under the last asset row reads as a screen that failed to load its footer.
+     Overridden here rather than swapped per screen: the padding is a fact about the SHELL's
+     chrome, so the shell is what should know it is gone. */
+  .shell-root.has-desktop-mode .pb-104,
+  .shell-root.has-desktop-mode .pb-110 {
+    padding-bottom: 32px;
   }
 }

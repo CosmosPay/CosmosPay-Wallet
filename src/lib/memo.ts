@@ -15,6 +15,7 @@
  * Kept free of the Stellar SDK so it is testable on its own; `lib/stellar.ts` turns
  * a `MemoKind` into the SDK object.
  */
+import { tNow } from '@/lib/i18n';
 
 /** The memo kinds the wallet can attach to a payment it builds. */
 export type MemoKind = 'text' | 'id';
@@ -86,7 +87,7 @@ export function normalizeMemo(value: string, kind: MemoKind = 'text'): { kind: M
 export function memoProblem(value: string, kind: MemoKind = 'text'): string | null {
   const v = value ?? '';
   if (!v.trim()) return null;
-  if (kind === 'id') return isValidMemoId(v) ? null : 'El memo ID debe ser un número entero.';
+  if (kind === 'id') return isValidMemoId(v) ? null : tNow('memo.idMustBeInteger');
   const over = memoByteLength(v) - MEMO_TEXT_MAX_BYTES;
-  return over > 0 ? `El memo supera el límite de ${MEMO_TEXT_MAX_BYTES} bytes (te sobran ${over}).` : null;
+  return over > 0 ? tNow('memo.overByteLimit', { max: MEMO_TEXT_MAX_BYTES, over }) : null;
 }

@@ -42,7 +42,9 @@ export function AddNetwork({ store }: { store: WalletStore }) {
       <Field label={t('net.passphrase')} value={passphrase} onChange={setPassphrase} placeholder="Test SDF Future Network ; October 2022" />
       {err && <div className="add-network-err">{err}</div>}
       <div className="f1" />
-      <PrimaryButton disabled={!ok} onClick={save}>{busy ? <Spinner /> : t('net.save')}</PrimaryButton>
+      <div className="kb-dock">
+        <PrimaryButton disabled={!ok} onClick={save}>{busy ? <Spinner /> : t('net.save')}</PrimaryButton>
+      </div>
     </div>
   );
 }

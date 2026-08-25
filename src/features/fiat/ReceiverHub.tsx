@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { OpCard } from '@/features/fiat/OpCard';
-import { railLabel } from '@/constants/fiat';
+import { railLabel } from '@/lib/fiatRails';
 import '@/styles/features/fiat/fiat.css';
 
 /** Map BlindPay's raw KYC status (+ the `disabled` flag) to a friendly label + state key. */

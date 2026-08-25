@@ -154,6 +154,37 @@
   white-space: pre-wrap;
 }
 
+/* The acknowledgement that unlocks Approve for a takeover-capable or co-signed
+   envelope. Literal colours like the rest of this sheet: this window loads neither
+   theme.css nor app.css on purpose, so it cannot read a token. Sits directly under the
+   red banners and borrows their palette, because it is the same warning — this is only
+   the part the user has to answer. */
+.approve-ack {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #ff6b6b;
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.approve-ack-box {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+  accent-color: #ff6b6b;
+  cursor: pointer;
+}
+
+.approve-ack-text {
+  color: #ffb3b3;
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 /* Blocking warning: network mismatch, undecodable envelope, or a critical op. */
 .approve-danger {
   border: 1px solid #ff6b6b;

@@ -16,6 +16,8 @@ import { Markets } from '@/features/wallet/Markets';
 import { Profile } from '@/features/wallet/Profile';
 import { cx } from '@/lib/cx';
 import { tNow } from '@/lib/i18n';
+import { useKeyboardInset } from '@/hooks/useKeyboardInset';
+import { nativeInvoke, nativeListen } from '@/lib/nativeBridge';
 
 type ScreenComponent = ComponentType<{ store: WalletStore }> | LazyExoticComponent<ComponentType<{ store: WalletStore }>>;
 
@@ -107,6 +109,10 @@ function WalletAppShell() {
   const store = useWalletStore();
   const { screen } = store;
 
+  // Publishes --kb-h / .kb-open for the whole document, so every screen's footer can
+  // stay above the on-screen keyboard instead of being pushed up over its own content.
+  useKeyboardInset();
+
   // Keep a ref to the latest store so the native listener reads current state.
   const storeRef = useRef(store);
   storeRef.current = store;
@@ -127,25 +133,22 @@ function WalletAppShell() {
     };
   }, [isExt]);
 
-  // Android hardware back button (native only). One line now: the store owns the
-  // navigation stack and the screen table owns the fallbacks, so this handler no
-  // longer keeps its own 30-case copy of the same knowledge.
-  useEffect(() => {
-    let remove: (() => void) | undefined;
-    (async () => {
-      const { Capacitor } = await import('@capacitor/core');
-      if (!Capacitor.isNativePlatform()) return;
-      const { App } = await import('@capacitor/app');
-      const handle = await App.addListener('backButton', () => {
+  // Android hardware back button. The store owns the navigation stack and the screen
+  // table owns the fallbacks, so this handler keeps no copy of that knowledge — it only
+  // decides what "back with nowhere to go" means, which is the one thing the store cannot
+  // answer. The event is raised by the wallet's own plugin (an `OnBackPressedCallback`;
+  // see src-tauri/plugins/cosmos/android/src/main/java/lat/cosmospay/plugin/cosmos/CosmosPlugin.kt)
+  // and never fires anywhere else, so there is no platform check here.
+  useEffect(
+    () =>
+      nativeListen('cosmos:backPressed', () => {
         const s = storeRef.current;
         // `welcome` while adding a wallet is the one case with a side effect.
         if (s.screen === 'welcome' && s.addingWallet) return s.cancelAddWallet();
-        if (!s.goBack()) void App.exitApp();
-      });
-      remove = () => handle.remove();
-    })();
-    return () => remove?.();
-  }, []);
+        if (!s.goBack()) void nativeInvoke('app_exit').catch(() => {});
+      }),
+    [],
+  );
 
   const showNav = NAV_SCREENS.includes(screen) && store.hasSession;
   const Screen = screen === 'boot' ? null : SCREEN_COMPONENTS[screen];

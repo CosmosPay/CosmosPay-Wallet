@@ -3,7 +3,7 @@
  *
  * 33 of the 38 screens are `lazy()`. A dynamic import that fails — chunk hashes
  * rotated by an extension auto-update while the side panel is open, a web build
- * loaded offline, a stale Capacitor asset cache — rejects past `<Suspense>` and
+ * loaded offline, a stale WebView asset cache — rejects past `<Suspense>` and
  * unmounts the root, leaving a blank wallet. Before the split the bundle failed
  * atomically; now it can fail one screen at a time, so a screen-level recovery is
  * what the split actually costs.

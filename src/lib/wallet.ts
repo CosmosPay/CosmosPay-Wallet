@@ -9,6 +9,7 @@
 import { generateMnemonic, mnemonicToSeed, validateMnemonic } from 'bip39';
 import { derivePath } from 'ed25519-hd-key';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
+import { tNow } from '@/lib/i18n';
 
 export interface DerivedAccount {
   publicKey: string; // G...
@@ -39,7 +40,7 @@ export async function accountFromMnemonic(
 ): Promise<DerivedAccount> {
   const mnemonic = normalizeMnemonic(phrase);
   if (!validateMnemonic(mnemonic)) {
-    throw new Error('La frase de recuperación no es válida.');
+    throw new Error(tNow('wallet.badMnemonic'));
   }
   const seed = await mnemonicToSeed(mnemonic);
   const { key } = derivePath(path(index), seed.toString('hex'));
@@ -51,7 +52,7 @@ export async function accountFromMnemonic(
 export function accountFromSecret(secret: string): DerivedAccount {
   const s = secret.trim();
   if (!StrKey.isValidEd25519SecretSeed(s)) {
-    throw new Error('La clave secreta no es válida (debe empezar por «S»).');
+    throw new Error(tNow('wallet.badSecret'));
   }
   const keypair = Keypair.fromSecret(s);
   return { publicKey: keypair.publicKey(), secret: keypair.secret() };
@@ -74,7 +75,7 @@ export async function importAccount(
   input: string,
 ): Promise<{ account: DerivedAccount; mnemonic: string | null }> {
   const value = input.trim();
-  if (!value) throw new Error('Introduce tu frase de recuperación o clave secreta.');
+  if (!value) throw new Error(tNow('wallet.emptyImport'));
 
   // A single 56-char S... token => secret key import.
   if (!/\s/.test(value) && isValidSecret(value)) {

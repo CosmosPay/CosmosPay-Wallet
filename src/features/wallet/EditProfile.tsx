@@ -58,7 +58,9 @@ export function EditProfile({ store }: { store: WalletStore }) {
       <div className="edit-profile-dob-note">{t('editProfile.dobLocked')}</div>
 
       <div className="spacer" />
-      <PrimaryButton disabled={!ok} onClick={save}>{busy ? <Spinner /> : t('common.save')}</PrimaryButton>
+      <div className="kb-dock">
+        <PrimaryButton disabled={!ok} onClick={save}>{busy ? <Spinner /> : t('common.save')}</PrimaryButton>
+      </div>
     </div>
   );
 }

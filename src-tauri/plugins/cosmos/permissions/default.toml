@@ -1,0 +1,16 @@
+"$schema" = "schemas/schema.json"
+
+[default]
+description = """
+The wallet's own native commands. Granted as one unit because the frontend needs all of
+them or none: `src/lib/deviceAuth.ts` treats a missing command as "the feature is off",
+so a partial grant would present a broken enrolment rather than an absent one.
+"""
+permissions = [
+  "allow-auth-status",
+  "allow-auth-store",
+  "allow-auth-read",
+  "allow-auth-delete",
+  "allow-share-text",
+  "allow-app-exit",
+]

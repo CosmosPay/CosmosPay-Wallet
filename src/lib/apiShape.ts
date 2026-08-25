@@ -20,15 +20,21 @@
  *     endpoint cannot quietly opt out the way a `as T` cast always could.
  *
  * Zero dependencies: this is ~120 lines against valibot's ~1 kB floor plus a second
- * schema dialect for contributors to learn, in a repo whose build already fails on
- * unexpected transitive dependencies (see astro.config.ts).
+ * schema dialect for contributors to learn.
+ *
+ * This used to add "in a repo whose build already fails on unexpected transitive
+ * dependencies (see astro.config.ts)". It does not: that hook is a DENYLIST of four
+ * package names (`elliptic`, `browserify-sign`, `create-ecdh`, `crypto-browserify`)
+ * matched against emitted chunk ids. Any other transitive dependency ships without a
+ * word. `paths.test.ts` kept the sentence green because the file it cited exists —
+ * which is exactly the class of false claim that test cannot see.
  */
 
 export class ApiShapeError extends Error {
   readonly url: string;
   readonly path: string;
   constructor(url: string, path: string, expected: string, got: unknown) {
-    super(`Respuesta inesperada del servidor en ${path || 'la raíz'}: se esperaba ${expected}, llegó ${describe(got)} (${url})`);
+    super(`Unexpected server response at ${path || 'the root'}: expected ${expected}, got ${describe(got)} (${url})`);
     this.name = 'ApiShapeError';
     this.url = url;
     this.path = path;
@@ -37,7 +43,7 @@ export class ApiShapeError extends Error {
 
 function describe(v: unknown): string {
   if (v === null) return 'null';
-  if (Array.isArray(v)) return 'un array';
+  if (Array.isArray(v)) return 'an array';
   return typeof v;
 }
 
@@ -50,31 +56,31 @@ export type Check<T> = (v: unknown, path: string, url: string) => T;
 export const unchecked: Check<unknown> = (v) => v;
 
 export const str: Check<string> = (v, path, url) => {
-  if (typeof v !== 'string') throw new ApiShapeError(url, path, 'un string', v);
+  if (typeof v !== 'string') throw new ApiShapeError(url, path, 'a string', v);
   return v;
 };
 
 export const num: Check<number> = (v, path, url) => {
-  if (typeof v !== 'number' || !Number.isFinite(v)) throw new ApiShapeError(url, path, 'un número', v);
+  if (typeof v !== 'number' || !Number.isFinite(v)) throw new ApiShapeError(url, path, 'a number', v);
   return v;
 };
 
 export const bool: Check<boolean> = (v, path, url) => {
-  if (typeof v !== 'boolean') throw new ApiShapeError(url, path, 'un booleano', v);
+  if (typeof v !== 'boolean') throw new ApiShapeError(url, path, 'a boolean', v);
   return v;
 };
 
 /** A non-empty id we will put back into a follow-up request URL. */
 export const id: Check<string> = (v, path, url) => {
   const s = str(v, path, url);
-  if (!s.trim()) throw new ApiShapeError(url, path, 'un id no vacío', v);
+  if (!s.trim()) throw new ApiShapeError(url, path, 'a non-empty id', v);
   return s;
 };
 
 /** A decimal amount string, as Stellar and the gateway exchange them. */
 export const amount: Check<string> = (v, path, url) => {
   const s = str(v, path, url);
-  if (!/^\d+(\.\d+)?$/.test(s.trim())) throw new ApiShapeError(url, path, 'un importe decimal', v);
+  if (!/^\d+(\.\d+)?$/.test(s.trim())) throw new ApiShapeError(url, path, 'a decimal amount', v);
   return s;
 };
 
@@ -85,14 +91,14 @@ export const amount: Check<string> = (v, path, url) => {
  */
 export const xdr: Check<string> = (v, path, url) => {
   const s = str(v, path, url).trim();
-  if (s.length < 40 || !/^[A-Za-z0-9+/=]+$/.test(s)) throw new ApiShapeError(url, path, 'un XDR base64', v);
+  if (s.length < 40 || !/^[A-Za-z0-9+/=]+$/.test(s)) throw new ApiShapeError(url, path, 'a base64 XDR', v);
   return s;
 };
 
 /** A Stellar account id (shape; the SDK does the checksum where it matters). */
 export const account: Check<string> = (v, path, url) => {
   const s = str(v, path, url).trim();
-  if (!/^G[A-Z2-7]{55}$/.test(s)) throw new ApiShapeError(url, path, 'una cuenta Stellar (G…)', v);
+  if (!/^G[A-Z2-7]{55}$/.test(s)) throw new ApiShapeError(url, path, 'a Stellar account (G…)', v);
   return s;
 };
 
@@ -109,7 +115,7 @@ export function nullable<T>(check: Check<T>): Check<T | null> {
 
 export function arrayOf<T>(check: Check<T>): Check<T[]> {
   return (v, path, url) => {
-    if (!Array.isArray(v)) throw new ApiShapeError(url, path, 'un array', v);
+    if (!Array.isArray(v)) throw new ApiShapeError(url, path, 'an array', v);
     return v.map((item, i) => check(item, `${path}[${i}]`, url));
   };
 }
@@ -122,7 +128,7 @@ export function object<S extends Record<string, Check<unknown>>>(
   shape: S,
 ): Check<{ [K in keyof S]: S[K] extends Check<infer U> ? U : never }> {
   return (v, path, url) => {
-    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new ApiShapeError(url, path, 'un objeto', v);
+    if (!v || typeof v !== 'object' || Array.isArray(v)) throw new ApiShapeError(url, path, 'an object', v);
     const source = v as Record<string, unknown>;
     for (const key of Object.keys(shape)) {
       shape[key](source[key], path ? `${path}.${key}` : key, url);
@@ -138,10 +144,10 @@ export function object<S extends Record<string, Check<unknown>>>(
  */
 export function variant<T>(key: string, cases: Record<string, Check<unknown>>): Check<T> {
   return (v, path, url) => {
-    if (!v || typeof v !== 'object') throw new ApiShapeError(url, path, 'un objeto', v);
+    if (!v || typeof v !== 'object') throw new ApiShapeError(url, path, 'an object', v);
     const tag = (v as Record<string, unknown>)[key];
     if (typeof tag !== 'string' || !(tag in cases)) {
-      throw new ApiShapeError(url, path ? `${path}.${key}` : key, `uno de: ${Object.keys(cases).join(', ')}`, tag);
+      throw new ApiShapeError(url, path ? `${path}.${key}` : key, `one of: ${Object.keys(cases).join(', ')}`, tag);
     }
     cases[tag](v, path, url);
     return v as T;

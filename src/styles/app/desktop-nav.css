@@ -1,0 +1,108 @@
+/* DesktopNav — the vertical navigation rail (src/app/DesktopNav.tsx).
+   Shown only past --desk-min, where it runs the full height of the window down its
+   left edge; see the --desk-* block in src/styles/theme.css.
+   The 1024px literal below IS --desk-min, and `npm run test:responsive` asserts they
+   agree, because a media query cannot read a custom property. */
+
+/* Hidden by default, not shown by default. Below the breakpoint the rail is markup nobody
+   sees, and the bottom bar is the navigation — see src/styles/app/shell.css, which hides
+   the other one above it. Exactly one of the two is ever visible. */
+.shell-side {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .shell-side {
+    display: flex;
+    flex-direction: column;
+    width: var(--desk-side-w);
+    flex-shrink: 0;
+    padding: 26px 16px 20px;
+    border-right: 1px solid var(--hairline);
+    background: var(--surface-2);
+    /* The vertical device insets are on .shell-content, which the rail is not inside, so
+       it clears the status bar itself. Only relevant on a tablet in landscape, which is
+       the one non-desktop device that reaches this breakpoint. */
+    padding-top: calc(26px + var(--safe-t));
+    padding-bottom: calc(20px + var(--safe-b));
+  }
+
+  .desk-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 10px 22px;
+  }
+
+  .desk-brand-name {
+    font-size: 15px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    color: var(--text);
+  }
+
+  .desk-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    /* Takes the slack so the version line stays pinned to the bottom without a .spacer
+       element that exists only to be empty. */
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .desk-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: 44px;
+    padding: 0 12px;
+    /* Beats base.css's blanket `button { border-radius: 999px !important }`: a full pill
+       under a left-aligned icon-and-label row leaves the icon floating away from the edge
+       of its own highlight. Matching !important rather than raising specificity, because
+       the base rule is itself !important and nothing else can win against it. */
+    border-radius: 12px !important;
+    border: none;
+    background: transparent;
+    color: var(--dim);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    text-align: left;
+    transition: background-color 0.18s ease, color 0.18s ease;
+  }
+
+  .desk-nav-item:hover {
+    background: var(--glass-soft-bg);
+    color: var(--text-soft);
+  }
+
+  /* The active item is a filled slab, the way the bottom bar's active tab is a filled dot:
+     same idea, the shape the layout can afford. */
+  .desk-nav-item.is-on {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .desk-nav-item.is-on:hover {
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .desk-nav-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .desk-side-foot {
+    padding: 14px 12px 0;
+    border-top: 1px solid var(--hairline);
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--dimmer);
+  }
+}
