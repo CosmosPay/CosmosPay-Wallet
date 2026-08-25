@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the wallet's frontend is allowed to ask the Rust side for. Everything not listed here is refused at the IPC boundary, before any plugin code runs.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "os:default",
+    "store:default",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "https://*" }]
+    },
+    "cosmos:default"
+  ]
+}

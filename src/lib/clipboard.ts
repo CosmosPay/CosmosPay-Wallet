@@ -1,5 +1,5 @@
-/** Cross-platform clipboard (Capacitor on native, Web API on the browser). */
-import { Capacitor } from '@capacitor/core';
+/** Cross-platform clipboard (Tauri's clipboard-manager natively, Web API in a browser). */
+import { isTauri } from '@/lib/platform';
 
 /**
  * Copy, and REPORT whether it worked.
@@ -12,9 +12,9 @@ import { Capacitor } from '@capacitor/core';
  */
 export async function copyText(text: string): Promise<boolean> {
   try {
-    if (Capacitor.isNativePlatform()) {
-      const { Clipboard } = await import('@capacitor/clipboard');
-      await Clipboard.write({ string: text });
+    if (isTauri()) {
+      const { writeText } = await import('@tauri-apps/plugin-clipboard-manager');
+      await writeText(text);
       return true;
     }
   } catch {
@@ -30,10 +30,9 @@ export async function copyText(text: string): Promise<boolean> {
 
 export async function readText(): Promise<string> {
   try {
-    if (Capacitor.isNativePlatform()) {
-      const { Clipboard } = await import('@capacitor/clipboard');
-      const { value } = await Clipboard.read();
-      return value ?? '';
+    if (isTauri()) {
+      const { readText: read } = await import('@tauri-apps/plugin-clipboard-manager');
+      return (await read()) ?? '';
     }
   } catch {
     /* fall through */
@@ -48,11 +47,12 @@ export async function readText(): Promise<string> {
 /**
  * Can this platform hand us an IMAGE off the clipboard?
  *
- * Only the async Clipboard API can, and only where it is implemented: an Android WebView does
- * not expose `read()` at all, and Capacitor's Clipboard plugin is no substitute — its Android
- * `read()` coerces whatever is on the clipboard to text, so an image comes back as a `content://`
- * string. The scanner asks before it offers the button, because a button whose only possible
- * outcome is "there is no image in the clipboard" reads as a bug in the wallet.
+ * Only the async Clipboard API can, and only where it is implemented. Deliberately asks
+ * the WEB API even under Tauri: the native plugin's `readImage()` exists on desktop but
+ * not on Android or iOS, and the answer this gates is whether to render a "paste a QR"
+ * button at all. A button whose only possible outcome is "there is no image in the
+ * clipboard" reads as a bug in the wallet, so the check has to be the one the paste path
+ * will actually take.
  */
 export function canReadClipboardImage(): boolean {
   return typeof navigator !== 'undefined' && typeof navigator.clipboard?.read === 'function';

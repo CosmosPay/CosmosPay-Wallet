@@ -47,6 +47,25 @@ export function navTabs(t: WalletStore['t']): { key: string; label: string; icon
   ];
 }
 
+/**
+ * The same destinations, ordered for a vertical rail.
+ *
+ * `navTabs` puts Home in the MIDDLE because the bottom bar's sliding indicator has to rest
+ * somewhere by default and the centre is the only position that does not read as a bias. A
+ * vertical list has no indicator to rest and no centre to rest it in — it has a first item,
+ * and a list whose first item is "Ganar" reads as though earning were the main screen.
+ *
+ * Derived from `navTabs` rather than being a second table: the labels, the icons and the
+ * keys all still have exactly one definition, and an id added there without a place here
+ * simply falls off the rail instead of rendering twice.
+ */
+const DESKTOP_ORDER = ['home', 'earn', 'markets', 'swap', 'profile'];
+
+export function navTabsDesktop(t: WalletStore['t']): { key: string; label: string; icon: ReactNode }[] {
+  const byKey = new Map(navTabs(t).map((tab) => [tab.key, tab]));
+  return DESKTOP_ORDER.map((key) => byKey.get(key)).filter((tab) => tab !== undefined);
+}
+
 export const navActiveKey = (store: WalletStore) => (store.screen === 'swap' ? 'swap' : store.tab);
 
 export const navGo = (store: WalletStore, key: string) =>

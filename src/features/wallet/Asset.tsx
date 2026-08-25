@@ -1,3 +1,4 @@
+import { ExternalLink } from '@/ui/ExternalLink';
 import type { WalletStore } from '@/state/store';
 import { AssetLogo, assetMeta } from '@/ui/AssetLogo';
 import { computePortfolio } from '@/lib/portfolio';
@@ -47,9 +48,9 @@ export function Asset({ store }: { store: WalletStore }) {
         </div>
       )}
       {store.meta && (
-        <a href={explorerAccountUrl(store.network, store.meta.publicKey)} target="_blank" rel="noreferrer" className="asset-explorer">
+        <ExternalLink href={explorerAccountUrl(store.network, store.meta.publicKey)} className="asset-explorer">
           {t('asset.explorer')}
-        </a>
+        </ExternalLink>
       )}
     </div>
   );

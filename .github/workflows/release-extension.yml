@@ -77,6 +77,25 @@ jobs:
       - name: Security audit
         run: npm audit --omit=dev --audit-level=low
 
+      # AMO's own validator, run before the release rather than after the upload.
+      #
+      # Every check here fails in exactly one place otherwise: a submission form, days
+      # later, with a version already tagged and published. That is how
+      # "The `data_collection_permissions` property is missing" was found — a manifest key
+      # Mozilla made mandatory in November 2025, which nothing in this repo could have
+      # noticed on its own. `--warnings-as-errors` is deliberately NOT set: the build
+      # carries a known, documented warning (that key needs Firefox 140 while
+      # `strict_min_version` is 121, so older releases simply ignore it) and failing on
+      # warnings would mean deleting the key to get green.
+      - name: Build extensions
+        run: npm run build && npm run build:ext && npm run build:ext:firefox
+
+      # Firefox build only. `addons-linter` validates against Gecko's schema, so the
+      # Chrome build's `sidePanel` permission and `side_panel` key would be reported as
+      # unknown — noise about keys that are correct for the store they ship to.
+      - name: Validate the Firefox extension (addons-linter)
+        run: npx --yes addons-linter@latest dist/extension-firefox
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
@@ -184,7 +203,12 @@ jobs:
 
           The .zip is also ready to upload as-is to the Chrome Web Store / Firefox AMO.
 
-          **Phone apps** (attached a few minutes after this release is published — the native builds run once the tag exists):
+          **Desktop apps** (attached a few minutes after this release is published — the native builds run once the tag exists). All unsigned, so the OS will warn on first launch:
+          - **Windows:** `cosmos-pay-v${{ steps.ver.outputs.version }}-windows-x86_64-setup.exe` (installer) or the `.msi`. SmartScreen shows *"Windows protected your PC"* → *More info* → *Run anyway*.
+          - **Linux:** `cosmos-pay-v${{ steps.ver.outputs.version }}-linux-x86_64.AppImage` (`chmod +x`, then run — no install; built on Ubuntu 24.04, so it needs glibc 2.39+), or the `.deb` / `.rpm` for a system package.
+          - **macOS:** `cosmos-pay-v${{ steps.ver.outputs.version }}-macos-arm64.dmg`. Gatekeeper blocks it on first open → right-click the app → *Open*.
+
+          **Phone apps** (same schedule as the desktop builds above):
           - **Android:** `cosmos-pay-v${{ steps.ver.outputs.version }}-debug.apk` installs on any device with *Install unknown apps* enabled. `cosmos-pay-v${{ steps.ver.outputs.version }}.apk` (release-signed) and the matching `.aab` for Play Console appear only when the repository has the release keystore configured.
           - **iOS:** `cosmos-pay-v${{ steps.ver.outputs.version }}-unsigned.ipa` is built without an Apple signature, so it does **not** install by tapping it — it needs re-signing with your own account (Sideloadly, AltStore, or an MDM). It is published so the build is reproducible and inspectable, not as a one-tap install.
           MD

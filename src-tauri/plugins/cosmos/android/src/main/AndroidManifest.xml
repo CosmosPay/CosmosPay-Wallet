@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The plugin declares only what its own code calls. USE_BIOMETRIC covers API 28+;
+     USE_FINGERPRINT is the deprecated predecessor androidx.biometric still needs to
+     raise a prompt on API 26-27, which is this module's minSdk floor.
+     The app-level manifest (src-tauri/gen/android/app/src/main/AndroidManifest.xml) is
+     where INTERNET, CAMERA and android:allowBackup="false" live — see
+     scripts/native-permissions.ts, which writes them after every `tauri android init`. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission
+        android:name="android.permission.USE_FINGERPRINT"
+        android:maxSdkVersion="27" />
+</manifest>

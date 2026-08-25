@@ -1,51 +1,61 @@
 /**
  * Platform storage abstraction.
  *
- * On a native Capacitor build we persist through @capacitor/preferences
- * (SharedPreferences / UserDefaults). On the web we fall back to localStorage.
+ * Under Tauri — desktop and mobile alike — this persists through `tauri-plugin-store`,
+ * which writes a JSON file under the OS application-data directory. In a browser tab and
+ * in the extension it falls back to localStorage.
  *
- * NOTE: this store only ever holds *encrypted* blobs + public metadata.
- * The sensitive payload is sealed with AES-GCM in vault.ts before it ever
- * reaches here, so the underlying store does not need to be encrypted itself.
+ * WHY NOT localStorage EVERYWHERE, now that every native build is a WebView we control:
+ * because two of those WebViews are allowed to throw it away. WKWebView's local storage is
+ * evictable under storage pressure and Android's is cleared by "clear cache" tooling, and
+ * what this module holds is the encrypted vault — the only copy of the user's keys on the
+ * device. A file in the app-data directory has the lifetime of the app itself.
+ *
+ * NOTE: this store only ever holds *encrypted* blobs + public metadata. The sensitive
+ * payload is sealed with AES-GCM in vault.ts before it ever reaches here, so the
+ * underlying store does not need to be encrypted itself.
  */
-import { Capacitor } from '@capacitor/core';
+import { isTauri } from '@/lib/platform';
 
-type PreferencesPlugin = typeof import('@capacitor/preferences').Preferences;
+type StoreModule = typeof import('@tauri-apps/plugin-store');
+type Store = Awaited<ReturnType<StoreModule['load']>>;
+
+/** One file, named after the app rather than the feature: everything here shares a scope. */
+const STORE_FILE = 'cosmos-wallet.json';
 
 /**
- * The plugin, kept inside a box — and it has to stay in one.
+ * The store handle, memoised as a PROMISE rather than a value.
  *
- * A Capacitor plugin is a Proxy that turns ANY property read into a native call: its `get`
- * trap special-cases `$$typeof`, `toJSON` and the listener pair, and nothing else. `then` is
- * therefore a "method", so the moment the proxy becomes a promise's resolution value the
- * runtime probes it for thenability, calls `Preferences.then()` over the bridge, and gets
- * back `"Preferences.then()" is not implemented on android` — while the await that started
- * it never settles. Returning the proxy from this `async function` did exactly that, so on
- * Android every storage read hung and the app sat on its boot spinner forever.
- *
- * A plain object is not thenable, so the proxy travels inside one. Do not unwrap it here and
- * return the plugin directly; the bug leaves no stack trace, only a screen that never moves.
+ * `load()` reads and parses the file, and the boot path fires several reads at once (the
+ * wallet list, the preferences, the attempt ladder). Caching the settled handle would let
+ * all of them start their own `load()` before the first resolved; caching the promise means
+ * the second caller awaits the first one's work. A rejection is not cached — the slot is
+ * cleared so a later call retries rather than inheriting a failure the disk may have
+ * recovered from.
  */
-let boxed: { plugin: PreferencesPlugin } | null = null;
+let handle: Promise<Store> | null = null;
 
-async function getPrefs(): Promise<{ plugin: PreferencesPlugin }> {
-  if (!boxed) boxed = { plugin: (await import('@capacitor/preferences')).Preferences };
-  return boxed;
+function getStore(): Promise<Store> {
+  if (!handle) {
+    handle = (async () => {
+      const { load } = await import('@tauri-apps/plugin-store');
+      // `autoSave: false` — every write below calls `save()` itself. The plugin's autosave
+      // is a debounce timer, so it reports success from `set()` and writes some
+      // milliseconds later; a vault write that returns before it is durable is exactly the
+      // failure `storageSet` exists to surface.
+      return load(STORE_FILE, { autoSave: false });
+    })().catch((err) => {
+      handle = null;
+      throw err;
+    });
+  }
+  return handle;
 }
 
-const isNative = () => {
-  try {
-    return Capacitor.isNativePlatform();
-  } catch {
-    return false;
-  }
-};
-
 export async function storageGet(key: string): Promise<string | null> {
-  if (isNative()) {
-    const { plugin } = await getPrefs();
-    const { value } = await plugin.get({ key });
-    return value ?? null;
+  if (isTauri()) {
+    const store = await getStore();
+    return (await store.get<string>(key)) ?? null;
   }
   try {
     return globalThis.localStorage?.getItem(key) ?? null;
@@ -63,8 +73,7 @@ export async function storageGet(key: string): Promise<string | null> {
  * in memory and only then commits, and its commit `try/catch` — the entire reason
  * `PasswordChangeCommitError` exists — could not fire on web or in the extension.
  * A blocked or quota-exceeded write there returned success while the vault stayed on
- * the OLD password, and the user was locked out by their own password change. Native
- * threw; the other three runtimes did not. Same function, opposite behaviour.
+ * the OLD password, and the user was locked out by their own password change.
  *
  * A quota or security error is genuinely exceptional here: this stores a vault, not a
  * cache. The two callers that really are fire-and-forget (the query cache and the
@@ -72,9 +81,12 @@ export async function storageGet(key: string): Promise<string | null> {
  * where that decision belongs — not here, on behalf of everyone.
  */
 export async function storageSet(key: string, value: string): Promise<void> {
-  if (isNative()) {
-    const { plugin } = await getPrefs();
-    await plugin.set({ key, value });
+  if (isTauri()) {
+    const store = await getStore();
+    await store.set(key, value);
+    // Not fire-and-forget: `save()` is what makes the write durable, and its rejection is
+    // the only signal that the disk refused.
+    await store.save();
     return;
   }
   const store = globalThis.localStorage;
@@ -84,9 +96,10 @@ export async function storageSet(key: string, value: string): Promise<void> {
 
 /** Also throws: silently failing to delete a vault on "remove wallet" is worse. */
 export async function storageRemove(key: string): Promise<void> {
-  if (isNative()) {
-    const { plugin } = await getPrefs();
-    await plugin.remove({ key });
+  if (isTauri()) {
+    const store = await getStore();
+    await store.delete(key);
+    await store.save();
     return;
   }
   const store = globalThis.localStorage;

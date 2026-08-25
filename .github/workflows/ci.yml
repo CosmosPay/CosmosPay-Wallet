@@ -1,8 +1,8 @@
 name: CI
 
-# Build + typecheck + browser tests on every push and PR. Produces the two
-# deploy-ready web artifacts (dist/web/ for web+native, dist/extension/ for MV3 browsers)
-# and, through the reusable native workflow, the phone binaries that wrap dist/web/.
+# Build + typecheck + browser tests on every push and PR. Produces the two deploy-ready
+# web artifacts (dist/web/ for web+native, dist/extension/ for MV3 browsers) and, through
+# the reusable native workflow, the desktop and phone binaries that embed dist/web/.
 on:
   push:
     branches: [main, dev]
@@ -37,13 +37,36 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
-      # Static site -> dist/web/ (this is what Capacitor wraps for native, too)
+      # Static site -> dist/web/ (this is what Tauri embeds for desktop and mobile, too)
       - name: Build web (dist/web/)
         run: npm run build
 
       # Post-process dist/web/ into an MV3 unpacked extension -> dist/extension/
       - name: Build extension (dist/extension/)
         run: npm run build:ext
+
+      # The Rust half, on the one runner that is already warm.
+      #
+      # `native.yml` builds the real bundles, but its desktop matrix is gated to non-PR runs
+      # (three runners, one of them macOS) — so without this a PR could break
+      # src-tauri/ and nothing would say so until it merged. `cargo check` is minutes rather
+      # than tens of them, and it covers the desktop half of the wallet's own plugin.
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      # Shorter than the list native.yml installs: `cargo check` needs the headers the
+      # tauri crates link against, not the tooling that bundles an AppImage.
+      - name: Linux WebView dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev libxdo-dev
+
+      - name: Typecheck Rust (src-tauri)
+        run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
 
       - name: Upload web build (dist/web/)
         uses: actions/upload-artifact@v7
@@ -96,24 +119,31 @@ jobs:
         env:
           E2E_URL: http://127.0.0.1:4321
 
-  # Phone binaries on every push and PR: a debug APK, and on non-PR runs an unsigned iOS
-  # build too. Definition in .github/workflows/native.yml, shared with the release pipeline.
+  # Installable binaries. A debug APK on every push and PR; the desktop bundles and an
+  # unsigned iOS build on non-PR runs. Definition in .github/workflows/native.yml, shared
+  # with the release pipeline.
   #
   # Not `needs: build` on purpose. The Android job compiles the whole native project — that
   # is a different failure surface from `astro check`, and gating it behind the web build
   # would only delay the one signal nobody else produces. Both jobs run npm ci and the web
   # build anyway; they are parallel, not sequential.
   #
-  # iOS is skipped on pull requests, and that is a cost decision rather than a taste one: a
-  # macOS runner bills at ten times a Linux one and the free-tier pool allows few of them at
-  # once, so it runs on pushes to main/dev — where a broken Package.swift still gets caught before
-  # a release — instead of on every push to every open branch. Drop the `ios:` line to build
-  # it on PRs as well.
+  # DESKTOP AND iOS ARE SKIPPED ON PULL REQUESTS, and that is a cost decision rather than a
+  # taste one: the desktop matrix is three runners and iOS is a fourth, a macOS runner bills
+  # at ten times a Linux one, and the free-tier pool allows few of them at once. They run on
+  # pushes to main/dev, where a broken Package.swift or a WebKitGTK rename is still caught
+  # before a release. What a PR gets instead is the `cargo check` in the build job above —
+  # minutes rather than tens of them, and it catches the Rust breakage that matters most.
+  # Drop either line to build them on PRs as well.
+  #
+  # ANDROID IS NOT SKIPPED, because it is the only job that compiles the Kotlin half of
+  # src-tauri/plugins/cosmos — the biometric secure store, on the signing path.
   native:
     name: Native binaries
     permissions:
       contents: read # artifacts only; nothing here uploads to a release
     uses: ./.github/workflows/native.yml
     with:
+      desktop: ${{ github.event_name != 'pull_request' }}
       ios: ${{ github.event_name != 'pull_request' }}
     secrets: inherit

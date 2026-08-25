@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-auth-delete"
+description = "Enables the auth_delete command without any pre-configured scope."
+commands.allow = ["auth_delete"]
+
+[[permission]]
+identifier = "deny-auth-delete"
+description = "Denies the auth_delete command without any pre-configured scope."
+commands.deny = ["auth_delete"]

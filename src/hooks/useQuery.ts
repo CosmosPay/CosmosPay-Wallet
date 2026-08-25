@@ -3,7 +3,7 @@
  *
  * Kept separate so the cache itself stays framework-free and unit-testable, and so
  * the same entries are readable from non-React contexts (the approval window, a
- * Capacitor resume handler, the service worker's mirror).
+ * native resume handler, the service worker's mirror).
  *
  * `useSyncExternalStore` is native to React 19 — no state library needed for this.
  */

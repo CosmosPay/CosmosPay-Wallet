@@ -1,0 +1,43 @@
+[package]
+name = "cosmos-wallet"
+version = "0.0.0"                  # see tauri.conf.json: the shipped version is package.json's
+description = "Cosmos Pay — non-custodial Stellar wallet"
+authors = ["Cosmos Pay"]
+edition = "2021"
+rust-version = "1.77.2"
+
+# The binary is `cosmos-wallet`; the library is what the mobile entry points call into.
+# `cdylib` is required by Android (the NDK loads it) and `staticlib` by iOS.
+[lib]
+name = "cosmos_wallet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-store = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-opener = "2"
+# Publishes `window.__TAURI_OS_PLUGIN_INTERNALS__`, which is how src/lib/platform.ts
+# tells a phone from a desktop. That distinction gates the biometric unlock, so it has
+# to come from the runtime rather than from a user-agent string.
+tauri-plugin-os = "2"
+# The wallet's own plugin: the hardware-bound secure store behind `src/lib/deviceAuth.ts`
+# and the mobile share sheet. See src-tauri/plugins/cosmos/README.md.
+tauri-plugin-cosmos = { path = "plugins/cosmos" }
+
+[features]
+# Enabled by `tauri dev`; keeps the devtools out of a release bundle.
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+# A wallet ships as a signed binary users are asked to trust: smaller and stripped is
+# both a smaller attack surface and a smaller download. `panic = "abort"` also removes
+# unwinding, so a panic cannot be caught and resumed halfway through a keystore write.
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

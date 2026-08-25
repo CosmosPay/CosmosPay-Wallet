@@ -9,7 +9,7 @@
  *   cosmos.auth.<id>      -> { binding, SealedBox(password) }   normal storage
  *   cosmos.auth.key.<id>  -> the wrapping key                   Keystore / Keychain
  *
- * Splitting them is the point. The sealed box sits in SharedPreferences where a rooted
+ * Splitting them is the point. The sealed box sits in the app's own store where a rooted
  * device can read it, and it decrypts to nothing without the key. The vault's own seal
  * is untouched either way — this is a second door to the same password, never a way
  * around it.
@@ -17,24 +17,21 @@
  * WHY BIOMETRICS ONLY, and why there is no PIN/pattern tier. The wrapping key is only
  * ever stored so that reading it IS an authenticated operation: on Android the Keystore
  * entry is created with `setUserAuthenticationRequired(true)` and opened through a
- * `BiometricPrompt` `CryptoObject`; on iOS the Keychain item carries a
- * `SecAccessControl` under `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`. Neither
- * platform will bind a key that way to a PIN or pattern through this plugin — Android
- * discards `DEVICE_CREDENTIAL` from the key's auth types for crypto-bound storage
- * (`BiometricAuthenticatorConfig.ensureCryptoCompatible`), and iOS's `.biometryAny` flag
- * requires enrolled biometry. The only way to include a lock-screen-only device is to
- * store the key UNBOUND (`accessControl: NONE`) and gate it with a separate
- * `verifyIdentity()` call first. That is what this module used to do, and it is not a
- * weaker version of the same lock, it is a different threat model:
+ * `BiometricPrompt` `CryptoObject`; on iOS the Keychain item carries a `SecAccessControl`
+ * under `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`. Neither platform will bind a
+ * key that way to a PIN or pattern, and the only way to include a lock-screen-only device
+ * is to store the key UNBOUND and gate it with a separate identity check first. That is
+ * what this module used to do, and it is not a weaker version of the same lock, it is a
+ * different threat model:
  *
- *   - the unbound key's Keystore entry is generated with NO
- *     `setUserAuthenticationRequired` at all, and skips `setUnlockedDeviceRequired` on
- *     API 31-34, so on Android 12/13/14 it decrypts while the phone is locked;
+ *   - an unbound Keystore entry is generated with NO `setUserAuthenticationRequired` at
+ *     all, and skips `setUnlockedDeviceRequired` on API 31-34, so on Android 12/13/14 it
+ *     decrypts while the phone is locked;
  *   - the check and the read are two separate calls, so anything running in the process
- *     reaches the key by calling `getData` and never showing a prompt;
- *   - on iOS the plugin writes it with no `kSecAttrAccessible` at all, which defaults to
+ *     reaches the key by calling the read and never showing a prompt;
+ *   - on iOS an item written with no `kSecAttrAccessible` defaults to
  *     `kSecAttrAccessibleWhenUnlocked` — backup-eligible and restorable onto a DIFFERENT
- *     device, where the envelope (in UserDefaults, also backed up) then opens with the
+ *     device, where the envelope (also stored, also backed up) then opens with the
  *     attacker's own finger.
  *
  * A convenience feature must never become the weakest link in a spending path, so a
@@ -43,18 +40,18 @@
  * Settings row says so.
  *
  * Nothing here runs off the phone. `deviceAuthPossible()` gates every entry point, so the
- * MV3 popup and the web build never take the dynamic import.
+ * MV3 popup, the web build and the desktop window never reach the bridge.
  *
- * They DO ship the chunk, though — one `astro build` produces all three targets and there
- * is no `rollup.external`, so the plugin's web stub sits in `dist/web` and
- * `dist/extension` unreferenced. It is not inert if anything ever reaches it: it reports
- * `strongBiometryIsAvailable: true` unconditionally and implements the secure store as a
- * `Map`, with no prompt anywhere. That is why `deviceAuthPossible()` asks
- * `Capacitor.getPlatform()` rather than only inferring the build kind from the URL.
+ * THE NATIVE HALF IS OURS. It is `tauri-plugin-cosmos`, in this repo — see
+ * `src-tauri/plugins/cosmos/src/lib.rs`. That is what makes the paragraph above true
+ * rather than aspirational: a third-party plugin decides its own Keystore flags, and the
+ * one this replaced hardcoded the read path in a way that made the strongest binding
+ * unreadable. Both halves being in the same repo is why `binding` below can promise
+ * invalidation-on-enrolment-change and be believed.
  */
-import { Capacitor } from '@capacitor/core';
 import { open, seal, toBase64, type SealedBox } from '@/lib/crypto';
-import { buildKind } from '@/lib/platform';
+import { isMobileApp } from '@/lib/platform';
+import { nativeInvoke } from '@/lib/nativeBridge';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 
 /** Sealed app password + the binding it was sealed under. See the header. */
@@ -65,70 +62,27 @@ const secureKey = (walletId: string) => `cosmos.auth.key.${walletId}`;
 const WRAP_KEY_BYTES = 32;
 
 /**
- * The plugin's enums, mirrored as plain numbers.
+ * How the wrapping key is protected.
  *
- * Imported as values they would drag the plugin module into every bundle, and the
- * extension build must not carry a native plugin it can never call. `import type` is
- * erased, these are not, and the numbers are part of the plugin's documented wire
- * contract (`AccessControl` / `BiometryType` / `BiometricAuthError` in its README)
- * rather than an internal detail — a change to them is a breaking change on their side.
+ * `'boundCurrentSet'` is fully bound AND invalidated by an enrolment change: on Android
+ * the Keystore key carries `setUserAuthenticationRequired(true)`, a per-USE authentication
+ * policy and `setInvalidatedByBiometricEnrollment(true)`; on iOS the Keychain item is
+ * `.biometryCurrentSet` under `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`. No code
+ * path reads it without a live check, and a thief who learns the device PIN cannot enrol
+ * their own finger and inherit the wallet — doing so destroys the key instead.
+ *
+ * ONE VALUE, and every value that has ever shipped is refused by `readEnvelope`:
+ * `'anyBiometry'` (bound, but surviving an enrolment change — and written by the previous
+ * native plugin into a store this one cannot read), `'currentSet'` (a binding the old
+ * plugin could write but never read back) and `'passcode'` (the unbound tier). All three
+ * are rejected rather than migrated, which turns a stale enrolment into "not enrolled" —
+ * a state the user recovers from in Settings, with the password working throughout.
+ *
+ * That is deliberate and it is the migration: an enrolment made before the native half
+ * moved to `tauri-plugin-cosmos` lives in a Keystore alias the new plugin does not look
+ * at, so it could only ever fail. It fails ONCE, quietly, as "off".
  */
-// BIOMETRY_CURRENT_SET (1) is deliberately unused — see DeviceAuthBinding.
-const ACCESS_CONTROL_BIOMETRY_ANY = 2;
-
-/** `BiometryType`. */
-const BIOMETRY_TOUCH_ID = 1;
-const BIOMETRY_FACE_ID = 2;
-const BIOMETRY_FINGERPRINT = 3;
-const BIOMETRY_FACE_AUTHENTICATION = 4;
-const BIOMETRY_IRIS = 5;
-const BIOMETRY_MULTIPLE = 6;
-const BIOMETRY_DEVICE_CREDENTIAL = 7;
-
-/** `BiometricAuthError`. */
-const ERR_BIOMETRICS_UNAVAILABLE = 1;
-const ERR_USER_LOCKOUT = 2;
-const ERR_BIOMETRICS_NOT_ENROLLED = 3;
-const ERR_USER_TEMPORARY_LOCKOUT = 4;
-const ERR_AUTHENTICATION_FAILED = 10;
-const ERR_APP_CANCEL = 11;
-const ERR_PASSCODE_NOT_SET = 14;
-const ERR_SYSTEM_CANCEL = 15;
-const ERR_USER_CANCEL = 16;
-const ERR_USER_FALLBACK = 17;
-const ERR_NO_PROTECTED_CREDENTIALS = 21;
-
-/**
- * How the wrapping key is protected. One value, because only one of the plugin's two
- * bound modes is actually readable again afterwards.
- *
- * `'anyBiometry'` is `accessControl: BIOMETRY_ANY` — fully bound: the Keystore entry is
- * created with `setUserAuthenticationRequired(true)` and opened per-operation through a
- * `BiometricPrompt` `CryptoObject`; on iOS it is `.biometryAny` under
- * `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`. No code path reads it without a live
- * check.
- *
- * WHY NOT `BIOMETRY_CURRENT_SET`. It looks stronger — it adds
- * `setInvalidatedByBiometricEnrollment(true)`, so a thief who learns the device PIN cannot
- * enrol their own finger and reuse the wallet's enrolment. But this plugin cannot read
- * back what it writes that way. `getSecureData` never forwards `accessControl`, and
- * `AuthActivity.createCredentialDecryptCryptoObject` calls
- * `getOrCreateCredentialKey(server, 0)` with the value hardcoded — so the read path always
- * assumes a key built WITHOUT the invalidation flag. Worse, `getOrCreateCredentialKey`
- * silently *creates* a key when the alias is missing rather than failing, so the moment the
- * OS invalidates a `CURRENT_SET` key the read mints a fresh one, `cipher.init` succeeds,
- * and `doFinal` fails the GCM tag with `AEADBadTagException` — which AOSP throws with no
- * message, surfacing as the useless "Failed to decrypt credentials: null". The user's
- * enrolment does not report itself as stale; it reports as a generic fault, forever.
- *
- * Do not add `'currentSet'` back without first checking that the plugin's read path
- * forwards `accessControl` — until it does, writing it produces an enrolment that can only
- * ever fail. Two binding values have shipped and are now refused by `readEnvelope`:
- * `'currentSet'` (unreadable, as above) and `'passcode'` (the old unbound tier). Both are
- * rejected rather than migrated, which turns a broken enrolment into "not enrolled" — a
- * state the user can recover from in Settings, with the password working throughout.
- */
-export type DeviceAuthBinding = 'anyBiometry';
+export type DeviceAuthBinding = 'boundCurrentSet';
 
 /** What the device offers, for wording the button — display only, never a decision. */
 export type DeviceAuthKind = 'face' | 'fingerprint' | 'iris' | 'multiple' | 'passcode' | 'generic';
@@ -138,6 +92,10 @@ export type DeviceAuthKind = 'face' | 'fingerprint' | 'iris' | 'multiple' | 'pas
  * `CameraFailure` in `lib/camera.ts` and for the same reason: a screen that folds every
  * failure into "try again" sends a user with no enrolled fingerprint to a setting that
  * was never the problem.
+ *
+ * Every member is a token the native side sends verbatim. `Failure` in
+ * `src-tauri/plugins/cosmos/src/models.rs` is the same list; the Kotlin and Swift halves
+ * each carry it too, and the four have to agree letter for letter.
  */
 export type DeviceAuthFailure =
   | 'unsupported' // not the phone build, or the plugin is missing
@@ -150,24 +108,36 @@ export type DeviceAuthFailure =
   // unbound tier. Distinct from `notEnrolled`, which a trip to Settings does fix.
   | 'noStrongBiometry'
   | 'lockedOut' // too many attempts; needs the passcode to reset
-  // Attempts exhausted. On this path that is a SINGLE unrecognised touch: the plugin
-  // only forwards `maxAttempts` from verifyIdentity, so setData/getSecureData run with
-  // its default of 1 and the sheet closes on the first bad read. The copy has to work
-  // for that as well as for iOS's real cool-off.
-  | 'lockedOutTemporary'
+  | 'lockedOutTemporary' // the platform's short cool-off, cleared by waiting
   | 'cancelled' // the user (or the OS) dismissed the prompt — not an error to shout about
   | 'stale' // enrolment changed, or nothing is stored: re-enable with the password
   | 'failed';
 
+/** Runtime membership test for the token the native side sent. */
+const FAILURES: readonly DeviceAuthFailure[] = [
+  'unsupported',
+  'noHardware',
+  'notEnrolled',
+  'noPasscode',
+  'noStrongBiometry',
+  'lockedOut',
+  'lockedOutTemporary',
+  'cancelled',
+  'stale',
+  'failed',
+];
+
+const KINDS: readonly DeviceAuthKind[] = ['face', 'fingerprint', 'iris', 'multiple', 'passcode', 'generic'];
+
 /**
  * Carries the classified reason so callers can branch without re-parsing an error.
  *
- * `detail` is the platform's own sentence, kept because three separate native failures
- * all arrive as code 0 — "Biometric crypto object unavailable", "Failed to encrypt
- * credentials", "Failed to decrypt credentials" — and the code alone cannot tell them
- * apart. Dropping it left the user with "couldn't verify your identity" for a fault that
- * had nothing to do with their finger. It is shown only for the unclassified bucket,
- * where there is nothing better to say; never used to branch.
+ * `detail` is the platform's own sentence, kept because several distinct native failures
+ * share one classification — "biometric crypto object unavailable", "failed to encrypt
+ * credentials", a Keymaster fault with no message at all — and the classification alone
+ * cannot tell them apart. Dropping it left the user with "couldn't verify your identity"
+ * for a fault that had nothing to do with their finger. It is shown only for the
+ * unclassified bucket, where there is nothing better to say; never used to branch.
  */
 export class DeviceAuthError extends Error {
   readonly failure: DeviceAuthFailure;
@@ -184,13 +154,16 @@ export class DeviceAuthError extends Error {
  * The platform's message, when there is one worth repeating.
  *
  * Never matched against — CLAUDE.md's rule on `camera.ts` holds, and these strings are
- * the plugin's literals, one version bump from changing. It is carried for the human
+ * the platform's own literals, one OS update from changing. It is carried for the human
  * reading the screen, not for the code.
  */
 export function deviceAuthDetail(err: unknown): string | null {
   if (err instanceof DeviceAuthError) return err.detail;
-  const msg = (err as { message?: unknown } | null)?.message;
-  return typeof msg === 'string' && msg.trim() ? msg.trim() : null;
+  const source = err as { detail?: unknown; message?: unknown } | null;
+  for (const candidate of [source?.detail, source?.message]) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+  }
+  return null;
 }
 
 export interface DeviceAuthAvailability {
@@ -206,94 +179,41 @@ const UNAVAILABLE: DeviceAuthAvailability = { available: false, kind: 'generic',
 /**
  * Is this the build that can have device authentication at all?
  *
- * The extension and the web build are not "turned off" — they have no lock screen in
- * reach, so the setting should be ABSENT rather than shown disabled. Callers use this to
- * decide whether to render anything.
+ * The extension, the web build and the desktop window are not "turned off" — they have no
+ * bindable lock screen in reach, so the setting should be ABSENT rather than shown
+ * disabled. Callers use this to decide whether to render anything.
+ *
+ * `isMobileApp()` reads the OS from the RUNTIME (`tauri-plugin-os` publishes it before the
+ * first script runs), not from the URL and not from a user agent — see `lib/platform.ts`.
+ * That distinction mattered more here than anywhere else when the native half was a third
+ * party's: its web stub shipped in the same bundle as the extension and the web page, and
+ * answered "available" unconditionally while implementing the secure store as a `Map`.
+ * Anything reaching it would have written a sealed copy of the app password into
+ * localStorage and called it protected. `nativeInvoke` now rejects off Tauri outright, so
+ * there is no stub left to reach — but the gate stays, because a feature that renders and
+ * then fails is worse than one that was never offered.
  */
 export function deviceAuthPossible(): boolean {
-  // Both checks, and `getPlatform()` is the load-bearing one. `buildKind()` decides by
-  // reading `window.location.protocol` and a `window.Capacitor` shape, which is inference
-  // from things a document can present; `Capacitor.getPlatform()` is the runtime's own
-  // answer. It matters more here than anywhere else the helper is used, because the
-  // plugin's WEB STUB ships in the same bundle as the extension and the web page — one
-  // `astro build` produces all three, and there is no `rollup.external` — and that stub
-  // answers `isAvailable()` with `strongBiometryIsAvailable: true` unconditionally while
-  // `setData`/`getSecureData` are a bare `Map` with no prompt. Anything that reached it
-  // would happily write a sealed copy of the app password into localStorage and call it
-  // protected. This gate is the only thing between the two.
-  try {
-    const platform = Capacitor.getPlatform();
-    if (platform !== 'android' && platform !== 'ios') return false;
-  } catch {
-    return false;
-  }
-  return buildKind() === 'app';
-}
-
-type Plugin = typeof import('@capgo/capacitor-native-biometric').NativeBiometric;
-
-/**
- * The plugin, kept inside a box — and it has to stay in one, exactly as in
- * `lib/storage.ts`.
- *
- * A Capacitor plugin is a Proxy that turns any property read into a native call, `then`
- * included. Returning the proxy from an `async function` makes the runtime probe it for
- * thenability, which calls `NativeBiometric.then()` over the bridge; the bridge answers
- * "not implemented" and the await that started it never settles. A plain object is not
- * thenable, so the proxy travels inside one. Do not unwrap it here — the failure is a
- * prompt that never appears, with no stack.
- */
-let boxed: { plugin: Plugin } | null = null;
-
-async function getPlugin(): Promise<{ plugin: Plugin } | null> {
-  if (!deviceAuthPossible()) return null;
-  if (!boxed) {
-    try {
-      boxed = { plugin: (await import('@capgo/capacitor-native-biometric')).NativeBiometric };
-    } catch {
-      // A phone build without the native side registered (a stale `cap sync`).
-      return null;
-    }
-  }
-  return boxed;
+  return isMobileApp();
 }
 
 /**
- * Classify a plugin rejection.
+ * Classify a rejection from the native side.
  *
- * Matches on `code`, never on `message`: the message is the platform's own prose, it
- * differs between Android and iOS for the same condition, and the plugin's own docs list
- * two different strings for error 21 alone. `code` arrives as a string across the
- * Capacitor bridge, hence the `Number`.
+ * Reads the `failure` token, never the message: the message is the platform's own prose,
+ * it differs between Android and iOS for the same condition, and it is localized on some
+ * devices. The token is a contract all four halves of this feature spell identically.
+ *
+ * An unrecognised token is `'failed'` rather than a guess. That is the same fail-closed
+ * direction as everything else here: the cases we understand least are not the ones to
+ * invent a friendlier story about.
  */
 export function deviceAuthFailure(err: unknown): DeviceAuthFailure {
   if (err instanceof DeviceAuthError) return err.failure;
-  const raw = (err as { code?: unknown } | null)?.code;
-  switch (Number(raw)) {
-    case ERR_BIOMETRICS_UNAVAILABLE:
-      return 'noHardware';
-    case ERR_BIOMETRICS_NOT_ENROLLED:
-      return 'notEnrolled';
-    case ERR_PASSCODE_NOT_SET:
-      return 'noPasscode';
-    case ERR_USER_LOCKOUT:
-      return 'lockedOut';
-    case ERR_USER_TEMPORARY_LOCKOUT:
-      return 'lockedOutTemporary';
-    // A dismissed prompt is a decision, not a fault: the user tapping "cancel" to type
-    // their password instead must not be met with a red error line.
-    case ERR_USER_CANCEL:
-    case ERR_APP_CANCEL:
-    case ERR_SYSTEM_CANCEL:
-    case ERR_USER_FALLBACK:
-      return 'cancelled';
-    case ERR_NO_PROTECTED_CREDENTIALS:
-      return 'stale';
-    case ERR_AUTHENTICATION_FAILED:
-      return 'failed';
-    default:
-      return 'failed';
-  }
+  const raw = (err as { failure?: unknown } | null)?.failure;
+  return typeof raw === 'string' && (FAILURES as readonly string[]).includes(raw)
+    ? (raw as DeviceAuthFailure)
+    : 'failed';
 }
 
 /** The i18n key that explains a failure. Beside the union so a new case breaks here. */
@@ -326,56 +246,36 @@ export function deviceAuthKindKey(kind: DeviceAuthKind): string {
   return KEYS[kind];
 }
 
-/** Map the plugin's `BiometryType` to the wording we have. Display only. */
-function kindOf(biometryType: number): DeviceAuthKind {
-  switch (biometryType) {
-    case BIOMETRY_FACE_ID:
-    case BIOMETRY_FACE_AUTHENTICATION:
-      return 'face';
-    case BIOMETRY_TOUCH_ID:
-    case BIOMETRY_FINGERPRINT:
-      return 'fingerprint';
-    case BIOMETRY_IRIS:
-      return 'iris';
-    case BIOMETRY_MULTIPLE:
-      return 'multiple';
-    // Only reachable while UNAVAILABLE: a phone whose sole authenticator is its lock
-    // screen cannot bind the key, so it never gets past `deviceAuthAvailability`. The
-    // wording still matters, because that is the device reading the reason it cannot.
-    case BIOMETRY_DEVICE_CREDENTIAL:
-      return 'passcode';
-    default:
-      return 'generic';
-  }
+/** What the plugin's `auth_status` answers with. */
+interface NativeStatus {
+  available?: unknown;
+  biometry?: unknown;
+  reason?: unknown;
 }
 
 /**
  * What this device can do right now.
  *
- * Availability is decided by `strongBiometryIsAvailable`, NOT by `isAvailable`: only
- * strong (Class 3) biometry can back a Keystore `CryptoObject`, and an unbindable key is
- * not a lock this wallet will store a password behind. A weak Class 2 face sensor and a
- * PIN-only phone both land on `'noStrongBiometry'` — see the header.
+ * The plugin answers only for Class 3 / biometry-backed authenticators, because only those
+ * can gate a Keystore `CryptoObject` or a `.biometryCurrentSet` Keychain item. A weak
+ * Class 2 face sensor and a PIN-only phone both come back `'noStrongBiometry'` — see the
+ * header on why there is no unbound tier.
  *
- * `useFallback: false` for the same reason: asking about the lock screen would report a
- * capability this module deliberately does not use.
+ * Never throws: "what can this device do" is a question every build may ask, and
+ * "nothing" is a valid answer to it. A rejected call is `UNAVAILABLE`, which is what the
+ * Settings row already knows how to render.
  */
 export async function deviceAuthAvailability(): Promise<DeviceAuthAvailability> {
-  const box = await getPlugin();
-  if (!box) return UNAVAILABLE;
+  if (!deviceAuthPossible()) return UNAVAILABLE;
   try {
-    const res = await box.plugin.isAvailable({ useFallback: false });
-    if (!res.isAvailable) {
-      return {
-        available: false,
-        kind: kindOf(res.biometryType),
-        reason: res.errorCode === undefined ? 'noHardware' : deviceAuthFailure({ code: res.errorCode }),
-      };
-    }
-    if (!res.strongBiometryIsAvailable) {
-      return { available: false, kind: kindOf(res.biometryType), reason: 'noStrongBiometry' };
-    }
-    return { available: true, kind: kindOf(res.biometryType), reason: null };
+    const status = await nativeInvoke<NativeStatus>('auth_status');
+    const kind = (KINDS as readonly string[]).includes(status.biometry as string)
+      ? (status.biometry as DeviceAuthKind)
+      : 'generic';
+    if (status.available === true) return { available: true, kind, reason: null };
+    // The reason travels as a plain token here rather than as a rejection, so it is
+    // classified through the same path as an error would be.
+    return { available: false, kind, reason: deviceAuthFailure({ failure: status.reason }) };
   } catch (err) {
     return { available: false, kind: 'generic', reason: deviceAuthFailure(err) };
   }
@@ -410,12 +310,12 @@ function readEnvelope(raw: string | null): AuthEnvelope | null {
     const parsed = JSON.parse(raw) as AuthEnvelope;
     if (parsed?.v !== 1 || !parsed.box) return null;
     // An allowlist, not a rejection list: an envelope whose binding this build does not
-    // write is one whose key it may not be able to open, and "the feature is off" is the
-    // only safe reading of that. The two values that have shipped and are refused here are
-    // named in `DeviceAuthBinding` — `'currentSet'` and `'passcode'` — as prose, because a
-    // constant listing them would invite filtering AGAINST it, which is the rejection list
-    // this comment exists to rule out.
-    if (parsed.binding !== 'anyBiometry') return null;
+    // write is one whose key it cannot open, and "the feature is off" is the only safe
+    // reading of that. The three values that have shipped and are refused here are named
+    // in `DeviceAuthBinding` — `'anyBiometry'`, `'currentSet'` and `'passcode'` — as prose,
+    // because a constant listing them would invite filtering AGAINST it, which is the
+    // rejection list this comment exists to rule out.
+    if (parsed.binding !== 'boundCurrentSet') return null;
     return parsed;
   } catch {
     return null;
@@ -446,44 +346,33 @@ function randomWrapKey(): string {
 }
 
 /**
+ * Turn whatever the bridge rejected with into a `DeviceAuthError`.
+ *
+ * One place, because every caller needs both halves and reading them separately at four
+ * call sites is how a `detail` gets dropped from the one path that shows it.
+ */
+function asDeviceAuthError(err: unknown): DeviceAuthError {
+  return err instanceof DeviceAuthError ? err : new DeviceAuthError(deviceAuthFailure(err), deviceAuthDetail(err));
+}
+
+/**
  * Store the wrapping key so that only a live, cryptographically bound prompt opens it.
  *
- * `setData` with a non-zero `accessControl` raises the OS prompt itself and binds the key
- * to it, so there is no separate check to run first — and deliberately no
- * `verifyIdentity()` call anywhere in this module. A prompt that is not the same operation
- * as the read is a prompt the read does not need.
+ * The plugin's `auth_store` raises the OS prompt itself and binds the key to it, so there
+ * is no separate check to run first — and deliberately no identity-verification call
+ * anywhere in this module. A prompt that is not the same operation as the read is a prompt
+ * the read does not need.
  *
- * DELETE FIRST, ALWAYS — and it is re-enrolment that needs it, not enrolment. The plugin's
- * `getOrCreateCredentialKey` reuses an existing Keystore alias whenever the stored
- * `authValidityDuration` matches the requested one, and never compares `accessControl`.
- * Every call here passes 0, so without the delete a second enrolment for the same wallet
- * silently keeps the FIRST key and `setData` writes the new wrapping key under it. That is
- * the path a password change takes. `deleteData` removes the alias as well as the stored
- * blob, forcing a fresh `buildCredentialKey`.
- *
- * The cost of deleting first is that the previous enrolment is gone before the replacement
- * exists — so a refusal here leaves the wallet with no key, which is why `enableDeviceAuth`
- * removes the envelope on its way out. Fail closed in that direction on purpose: the
- * alternative is an envelope whose key belongs to a superseded password.
+ * DELETE-FIRST is the plugin's job, not this module's, and both native halves do it: a
+ * second enrolment for the same wallet — which is what a password change is — must mint a
+ * fresh key rather than rewriting the value under the old one. The cost is that a refusal
+ * leaves the wallet with NO key, which is why `enableDeviceAuth` removes the envelope on
+ * its way out. Fail closed in that direction on purpose: the alternative is an envelope
+ * whose key belongs to a superseded password.
  */
-async function storeBound(
-  plugin: Plugin,
-  walletId: string,
-  wrapKey: string,
-  accessControl: number,
-  prompt: DeviceAuthPrompt,
-): Promise<void> {
-  // A missing alias is not an error — on a first enrolment there is nothing to remove.
-  await plugin.deleteData({ key: secureKey(walletId) }).catch(() => {});
-  await plugin.setData({
-    key: secureKey(walletId),
-    value: wrapKey,
-    accessControl,
-    // Every read gets its own prompt. A non-zero window would let any code that can
-    // reach the decrypt call read the key silently until it expired.
-    authValidityDuration: 0,
-    title: prompt.title,
-    negativeButtonText: prompt.cancel,
+async function storeBound(walletId: string, wrapKey: string, prompt: DeviceAuthPrompt): Promise<void> {
+  await nativeInvoke<void>('auth_store', {
+    payload: { key: secureKey(walletId), value: wrapKey, ...prompt },
   });
 }
 
@@ -499,14 +388,9 @@ async function storeBound(
  * only ever set by a successful decrypt). Sealing an unverified string would enrol a
  * password that opens nothing.
  *
- * ONE RUNG. `BIOMETRY_ANY` is the only `accessControl` this plugin can both write and read
- * back — see `DeviceAuthBinding` for why `BIOMETRY_CURRENT_SET` produces a key its own read
- * path cannot open. It is still fully bound; what it gives up is
- * `setInvalidatedByBiometricEnrollment`, which the read path structurally cannot support.
- *
- * If it refuses, so do we. This used to fall through to an unbound key, which put the
- * wrapping key one prompt-free native call away from anything running in the process, and
- * on iOS put it in a restorable backup. A device that cannot bind the key keeps its
+ * If the device refuses, so do we. This used to fall through to an unbound key, which put
+ * the wrapping key one prompt-free native call away from anything running in the process,
+ * and on iOS put it in a restorable backup. A device that cannot bind the key keeps its
  * password instead.
  */
 export async function enableDeviceAuth(
@@ -514,8 +398,7 @@ export async function enableDeviceAuth(
   password: string,
   prompt: DeviceAuthPrompt,
 ): Promise<DeviceAuthBinding> {
-  const box = await getPlugin();
-  if (!box) throw new DeviceAuthError('unsupported');
+  if (!deviceAuthPossible()) throw new DeviceAuthError('unsupported');
   const { available, reason } = await deviceAuthAvailability();
   if (!available) throw new DeviceAuthError(reason ?? 'failed');
 
@@ -523,29 +406,27 @@ export async function enableDeviceAuth(
   const sealed = await seal(password, wrapKey);
 
   try {
-    await storeBound(box.plugin, walletId, wrapKey, ACCESS_CONTROL_BIOMETRY_ANY, prompt);
+    await storeBound(walletId, wrapKey, prompt);
   } catch (err) {
-    const failure = deviceAuthFailure(err);
-    const detail = deviceAuthDetail(err);
-    // Drop any envelope this wallet still had. `storeBound` deletes the Keystore alias
-    // before it writes, so a failure here has already destroyed the key an EARLIER
-    // enrolment was using — and leaving that wallet's old envelope behind means the app
-    // still reports the feature as on while nothing can open it. Not hypothetical: the
-    // re-enrolment path of a password change lands here every time the user dismisses the
-    // prompt. Removing it makes the outcome "not enrolled", which Settings can fix.
+    const error = asDeviceAuthError(err);
+    // Drop any envelope this wallet still had. The plugin deletes the previous key before
+    // it writes, so a failure here has already destroyed the key an EARLIER enrolment was
+    // using — and leaving that wallet's old envelope behind means the app still reports
+    // the feature as on while nothing can open it. Not hypothetical: the re-enrolment path
+    // of a password change lands here every time the user dismisses the prompt. Removing it
+    // makes the outcome "not enrolled", which Settings can fix.
     await storageRemove(envelopeKey(walletId)).catch(() => {});
-    // Logged as well as thrown: this class of fault arrives as code 0 with a message that
-    // is frequently the literal string "null", because AOSP's AndroidKeyStore throws
-    // `IllegalBlockSizeException` / `AEADBadTagException` with no message and the plugin
-    // drops the cause. logcat still has the Keymaster's own error code; the app never does.
-    // The failure and the detail only — never `password`, never `wrapKey`.
-    console.warn('deviceAuth: BIOMETRY_ANY refused, refusing to enrol —', failure, detail);
-    throw new DeviceAuthError(failure, detail);
+    // Logged as well as thrown: an unclassified fault here frequently arrives with a
+    // message that is the literal string "null", because AOSP's AndroidKeyStore throws
+    // with no message at all. logcat still has the Keymaster's own error code; the app
+    // never does. The failure and the detail only — never `password`, never `wrapKey`.
+    console.warn('deviceAuth: the device refused to bind the key, refusing to enrol —', error.failure, error.detail);
+    throw error;
   }
 
-  const envelope: AuthEnvelope = { v: 1, binding: 'anyBiometry', box: sealed };
+  const envelope: AuthEnvelope = { v: 1, binding: 'boundCurrentSet', box: sealed };
   await storageSet(envelopeKey(walletId), JSON.stringify(envelope));
-  return 'anyBiometry';
+  return 'boundCurrentSet';
 }
 
 /**
@@ -555,33 +436,29 @@ export async function enableDeviceAuth(
  * is no separate check that could be skipped, and no window in which the key is readable
  * without one.
  *
- * `'stale'` is handled rather than propagated raw: error 21 means the Keystore key is
- * gone — a changed enrolment, a restored backup, a reinstall — so the envelope left
- * behind is undecryptable forever. Clearing it here is what stops the unlock screen
- * offering a button that can only ever fail.
+ * `'stale'` is handled rather than propagated raw: it means the key is gone — a changed
+ * enrolment (which now destroys it by design), a restored backup, a reinstall — so the
+ * envelope left behind is undecryptable forever. Clearing it here is what stops the unlock
+ * screen offering a button that can only ever fail.
  */
 export async function deviceAuthPassword(walletId: string, prompt: DeviceAuthPrompt): Promise<string> {
-  const box = await getPlugin();
-  if (!box) throw new DeviceAuthError('unsupported');
+  if (!deviceAuthPossible()) throw new DeviceAuthError('unsupported');
   const envelope = await loadEnvelope(walletId);
   if (!envelope) throw new DeviceAuthError('stale');
 
   let wrapKey: string;
   try {
-    const { value } = await box.plugin.getSecureData({
-      key: secureKey(walletId),
-      reason: prompt.reason,
-      title: prompt.title,
-      negativeButtonText: prompt.cancel,
+    const { value } = await nativeInvoke<{ value: string }>('auth_read', {
+      payload: { key: secureKey(walletId), ...prompt },
     });
     wrapKey = value;
   } catch (err) {
-    const failure = deviceAuthFailure(err);
-    if (failure === 'stale') await disableDeviceAuth(walletId);
-    // NOT disabled on code 0 here, unlike enrolment: a read can fail transiently (the
-    // key busy, the sheet interrupted), and wiping a working enrolment over one bad read
-    // would cost the user their setup for something a retry fixes.
-    throw new DeviceAuthError(failure, deviceAuthDetail(err));
+    const error = asDeviceAuthError(err);
+    if (error.failure === 'stale') await disableDeviceAuth(walletId);
+    // NOT disabled on an unclassified failure, unlike enrolment: a read can fail
+    // transiently (the key busy, the sheet interrupted), and wiping a working enrolment
+    // over one bad read would cost the user their setup for something a retry fixes.
+    throw error;
   }
 
   try {
@@ -598,10 +475,9 @@ export async function deviceAuthPassword(walletId: string, prompt: DeviceAuthPro
 /** Forget the enrolment: both halves, in the order that cannot leave a usable one. */
 export async function disableDeviceAuth(walletId: string): Promise<void> {
   await storageRemove(envelopeKey(walletId));
-  const box = await getPlugin();
-  if (!box) return;
+  if (!deviceAuthPossible()) return;
   try {
-    await box.plugin.deleteData({ key: secureKey(walletId) });
+    await nativeInvoke<void>('auth_delete', { payload: { key: secureKey(walletId) } });
   } catch {
     // Already gone, or the store refused. The envelope is what the app reads to decide
     // the feature is on, and it is already deleted — an orphan secure-store entry
@@ -642,8 +518,8 @@ export async function reenrolDeviceAuth(
       await disableDeviceAuth(walletId);
     } catch {
       // Storage refused. The envelope may survive, but `enableDeviceAuth` already removed
-      // it on its own failure path, and an envelope with no Keystore key reads as 'stale'
-      // on the next attempt — which turns itself off. Nothing here is worth throwing over.
+      // it on its own failure path, and an envelope with no key reads as 'stale' on the
+      // next attempt — which turns itself off. Nothing here is worth throwing over.
     }
     return false;
   }

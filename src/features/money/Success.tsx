@@ -1,3 +1,4 @@
+import { ExternalLink } from '@/ui/ExternalLink';
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
 import { KVRow } from '@/ui/KVRow';
@@ -37,9 +38,9 @@ export function Success({ store }: { store: WalletStore }) {
         </div>
       ) : null}
       {si?.hash && (
-        <a href={explorerTxUrl(store.network, si.hash)} target="_blank" rel="noreferrer" className="success-tx">
+        <ExternalLink href={explorerTxUrl(store.network, si.hash)} className="success-tx">
           {t('success.viewTx')}
-        </a>
+        </ExternalLink>
       )}
       <PrimaryButton onClick={goHome}>{store.hasSession ? t('success.viewWallet') : t('common.continue')}</PrimaryButton>
     </div>

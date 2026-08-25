@@ -115,6 +115,42 @@
   }
 }
 
+/* ---------------- desktop layout ----------------
+   Past --desk-min the app stops being a phone column floating in the middle of a monitor.
+   It takes the WHOLE window: edge to edge, corner to corner, no card and no cap — a
+   vertical nav rail down the left edge and the screen column in what is left.
+
+   Nothing about the screens themselves changes — they still render into a column of
+   roughly phone width, because that is what all forty of them were designed for, and
+   stretching a payment form to 1900px is how a layout pass silently restyles work nobody
+   re-checked. What changes is the chrome around that column.
+
+   The rules live in src/styles/app/shell.css and src/styles/app/desktop-nav.css, and they
+   are gated on BOTH a width and a class (`.has-desktop-mode`, set by src/app/Shell.tsx).
+   The class is what keeps the extension out: a Chrome side panel can be dragged past
+   1024px, and it must stay a single column with its own drawer navigation.
+
+   --desk-min is not readable from a media query — CSS has no way to interpolate a custom
+   property into one — so the literal is repeated in the two sheets. `npm run
+   test:responsive` reads this token and asserts the layout actually flips at the value it
+   names, which is what stops the copies drifting apart. */
+:root {
+  --desk-min: 1024px;
+  --desk-side-w: 252px;
+  /* The reading column inside the content area. Capped rather than fluid for the reason
+     above; centred, so the rail does not drag everything to one side of a wide monitor. */
+  --desk-content-w: 640px;
+}
+
+/* A little more column on a large monitor. Not proportional — a step, because past a
+   point extra width stops being useful to a form and starts being a line nobody's eye
+   tracks back. */
+@media (min-width: 1600px) {
+  :root {
+    --desk-content-w: 760px;
+  }
+}
+
 /* ---------------- safe margins ----------------
    Two different things, kept apart on purpose.
 
