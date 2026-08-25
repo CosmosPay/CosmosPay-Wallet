@@ -460,6 +460,13 @@ jobs:
                 process.stdout.write(rel);
               })")
           echo "building scheme: $SCHEME (configuration: $CONFIG)"
+          # THE ENV DUMP IS FILTERED so the error survives. When a script phase fails,
+          # xcodebuild prints every build setting as an indented `export FOO=bar` line — 352
+          # of the last failure's 530 log lines — and that pushed the Rust error which
+          # actually failed the build past the size GitHub keeps for one step. The log ended
+          # mid-dump, alphabetically at O, and the job read as "exit code 65" and nothing
+          # else. Only those lines are dropped; `pipefail` above keeps xcodebuild's status,
+          # and sed exits 0 either way so an all-filtered run cannot fail the step by itself.
           xcodebuild \
             -project "$PROJECT" \
             -scheme "$SCHEME" \
@@ -467,7 +474,7 @@ jobs:
             -sdk iphoneos \
             -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build
+            build 2>&1 | sed -E '/^[[:space:]]+export [A-Za-z_0-9]/d'
 
       # An .ipa is a zip with the .app inside a Payload/ directory and nothing else. Made by
       # hand because `-exportArchive` needs the signing identity this job does not have.
