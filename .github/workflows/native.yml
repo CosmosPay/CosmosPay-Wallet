@@ -89,7 +89,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-22.04
+          # 24.04, not 22.04: the Ubuntu 22 images begin deprecation on 2026-09-17 with
+          # brownouts that FAIL jobs outright, and go fully unsupported on 2027-04-17. A
+          # Linux release that stops appearing during a brownout window is exactly the
+          # failure this pin exists to avoid.
+          #
+          # The cost is the AppImage's glibc floor — built here it needs 2.39, so Ubuntu
+          # 22.04 and Debian 12 cannot run it. That is the trade the deprecation forces:
+          # the .deb and .rpm are unaffected, and a genuinely portable AppImage needs a
+          # container build rather than an older runner.
+          - os: ubuntu-24.04
             bundles: bundle/appimage bundle/deb bundle/rpm
           - os: macos-latest
             bundles: bundle/dmg
@@ -102,13 +111,18 @@ jobs:
 
       # WebKitGTK and libsoup3 are what Tauri renders into on Linux; they are not on the
       # runner image. The other two OSes ship their WebView with the system.
+      #
+      # Tauri's documented Ubuntu 24.04 list, plus patchelf for the AppImage. Note
+      # `libayatana-appindicator3-dev` and NOT `libappindicator3-dev`: the latter does not
+      # exist on 24.04, and apt fails the whole step on one unknown package name.
       - name: Linux WebView dependencies
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
-            libsoup-3.0-dev build-essential curl wget file libssl-dev
+            libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev \
+            libayatana-appindicator3-dev libxdo-dev libssl-dev \
+            build-essential curl wget file patchelf
 
       - uses: actions/setup-node@v7
         with:
@@ -132,9 +146,24 @@ jobs:
       - name: Build desktop bundles
         run: npm run desktop:build
 
+      # Tauri names every bundle after `productName`, so they come out as
+      # "Cosmos Pay_1.3.0_x64-setup.exe" — spaces included, which GitHub then silently
+      # rewrites to dots when it attaches them. Renamed here to the same
+      # `cosmos-pay-v<version>-…` scheme as the APK and the .ipa, so the release notes can
+      # name a file and be right about it.
       - name: Collect bundles
         shell: bash
         run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          ARCH=$(uname -m)
+          case "${{ runner.os }}" in
+            Windows) OS_TAG=windows ;;
+            macOS)   OS_TAG=macos ;;
+            *)       OS_TAG=linux ;;
+          esac
+          NAME="cosmos-pay-v$VERSION-$OS_TAG-$ARCH"
+
           mkdir -p out
           for dir in ${{ matrix.bundles }}; do
             src="src-tauri/target/release/$dir"
@@ -142,9 +171,22 @@ jobs:
             find "$src" -maxdepth 1 -type f \
               \( -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \
                  -o -name '*.dmg' -o -name '*.exe' -o -name '*.msi' \) \
-              -exec cp {} out/ \;
+              -print0 | while IFS= read -r -d '' file; do
+                base=$(basename "$file")
+                case "$base" in
+                  # NSIS and MSI are both Windows installers and both end up as .exe/.msi;
+                  # the setup suffix is what tells them apart in a release listing.
+                  *-setup.exe) cp "$file" "out/$NAME-setup.exe" ;;
+                  *)           cp "$file" "out/$NAME.${base##*.}" ;;
+                esac
+              done
           done
-          ls -la out
+          echo "collected:"; ls -la out
+          # An empty `out` means the bundler produced nothing this matrix leg expected, and
+          # `if-no-files-found: error` below would catch it — but only after the upload step
+          # has already been reached, which reads as an upload problem rather than a build
+          # one. Fail here, where the cause is.
+          [ -n "$(ls -A out)" ] || { echo "no bundles were produced for ${{ runner.os }}"; exit 1; }
 
       - name: Upload desktop artifacts
         uses: actions/upload-artifact@v7

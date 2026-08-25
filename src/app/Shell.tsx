@@ -8,7 +8,7 @@ import { ConfirmSign } from '@/app/ConfirmSign';
 import { cx } from '@/lib/cx';
 import '@/styles/app/shell.css';
 
-/** The frame that hosts the app: a phone column, or — past `--desk-min` — a desktop window.
+/** The frame that hosts the app: a phone column, or — past `--desk-min` — the whole screen.
  *
  *  The sizing rules for both (and the MV3 popup + Chrome `zoom` crash workarounds they
  *  encode) are documented in shell.css; the desktop mode itself is documented in theme.css.
@@ -16,8 +16,10 @@ import '@/styles/app/shell.css';
  *  WHICH NAVIGATION SHOWS IS DECIDED IN CSS, not here. Both `DesktopNav` and `BottomNav`
  *  go into the DOM and a media query hides one of them, so there is no resize listener in
  *  the app and nothing that can disagree with itself between the server-rendered shell and
- *  the hydrated one. The two classes below are the part JS *can* answer: which build this
- *  is, and whether there is a session to navigate. */
+ *  the hydrated one. What JS answers is the part a media query cannot: which BUILD this is
+ *  (`has-desktop-mode` — the extension is excluded by class rather than by width, because a
+ *  side panel can be dragged past the breakpoint), and whether there is a session to
+ *  navigate at all. */
 export function Shell({
   children,
   showNav = false,
@@ -38,7 +40,7 @@ export function Shell({
   const rail = chrome && !!store?.hasSession;
 
   return (
-    <div className={cx('shell-root', chrome && 'has-desktop-mode', rail && 'has-desktop-nav')}>
+    <div className={cx('shell-root', chrome && 'has-desktop-mode')}>
       <div className="shell-frame">
         {rail && store && <DesktopNav store={store} />}
 

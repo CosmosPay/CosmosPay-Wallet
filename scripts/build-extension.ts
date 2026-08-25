@@ -196,6 +196,50 @@ for (const [code, l] of Object.entries(LOCALES)) {
   );
 }
 
+/**
+ * What Firefox tells the user this extension collects (`data_collection_permissions`).
+ *
+ * MANDATORY since 3 November 2025 — AMO refuses to validate a submission without it, with
+ * the message "The `data_collection_permissions` property is missing". Firefox-only: the
+ * key lives under `browser_specific_settings.gecko`, so Chrome never sees it.
+ *
+ * NOTHING IS REQUIRED, and that is a claim about the code rather than a convenience. A
+ * wallet that only holds keys and sends XLM talks to exactly two places, neither of them
+ * ours: Horizon, where the transactions it submits are public by construction, and
+ * CoinGecko, which is handed no user data at all. The vault never leaves the device.
+ *
+ * Everything below is OPTIONAL because every one of those calls is behind a deliberate
+ * user action, and none of it happens to a wallet that never taps them:
+ *
+ * - `personallyIdentifyingInfo` — linking a CosmosPay account posts name + email
+ *   (`registerCosmosAccount` / `linkCosmosAccount`), and the fiat on/off-ramp's KYC posts
+ *   legal name, date of birth, tax id, address and photographs of an identity document and
+ *   the holder's face (`createReceiver`, `uploadKycDoc` in `src/lib/cosmospay.ts`).
+ * - `financialAndPaymentInfo` — the same flow registers a bank account, and swaps,
+ *   liquidity and payouts go through the gateway with amounts attached.
+ *
+ * `technicalAndInteraction` is absent because there is no analytics of any kind in this
+ * repo. It is the one value Firefox will not accept as required, and the temptation is to
+ * list it defensively; do not. A declaration that over-claims is not "safe", it is a
+ * consent prompt asking the user to agree to something that never happens.
+ *
+ * KEEP THIS HONEST IN BOTH DIRECTIONS. A new endpoint that posts user data adds a value
+ * here; an over-broad list trains users to click through the one screen that exists to
+ * make them read it.
+ *
+ * `addons-linter` WARNS that this key needs Firefox 140 (142 on Android) while
+ * `strict_min_version` below says 121, and that warning is expected and is not the thing
+ * to fix. The key is metadata for a consent screen: Firefox 121-139 ignores it and the
+ * extension installs and runs exactly as before, so the floor buys real users on older
+ * builds at the cost of one warning. Raising it to 140 would silence the warning by
+ * dropping them; DELETING the key to silence it brings back the hard AMO error this
+ * whole block exists to fix — "The `data_collection_permissions` property is missing".
+ */
+const DATA_COLLECTION = {
+  required: ['none'],
+  optional: ['personallyIdentifyingInfo', 'financialAndPaymentInfo'],
+};
+
 // MV3 manifest
 const manifest = {
   manifest_version: 3,
@@ -271,7 +315,13 @@ const manifest = {
   ...(TARGET === 'firefox'
     ? {
         protocol_handlers: [{ protocol: 'web+stellar', name: 'Cosmos Pay', uriTemplate: 'index.html?uri=%s' }],
-        browser_specific_settings: { gecko: { id: 'cosmos-wallet@cosmospay.app', strict_min_version: '121.0' } },
+        browser_specific_settings: {
+          gecko: {
+            id: 'cosmos-wallet@cosmospay.app',
+            strict_min_version: '121.0',
+            data_collection_permissions: DATA_COLLECTION,
+          },
+        },
       }
     : {}),
 };

@@ -15,6 +15,7 @@
       {
         "label": "main",
         "title": "Cosmos Pay",
+        "maximized": true,
         "width": 1180,
         "height": 820,
         "minWidth": 400,

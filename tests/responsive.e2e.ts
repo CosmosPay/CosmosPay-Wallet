@@ -11,9 +11,9 @@
  * deliberately avoid CSS `zoom`/transform scaling of the whole UI — Chrome 149 crashes its
  * GPU compositor on a zoomed subtree.
  *
- * AT OR ABOVE it the column becomes a WINDOW: a bounded card with a border and a radius,
- * floating on the page with `--desk-pad` around it, holding a navigation rail and the
- * screen column. See the `--desk-*` block in src/styles/theme.css.
+ * AT OR ABOVE it the app takes the WHOLE window: edge to edge, no card and no cap, a
+ * navigation rail down the left edge and the screen column centred in what is left. See
+ * the `--desk-*` block in src/styles/theme.css.
  *
  * The breakpoint is the interesting part to guard. `--desk-min` is a custom property and a
  * media query cannot read one, so the literal `1024px` is repeated in
@@ -57,20 +57,28 @@ function probe() {
   const px = (name: string) => parseFloat(css.getPropertyValue(name)) || 0;
 
   const frame = document.querySelector('.shell-frame') as HTMLElement | null;
+  const content = document.querySelector('.shell-content') as HTMLElement | null;
   const rect = frame?.getBoundingClientRect();
   const frameStyle = frame ? getComputedStyle(frame) : null;
 
   return {
     deskMin: px('--desk-min'),
-    deskPad: px('--desk-pad'),
+    // Read per viewport, not once: it steps up on a large monitor.
     contentMax: px('--desk-content-w'),
     frameMax: css.getPropertyValue('--frame-max').trim(),
     frameW: rect ? Math.round(rect.width) : -1,
-    frameLeft: rect ? Math.round(rect.left) : -1,
-    // The window card is the layout that has a radius; the phone column has none. A
-    // computed length rather than a class, so this measures what the SHEETS did, not what
-    // the component asked for.
-    frameRadius: frameStyle ? Math.round(parseFloat(frameStyle.borderTopLeftRadius) || 0) : -1,
+    viewportW: window.innerWidth,
+    contentW: Math.round(content?.getBoundingClientRect().width ?? -1),
+    /**
+     * Which layout is live.
+     *
+     * The frame is a COLUMN on a phone and a ROW on a desktop — the rail sits beside the
+     * content, not above it — so this is the one property that actually distinguishes
+     * them. Width cannot: a 320px phone frame is full-bleed too, and so is a desktop one.
+     * A computed value rather than a class, so it measures what the SHEETS did rather
+     * than what the component asked for.
+     */
+    frameDirection: frameStyle ? frameStyle.flexDirection : '',
     // Set by src/app/Shell.tsx on every build that may enter desktop mode. Its absence in
     // the extension is what keeps a dragged-wide side panel a single column.
     deskCapable: !!document.querySelector('.shell-root.has-desktop-mode'),
@@ -100,13 +108,17 @@ try {
     ok(m.deskCapable, `${s.name}: the web build declares itself desktop-capable`);
 
     if (s.w >= m.deskMin) {
-      // Window mode. No session on the welcome screen, so there is no rail and the card is
-      // exactly the column — see --desk-content-w in theme.css.
-      ok(m.frameRadius > 0, `${s.name}: the frame is a window card (radius ${m.frameRadius}px)`);
-      ok(m.frameW <= m.contentMax + 2, `${s.name}: railless card stays column-width (${m.frameW}px)`);
-      ok(m.frameLeft >= m.deskPad - 1, `${s.name}: the card floats off the edge (${m.frameLeft}px)`);
+      ok(m.frameDirection === 'row', `${s.name}: the rail sits beside the content (${m.frameDirection})`);
+      // The whole point of the mode: the frame is the window, with nothing reserved
+      // around it. A cap or a margin here would be a border of empty page.
+      ok(m.frameW === m.viewportW, `${s.name}: the frame fills the screen (${m.frameW} of ${m.viewportW}px)`);
+      // The screen column inside is still capped — the forty screens are built for a
+      // narrow column, and stretching a payment form to 1900px is the failure this
+      // guards. No session on the welcome screen, so there is no rail taking width.
+      ok(m.contentW <= m.contentMax + 2, `${s.name}: the reading column stays capped (${m.contentW}px)`);
+      ok(m.contentW > 400, `${s.name}: ...but did not collapse (${m.contentW}px)`);
     } else {
-      ok(m.frameRadius === 0, `${s.name}: still a phone column, no card (radius ${m.frameRadius}px)`);
+      ok(m.frameDirection === 'column', `${s.name}: still a phone column (${m.frameDirection})`);
       if (s.wide) ok(m.frameW > 460, `${s.name}: column widened past phone size (${m.frameW}px)`);
       else ok(m.frameW <= 440, `${s.name}: column fits the phone width (${m.frameW}px)`);
       ok(m.frameW <= 640, `${s.name}: column stays capped (${m.frameW}px)`);
@@ -123,11 +135,11 @@ try {
   ok(seed.deskMin > 0, `--desk-min is readable (${seed.deskMin}px)`);
 
   const below = await measure(seed.deskMin - 1, 900);
-  ok(below.m.frameRadius === 0, `one pixel below --desk-min is still a column (${seed.deskMin - 1}px)`);
+  ok(below.m.frameDirection === 'column', `one pixel below --desk-min is still a column (${seed.deskMin - 1}px)`);
   await below.ctx.close();
 
   const at = await measure(seed.deskMin, 900);
-  ok(at.m.frameRadius > 0, `--desk-min itself is the window (${seed.deskMin}px)`);
+  ok(at.m.frameDirection === 'row', `--desk-min itself is the desktop layout (${seed.deskMin}px)`);
   await at.ctx.close();
 } catch (e) {
   fails.push('exception: ' + (e as Error).message);

@@ -122,12 +122,15 @@ test:responsive` guards the column across 320px → 1920px.
 
 ### The desktop mode is chrome, not a second design
 
-Past `--desk-min` the column becomes a window: a bounded card, a navigation rail down
-its left edge (`src/app/DesktopNav.tsx`), the screen column centred beside it. **No
-screen knows this happened**, and none should — all forty are built for a narrow
-column and stretching them to 1100px is how a consolidation pass silently restyles
-work nobody re-checked. Everything the mode does lives in `src/styles/app/shell.css`
-and `src/styles/app/desktop-nav.css`, under the `--desk-*` tokens in `theme.css`.
+Past `--desk-min` the app takes the WHOLE window: edge to edge, no card and no cap, a
+navigation rail down the left edge (`src/app/DesktopNav.tsx`) and the screen column
+centred in what is left. **No screen knows this happened**, and none should — all forty
+are built for a narrow column, and stretching a payment form to 1900px is how a layout
+pass silently restyles work nobody re-checked. The frame is what fills the screen; the
+reading column inside it stays capped at `--desk-content-w`.
+
+Everything the mode does lives in `src/styles/app/shell.css` and
+`src/styles/app/desktop-nav.css`, under the `--desk-*` tokens in `theme.css`.
 
 Three rules hold it together:
 

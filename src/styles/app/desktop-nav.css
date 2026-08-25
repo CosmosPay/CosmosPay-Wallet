@@ -1,5 +1,6 @@
 /* DesktopNav — the vertical navigation rail (src/app/DesktopNav.tsx).
-   Shown only past --desk-min; see the --desk-* block in src/styles/theme.css.
+   Shown only past --desk-min, where it runs the full height of the window down its
+   left edge; see the --desk-* block in src/styles/theme.css.
    The 1024px literal below IS --desk-min, and `npm run test:responsive` asserts they
    agree, because a media query cannot read a custom property. */
 

@@ -102,7 +102,7 @@ html.kb-open body {
 }
 
 /* =====================================================================
-   Desktop window — see the --desk-* block in src/styles/theme.css for what
+   Desktop layout — see the --desk-* block in src/styles/theme.css for what
    this mode is and why it is gated on a class as well as a width.
    The 1024px literal here IS --desk-min; `npm run test:responsive` asserts
    the two agree, because a media query cannot read a custom property.
@@ -120,28 +120,22 @@ html.kb-open body {
 }
 
 @media (min-width: 1024px) {
+  /* EDGE TO EDGE. No padding, no card, no cap: on a desktop the app IS the window, so
+     anything reserved here would be a border of empty page around a wallet that was
+     asked to fill the screen. The horizontal device insets stay — they are 0 on every
+     desktop and only mean something on the one non-desktop device that reaches this
+     breakpoint, a tablet in landscape. */
   .shell-root.has-desktop-mode {
-    /* Vertical padding as well as horizontal, so the card floats. `box-sizing: border-box`
-       (set globally in base.css) folds it into the min-height above, so this cannot be
-       what introduces a page scrollbar. The device insets stay on the horizontal pair for
-       the reason the base rule gives — env() measures from the viewport, and a centred
-       card never reaches the notch. */
-    align-items: center;
-    padding: var(--desk-pad) calc(var(--desk-pad) + var(--safe-r)) var(--desk-pad) calc(var(--desk-pad) + var(--safe-l));
+    padding-left: var(--safe-l);
+    padding-right: var(--safe-r);
   }
 
   .shell-root.has-desktop-mode .shell-frame {
-    /* No rail: the card is exactly the column. `.has-desktop-nav` widens it below. */
-    max-width: var(--desk-content-w);
-    height: min(var(--desk-frame-h), calc(var(--shell-h, 100dvh) - var(--desk-pad) * 2));
+    /* Beats the `--frame-max` ladder, which is the phone column's cap and has nothing to
+       say here. `100%` rather than `none` so the frame still cannot outgrow the padded
+       box it sits in. */
+    max-width: 100%;
     flex-direction: row;
-    border: 1px solid var(--glass-border);
-    border-radius: 26px;
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.38);
-  }
-
-  .shell-root.has-desktop-nav .shell-frame {
-    max-width: var(--desk-frame-w);
   }
 
   /* Centre the column in whatever the rail left over. */
@@ -153,9 +147,8 @@ html.kb-open body {
     width: 100%;
     max-width: var(--desk-content-w);
     /* A little more room than the phone gutter: the column is wider here and the same
-       22px reads as tight against a border rather than against the edge of a screen.
-       Set on the token so every screen inherits it — including .kb-dock, whose negative
-       margins must stay in step with it. */
+       22px reads as tight. Set on the token so every screen inherits it — including
+       .kb-dock, whose negative margins must stay in step with it. */
     --gutter: 26px;
   }
 

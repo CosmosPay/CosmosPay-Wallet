@@ -129,10 +129,12 @@ documento que sostiene la sesión; cada enlace saliente pasa por
 
 ### Diseño de escritorio
 
-A partir de `--desk-min` (1024px) la columna de teléfono se convierte en una **ventana**: una
-tarjeta acotada con un riel de navegación en su borde izquierdo y la columna de pantalla centrada al
-lado. Ninguna de las cuarenta pantallas cambia — siguen renderizando en una columna de ancho
-aproximadamente telefónico, que es para lo que se diseñaron. Lo que cambia es el marco alrededor.
+A partir de `--desk-min` (1024px) la app ocupa **toda la ventana**: de borde a borde, sin tarjeta y
+sin tope, con un riel de navegación en el borde izquierdo y la columna de pantalla centrada en lo que
+queda. Ninguna de las cuarenta pantallas cambia — siguen renderizando en una columna de ancho
+aproximadamente telefónico, que es para lo que se diseñaron, y estirar un formulario de pago a
+1900px es justo el fallo que esto evita. Lo que llena la pantalla es el marco; la columna de lectura
+que hay dentro sigue acotada por `--desk-content-w`, que sube un escalón en un monitor grande.
 
 Qué navegación se ve lo decide **el CSS**. Tanto [src/app/DesktopNav.tsx](../src/app/DesktopNav.tsx)
 como [src/app/BottomNav.tsx](../src/app/BottomNav.tsx) entran en el DOM y una media query oculta

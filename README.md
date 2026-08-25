@@ -126,10 +126,12 @@ the session; every outbound link goes through
 
 ### Desktop layout
 
-Past `--desk-min` (1024px) the phone column becomes a **window**: a bounded card with a navigation
-rail down its left edge and the screen column centred beside it. Nothing about the forty screens
-changes — they still render into a column of roughly phone width, because that is what they were
-designed for. What changes is the chrome around it.
+Past `--desk-min` (1024px) the app takes the **whole window**: edge to edge, no card and no cap, a
+navigation rail down the left edge and the screen column centred in what is left. Nothing about the
+forty screens changes — they still render into a column of roughly phone width, because that is what
+they were designed for, and stretching a payment form to 1900px is the failure this avoids. What
+fills the screen is the frame; the reading column inside it stays capped at `--desk-content-w`,
+which steps up once on a large monitor.
 
 Which navigation is visible is decided **in CSS**. Both [src/app/DesktopNav.tsx](src/app/DesktopNav.tsx)
 and [src/app/BottomNav.tsx](src/app/BottomNav.tsx) go into the DOM and a media query hides one, so

@@ -58,10 +58,12 @@ jobs:
         with:
           workspaces: src-tauri
 
+      # Shorter than the list native.yml installs: `cargo check` needs the headers the
+      # tauri crates link against, not the tooling that bundles an AppImage.
       - name: Linux WebView dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev librsvg2-dev libxdo-dev
 
       - name: Typecheck Rust (src-tauri)
         run: cargo check --manifest-path src-tauri/Cargo.toml --all-targets
