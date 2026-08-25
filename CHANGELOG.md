@@ -2,6 +2,19 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.4.1] - 2026-08-24
+
+### Miscellaneous
+- Bump the minor-and-patch group with 2 updates (#56) (8122517)
+
+## [1.4.0] - 2026-08-20
+
+### Features
+- Implement native build workflows for Android and iOS, including version stamping (0c195fa)
+
+### Bug Fixes
+- Update references from Podfile to Package.swift in CI workflows (a561c5c)
+
 ## [1.3.0] - 2026-08-19
 
 ### Features
