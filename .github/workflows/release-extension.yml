@@ -229,7 +229,7 @@ jobs:
 
           **Phone apps** (same schedule as the desktop builds above):
           - **Android:** `cosmos-pay-v${{ steps.ver.outputs.version }}-debug.apk` installs on any device with *Install unknown apps* enabled. `cosmos-pay-v${{ steps.ver.outputs.version }}.apk` (release-signed) and the matching `.aab` for Play Console appear only when the repository has the release keystore configured.
-          - **iOS:** `cosmos-pay-v${{ steps.ver.outputs.version }}-unsigned.ipa` is built without an Apple signature, so it does **not** install by tapping it — it needs re-signing with your own account (Sideloadly, AltStore, or an MDM). It is published so the build is reproducible and inspectable, not as a one-tap install.
+          - **iOS:** no download yet. A Tauri iOS app can only be built through `tauri ios build`, whose export step needs an Apple signing identity this repository has no secrets for, so CI compiles both halves of the app to catch breakage but cannot package one. Build it yourself from the tag with `npm run ios:build` on a Mac with an Apple ID configured in Xcode.
           MD
           echo "=== RELEASE_NOTES.md ===" && cat RELEASE_NOTES.md
 
