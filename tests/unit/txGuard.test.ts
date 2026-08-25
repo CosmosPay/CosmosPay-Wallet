@@ -21,6 +21,7 @@ import {
   TxGuardError,
 } from '@/lib/txGuard';
 import type { NetConfig } from '@/lib/stellar';
+import { tNow } from '@/lib/i18n';
 
 const CFG: NetConfig = {
   id: 'testnet',
@@ -478,7 +479,7 @@ test('createClaimableBalance shows what it moves, and is refused', () => {
   ]);
   const op = reviewTx(CFG, xdr).operations[0];
   assert.ok(op.rows.some((r) => r.value.includes('10000')));
-  assert.ok(op.rows.some((r) => r.label === 'Reclamantes'));
+  assert.ok(op.rows.some((r) => r.label === tNow('guard.row.claimants')));
   assert.equal(op.critical, true);
   throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), 'guard.criticalOp');
 });
@@ -512,9 +513,9 @@ test('garbage that is not an envelope is refused — this is what extractUnsigne
 test('reviewTx surfaces destination and amount for the approval window', () => {
   const review = reviewTx(CFG, envelope([payment({ destination: OTHER, amount: '42.5' })]));
   const rows = review.operations[0].rows;
-  assert.equal(rows.find((r) => r.label === 'Destino')?.value, OTHER);
+  assert.equal(rows.find((r) => r.label === tNow('guard.row.destination'))?.value, OTHER);
   // The SDK pads to Stellar's 7 decimal places — that is the value being signed,
   // so it is the value the window must show.
-  assert.equal(rows.find((r) => r.label === 'Importe')?.value, '42.5000000 XLM');
+  assert.equal(rows.find((r) => r.label === tNow('guard.row.amount'))?.value, '42.5000000 XLM');
   assert.equal(review.feeXlm, '0.00001');
 });

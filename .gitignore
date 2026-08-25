@@ -24,6 +24,16 @@ node_modules/
 src-tauri/target/
 src-tauri/gen/schemas/
 
+# Gradle's own caches, wherever they land: the wallet's native plugin builds one at
+# src-tauri/plugins/cosmos/android/.gradle/, and `tauri android init` produces another
+# under src-tauri/gen/android/. Thirteen of the first set were committed once — two
+# toolchain versions' worth of `.lock` and `fileHashes.bin`, written by a Windows box —
+# so every Android build afterwards left them dirty in `git status`, and a CI runner
+# inherited lock files belonging to a machine it had never seen. They are build state,
+# not source; the Kotlin next to them is the part worth committing.
+.gradle/
+src-tauri/plugins/cosmos/android/build/
+
 # Left over from the Capacitor era, before the native host moved to src-tauri/. Nothing
 # generates or reads it any more and it is safe to delete; ignored rather than committed
 # so an absent-minded `git add .` cannot resurrect it into the repo.

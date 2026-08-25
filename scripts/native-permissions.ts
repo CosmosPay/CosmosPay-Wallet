@@ -21,22 +21,61 @@ import { access, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 const ANDROID_MANIFEST = 'src-tauri/gen/android/app/src/main/AndroidManifest.xml';
 const ANDROID_XML_DIR = 'src-tauri/gen/android/app/src/main/res/xml';
 
-/**
- * The iOS project directory is named after `productName` in src-tauri/tauri.conf.json, so it
- * cannot be a constant the way the Android paths can — renaming the product would silently
- * turn every iOS patch below into a no-op. Found by its `_iOS` suffix, which is Tauri's own
- * naming rule, and resolved once at startup.
- */
+/* --------------------------- shared helpers --------------------------- */
+/* Declared here rather than further down because the iOS path discovery below is their
+   first caller, and it runs at module scope. */
+
+async function exists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const log = (msg: string) => console.log(`native:perms — ${msg}`);
+
+/* ------------------------------- ios paths -------------------------------
+   The iOS project directory cannot be a constant the way the Android paths can: it is
+   generated, and its name is not ours to choose. Resolved once, at startup. */
 const IOS_GEN_ROOT = 'src-tauri/gen/apple';
 
+/**
+ * `_iOS` is Tauri's naming rule, but the stem is the CARGO PACKAGE name and not
+ * `productName` — the generated project is `cosmos-wallet.xcodeproj`, not "Cosmos Pay".
+ * So the suffix is the only part worth matching on, and even that is a convention rather
+ * than a contract.
+ *
+ * Hence the fallback: any directory holding an `Info.plist` is the app directory, whatever
+ * Tauri decided to call it. Without it a rename downstream would make every patch below a
+ * silent no-op — the exact failure mode CLAUDE.md warns about for generated trees, where
+ * nothing errors and the app simply ships without its purpose strings and crashes the first
+ * time it touches the camera.
+ */
 async function findIosAppDir(): Promise<string | null> {
+  let entries;
   try {
-    const entries = await readdir(IOS_GEN_ROOT, { withFileTypes: true });
-    const app = entries.find((e) => e.isDirectory() && e.name.endsWith('_iOS'));
-    return app ? `${IOS_GEN_ROOT}/${app.name}` : null;
+    entries = await readdir(IOS_GEN_ROOT, { withFileTypes: true });
   } catch {
     return null; // `tauri ios init` has not run here (or this is not macOS)
   }
+
+  const dirs = entries.filter((e) => e.isDirectory());
+  const byName = dirs.find((e) => e.name.endsWith('_iOS'));
+  if (byName) return `${IOS_GEN_ROOT}/${byName.name}`;
+
+  for (const dir of dirs) {
+    if (await exists(`${IOS_GEN_ROOT}/${dir.name}/Info.plist`)) return `${IOS_GEN_ROOT}/${dir.name}`;
+  }
+
+  // The platform WAS generated — the directory exists — and nothing in it looks like an
+  // app. Said out loud rather than returned as "no iOS project", because the two are
+  // indistinguishable to the caller and only one of them is a problem.
+  log(`ERROR — ${IOS_GEN_ROOT} exists but no app directory was found inside it.`);
+  log('  Tauri renamed the generated project; update findIosAppDir() in this script.');
+  log('  Purpose strings were NOT written, and iOS terminates the app when it needs one.');
+  return null;
 }
 
 const IOS_APP_DIR = await findIosAppDir();
@@ -136,17 +175,6 @@ const IOS_USAGE: { key: string; value: string }[] = [
     value: 'Cosmos Wallet opens your photo library when you import a QR image, choose a wallet avatar, or attach a document to an identity check.',
   },
 ];
-
-async function exists(p: string): Promise<boolean> {
-  try {
-    await access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const log = (msg: string) => console.log(`native:perms — ${msg}`);
 
 /* ------------------------------- android ------------------------------- */
 
