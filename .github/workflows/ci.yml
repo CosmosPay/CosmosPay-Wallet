@@ -128,22 +128,26 @@ jobs:
   # would only delay the one signal nobody else produces. Both jobs run npm ci and the web
   # build anyway; they are parallel, not sequential.
   #
-  # DESKTOP AND iOS ARE SKIPPED ON PULL REQUESTS, and that is a cost decision rather than a
-  # taste one: the desktop matrix is three runners and iOS is a fourth, a macOS runner bills
-  # at ten times a Linux one, and the free-tier pool allows few of them at once. They run on
-  # pushes to main/dev, where a broken Package.swift or a WebKitGTK rename is still caught
-  # before a release. What a PR gets instead is the `cargo check` in the build job above —
-  # minutes rather than tens of them, and it catches the Rust breakage that matters most.
-  # Drop either line to build them on PRs as well.
+  # EVERY PLATFORM BUILDS ON EVERY RUN, pull requests included. This used to skip desktop and
+  # iOS on PRs to save runner minutes — the desktop matrix is three runners, iOS is a fourth,
+  # and a macOS runner bills at ten times a Linux one.
   #
-  # ANDROID IS NOT SKIPPED, because it is the only job that compiles the Kotlin half of
-  # src-tauri/plugins/cosmos — the biometric secure store, on the signing path.
+  # The saving was not free, and the bill came due: iOS had NEVER completed a build here, so
+  # `-configuration Release` matching none of cargo-mobile2's lower-case configuration names
+  # sat undiscovered until it broke a push to `dev`, and `native:perms` was called by a name
+  # package.json did not define. Both were merged by green PRs. A check that only runs after
+  # merge does not gate anything; it just moves the failure onto whoever pushes next.
+  #
+  # So the trade is deliberate and the other way round now: minutes on every PR, in exchange
+  # for the branch protection actually meaning the binaries build. If the cost has to come
+  # down again, narrow the MATRIX (one desktop OS on PRs, all three on push) rather than
+  # switching a platform off entirely — partial coverage beats none.
   native:
     name: Native binaries
     permissions:
       contents: read # artifacts only; nothing here uploads to a release
     uses: ./.github/workflows/native.yml
     with:
-      desktop: ${{ github.event_name != 'pull_request' }}
-      ios: ${{ github.event_name != 'pull_request' }}
+      desktop: true
+      ios: true
     secrets: inherit
