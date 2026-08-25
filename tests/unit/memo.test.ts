@@ -14,6 +14,7 @@ import {
   memoProblem,
   normalizeMemo,
 } from '@/lib/memo';
+import { tNow } from '@/lib/i18n';
 
 test('memo is clamped by BYTES, not characters', () => {
   const accents = 'ñ'.repeat(28); // 28 chars, 56 bytes
@@ -70,9 +71,22 @@ test('normalizeMemo keeps an id as an id, and degrades gracefully', () => {
   assert.equal(normalizeMemo('   ', 'id'), null);
 });
 
+/**
+ * Asserted by KEY, never against the rendered sentence.
+ *
+ * `memoProblem` returns translated copy, so matching a phrase pins the test to one
+ * language — and to whichever language the machine running it happens to report. Both
+ * lines below used to do that, and both went red the moment CI ran them in English.
+ *
+ * Resolving the key through the same `tNow` the module itself calls leaves the real
+ * content under test: that the RIGHT key fires, with the right params interpolated, and
+ * that a valid memo yields null. Reword any of the five translations and nothing here
+ * breaks; point `memoProblem` at the wrong key and this does.
+ */
 test('memoProblem explains a rejection', () => {
   assert.equal(memoProblem('', 'text'), null);
   assert.equal(memoProblem('corto', 'text'), null);
-  assert.match(String(memoProblem('ñ'.repeat(28), 'text')), /28 bytes/);
-  assert.match(String(memoProblem('no-num', 'id')), /número entero/);
+  // 28 two-byte characters = 56 bytes, so exactly 28 over the limit.
+  assert.equal(memoProblem('ñ'.repeat(28), 'text'), tNow('memo.overByteLimit', { max: 28, over: 28 }));
+  assert.equal(memoProblem('no-num', 'id'), tNow('memo.idMustBeInteger'));
 });

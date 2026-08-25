@@ -21,22 +21,61 @@ import { access, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 const ANDROID_MANIFEST = 'src-tauri/gen/android/app/src/main/AndroidManifest.xml';
 const ANDROID_XML_DIR = 'src-tauri/gen/android/app/src/main/res/xml';
 
-/**
- * The iOS project directory is named after `productName` in src-tauri/tauri.conf.json, so it
- * cannot be a constant the way the Android paths can — renaming the product would silently
- * turn every iOS patch below into a no-op. Found by its `_iOS` suffix, which is Tauri's own
- * naming rule, and resolved once at startup.
- */
+/* --------------------------- shared helpers --------------------------- */
+/* Declared here rather than further down because the iOS path discovery below is their
+   first caller, and it runs at module scope. */
+
+async function exists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const log = (msg: string) => console.log(`native:perms — ${msg}`);
+
+/* ------------------------------- ios paths -------------------------------
+   The iOS project directory cannot be a constant the way the Android paths can: it is
+   generated, and its name is not ours to choose. Resolved once, at startup. */
 const IOS_GEN_ROOT = 'src-tauri/gen/apple';
 
+/**
+ * `_iOS` is Tauri's naming rule, but the stem is the CARGO PACKAGE name and not
+ * `productName` — the generated project is `cosmos-wallet.xcodeproj`, not "Cosmos Pay".
+ * So the suffix is the only part worth matching on, and even that is a convention rather
+ * than a contract.
+ *
+ * Hence the fallback: any directory holding an `Info.plist` is the app directory, whatever
+ * Tauri decided to call it. Without it a rename downstream would make every patch below a
+ * silent no-op — the exact failure mode CLAUDE.md warns about for generated trees, where
+ * nothing errors and the app simply ships without its purpose strings and crashes the first
+ * time it touches the camera.
+ */
 async function findIosAppDir(): Promise<string | null> {
+  let entries;
   try {
-    const entries = await readdir(IOS_GEN_ROOT, { withFileTypes: true });
-    const app = entries.find((e) => e.isDirectory() && e.name.endsWith('_iOS'));
-    return app ? `${IOS_GEN_ROOT}/${app.name}` : null;
+    entries = await readdir(IOS_GEN_ROOT, { withFileTypes: true });
   } catch {
     return null; // `tauri ios init` has not run here (or this is not macOS)
   }
+
+  const dirs = entries.filter((e) => e.isDirectory());
+  const byName = dirs.find((e) => e.name.endsWith('_iOS'));
+  if (byName) return `${IOS_GEN_ROOT}/${byName.name}`;
+
+  for (const dir of dirs) {
+    if (await exists(`${IOS_GEN_ROOT}/${dir.name}/Info.plist`)) return `${IOS_GEN_ROOT}/${dir.name}`;
+  }
+
+  // The platform WAS generated — the directory exists — and nothing in it looks like an
+  // app. Said out loud rather than returned as "no iOS project", because the two are
+  // indistinguishable to the caller and only one of them is a problem.
+  log(`ERROR — ${IOS_GEN_ROOT} exists but no app directory was found inside it.`);
+  log('  Tauri renamed the generated project; update findIosAppDir() in this script.');
+  log('  Purpose strings were NOT written, and iOS terminates the app when it needs one.');
+  return null;
 }
 
 const IOS_APP_DIR = await findIosAppDir();
@@ -137,17 +176,6 @@ const IOS_USAGE: { key: string; value: string }[] = [
   },
 ];
 
-async function exists(p: string): Promise<boolean> {
-  try {
-    await access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-const log = (msg: string) => console.log(`native:perms — ${msg}`);
-
 /* ------------------------------- android ------------------------------- */
 
 /**
@@ -235,8 +263,8 @@ async function patchIos(): Promise<void> {
 /**
  * Keep the encrypted vault off Google Drive.
  *
- * The generated template writes `android:allowBackup="true"`, and Android Auto Backup then
- * uploads the app's SharedPreferences to the user's Drive. That is where `lib/storage.ts`
+ * Android Auto Backup is ON unless a manifest says otherwise, and it uploads the app's
+ * SharedPreferences to the user's Drive. That is where `lib/storage.ts`
  * puts everything: the AES-GCM sealed seed (`cosmos.w.<id>`), the sealed device-unlock
  * envelope (`cosmos.auth.<id>`), and the PLAINTEXT wallet list — which carries name, email,
  * birthdate, gender and the avatar image. The sealed blobs are only as strong as an 8-char
@@ -291,21 +319,40 @@ async function patchAndroidBackup(): Promise<void> {
   const before = await readFile(ANDROID_MANIFEST, 'utf8');
   let after = before;
 
-  // The template always writes the attribute, so this is a replace rather than an insert.
   // Rewriting `="true"` specifically (not the whole line) keeps the edit idempotent and
   // leaves an already-false manifest untouched.
   after = after.replace(/android:allowBackup="true"/g, 'android:allowBackup="false"');
 
+  // ...and when the attribute is absent entirely, WRITE IT. This function was authored
+  // against the Capacitor template, which always emitted `android:allowBackup="true"`, so a
+  // replace was enough. Tauri's template emits no such attribute, which means the replace
+  // above matched nothing and the guard below refused every Android build — correctly, and
+  // for the whole time the wallet has been generating its manifest from Tauri. A refusal is
+  // the right failure, but it is not the right resting state: the attribute has to end up in
+  // the manifest for an APK to exist at all.
+  //
+  // Anchored on the `<application` tag name rather than on any attribute the template
+  // happens to write, because the tag name is the part that cannot change while the file is
+  // still an AndroidManifest. Inserted immediately after it, so it lands inside the open tag
+  // whether the template writes its attributes on one line or many.
+  if (!after.includes('android:allowBackup="false"')) {
+    const open = after.indexOf('<application');
+    if (open >= 0) {
+      const at = open + '<application'.length;
+      after = `${after.slice(0, at)}\n        android:allowBackup="false"${after.slice(at)}`;
+    }
+  }
+
   // FAIL LOUD, NOT OPEN. Everything below anchors on `android:allowBackup="false"` being
-  // present. If a future Tauri template stops writing the attribute at all, the replace
-  // above matches nothing, both insertions find no anchor, `after === before`, and the old
+  // present. If the manifest carries no `<application>` element at all, the insert above
+  // matches nothing, both insertions below find no anchor, `after === before`, and the old
   // code logged "already keeps app data out of backups." for a build shipping the platform
   // default — which is `true`. The whole point of this function is that the sealed seed does
   // not go to Google Drive; a silent no-op is the one outcome it must never have.
   if (!after.includes('android:allowBackup="false"')) {
-    log(`ERROR — ${ANDROID_MANIFEST} declares no android:allowBackup attribute.`);
-    log('  The Capacitor template changed shape. Android Auto Backup defaults to ON, which');
-    log('  uploads the sealed vault and the plaintext wallet list to the user\'s Drive.');
+    log(`ERROR — ${ANDROID_MANIFEST} has no <application> element to carry android:allowBackup.`);
+    log('  Android Auto Backup defaults to ON, which uploads the sealed vault and the');
+    log('  plaintext wallet list to the user\'s Drive.');
     log('  Add android:allowBackup="false" to <application> before shipping this build.');
     process.exitCode = 1;
     return;
