@@ -263,8 +263,8 @@ async function patchIos(): Promise<void> {
 /**
  * Keep the encrypted vault off Google Drive.
  *
- * The generated template writes `android:allowBackup="true"`, and Android Auto Backup then
- * uploads the app's SharedPreferences to the user's Drive. That is where `lib/storage.ts`
+ * Android Auto Backup is ON unless a manifest says otherwise, and it uploads the app's
+ * SharedPreferences to the user's Drive. That is where `lib/storage.ts`
  * puts everything: the AES-GCM sealed seed (`cosmos.w.<id>`), the sealed device-unlock
  * envelope (`cosmos.auth.<id>`), and the PLAINTEXT wallet list — which carries name, email,
  * birthdate, gender and the avatar image. The sealed blobs are only as strong as an 8-char
@@ -319,21 +319,40 @@ async function patchAndroidBackup(): Promise<void> {
   const before = await readFile(ANDROID_MANIFEST, 'utf8');
   let after = before;
 
-  // The template always writes the attribute, so this is a replace rather than an insert.
   // Rewriting `="true"` specifically (not the whole line) keeps the edit idempotent and
   // leaves an already-false manifest untouched.
   after = after.replace(/android:allowBackup="true"/g, 'android:allowBackup="false"');
 
+  // ...and when the attribute is absent entirely, WRITE IT. This function was authored
+  // against the Capacitor template, which always emitted `android:allowBackup="true"`, so a
+  // replace was enough. Tauri's template emits no such attribute, which means the replace
+  // above matched nothing and the guard below refused every Android build — correctly, and
+  // for the whole time the wallet has been generating its manifest from Tauri. A refusal is
+  // the right failure, but it is not the right resting state: the attribute has to end up in
+  // the manifest for an APK to exist at all.
+  //
+  // Anchored on the `<application` tag name rather than on any attribute the template
+  // happens to write, because the tag name is the part that cannot change while the file is
+  // still an AndroidManifest. Inserted immediately after it, so it lands inside the open tag
+  // whether the template writes its attributes on one line or many.
+  if (!after.includes('android:allowBackup="false"')) {
+    const open = after.indexOf('<application');
+    if (open >= 0) {
+      const at = open + '<application'.length;
+      after = `${after.slice(0, at)}\n        android:allowBackup="false"${after.slice(at)}`;
+    }
+  }
+
   // FAIL LOUD, NOT OPEN. Everything below anchors on `android:allowBackup="false"` being
-  // present. If a future Tauri template stops writing the attribute at all, the replace
-  // above matches nothing, both insertions find no anchor, `after === before`, and the old
+  // present. If the manifest carries no `<application>` element at all, the insert above
+  // matches nothing, both insertions below find no anchor, `after === before`, and the old
   // code logged "already keeps app data out of backups." for a build shipping the platform
   // default — which is `true`. The whole point of this function is that the sealed seed does
   // not go to Google Drive; a silent no-op is the one outcome it must never have.
   if (!after.includes('android:allowBackup="false"')) {
-    log(`ERROR — ${ANDROID_MANIFEST} declares no android:allowBackup attribute.`);
-    log('  The Capacitor template changed shape. Android Auto Backup defaults to ON, which');
-    log('  uploads the sealed vault and the plaintext wallet list to the user\'s Drive.');
+    log(`ERROR — ${ANDROID_MANIFEST} has no <application> element to carry android:allowBackup.`);
+    log('  Android Auto Backup defaults to ON, which uploads the sealed vault and the');
+    log('  plaintext wallet list to the user\'s Drive.');
     log('  Add android:allowBackup="false" to <application> before shipping this build.');
     process.exitCode = 1;
     return;
