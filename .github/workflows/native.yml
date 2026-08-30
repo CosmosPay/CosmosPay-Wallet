@@ -254,7 +254,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
 
       # Tauri cross-compiles the Rust core for four ABIs; without the targets the build
       # fails deep inside cargo with a message about a missing std, which reads like a
