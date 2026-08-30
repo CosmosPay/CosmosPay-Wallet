@@ -269,7 +269,10 @@ export function signRegistrationMessage(
   nonce: string,
 ): string {
   const message = `Cosmos Pay Wallet account registration\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8')).toString('base64');
+  // `sign()` is a Uint8Array under stellar-sdk 17, and Uint8Array#toString ignores the
+  // encoding — go through Buffer.from() or the server gets a list of decimals.
+  const sig = Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'));
+  return Buffer.from(sig).toString('base64');
 }
 
 /**
@@ -330,7 +333,10 @@ export function signLinkMessage(
   nonce: string,
 ): string {
   const message = `Cosmos Pay Wallet account link\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8')).toString('base64');
+  // `sign()` is a Uint8Array under stellar-sdk 17, and Uint8Array#toString ignores the
+  // encoding — go through Buffer.from() or the server gets a list of decimals.
+  const sig = Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'));
+  return Buffer.from(sig).toString('base64');
 }
 
 /**

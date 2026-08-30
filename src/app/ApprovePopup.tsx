@@ -224,9 +224,12 @@ export default function ApprovePopup() {
         // 32-byte "message" that is really a transaction hash yields a valid
         // transaction signature. See lib/signMessage.ts.
         const digest = await signMessagePayload(String(req.params.message || ''));
+        // stellar-sdk 17 returns a plain Uint8Array from sign(); its toString() IGNORES
+        // the encoding argument and yields comma-separated decimals, so wrap before
+        // encoding — the same `Buffer.from(...)` step lib/txGuard.ts already uses.
         const sig = Keypair.fromSecret(secret).sign(Buffer.from(digest));
         respond(req.id, true, {
-          signedMessage: sig.toString('base64'),
+          signedMessage: Buffer.from(sig).toString('base64'),
           signerAddress: entry.publicKey,
           domain: SIGN_MESSAGE_DOMAIN,
         });
