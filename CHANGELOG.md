@@ -2,6 +2,13 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.5.1] - 2026-08-30
+
+### Miscellaneous
+- Bump actions/setup-java from 5 to 6 (#64) (d3f1672)
+- Bump android-actions/setup-android from 3 to 4 (#63) (c9ed297)
+- Bump the minor-and-patch group with 4 updates (#65) (ab300e6)
+
 ## [1.5.0] - 2026-08-25
 
 ### Bug Fixes

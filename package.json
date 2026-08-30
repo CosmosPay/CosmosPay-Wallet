@@ -1,6 +1,6 @@
 {
   "name": "cosmos-stellar-wallet",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "private": true,
   "type": "module",
   "description": "Cosmos — a non-custodial Stellar wallet (Astro + Preact + Tauri)",
