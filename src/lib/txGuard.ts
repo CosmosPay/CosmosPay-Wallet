@@ -530,7 +530,11 @@ function poolPlan(sides: readonly [PoolSide, PoolSide]): { id: string; ceilings:
     const inOrder = Asset.compare(first, second) <= 0;
     const [a, b] = inOrder ? [sides[0], sides[1]] : [sides[1], sides[0]];
     const pool = new LiquidityPoolAsset(asset(a.asset), asset(b.asset), LiquidityPoolFeeV18);
-    const id = getLiquidityPoolId('constant_product', pool.getLiquidityPoolParameters()).toString('hex');
+    // Uint8Array under stellar-sdk 17 — Buffer.from() first, exactly as memoOf() does
+    // above. Without it the id is a decimal list and every pool comparison silently fails.
+    const id = Buffer.from(
+      getLiquidityPoolId('constant_product', pool.getLiquidityPoolParameters()),
+    ).toString('hex');
     return { id, ceilings: [a.max, b.max] };
   } catch {
     return null;

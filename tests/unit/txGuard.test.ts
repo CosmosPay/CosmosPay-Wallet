@@ -360,9 +360,11 @@ test('removing a trustline is refused outside the trustline flow', () => {
    so these fixtures use the real id of the (XLM, USDC) constant-product pool rather
    than an arbitrary 64-hex string. `OTHER_POOL` stays arbitrary on purpose: it stands
    for whatever pool a hostile gateway would rather deposit into. */
-const POOL = getLiquidityPoolId(
-  'constant_product',
-  new LiquidityPoolAsset(Asset.native(), USDC, LiquidityPoolFeeV18).getLiquidityPoolParameters(),
+const POOL = Buffer.from(
+  getLiquidityPoolId(
+    'constant_product',
+    new LiquidityPoolAsset(Asset.native(), USDC, LiquidityPoolFeeV18).getLiquidityPoolParameters(),
+  ),
 ).toString('hex');
 const OTHER_POOL = 'b'.repeat(64);
 
