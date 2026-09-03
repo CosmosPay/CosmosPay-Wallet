@@ -200,6 +200,24 @@ class CosmosPlugin(private val activity: Activity) : Plugin(activity) {
         invoke.resolve()
     }
 
+    /**
+     * Android needs no code for this, and the method exists anyway.
+     *
+     * Backup here is a MANIFEST decision, not a runtime one: `scripts/native-permissions.ts`
+     * writes `android:allowBackup="false"` for cloud backup and the `dataExtractionRules`
+     * that govern device-to-device transfer, both of which are already in force by the time
+     * any of this runs. iOS has no equivalent — `NSURLIsExcludedFromBackupKey` is set on the
+     * URL at runtime — so the command exists for that platform and answers honestly here.
+     *
+     * Resolves rather than refusing. `src/lib/storage.ts` only asks on iOS, so nothing
+     * reaches this today; if something ever does, "the directory is not in a backup" is a
+     * true statement on Android and an error would be a false one.
+     */
+    @Command
+    fun excludeFromBackup(invoke: Invoke) {
+        invoke.resolve()
+    }
+
     private fun statusObject(status: Status): JSObject = JSObject()
         .put("available", status.available)
         .put("biometry", status.biometry)

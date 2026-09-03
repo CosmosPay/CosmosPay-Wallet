@@ -1,11 +1,11 @@
 /**
  * The single door to `tauri-plugin-cosmos`, the wallet's own native plugin.
  *
- * Two unrelated capabilities live behind that one plugin — the biometric secure store and
- * the mobile share sheet — because a Tauri mobile plugin carries a Gradle module and a
- * Swift package with it, and doubling that boilerplate to separate two commands buys
- * nothing. They share a crate and NOTHING else: separate Rust modules, separate Kotlin and
- * Swift classes, no shared state.
+ * Unrelated capabilities live behind that one plugin — the biometric secure store, the
+ * mobile share sheet, the iOS backup flag — because a Tauri mobile plugin carries a Gradle
+ * module and a Swift package with it, and multiplying that boilerplate to separate a
+ * handful of commands buys nothing. They share a crate and NOTHING else: separate Rust
+ * modules, separate Kotlin and Swift classes, no shared state.
  *
  * Every command name in the app is spelled once, here. A typo in an `invoke` string is a
  * runtime rejection with a message about an unknown command, which reads like a broken
@@ -25,7 +25,9 @@ export type NativeCommand =
   // share sheet: see src/lib/share.ts
   | 'share_text'
   // hardware back button with an empty stack: see src/app/WalletApp.tsx
-  | 'app_exit';
+  | 'app_exit'
+  // keep the app-data directory out of iCloud: see src/lib/storage.ts
+  | 'exclude_from_backup';
 
 /**
  * Events the plugin pushes at the frontend, rather than answering.

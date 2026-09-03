@@ -6,7 +6,7 @@ import { Spinner } from '@/ui/Spinner';
 import { Criterion } from '@/features/onboarding/Criterion';
 import { Desc } from '@/features/onboarding/Desc';
 import { Field } from '@/ui/Field';
-import { APP_PWD_CRITERIA, appPasswordOk } from '@/lib/validate';
+import { APP_PWD_CRITERIA, MIN_APP_PWD_LEN, appPasswordOk } from '@/lib/validate';
 import '@/styles/features/onboarding/password-setup.css';
 
 export function PasswordSetup({ store }: { store: WalletStore }) {
@@ -31,12 +31,12 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
       <BackBar title={t('pwd.title')} onBack={back} />
       <Desc className="pwd-setup-desc">{t('pwd.desc')}</Desc>
 
-      <Field password label={t('pwd.label')} value={pwd} onChange={setPwd} placeholder={t('pwd.min')} />
+      <Field password label={t('pwd.label')} value={pwd} onChange={setPwd} placeholder={t('pwd.min', { n: MIN_APP_PWD_LEN })} />
       <Field password label={t('pwd.repeat')} value={confirm} onChange={setConfirm} placeholder={t('pwd.repeat')} />
 
       {/* criteria checklist — states update live as the user types */}
       <div className="col g8 pwd-setup-criteria">
-        <Criterion met={lenOk}>{t('pwd.critLen')}</Criterion>
+        <Criterion met={lenOk}>{t('pwd.critLen', { n: MIN_APP_PWD_LEN })}</Criterion>
         <Criterion met={upperOk}>{t('pwd.critUpper')}</Criterion>
         <Criterion met={digitOk}>{t('pwd.critDigit')}</Criterion>
         <Criterion met={lowerOk}>{t('pwd.critLower')}</Criterion>

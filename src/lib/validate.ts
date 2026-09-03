@@ -25,10 +25,23 @@ export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * under it. The weakest of two disagreeing rules is the one that ends up protecting the
  * seed.
  *
+ * TWELVE characters, not eight, and that floor is the other half of the iteration count in
+ * `constants/crypto.ts` — the bigger half. A KDF multiplies the cost of each guess; the
+ * password decides how many guesses there are. Against a vault file an attacker HOLDS —
+ * a restored backup, a copied profile directory — eight characters from the classes below
+ * is a few days of one consumer GPU even at 600,000 PBKDF2 rounds. Four more characters is
+ * worth orders of magnitude more than any iteration count this app can afford to spend.
+ *
+ * It binds only what is SET from here on: `appPasswordOk` is checked when a password is
+ * chosen or changed, never when one is used. Nobody is locked out by raising it — an
+ * existing eight-character password keeps opening its wallet until its owner changes it.
+ *
  * Each criterion is separate because the onboarding screen shows them as a live checklist;
- * `appPasswordOk` is what everything else asks.
+ * `appPasswordOk` is what everything else asks. The copy is not allowed to restate the
+ * number either: the four strings that name it take it as a `{n}` parameter, so this line
+ * is the only place it is written down.
  */
-export const MIN_APP_PWD_LEN = 8;
+export const MIN_APP_PWD_LEN = 12;
 
 export const APP_PWD_CRITERIA = {
   length: (p: string) => p.length >= MIN_APP_PWD_LEN,

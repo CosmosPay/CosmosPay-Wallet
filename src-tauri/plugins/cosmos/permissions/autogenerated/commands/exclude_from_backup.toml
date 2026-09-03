@@ -1,0 +1,13 @@
+# Automatically generated - DO NOT EDIT!
+
+"$schema" = "../../schemas/schema.json"
+
+[[permission]]
+identifier = "allow-exclude-from-backup"
+description = "Enables the exclude_from_backup command without any pre-configured scope."
+commands.allow = ["exclude_from_backup"]
+
+[[permission]]
+identifier = "deny-exclude-from-backup"
+description = "Denies the exclude_from_backup command without any pre-configured scope."
+commands.deny = ["exclude_from_backup"]

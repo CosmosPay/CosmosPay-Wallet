@@ -4,7 +4,7 @@ import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Field } from '@/ui/Field';
 import { useBusy } from '@/hooks/useBusy';
-import { appPasswordOk } from '@/lib/validate';
+import { MIN_APP_PWD_LEN, appPasswordOk } from '@/lib/validate';
 import '@/styles/features/settings/settings.css';
 
 /**
@@ -22,8 +22,8 @@ export function ChangePassword({ store, onDone }: { store: WalletStore; onDone: 
   const [next, setNext] = useState('');
   const [busy, run] = useBusy();
   // The SAME rule onboarding enforces. This used to be length-only, so a wallet created
-  // under "8 + upper + lower + digit" could be re-sealed under `aaaaaaaa` — and so could
-  // every device-lock envelope holding a copy of it. The store re-checks it too.
+  // under the full checklist could be re-sealed under `aaaaaaaa` — and so could every
+  // device-lock envelope holding a copy of it. The store re-checks it too.
   const ok = cur.length > 0 && appPasswordOk(next) && !busy;
 
   const submit = () =>
@@ -34,7 +34,7 @@ export function ChangePassword({ store, onDone }: { store: WalletStore; onDone: 
   return (
     <div className="settings-subform">
       <Field label={t('settings.currentPwd')} value={cur} onChange={setCur} type="password" placeholder={t('settings.currentPwd')} />
-      <Field label={t('settings.newPwd')} value={next} onChange={setNext} type="password" placeholder={t('pwd.min')} />
+      <Field label={t('settings.newPwd')} value={next} onChange={setNext} type="password" placeholder={t('pwd.min', { n: MIN_APP_PWD_LEN })} />
       <PrimaryButton disabled={!ok} onClick={submit}>{busy ? <Spinner /> : t('settings.savePwd')}</PrimaryButton>
     </div>
   );

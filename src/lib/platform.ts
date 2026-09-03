@@ -82,6 +82,13 @@ export function buildKind(): BuildKind {
 /** Running on a phone or tablet — the only build with a lock screen in reach. */
 export const isMobileApp = (): boolean => buildKind() === 'app';
 
+/**
+ * Running inside the browser extension: the MV3 popup, the side panel or the approval
+ * window. The distinction matters to `lib/storage.ts`, which has an extension-only storage
+ * area available to it that the plain web build does not.
+ */
+export const isExtension = (): boolean => buildKind() === 'ext';
+
 /** Running in a desktop window: Windows, macOS or Linux. */
 export const isDesktopApp = (): boolean => buildKind() === 'desktop';
 

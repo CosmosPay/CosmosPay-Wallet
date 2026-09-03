@@ -267,10 +267,10 @@ async function patchIos(): Promise<void> {
  * SharedPreferences to the user's Drive. That is where `lib/storage.ts`
  * puts everything: the AES-GCM sealed seed (`cosmos.w.<id>`), the sealed device-unlock
  * envelope (`cosmos.auth.<id>`), and the PLAINTEXT wallet list — which carries name, email,
- * birthdate, gender and the avatar image. The sealed blobs are only as strong as an 8-char
- * minimum password once they are somewhere an attacker can grind them offline, and the
- * plaintext half needs no attack at all. A non-custodial wallet's storage should not leave
- * the device it was created on.
+ * birthdate, gender and the avatar image. The sealed blobs are only as strong as the
+ * minimum password in `src/lib/validate.ts` once they are somewhere an attacker can grind
+ * them offline, and the plaintext half needs no attack at all. A non-custodial wallet's
+ * storage should not leave the device it was created on.
  *
  * Two mechanisms, because one is not enough on a modern target. `allowBackup="false"` stops
  * cloud backup. Device-to-device transfer on Android 12+ is governed separately by
@@ -454,34 +454,38 @@ async function patchIosPrivacyManifest(): Promise<void> {
  *
  * `patchAndroidBackup` keeps the sealed vault off Google Drive with three mechanisms and a
  * paragraph explaining why a non-custodial wallet's storage must not leave the device. iOS
- * gets none of it: `tauri-plugin-store` writes `cosmos-wallet.json` under the app-data
- * directory, which iCloud and iTunes back up by default and restore onto a DIFFERENT device.
- * What restores is `cosmos.w.<id>` — the AES-GCM sealed seed and mnemonic, grindable offline
- * against an 8-character minimum password — plus `cosmos.wallets` in the clear: name, email,
- * birthdate, gender, avatar.
+ * has no manifest equivalent to write: `NSURLIsExcludedFromBackupKey` is a resource value
+ * set on a URL at runtime, so the exclusion is code — the `exclude_from_backup` command in
+ * `src-tauri/plugins/cosmos/src/mobile.rs`, whose Swift half sets the flag on the app-data
+ * DIRECTORY, called once per launch by `src/lib/storage.ts` before the store file exists.
+ *
+ * What used to restore onto a different device, and would again if that call stopped
+ * happening: `cosmos.w.<id>`, the AES-GCM sealed seed and mnemonic, grindable offline at
+ * the attacker's own pace — plus `cosmos.wallets` in the clear: name, email, birthdate,
+ * gender, avatar.
  *
  * The device-unlock envelope is the one part that does NOT travel: its wrapping key is a
  * Keychain item written `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` with
- * `.biometryCurrentSet`, so the restored copy opens nothing. The gap is the vault the
- * envelope was built to sit beside.
+ * `.biometryCurrentSet`, so the restored copy opens nothing. The vault beside it is the
+ * part that needed this.
  *
- * Moving to a file did NOT close this, and it is worth being precise about why: it changed
- * the fix rather than the exposure. `NSURLIsExcludedFromBackupKey` on that one file is now
- * all it would take — far less than the Keychain migration `UserDefaults` would have needed.
- * What it still needs is a device to verify on, so this script reports rather than guesses,
- * in the same shape as the PrivacyInfo notice above.
+ * Why this still prints: the Swift half is compiled only on a Mac and executed only on a
+ * phone, and nothing in CI does either — the same reason CLAUDE.md says to treat a change
+ * to `DeviceAuth.swift` as untested until someone has unlocked a real device with it. "The
+ * code exists" and "the flag is set on that phone" are different claims.
  */
-async function reportIosBackupGap(): Promise<void> {
+async function reportIosBackupCheck(): Promise<void> {
   if (!IOS_PLIST || !(await exists(IOS_PLIST))) return; // patchIos() already said so
-  log('ACTION REQUIRED — iOS storage is still backup-eligible.');
-  log('  cosmos-wallet.json in the app-data directory holds the sealed vault and the');
-  log('  plaintext wallet list, and iCloud restores it onto another device. Android is');
-  log('  covered by allowBackup=false + dataExtractionRules; iOS needs native work:');
-  log('  set NSURLIsExcludedFromBackupKey on that file once, at startup.');
+  log('VERIFY ON A DEVICE — iOS backup exclusion is code, not configuration.');
+  log('  src-tauri/plugins/cosmos/ios/Sources/CosmosPlugin/CosmosPlugin.swift sets');
+  log('  NSURLIsExcludedFromBackupKey on the app-data directory; src/lib/storage.ts calls');
+  log('  it once per launch, before the store file is created. Android is covered by');
+  log('  allowBackup=false + dataExtractionRules and needs no code at all.');
+  log('  Check on a device: the app-data directory must be absent from a fresh backup.');
 }
 
 await patchAndroid();
 await patchAndroidBackup();
 await patchIos();
 await patchIosPrivacyManifest();
-await reportIosBackupGap();
+await reportIosBackupCheck();

@@ -7,7 +7,7 @@
  * any of it can touch storage on a build with no secure store to hold the other half.
  * Those are what this covers now.
  *
- * `enableDeviceAuth` / `deviceAuthPassword` still need a device for their prompt-bearing
+ * `enableDeviceAuth` / `deviceAuthVaultKey` still need a device for their prompt-bearing
  * half, but their fail-closed guards do not, and those are tested here.
  */
 import { test } from 'node:test';
@@ -28,7 +28,7 @@ import {
   type DeviceAuthFailure,
   type DeviceAuthKind,
 } from '@/lib/deviceAuth';
-import { open, seal } from '@/lib/crypto';
+import { deriveVaultKey, newKdfParams, open, seal, toBase64, type VaultKey } from '@/lib/crypto';
 import { T } from '@/lib/i18n';
 
 /**
@@ -92,21 +92,37 @@ test('a DeviceAuthError carries its own verdict through unchanged', () => {
 
 /* ------------------------------- the envelope ------------------------------ */
 
+/** A key of the shape a real session carries, without paying for a real derivation. */
+const someVaultKey = (): Promise<VaultKey> => deriveVaultKey('irrelevant', { salt: 'AAAAAAAAAAAAAAAAAAAAAA==', iter: 1 });
+
 /**
- * The one cryptographic claim the whole design rests on: the sealed box holds the app
- * password and opens with the wrapping key alone. If this ever stops holding, the feature
- * silently becomes "the phone's lock screen IS the wallet password".
+ * The one cryptographic claim the whole design rests on: the sealed box holds the vault
+ * KEY — never the app password — and opens with the wrapping key alone. If this ever stops
+ * holding, the feature silently becomes "the phone's lock screen IS the wallet password".
  */
-test('a sealed envelope round-trips: the wrap key alone recovers the password', async () => {
+test('a sealed envelope round-trips: the wrap key alone recovers the vault key', async () => {
   const wrapKey = 'Zm9ydHktdHdvLWJ5dGVzLW9mLXJhbmRvbW5lc3M9PQ==';
-  const envelope = { v: 1 as const, binding: 'boundCurrentSet' as const, box: await seal('correct horse', wrapKey) };
+  const vk = await someVaultKey();
+  const envelope = {
+    v: 2 as const,
+    binding: 'boundCurrentSet' as const,
+    kdf: vk.kdf,
+    box: await seal(toBase64(vk.raw), wrapKey),
+  };
   const parsed = parseAuthEnvelope(JSON.stringify(envelope));
   assert.ok(parsed, 'a well-formed envelope must parse');
-  assert.equal(await open(parsed.box, wrapKey), 'correct horse');
+  assert.equal(await open(parsed.box, wrapKey), toBase64(vk.raw));
+  assert.deepEqual(parsed.kdf, vk.kdf, 'the parameters travel with the key or it opens nothing');
 });
 
 test('the wrong wrap key does not open the envelope — it throws, it does not return junk', async () => {
-  const envelope = { v: 1 as const, binding: 'boundCurrentSet' as const, box: await seal('correct horse', 'key-a') };
+  const vk = await someVaultKey();
+  const envelope = {
+    v: 2 as const,
+    binding: 'boundCurrentSet' as const,
+    kdf: vk.kdf,
+    box: await seal(toBase64(vk.raw), 'key-a'),
+  };
   const parsed = parseAuthEnvelope(JSON.stringify(envelope));
   assert.ok(parsed);
   await assert.rejects(() => open(parsed.box, 'key-b'));
@@ -114,15 +130,21 @@ test('the wrong wrap key does not open the envelope — it throws, it does not r
 
 test('parsing fails closed: anything malformed reads as "not enrolled", never as a usable box', async () => {
   const box = await seal('pw', 'k');
+  const kdf = newKdfParams();
   const rejected: [string, unknown][] = [
     ['null', null],
     ['empty string', ''],
     ['not json', '{nope'],
-    ['no version', JSON.stringify({ binding: 'boundCurrentSet', box })],
-    ['a FUTURE version we cannot read', JSON.stringify({ v: 2, binding: 'boundCurrentSet', box })],
-    ['no box', JSON.stringify({ v: 1, binding: 'boundCurrentSet' })],
-    ['no binding', JSON.stringify({ v: 1, box })],
-    ['an unknown binding', JSON.stringify({ v: 1, binding: 'whatever', box })],
+    ['no version', JSON.stringify({ binding: 'boundCurrentSet', kdf, box })],
+    ['a FUTURE version we cannot read', JSON.stringify({ v: 3, binding: 'boundCurrentSet', kdf, box })],
+    // v1 held the app PASSWORD, and this build refuses it rather than migrating it: see
+    // the test below. It is listed here too because the shape alone is enough to reject.
+    ['the version that sealed a password', JSON.stringify({ v: 1, binding: 'boundCurrentSet', box })],
+    ['no box', JSON.stringify({ v: 2, binding: 'boundCurrentSet', kdf })],
+    ['no binding', JSON.stringify({ v: 2, kdf, box })],
+    ['an unknown binding', JSON.stringify({ v: 2, binding: 'whatever', kdf, box })],
+    // Without the parameters the key was derived for, an envelope is 32 unusable bytes.
+    ['no kdf', JSON.stringify({ v: 2, binding: 'boundCurrentSet', box })],
   ];
   for (const [why, raw] of rejected) {
     assert.equal(parseAuthEnvelope(raw as string | null), null, why);
@@ -144,13 +166,30 @@ test('parsing fails closed: anything malformed reads as "not enrolled", never as
  * that can only ever fail.
  */
 test('envelopes from binding modes this build cannot open are refused, not migrated', async () => {
+  const kdf = newKdfParams();
   for (const binding of ['passcode', 'currentSet', 'anyBiometry']) {
-    const stale = JSON.stringify({ v: 1, binding, box: await seal('pw', 'k') });
+    const stale = JSON.stringify({ v: 2, binding, kdf, box: await seal('pw', 'k') });
     assert.equal(parseAuthEnvelope(stale), null, binding);
   }
   // ...and the shape the old unbound build actually wrote, which used `tier`, not `binding`.
-  const legacy = JSON.stringify({ v: 1, tier: 'passcode', box: await seal('pw', 'k') });
+  const legacy = JSON.stringify({ v: 2, tier: 'passcode', kdf, box: await seal('pw', 'k') });
   assert.equal(parseAuthEnvelope(legacy), null);
+});
+
+/**
+ * The envelope that held the APP PASSWORD is refused the same way, and that is the whole
+ * point of the version bump.
+ *
+ * Every `v: 1` envelope on every phone contains a copy of a string its owner very likely
+ * types into other services. It cannot be migrated — nothing here can turn a password into
+ * the key derived from it without the salt it was derived with, and asking for the password
+ * to do so would defeat the exercise. So it is dropped: the enrolment reads as "not
+ * enrolled", the user turns it back on in Settings, and what gets written the second time
+ * holds no password at all.
+ */
+test('an envelope that sealed the app password is dropped rather than honoured', async () => {
+  const v1 = JSON.stringify({ v: 1, binding: 'boundCurrentSet', box: await seal('hunter2', 'k') });
+  assert.equal(parseAuthEnvelope(v1), null);
 });
 
 /* ------------------------- off the phone build ------------------------- */
@@ -170,13 +209,13 @@ test('anywhere that is not the phone build, the feature is simply absent', async
  *
  * `deviceAuthPossible()` is checked at every entry point, but `storageSet` is not gated by
  * anything — and on a non-phone build `lib/storage.ts` is localStorage. If enrolment ever
- * ran there, the sealed password would land beside the vault with NO secure store holding
+ * ran there, the sealed vault key would land beside the vault with NO secure store holding
  * the key that opens it, which is the one arrangement the split-storage design exists to
  * prevent.
  */
 test('enrolment on a non-phone build refuses BEFORE it writes anything', async () => {
   await assert.rejects(
-    () => enableDeviceAuth('w1', 'the-password', PROMPT),
+    async () => enableDeviceAuth('w1', await someVaultKey(), PROMPT),
     (err: unknown) => deviceAuthFailure(err) === 'unsupported',
   );
   const leaked = Object.keys(globalThis.localStorage ?? {}).filter((k) => k.startsWith('cosmos.auth.'));
@@ -187,7 +226,7 @@ test('re-enrolling never throws — a password change has already committed by t
   // Off-phone, so `enableDeviceAuth` refuses with 'unsupported'. The contract is that the
   // refusal is reported as `false` and swallowed: `vault.changePassword` calls this AFTER
   // the vault is re-sealed, so an escaping error would abort a change nothing can undo.
-  assert.equal(await reenrolDeviceAuth('never-enrolled', 'new-password', PROMPT), false);
+  assert.equal(await reenrolDeviceAuth('never-enrolled', await someVaultKey(), PROMPT), false);
   const leaked = Object.keys(globalThis.localStorage ?? {}).filter((k) => k.startsWith('cosmos.auth.'));
   assert.deepEqual(leaked, [], 'a failed re-enrolment must leave no envelope behind');
 });

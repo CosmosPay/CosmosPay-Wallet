@@ -32,6 +32,10 @@ class ShareArgs: Decodable {
     let title: String?
 }
 
+class ExcludeBackupArgs: Decodable {
+    let path: String
+}
+
 /// The bridge. Decodes arguments, forwards, and turns the answer back into an `Invoke`
 /// resolution — no logic of its own, which is what keeps the two capabilities behind it
 /// from growing shared behaviour.
@@ -132,6 +136,43 @@ class CosmosPlugin: Plugin {
     /// Guidelines. If this is ever reached, doing nothing is the correct behaviour.
     @objc public func appExit(_ invoke: Invoke) throws {
         invoke.resolve()
+    }
+
+    /// Keep the app-data directory out of iCloud.
+    ///
+    /// This is the one platform where the wallet's storage is backup-eligible by default.
+    /// Without it, `cosmos-wallet.json` — the AES-GCM sealed vault, and the plaintext wallet
+    /// list beside it — is restored onto whatever device the user sets up next, where the
+    /// password is the only thing left between an attacker and the seed, offline and at
+    /// their own pace. The device-unlock envelope does not travel: its key is
+    /// `.biometryCurrentSet` and stays on the phone that made it. The vault does.
+    ///
+    /// The DIRECTORY, not the file. `tauri-plugin-store` rewrites its file, and a resource
+    /// value set on an inode does not survive that file being replaced; on a directory it
+    /// covers everything written inside it, including the rewrite. The directory is created
+    /// first when it does not exist yet, because this runs before the store's first write
+    /// and `setResourceValues` on a missing path fails.
+    ///
+    /// Idempotent — setting the flag on an already-excluded directory is a no-op — so the
+    /// once-per-launch call from `src/lib/storage.ts` needs no state on either side.
+    @objc public func excludeFromBackup(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(ExcludeBackupArgs.self)
+        queue.async {
+            do {
+                var url = URL(fileURLWithPath: args.path, isDirectory: true)
+                if !FileManager.default.fileExists(atPath: url.path) {
+                    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+                }
+                var values = URLResourceValues()
+                values.isExcludedFromBackup = true
+                try url.setResourceValues(values)
+                invoke.resolve()
+            } catch {
+                // `failed`, with the platform's own sentence. Nothing here is classifiable
+                // as a device-auth outcome, and the caller only logs it.
+                invoke.reject(error.localizedDescription, code: Failure.failed.rawValue)
+            }
+        }
     }
 }
 

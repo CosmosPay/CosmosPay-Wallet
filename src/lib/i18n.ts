@@ -271,17 +271,17 @@ export const T: Record<string, Record<Lang, string>> = {
   // Wrong-password backoff (lib/attempts.ts). Says how long, because "try again later" with
   // no number is indistinguishable from the app being broken.
   'pwd.tooManyAttempts': { es: 'Demasiados intentos. Espera {secs} s antes de volver a probar.', en: 'Too many attempts. Wait {secs}s before trying again.', pt: 'Demasiadas tentativas. Espera {secs} s antes de tentar de novo.', de: 'Zu viele Versuche. Warte {secs} s, bevor du es erneut versuchst.', fr: 'Trop de tentatives. Attends {secs} s avant de réessayer.' },
-  'pwd.min': { es: 'Mínimo 8 caracteres', en: 'At least 8 characters', pt: 'Mínimo de 8 caracteres', de: 'Mindestens 8 Zeichen', fr: 'Au moins 8 caractères' },
+  'pwd.min': { es: 'Mínimo {n} caracteres', en: 'At least {n} characters', pt: 'Mínimo de {n} caracteres', de: 'Mindestens {n} Zeichen', fr: 'Au moins {n} caractères' },
   'pwd.repeat': { es: 'Repite la contraseña', en: 'Repeat the password', pt: 'Repete a palavra-passe', de: 'Passwort wiederholen', fr: 'Répète le mot de passe' },
   'pwd.show': { es: 'Mostrar contraseña', en: 'Show password', pt: 'Mostrar palavra-passe', de: 'Passwort anzeigen', fr: 'Afficher le mot de passe' },
   'pwd.lenOk': { es: '✓ Longitud suficiente', en: '✓ Long enough', pt: '✓ Comprimento suficiente', de: '✓ Lang genug', fr: '✓ Assez long' },
-  'pwd.lenErr': { es: 'La contraseña debe tener al menos 8 caracteres', en: 'The password must be at least 8 characters', pt: 'A palavra-passe deve ter pelo menos 8 caracteres', de: 'Das Passwort muss mindestens 8 Zeichen haben', fr: 'Le mot de passe doit comporter au moins 8 caractères' },
+  'pwd.lenErr': { es: 'La contraseña debe tener al menos {n} caracteres', en: 'The password must be at least {n} characters', pt: 'A palavra-passe deve ter pelo menos {n} caracteres', de: 'Das Passwort muss mindestens {n} Zeichen haben', fr: 'Le mot de passe doit comporter au moins {n} caractères' },
   'pwd.mismatch': { es: 'Las contraseñas no coinciden', en: 'The passwords don’t match', pt: 'As palavras-passe não coincidem', de: 'Die Passwörter stimmen nicht überein', fr: 'Les mots de passe ne correspondent pas' },
   // live password criteria (PasswordSetup checklist)
   // Shown when the store refuses a password the form should already have blocked — the
   // enforcement point is `changeAppPassword`, not the disabled button.
-  'pwd.weak': { es: 'La contraseña necesita 8 caracteres, una mayúscula, una minúscula y un número.', en: 'The password needs 8 characters, an uppercase letter, a lowercase letter and a digit.', pt: 'A palavra-passe precisa de 8 caracteres, uma maiúscula, uma minúscula e um número.', de: 'Das Passwort braucht 8 Zeichen, einen Groß-, einen Kleinbuchstaben und eine Ziffer.', fr: 'Le mot de passe doit contenir 8 caractères, une majuscule, une minuscule et un chiffre.' },
-  'pwd.critLen': { es: 'Mínimo 8 caracteres', en: 'At least 8 characters', pt: 'Mínimo de 8 caracteres', de: 'Mindestens 8 Zeichen', fr: 'Au moins 8 caractères' },
+  'pwd.weak': { es: 'La contraseña necesita {n} caracteres, una mayúscula, una minúscula y un número.', en: 'The password needs {n} characters, an uppercase letter, a lowercase letter and a digit.', pt: 'A palavra-passe precisa de {n} caracteres, uma maiúscula, uma minúscula e um número.', de: 'Das Passwort braucht {n} Zeichen, einen Groß-, einen Kleinbuchstaben und eine Ziffer.', fr: 'Le mot de passe doit contenir {n} caractères, une majuscule, une minuscule et un chiffre.' },
+  'pwd.critLen': { es: 'Mínimo {n} caracteres', en: 'At least {n} characters', pt: 'Mínimo de {n} caracteres', de: 'Mindestens {n} Zeichen', fr: 'Au moins {n} caractères' },
   'pwd.critUpper': { es: 'Al menos una mayúscula (A-Z)', en: 'At least one uppercase letter (A-Z)', pt: 'Pelo menos uma maiúscula (A-Z)', de: 'Mindestens ein Großbuchstabe (A-Z)', fr: 'Au moins une majuscule (A-Z)' },
   'pwd.critDigit': { es: 'Al menos un número (0-9)', en: 'At least one number (0-9)', pt: 'Pelo menos um número (0-9)', de: 'Mindestens eine Zahl (0-9)', fr: 'Au moins un chiffre (0-9)' },
   'pwd.critLower': { es: 'Al menos una letra minúscula (a-z)', en: 'At least one lowercase letter (a-z)', pt: 'Pelo menos uma letra minúscula (a-z)', de: 'Mindestens ein Kleinbuchstabe (a-z)', fr: 'Au moins une lettre minuscule (a-z)' },
@@ -348,6 +348,7 @@ export const T: Record<string, Record<Lang, string>> = {
   // extension surface toggle (popup <-> side panel), preference persists
   'surface.toSidebar': { es: 'Fijar en la barra lateral', en: 'Pin to the sidebar', pt: 'Fixar na barra lateral', de: 'An Seitenleiste anheften', fr: 'Épingler à la barre latérale' },
   'surface.toPopup': { es: 'Usar como ventana emergente', en: 'Use as popup', pt: 'Usar como janela pop-up', de: 'Als Pop-up verwenden', fr: 'Utiliser en pop-up' },
+  'home.loadError': { es: 'No se pudieron cargar los datos.', en: 'The data could not be loaded.', pt: 'Não foi possível carregar os dados.', de: 'Die Daten konnten nicht geladen werden.', fr: 'Les données n’ont pas pu être chargées.' },
   'home.loading': { es: 'Cargando saldos…', en: 'Loading balances…', pt: 'A carregar saldos…', de: 'Guthaben werden geladen…', fr: 'Chargement des soldes…' },
   'home.noAssets': { es: 'Aún no hay activos.', en: 'No assets yet.', pt: 'Ainda não há ativos.', de: 'Noch keine Assets.', fr: 'Aucun actif pour le moment.' },
   'home.activate': { es: 'Activa tu cuenta', en: 'Activate your account', pt: 'Ativa a tua conta', de: 'Konto aktivieren', fr: 'Active ton compte' },
@@ -1250,6 +1251,11 @@ export const T: Record<string, Record<Lang, string>> = {
   'approve.defaultWalletName': { es: 'astronauta', en: 'astronaut', pt: 'astronauta', de: 'Astronaut', fr: 'astronaute' },
   'approve.yourAccount': { es: 'Tu cuenta', en: 'Your account', pt: 'A tua conta', de: 'Dein Konto', fr: 'Ton compte' },
 
+  'approve.paymentSent': { es: 'Pago enviado ✓', en: 'Payment sent ✓', pt: 'Pagamento enviado ✓', de: 'Zahlung gesendet ✓', fr: 'Paiement envoyé ✓' },
+  'approve.paymentSentBody': { es: 'La transacción se firmó en tu dispositivo y se envió a la red.', en: 'The transaction was signed on your device and submitted to the network.', pt: 'A transação foi assinada no teu dispositivo e enviada para a rede.', de: 'Die Transaktion wurde auf deinem Gerät signiert und an das Netzwerk gesendet.', fr: 'La transaction a été signée sur ton appareil et envoyée au réseau.' },
+  'approve.requestFrom': { es: 'Solicitud de', en: 'Request from', pt: 'Pedido de', de: 'Anfrage von', fr: 'Demande de' },
+  'approve.messageToSign': { es: 'Mensaje a firmar', en: 'Message to sign', pt: 'Mensagem a assinar', de: 'Zu signierende Nachricht', fr: 'Message à signer' },
+  'approve.rowNetwork': { es: 'Red', en: 'Network', pt: 'Rede', de: 'Netzwerk', fr: 'Réseau' },
   'approve.rowHash': { es: 'Hash', en: 'Hash', pt: 'Hash', de: 'Hash', fr: 'Hash' },
   'approve.rowWallet': { es: 'Wallet', en: 'Wallet', pt: 'Wallet', de: 'Wallet', fr: 'Portefeuille' },
   'approve.rowYourAddress': { es: 'Tu dirección', en: 'Your address', pt: 'O teu endereço', de: 'Deine Adresse', fr: 'Ton adresse' },
@@ -1342,6 +1348,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'validate.notAUrl': { es: 'La dirección no es una URL válida.', en: 'That address is not a valid URL.', pt: 'O endereço não é um URL válido.', de: 'Diese Adresse ist keine gültige URL.', fr: 'Cette adresse n’est pas une URL valide.' },
 
   'vault.notFound': { es: 'No se encontró la wallet en este dispositivo.', en: 'That wallet was not found on this device.', pt: 'A wallet não foi encontrada neste dispositivo.', de: 'Diese Wallet wurde auf diesem Gerät nicht gefunden.', fr: 'Ce portefeuille est introuvable sur cet appareil.' },
+  'vault.keyMismatch': { es: 'Esta wallet debe abrirse otra vez con tu contraseña.', en: 'This wallet has to be opened again with your password.', pt: 'Esta wallet tem de ser aberta outra vez com a tua palavra-passe.', de: 'Diese Wallet muss erneut mit deinem Passwort geöffnet werden.', fr: 'Ce portefeuille doit être rouvert avec ton mot de passe.' },
   'vault.passwordChangeFailed': { es: 'No se pudo completar el cambio de contraseña.', en: 'The password change could not be completed.', pt: 'Não foi possível concluir a alteração da palavra-passe.', de: 'Die Passwortänderung konnte nicht abgeschlossen werden.', fr: 'Le changement de mot de passe n’a pas pu être terminé.' },
 
   'api.requestFailed': { es: 'La solicitud falló ({status}).', en: 'The request failed ({status}).', pt: 'O pedido falhou ({status}).', de: 'Die Anfrage ist fehlgeschlagen ({status}).', fr: 'La requête a échoué ({status}).' },

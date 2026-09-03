@@ -40,11 +40,17 @@ test('each criterion is the one thing missing from an otherwise valid password',
   // One base that passes, minus one property at a time. This is what catches a criterion
   // that silently stops being checked: the password differs from the valid one in exactly
   // the way the criterion names.
-  assert.ok(appPasswordOk('Abcdefg1'), 'the base must be valid or the rest proves nothing');
-  assert.equal(appPasswordOk('abcdefg1'), false, 'no uppercase');
-  assert.equal(appPasswordOk('ABCDEFG1'), false, 'no lowercase');
-  assert.equal(appPasswordOk('Abcdefgh'), false, 'no digit');
-  assert.equal(appPasswordOk('Abcdef1'), false, 'one character short');
+  //
+  // Built FROM the constant rather than typed out, because it WAS typed out — as
+  // `Abcdefg1` — and raising the floor turned "the base must be valid" into a failure that
+  // said nothing about the criteria it exists to isolate.
+  const valid = `Abc1${'d'.repeat(MIN_APP_PWD_LEN - 4)}`;
+  assert.equal(valid.length, MIN_APP_PWD_LEN);
+  assert.ok(appPasswordOk(valid), 'the base must be valid or the rest proves nothing');
+  assert.equal(appPasswordOk(valid.toLowerCase()), false, 'no uppercase');
+  assert.equal(appPasswordOk(valid.toUpperCase()), false, 'no lowercase');
+  assert.equal(appPasswordOk(valid.replace('1', 'e')), false, 'no digit');
+  assert.equal(appPasswordOk(valid.slice(0, -1)), false, 'one character short');
 });
 
 test('the length floor is the exported constant, not a literal in a screen', () => {

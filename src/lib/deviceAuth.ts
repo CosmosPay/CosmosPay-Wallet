@@ -1,18 +1,33 @@
 /**
  * Unlocking with the phone's own biometrics — fingerprint, face or iris. Phone build only.
  *
- * The device check does NOT replace the password: it wraps it. A 32-byte random key is
- * generated at enrolment, the app password is sealed under it with the same
- * AES-GCM/PBKDF2 scheme as the vault itself (`lib/crypto.ts`), and only that wrapping
- * key goes to the OS secure store:
+ * The device check does NOT replace the password: it wraps what the password produced. A
+ * 32-byte random key is generated at enrolment, the session's VAULT KEY is sealed under it
+ * with the same AES-256-GCM the vault uses (`lib/crypto.ts`) — through `sealUnderWrapKey`,
+ * which skips the PBKDF2 stretching the vault pays for, because there is nothing to stretch
+ * in 256 bits of `getRandomValues`. Only that wrapping key goes to the OS secure store:
  *
- *   cosmos.auth.<id>      -> { binding, SealedBox(password) }   normal storage
- *   cosmos.auth.key.<id>  -> the wrapping key                   Keystore / Keychain
+ *   cosmos.auth.<id>      -> { binding, kdf, SealedBox(vault key) }   normal storage
+ *   cosmos.auth.key.<id>  -> the wrapping key                         Keystore / Keychain
  *
- * Splitting them is the point. The sealed box sits in the app's own store where a rooted
- * device can read it, and it decrypts to nothing without the key. The vault's own seal
- * is untouched either way — this is a second door to the same password, never a way
- * around it.
+ * NOT THE PASSWORD. It used to be, and that was the single largest thing this file stored:
+ * a copy of a string the user very likely types into other services, sitting on disk for as
+ * long as the feature was on. What is sealed now is derived from it, is device-local, is
+ * replaced by `changePassword`, and is worth nothing on another device. An attacker who
+ * defeats both halves still gets this wallet — they were always going to — but they no
+ * longer get the user's password with it.
+ *
+ * Splitting the two halves is the other point. The sealed box sits in the app's own store
+ * where a rooted device can read it, and it decrypts to nothing without the key. The
+ * vault's own seal is untouched either way — this is a second door to the same vault,
+ * never a way around it.
+ *
+ * A CONSEQUENCE WORTH KNOWING: the envelope is tied to the KDF parameters it was written
+ * under. If those ever change — a raise of `PBKDF2_ITERATIONS`, or a `changePassword` — the
+ * sealed key stops opening the vault and the enrolment reads as `'stale'`, which turns
+ * itself off and asks the user to re-enable it with their password. That is the same
+ * fail-closed behaviour this file applies to a binding it does not recognise, and it is
+ * cheaper than the alternative: re-wrapping every envelope raises one OS sheet per wallet.
  *
  * WHY BIOMETRICS ONLY, and why there is no PIN/pattern tier. The wrapping key is only
  * ever stored so that reading it IS an authenticated operation: on Android the Keystore
@@ -49,17 +64,25 @@
  * unreadable. Both halves being in the same repo is why `binding` below can promise
  * invalidation-on-enrolment-change and be believed.
  */
-import { open, seal, toBase64, type SealedBox } from '@/lib/crypto';
+import {
+  fromBase64,
+  importVaultKey,
+  openUnderWrapKey,
+  sealUnderWrapKey,
+  toBase64,
+  type KdfParams,
+  type SealedBox,
+  type VaultKey,
+} from '@/lib/crypto';
+import { WRAP_KEY_BYTES } from '@/constants/crypto';
 import { isMobileApp } from '@/lib/platform';
 import { nativeInvoke } from '@/lib/nativeBridge';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 
-/** Sealed app password + the binding it was sealed under. See the header. */
+/** Sealed vault key + the binding and parameters it was sealed under. See the header. */
 const envelopeKey = (walletId: string) => `cosmos.auth.${walletId}`;
 /** Wrapping key, in the OS secure store under the plugin's own namespace. */
 const secureKey = (walletId: string) => `cosmos.auth.key.${walletId}`;
-
-const WRAP_KEY_BYTES = 32;
 
 /**
  * How the wrapping key is protected.
@@ -288,10 +311,12 @@ export interface DeviceAuthPrompt {
   cancel: string;
 }
 
-/** What is stored next to the sealed password. See `DeviceAuthBinding`. */
+/** What is stored next to the sealed vault key. See `DeviceAuthBinding`. */
 interface AuthEnvelope {
-  v: 1;
+  v: 2;
   binding: DeviceAuthBinding;
+  /** The parameters the sealed key was derived for — it opens nothing else. */
+  kdf: KdfParams;
   box: SealedBox;
 }
 
@@ -300,15 +325,16 @@ interface AuthEnvelope {
  *
  * Every rejection here turns the feature OFF for that wallet rather than throwing, which
  * is the fail-closed direction: an envelope this build cannot read is one it must not
- * act on. A future `v: 2` therefore needs a migration written here — silently reporting
- * "not enrolled" is correct behaviour for an unknown version, but it is not a substitute
- * for one.
+ * act on. `v: 1` — the shape that sealed the app PASSWORD rather than the vault key — is
+ * refused by exactly this line, which is the whole of that migration. A future `v: 3`
+ * therefore needs a migration written here: silently reporting "not enrolled" is correct
+ * behaviour for an unknown version, but it is not a substitute for one.
  */
 function readEnvelope(raw: string | null): AuthEnvelope | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as AuthEnvelope;
-    if (parsed?.v !== 1 || !parsed.box) return null;
+    if (parsed?.v !== 2 || !parsed.box || !parsed.kdf?.salt) return null;
     // An allowlist, not a rejection list: an envelope whose binding this build does not
     // write is one whose key it cannot open, and "the feature is off" is the only safe
     // reading of that. The three values that have shipped and are refused here are named
@@ -377,16 +403,18 @@ async function storeBound(walletId: string, wrapKey: string, prompt: DeviceAuthP
 }
 
 /**
- * Enrol: seal `password` under a fresh random key and hand that key to the OS.
+ * Enrol: seal the session's vault key under a fresh random key and hand that key to the OS.
  *
  * Order matters. The secure store is written first, because it is the half that can fail
  * — the user may dismiss the prompt shown while protecting the key. Writing the envelope
  * first would leave a wallet that reports the feature as enabled with no key to open it,
  * i.e. `'stale'` on every unlock.
  *
- * The caller must have verified `password` (the store passes the live session's, which is
- * only ever set by a successful decrypt). Sealing an unverified string would enrol a
- * password that opens nothing.
+ * `vaultKey` must already be PROVEN — the store passes the live session's, which is only
+ * ever produced by a successful decrypt. Sealing an unproven key would enrol something
+ * that opens nothing, and the failure would arrive on the unlock screen weeks later. The
+ * envelope records the parameters it was derived for (`kdf`) because the key opens boxes
+ * sealed under those and no others.
  *
  * If the device refuses, so do we. This used to fall through to an unbound key, which put
  * the wrapping key one prompt-free native call away from anything running in the process,
@@ -395,7 +423,7 @@ async function storeBound(walletId: string, wrapKey: string, prompt: DeviceAuthP
  */
 export async function enableDeviceAuth(
   walletId: string,
-  password: string,
+  vaultKey: VaultKey,
   prompt: DeviceAuthPrompt,
 ): Promise<DeviceAuthBinding> {
   if (!deviceAuthPossible()) throw new DeviceAuthError('unsupported');
@@ -403,7 +431,7 @@ export async function enableDeviceAuth(
   if (!available) throw new DeviceAuthError(reason ?? 'failed');
 
   const wrapKey = randomWrapKey();
-  const sealed = await seal(password, wrapKey);
+  const sealed = await sealUnderWrapKey(toBase64(vaultKey.raw), wrapKey);
 
   try {
     await storeBound(walletId, wrapKey, prompt);
@@ -419,29 +447,34 @@ export async function enableDeviceAuth(
     // Logged as well as thrown: an unclassified fault here frequently arrives with a
     // message that is the literal string "null", because AOSP's AndroidKeyStore throws
     // with no message at all. logcat still has the Keymaster's own error code; the app
-    // never does. The failure and the detail only — never `password`, never `wrapKey`.
+    // never does. The failure and the detail only — never the key, never `wrapKey`.
     console.warn('deviceAuth: the device refused to bind the key, refusing to enrol —', error.failure, error.detail);
     throw error;
   }
 
-  const envelope: AuthEnvelope = { v: 1, binding: 'boundCurrentSet', box: sealed };
+  const envelope: AuthEnvelope = { v: 2, binding: 'boundCurrentSet', kdf: vaultKey.kdf, box: sealed };
   await storageSet(envelopeKey(walletId), JSON.stringify(envelope));
   return 'boundCurrentSet';
 }
 
 /**
- * Prompt, then return the app password.
+ * Prompt, then return the vault key.
  *
  * The prompt is implicit: reading a bound entry IS the authenticated operation, so there
  * is no separate check that could be skipped, and no window in which the key is readable
  * without one.
+ *
+ * What comes back still has to be PROVEN against the vault — `verifyVaultKey` in
+ * `lib/vault.ts` — before anything acts on it. An envelope can outlive the boxes it was
+ * built beside, and "the OS gave me a key" is not the same claim as "this key opens this
+ * wallet".
  *
  * `'stale'` is handled rather than propagated raw: it means the key is gone — a changed
  * enrolment (which now destroys it by design), a restored backup, a reinstall — so the
  * envelope left behind is undecryptable forever. Clearing it here is what stops the unlock
  * screen offering a button that can only ever fail.
  */
-export async function deviceAuthPassword(walletId: string, prompt: DeviceAuthPrompt): Promise<string> {
+export async function deviceAuthVaultKey(walletId: string, prompt: DeviceAuthPrompt): Promise<VaultKey> {
   if (!deviceAuthPossible()) throw new DeviceAuthError('unsupported');
   const envelope = await loadEnvelope(walletId);
   if (!envelope) throw new DeviceAuthError('stale');
@@ -462,7 +495,7 @@ export async function deviceAuthPassword(walletId: string, prompt: DeviceAuthPro
   }
 
   try {
-    return await open(envelope.box, wrapKey);
+    return await importVaultKey(fromBase64(await openUnderWrapKey(envelope.box, wrapKey)), envelope.kdf);
   } catch {
     // The key was read but the box did not open: the two halves are out of sync (a
     // half-finished enrolment, or storage restored from a different device). Nothing
@@ -486,7 +519,7 @@ export async function disableDeviceAuth(walletId: string): Promise<void> {
 }
 
 /**
- * Enrol again under a new app password, for `vault.changePassword` to inject
+ * Enrol again under the new password's vault key, for `vault.changePassword` to inject
  * (`ChangePasswordDeps`) so that function owns no prompt copy.
  *
  * A fresh wrapping key rather than the old one: reading the old key needs a prompt of its
@@ -507,11 +540,11 @@ export async function disableDeviceAuth(walletId: string): Promise<void> {
  */
 export async function reenrolDeviceAuth(
   walletId: string,
-  newPassword: string,
+  newVaultKey: VaultKey,
   prompt: DeviceAuthPrompt,
 ): Promise<boolean> {
   try {
-    await enableDeviceAuth(walletId, newPassword, prompt);
+    await enableDeviceAuth(walletId, newVaultKey, prompt);
     return true;
   } catch {
     try {

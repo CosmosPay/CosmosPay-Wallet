@@ -355,6 +355,18 @@
           "markdownDescription": "Denies the auth_store command without any pre-configured scope."
         },
         {
+          "description": "Enables the exclude_from_backup command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-exclude-from-backup",
+          "markdownDescription": "Enables the exclude_from_backup command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the exclude_from_backup command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-exclude-from-backup",
+          "markdownDescription": "Denies the exclude_from_backup command without any pre-configured scope."
+        },
+        {
           "description": "Enables the share_text command without any pre-configured scope.",
           "type": "string",
           "const": "allow-share-text",
@@ -367,10 +379,10 @@
           "markdownDescription": "Denies the share_text command without any pre-configured scope."
         },
         {
-          "description": "The wallet's own native commands. Granted as one unit because the frontend needs all of\nthem or none: `src/lib/deviceAuth.ts` treats a missing command as \"the feature is off\",\nso a partial grant would present a broken enrolment rather than an absent one.\n\n#### This default permission set includes:\n\n- `allow-auth-status`\n- `allow-auth-store`\n- `allow-auth-read`\n- `allow-auth-delete`\n- `allow-share-text`\n- `allow-app-exit`",
+          "description": "The wallet's own native commands. Granted as one unit because the frontend needs all of\nthem or none: `src/lib/deviceAuth.ts` treats a missing command as \"the feature is off\",\nso a partial grant would present a broken enrolment rather than an absent one.\n\n#### This default permission set includes:\n\n- `allow-auth-status`\n- `allow-auth-store`\n- `allow-auth-read`\n- `allow-auth-delete`\n- `allow-share-text`\n- `allow-app-exit`\n- `allow-exclude-from-backup`",
           "type": "string",
           "const": "default",
-          "markdownDescription": "The wallet's own native commands. Granted as one unit because the frontend needs all of\nthem or none: `src/lib/deviceAuth.ts` treats a missing command as \"the feature is off\",\nso a partial grant would present a broken enrolment rather than an absent one.\n\n#### This default permission set includes:\n\n- `allow-auth-status`\n- `allow-auth-store`\n- `allow-auth-read`\n- `allow-auth-delete`\n- `allow-share-text`\n- `allow-app-exit`"
+          "markdownDescription": "The wallet's own native commands. Granted as one unit because the frontend needs all of\nthem or none: `src/lib/deviceAuth.ts` treats a missing command as \"the feature is off\",\nso a partial grant would present a broken enrolment rather than an absent one.\n\n#### This default permission set includes:\n\n- `allow-auth-status`\n- `allow-auth-store`\n- `allow-auth-read`\n- `allow-auth-delete`\n- `allow-share-text`\n- `allow-app-exit`\n- `allow-exclude-from-backup`"
         }
       ]
     }

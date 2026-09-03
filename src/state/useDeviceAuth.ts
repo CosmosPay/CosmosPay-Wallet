@@ -10,12 +10,12 @@
  * and the caller decides what to say — which is what lets a dismissed prompt
  * (`'cancelled'`) pass silently while a real failure gets a line.
  *
- * TWO RETURN OBJECTS, ON PURPOSE. `deviceAuthPrivileged` holds everything that can
- * produce or consume the app password; `deviceAuthPublic` holds flags and a refresh. The
- * store spreads only the public half into the object 56 components hold. They are two
+ * TWO RETURN OBJECTS, ON PURPOSE. `deviceAuthPrivileged` holds everything that can produce
+ * or consume the key that opens the vault; `deviceAuthPublic` holds flags and a refresh.
+ * The store spreads only the public half into the object 56 components hold. They are two
  * objects rather than one flat one because the previous shape was a hand-maintained
  * allowlist in the facade: correct, but one `...deviceAuth` away from handing
- * `deviceAuthUnlock` — which RETURNS THE APP PASSWORD — to every screen. There is no flat
+ * `deviceAuthUnlock` — which RETURNS THE VAULT KEY — to every screen. There is no flat
  * object to spread now, so that mistake does not typecheck into existence.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -24,7 +24,7 @@ import {
   deviceAuthEnabled,
   deviceAuthFailure,
   deviceAuthKindKey,
-  deviceAuthPassword,
+  deviceAuthVaultKey,
   deviceAuthDetail,
   deviceAuthPossible,
   disableDeviceAuth,
@@ -35,13 +35,14 @@ import {
   type DeviceAuthKind,
   type DeviceAuthPrompt,
 } from '@/lib/deviceAuth';
+import type { VaultKey } from '@/lib/crypto';
 import type { TFn } from '@/lib/i18n';
 
 /** Why the prompt is being raised — picks the wording the OS sheet shows. */
 export type DeviceAuthPurpose = 'unlock' | 'sign' | 'enroll' | 'rewrap';
 
 export type DeviceAuthResult =
-  | { ok: true; password: string }
+  | { ok: true; vaultKey: VaultKey }
   /** `detail` is the platform's own sentence — shown only when `failure` is the
    *  unclassified bucket, where the code by itself explains nothing. */
   | { ok: false; failure: DeviceAuthFailure; detail: string | null };
@@ -73,8 +74,8 @@ function promptFor(purpose: DeviceAuthPurpose, t: TFn): DeviceAuthPrompt {
     enroll: 'devAuth.enrollTitle',
     rewrap: 'devAuth.rewrapTitle',
   };
-  // Enrolling and re-wrapping ask for the same thing — permission to store the password
-  // on this phone — so they share a reason and differ only in title.
+  // Enrolling and re-wrapping ask for the same thing — permission to keep this wallet's
+  // key on this phone — so they share a reason and differ only in title.
   const REASONS: Record<DeviceAuthPurpose, string> = {
     unlock: 'devAuth.unlockReason',
     sign: 'devAuth.signReason',
@@ -139,7 +140,7 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
   }, [refreshDeviceAuth]);
 
   /**
-   * Ask the device, then hand back the app password.
+   * Ask the device, then hand back the vault key.
    *
    * Guarded on `enabled` as well as availability: a wallet that never enrolled has no
    * envelope to open, and letting the call through would raise an OS prompt only to fail
@@ -149,7 +150,7 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
     async (purpose: DeviceAuthPurpose = 'unlock'): Promise<DeviceAuthResult> => {
       if (!walletId || !enabled) return { ok: false, failure: 'stale', detail: null };
       try {
-        return { ok: true, password: await deviceAuthPassword(walletId, promptFor(purpose, t)) };
+        return { ok: true, vaultKey: await deviceAuthVaultKey(walletId, promptFor(purpose, t)) };
       } catch (err) {
         // `deviceAuthFailure`, not a property read: the native bridge can reject with
         // `null`, and `(null as {failure?}).failure` throws a TypeError from inside this
@@ -171,14 +172,14 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
   );
 
   /**
-   * Enrol. `password` must already be verified — the store passes the live session's,
-   * which only ever comes from a successful decrypt.
+   * Enrol. The key must already be proven — the store passes the live session's, which only
+   * ever comes from a successful decrypt.
    */
   const enableDeviceUnlock = useCallback(
-    async (password: string): Promise<{ failure: DeviceAuthFailure; detail: string | null } | null> => {
+    async (vaultKey: VaultKey): Promise<{ failure: DeviceAuthFailure; detail: string | null } | null> => {
       if (!walletId) return { failure: 'unsupported', detail: null };
       try {
-        await enableDeviceAuth(walletId, password, promptFor('enroll', t));
+        await enableDeviceAuth(walletId, vaultKey, promptFor('enroll', t));
         setEnabled(true);
         await refreshDeviceAuth();
         return null;
@@ -205,7 +206,7 @@ export function useDeviceAuth(walletId: string | null, t: TFn) {
    * nothing that raises a sheet or needs a translated string.
    */
   const reenrolForPasswordChange = useCallback(
-    (id: string, newPassword: string) => reenrolDeviceAuth(id, newPassword, promptFor('rewrap', t)),
+    (id: string, newVaultKey: VaultKey) => reenrolDeviceAuth(id, newVaultKey, promptFor('rewrap', t)),
     [t],
   );
 

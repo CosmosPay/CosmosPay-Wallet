@@ -7,12 +7,26 @@
  *   cosmos.network  -> 'testnet' | 'public'     (global, shared by all wallets)
  *   cosmos.w.<id>   -> SealedBox(AES-GCM) of { secret, mnemonic }   (one per wallet)
  *
- * All wallets are sealed with the SAME app password (entered once at unlock).
- * Secrets are only decrypted into memory after a successful unlock. The wallet
- * list + names are plaintext (non-sensitive) so the user can be greeted while
- * still locked and can see how many wallets exist.
+ * Every box on the device is sealed under ONE key, derived from the app password once at
+ * unlock (`unlockSession`) and brought over the whole device by `convergeSeals`. That is
+ * what lets the session hold a key instead of the password — see `VaultKey` in
+ * `lib/crypto.ts`. Secrets are only decrypted after a successful unlock, and per operation
+ * rather than for the length of the session. The wallet list + names are plaintext
+ * (non-sensitive) so the user can be greeted while still locked and can see how many
+ * wallets exist.
  */
-import { open, seal, type SealedBox } from '@/lib/crypto';
+import {
+  deriveVaultKey,
+  kdfIsCurrent,
+  kdfOf,
+  newKdfParams,
+  open,
+  openWithKey,
+  sameKdf,
+  sealWithKey,
+  type SealedBox,
+  type VaultKey,
+} from '@/lib/crypto';
 // Only the prompt-free cleanup call. Re-wrapping needs an OS prompt and the copy that
 // goes on it, so `changePassword` takes it as an injected closure instead — see
 // `ChangePasswordDeps`. That is what keeps this module's own logic reachable from
@@ -188,22 +202,27 @@ export async function migrate(): Promise<void> {
 
 /* ---------------------------- create / unlock --------------------------- */
 
-/** Seal a new wallet under `password`, append it, and make it active. */
+/**
+ * Seal a new wallet under the session's key, append it, and make it active.
+ *
+ * The KEY, not a password, and it must be the live session's: a wallet added mid-session
+ * under fresh parameters would be one the session that created it could not read back.
+ */
 export async function addWallet(
   secret: VaultSecret,
   info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean },
-  password: string,
+  vk: VaultKey,
 ): Promise<WalletEntry> {
   const list = await listWallets();
   const dup = list.find((w) => w.publicKey === info.publicKey);
   if (dup) {
     // already imported — just make it active (and refresh its seal)
-    await storageSet(vaultKey(dup.id), JSON.stringify(await seal(JSON.stringify(secret), password)));
+    await storageSet(vaultKey(dup.id), JSON.stringify(await sealWithKey(JSON.stringify(secret), vk)));
     await setActiveId(dup.id);
     return dup;
   }
   const id = genId();
-  await storageSet(vaultKey(id), JSON.stringify(await seal(JSON.stringify(secret), password)));
+  await storageSet(vaultKey(id), JSON.stringify(await sealWithKey(JSON.stringify(secret), vk)));
   const entry: WalletEntry = {
     id,
     publicKey: info.publicKey,
@@ -231,12 +250,37 @@ export async function updateWalletMeta(
   return next;
 }
 
-/** Decrypt a wallet. Throws "Contraseña incorrecta." on a bad password. */
-export async function unlockWallet(id: string, password: string): Promise<VaultSecret> {
+async function readBox(id: string): Promise<SealedBox> {
   const raw = await storageGet(vaultKey(id));
   if (!raw) throw new Error(tNow('vault.notFound'));
-  const box = JSON.parse(raw) as SealedBox;
-  return JSON.parse(await open(box, password)) as VaultSecret;
+  return JSON.parse(raw) as SealedBox;
+}
+
+/**
+ * Decrypt a wallet with a typed password. Throws `WrongPasswordError` on a bad one.
+ *
+ * The password door, kept for the three paths where a human is proving they are present:
+ * the unlock screen, the signing gate and `revealBackup`. Everything a SESSION does goes
+ * through `openVault` instead — see `unlockSession`.
+ */
+export async function unlockWallet(id: string, password: string): Promise<VaultSecret> {
+  return JSON.parse(await open(await readBox(id), password)) as VaultSecret;
+}
+
+/**
+ * Decrypt a wallet with the session's key — no password, no derivation.
+ *
+ * This is what makes it possible for the store to stop holding the password: switching
+ * wallets, reading a credential and fetching the secret for one signature all used to need
+ * the string the user typed, so it had to be kept for the whole session. AES-GCM over a key
+ * already in hand costs microseconds, which is also why the secret no longer has to be held
+ * either — it can be fetched per signature instead of living in memory between them.
+ *
+ * Throws `VaultKeyMismatchError` if this box is not covered by that key. That is a broken
+ * state, not a wrong password; see `convergeSeals`.
+ */
+export async function openVault(id: string, vk: VaultKey): Promise<VaultSecret> {
+  return JSON.parse(await openWithKey(await readBox(id), vk)) as VaultSecret;
 }
 
 /** Verify the app password by decrypting the active wallet. */
@@ -251,6 +295,140 @@ export async function verifyPassword(password: string): Promise<boolean> {
   }
 }
 
+/**
+ * Verify a key the way `verifyPassword` verifies a string.
+ *
+ * The signing gate can be answered by the phone's own biometrics instead of by typing, and
+ * what that hands back is now a key rather than a password (`lib/deviceAuth.ts`). It still
+ * has to be PROVEN before it counts as an answer — an envelope can survive the vault it
+ * was built beside — and proving it means opening the active wallet with it.
+ */
+export async function verifyVaultKey(vk: VaultKey): Promise<boolean> {
+  const id = await getActiveId();
+  if (!id) return false;
+  try {
+    await openVault(id, vk);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** What a successful unlock produces: the wallet it opened, and the key that opens the rest. */
+export interface UnlockedVault {
+  entry: WalletEntry;
+  vaultKey: VaultKey;
+}
+
+/**
+ * Open the active wallet with a typed password and hand back a session key.
+ *
+ * ONE derivation, and the session runs on what it produced. It replaces a design where the
+ * password was kept and re-derived per operation: switching to a second wallet cost a full
+ * PBKDF2 run, which at the current cost is about a second, and every one of those was a
+ * reason to keep the number low. The key is derived for the ACTIVE wallet's parameters
+ * because those are the ones that had to be right to prove the password; `convergeSeals`
+ * moves everything else onto them.
+ */
+export async function unlockSession(password: string): Promise<UnlockedVault> {
+  const entry = await getActiveEntry();
+  if (!entry) throw new Error(tNow('vault.notFound'));
+  const box = await readBox(entry.id);
+  const vaultKey = await deriveVaultKey(password, kdfOf(box));
+  await openWithKey(box, vaultKey); // throws WrongPasswordError — this is the guess
+  return { entry, vaultKey };
+}
+
+/**
+ * Bring every box on the device under ONE key, and return the key that covers them.
+ *
+ * Two jobs that are really one. The first is the iteration count: it is a number this
+ * project has to be able to RAISE, and a raise is worth nothing to the wallets already
+ * installed, because nothing rewrites a vault except creation, import and
+ * `changePassword`. The second is the salt: a session holds a single derived key, and a
+ * key only opens boxes sealed under the parameters it was derived for. Both are the same
+ * operation — open with the password, re-seal onto the target — so they are one pass.
+ *
+ * AWAITED BY THE CALLER, unlike the fire-and-forget version this replaces. It stopped being
+ * hygiene when the session key started depending on it: a box left on other parameters is
+ * one `switchWallet` away from a `VaultKeyMismatchError` in front of the user. It runs
+ * before the session opens, and once a device has converged it does no crypto at all — it
+ * reads each box, sees the parameters already match, and returns.
+ *
+ * Best effort per box, with ONE exception: the active wallet. A failure elsewhere — a
+ * storage fault, a box this build cannot parse — leaves that box on its old seal, which
+ * still opens with the password, and the next unlock converges it. The active wallet
+ * cannot be left behind that way, because the key returned here is the one the whole
+ * session runs on: `secretOf` reads that wallet's box for every signature. A session
+ * holding a key its own wallet does not match is not a degraded session, it is a broken
+ * one — every send, swap and payout fails with `VaultKeyMismatchError`, and `getCosmosPay`
+ * swallows the same failure as "no credential", so receiving quietly reads as unlinked.
+ * That was the shape of it: the pass caught its own failure, returned the target anyway,
+ * and handed the store a key that opened nothing it was about to use.
+ *
+ * So the active wallet goes first and decides the pass. If it did not land on the target,
+ * nothing else is moved either and the ORIGINAL key is returned — the one `unlockSession`
+ * derived from that wallet's own box, which by construction opens it. Aborting rather than
+ * carrying on is what keeps the device from splitting in half: some boxes on the new
+ * parameters, some on the old, and no single key covering the wallet in front of the user.
+ * The whole pass runs again on the next unlock.
+ *
+ * COMPARE-AND-SWAP on the write. Another document of the same extension can be running
+ * `changePassword` while this is mid-pass; writing blind would put a box sealed under the
+ * OLD password on top of the new one, which is a wallet its owner can no longer open. If
+ * the stored bytes moved between the read and the write, this pass drops its result — and
+ * on the active wallet that lost race is one of the ways the abort above is reached.
+ */
+export async function convergeSeals(password: string, vk: VaultKey): Promise<VaultKey> {
+  // A key derived for out-of-date parameters cannot be the target: everything would
+  // converge onto the cost we are trying to leave behind.
+  const target = kdfIsCurrent(vk.kdf) ? vk : await deriveVaultKey(password, newKdfParams());
+  // `getActiveEntry`, not `getActiveId`: it falls back to the first wallet exactly as
+  // `unlockSession` does, so both agree on which box the session key came from.
+  const active = await getActiveEntry();
+  if (active) {
+    await resealOnto(vaultKey(active.id), password, target);
+    if (!(await coveredBy(vaultKey(active.id), target))) return vk;
+  }
+  for (const w of await listWallets()) {
+    await resealOnto(vaultKey(w.id), password, target);
+    await resealOnto(cosmosPayKey(w.id), password, target);
+  }
+  return target;
+}
+
+/**
+ * Does the box stored under `key` carry the parameters this key was derived for?
+ *
+ * Read back from storage rather than inferred from `resealOnto` returning: that function
+ * swallows its failures on purpose, and the three ways it can decline — the write throwing,
+ * the compare-and-swap losing, the box refusing to open — are indistinguishable from the
+ * outside. The only honest question is what is on disk now.
+ */
+async function coveredBy(key: string, vk: VaultKey): Promise<boolean> {
+  try {
+    const raw = await storageGet(key);
+    return !!raw && sameKdf(kdfOf(JSON.parse(raw) as SealedBox), vk.kdf);
+  } catch {
+    return false;
+  }
+}
+
+async function resealOnto(key: string, password: string, target: VaultKey): Promise<void> {
+  try {
+    const raw = await storageGet(key);
+    if (!raw) return;
+    const box = JSON.parse(raw) as SealedBox;
+    if (sameKdf(kdfOf(box), target.kdf)) return; // already covered by this key
+    const plain = await open(box, password); // whatever parameters it carries
+    const next = JSON.stringify(await sealWithKey(plain, target));
+    if ((await storageGet(key)) !== raw) return; // something else rewrote it — leave it alone
+    await storageSet(key, next);
+  } catch {
+    /* the old seal still works; try again on the next unlock */
+  }
+}
+
 export async function updateWallet(
   id: string,
   partial: Partial<Pick<WalletEntry, 'name' | 'birthdate'>>,
@@ -261,8 +439,8 @@ export async function updateWallet(
 /* ----------------------------- CosmosPay -------------------------------- */
 
 /**
- * Persist a provisioned CosmosPay account: the credential is sealed under the
- * app `password` (encrypted at rest, same scheme as the wallet secret) while
+ * Persist a provisioned CosmosPay account: the credential is sealed under the session's
+ * vault key (encrypted at rest, same scheme and the same key as the wallet secret) while
  * the org id / environment are mirrored onto the plaintext WalletEntry so the
  * "receiving enabled" state survives restarts without needing the password.
  * Returns the updated wallet list.
@@ -270,9 +448,9 @@ export async function updateWallet(
 export async function saveCosmosPay(
   id: string,
   data: CosmosPayAccount,
-  password: string,
+  vk: VaultKey,
 ): Promise<WalletEntry[]> {
-  await storageSet(cosmosPayKey(id), JSON.stringify(await seal(JSON.stringify(data), password)));
+  await storageSet(cosmosPayKey(id), JSON.stringify(await sealWithKey(JSON.stringify(data), vk)));
   const list = await listWallets();
   const next = list.map((w) =>
     w.id === id ? { ...w, cosmosPayEnabled: true, cosmosPayOrgId: data.organizationId } : w,
@@ -309,25 +487,52 @@ export async function clearReceiver(id: string): Promise<WalletEntry[]> {
   return next;
 }
 
-/** Decrypt the stored CosmosPay account for a wallet (null if none / bad password). */
-export async function getCosmosPay(id: string, password: string): Promise<CosmosPayAccount | null> {
+/**
+ * Read the decrypted JSON back into an account.
+ *
+ * Split out from `getCosmosPay` because `changePassword` opens the same box through the
+ * password door rather than the key one, and the legacy-shape migration below has to
+ * happen on both paths or the re-seal would write back a shape the next read migrates
+ * again — forever.
+ */
+function parseCosmosPay(json: string): CosmosPayAccount {
+  const parsed = JSON.parse(json) as
+    | CosmosPayAccount
+    | { apiKey: string | null; organizationId: string; environment: 'dev' | 'prod' };
+  // Migrate the legacy single-key shape ({ apiKey, environment }) to the dual-key shape,
+  // keeping the existing key for its environment (the other side is filled on re-link).
+  if (!('keys' in parsed) && 'apiKey' in parsed) {
+    const env = parsed.environment === 'prod' ? 'prod' : 'dev';
+    return {
+      organizationId: parsed.organizationId,
+      keys: { dev: env === 'dev' ? parsed.apiKey : null, prod: env === 'prod' ? parsed.apiKey : null },
+    };
+  }
+  return parsed as CosmosPayAccount;
+}
+
+/** Decrypt the stored CosmosPay account for a wallet (null if none / not covered by this key). */
+export async function getCosmosPay(id: string, vk: VaultKey): Promise<CosmosPayAccount | null> {
   const raw = await storageGet(cosmosPayKey(id));
   if (!raw) return null;
   try {
-    const box = JSON.parse(raw) as SealedBox;
-    const parsed = JSON.parse(await open(box, password)) as
-      | CosmosPayAccount
-      | { apiKey: string | null; organizationId: string; environment: 'dev' | 'prod' };
-    // Migrate the legacy single-key shape ({ apiKey, environment }) to the dual-key shape,
-    // keeping the existing key for its environment (the other side is filled on re-link).
-    if (!('keys' in parsed) && 'apiKey' in parsed) {
-      const env = parsed.environment === 'prod' ? 'prod' : 'dev';
-      return {
-        organizationId: parsed.organizationId,
-        keys: { dev: env === 'dev' ? parsed.apiKey : null, prod: env === 'prod' ? parsed.apiKey : null },
-      };
-    }
-    return parsed as CosmosPayAccount;
+    return parseCosmosPay(await openWithKey(JSON.parse(raw) as SealedBox, vk));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The same read through the password door, for `changePassword`.
+ *
+ * It cannot use the session's key: the boxes it is about to re-seal are the ones that still
+ * carry the OLD password's parameters, which is exactly what the key does not cover.
+ */
+async function readCosmosPayWithPassword(id: string, password: string): Promise<CosmosPayAccount | null> {
+  const raw = await storageGet(cosmosPayKey(id));
+  if (!raw) return null;
+  try {
+    return parseCosmosPay(await open(JSON.parse(raw) as SealedBox, password));
   } catch {
     return null;
   }
@@ -359,10 +564,10 @@ export async function removeWallet(
   id: string,
 ): Promise<{ remaining: WalletEntry[]; newActive: string | null }> {
   await storageRemove(vaultKey(id));
-  // The password sealed behind the phone's lock screen outlives the vault it opens
+  // The vault key sealed behind the phone's lock screen outlives the vault it opens
   // unless it is dropped here. Ids come from crypto.randomUUID(), so a later wallet
   // will not collide with the orphan — it would simply sit in the Keychain for the
-  // life of the install, holding a password the user believes they deleted.
+  // life of the install, holding a key to a wallet the user believes they deleted.
   await disableDeviceAuth(id);
   await storageRemove(cosmosPayKey(id));
   await storageRemove(cosmosPayPendingKey(id));
@@ -387,7 +592,7 @@ export async function removeWallet(
  * one. It returns whether the enrolment came back; it must not throw.
  */
 export interface ChangePasswordDeps {
-  reenrolDeviceAuth: (walletId: string, newPassword: string) => Promise<boolean>;
+  reenrolDeviceAuth: (walletId: string, newVaultKey: VaultKey) => Promise<boolean>;
 }
 
 /**
@@ -395,9 +600,9 @@ export interface ChangePasswordDeps {
  *
  * The header below promises the device is left exactly as it was on failure, and that is
  * true only up to the commit. Past it there is no rollback: some wallets are on the new
- * password and some on the old, and the caller's `session.password` is true of neither.
+ * password and some on the old, and the key the caller's session holds is true of neither.
  * A plain `Error` there let `changeAppPassword` flash a message and carry on with a
- * session whose password no longer opens what it thinks it opens — so the class exists to
+ * session whose key no longer opens what it thinks it opens — so the class exists to
  * make "you must end this session" a fact the caller can branch on rather than guess.
  */
 export class PasswordChangeCommitError extends Error {
@@ -432,12 +637,13 @@ export interface PasswordChangeResult {
  * `PasswordChangeCommitError` so the caller ends the session instead of carrying on with a
  * password that is now true of only some wallets.
  *
- * The device-lock enrolment holds a copy of the password sealed under a key in the
- * Keychain, so it has to move in the same pass. It is dropped BEFORE the commit and
- * re-created after — not re-wrapped afterwards, which was the original design and had no
- * safe interruption: an envelope left holding the OLD password hands `unlock()` a string
- * that no longer decrypts, so the user meets "wrong password" coming from their own
- * fingerprint and the failed-attempt ladder counts it against them.
+ * The device-lock enrolment holds the vault key sealed under a key in the Keychain, so it
+ * has to move in the same pass — the new password derives a different vault key, and the
+ * enrolled one stops opening anything. It is dropped BEFORE the commit and re-created
+ * after — not re-wrapped afterwards, which was the original design and had no safe
+ * interruption: an envelope left holding the OLD key hands `unlock()` something that no
+ * longer decrypts, so the user meets "wrong password" coming from their own fingerprint
+ * and the failed-attempt ladder counts it against them.
  *
  * Re-enrolling needs a device prompt, which the user can dismiss. That is not a failure of
  * the password change — the vault is already re-sealed by then — so the enrolment stays off
@@ -452,36 +658,42 @@ export async function changePassword(
   const wallets = await listWallets();
 
   // 1. Open everything. Nothing is written in this pass, so `unlockWallet` throwing
-  //    "Contraseña incorrecta." on any wallet leaves the device untouched.
+  //    `WrongPasswordError` on any wallet leaves the device untouched.
   const opened = [];
   for (const w of wallets) {
     const secret = await unlockWallet(w.id, oldPassword); // throws on wrong password
-    const cosmosPay = await getCosmosPay(w.id, oldPassword);
+    const cosmosPay = await readCosmosPayWithPassword(w.id, oldPassword);
     opened.push({ entry: w, secret, cosmosPay });
   }
 
   // 2. Seal everything under the new password, still writing nothing. This is pure crypto
   //    over data already in hand: it either all succeeds or throws before any commit.
+  //
+  //    ONE key for the whole device, derived once. Not only 2N-1 derivations saved on a
+  //    slow phone: the session that opens after this has to be able to reach every wallet
+  //    with a single key, so sealing each box under its own salt would leave a device that
+  //    `convergeSeals` has to walk on the very next unlock.
+  const newVaultKey = await deriveVaultKey(newPassword, newKdfParams());
   const sealed = [];
   for (const o of opened) {
     sealed.push({
       entry: o.entry,
-      vault: JSON.stringify(await seal(JSON.stringify(o.secret), newPassword)),
+      vault: JSON.stringify(await sealWithKey(JSON.stringify(o.secret), newVaultKey)),
       // Re-seal the CosmosPay credential too, otherwise it would be undecryptable.
-      cosmosPay: o.cosmosPay ? JSON.stringify(await seal(JSON.stringify(o.cosmosPay), newPassword)) : null,
+      cosmosPay: o.cosmosPay ? JSON.stringify(await sealWithKey(JSON.stringify(o.cosmosPay), newVaultKey)) : null,
     });
   }
 
   // 3. Turn every device-lock enrolment OFF, BEFORE the vault moves.
   //
   //    This used to run last, after the commit, and that ordering had no safe failure. An
-  //    envelope holds a copy of the password sealed under a Keystore key; re-wrapping it
-  //    raises an OS sheet per wallet, and anything that interrupts the pass — the process
-  //    dying, the user walking away, iOS reclaiming the app — left the envelope holding the
-  //    PRE-CHANGE password with a still-valid key beside it. Both halves consistent, so
-  //    nothing detects it: `deviceAuthPassword` returns that password happily, `unlock()`
-  //    answers "wrong password", and the ladder counts the user's own fingerprint as a
-  //    guess until they are locked out for five minutes.
+  //    envelope holds the vault key sealed under a Keystore key; re-wrapping it raises an
+  //    OS sheet per wallet, and anything that interrupts the pass — the process dying, the
+  //    user walking away, iOS reclaiming the app — left the envelope holding the PRE-CHANGE
+  //    key with a still-valid wrapping key beside it. Both halves consistent, so nothing
+  //    detects it: `deviceAuthVaultKey` returns that key happily, `unlock()` answers "wrong
+  //    password", and the ladder counts the user's own fingerprint as a guess until they
+  //    are locked out for five minutes.
   //
   //    Dropping first inverts that. `disableDeviceAuth` needs no prompt and cannot fail
   //    meaningfully, so the worst interruption now leaves the feature OFF — recoverable
@@ -511,7 +723,7 @@ export async function changePassword(
   for (const entry of enrolled) {
     let back = false;
     try {
-      back = await deps.reenrolDeviceAuth(entry.id, newPassword);
+      back = await deps.reenrolDeviceAuth(entry.id, newVaultKey);
     } catch {
       // The contract says it does not throw, and it does not — but its cleanup path touches
       // storage, and storage can reject. An escape here would abort a change that has

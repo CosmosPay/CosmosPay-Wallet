@@ -21,28 +21,48 @@ name: Native builds
 #             keystore secrets below are configured. There is no unsigned release APK in
 #             the outputs on purpose: nothing can install one, so shipping it would be a
 #             download that only ever fails.
-#   iOS     — NO INSTALLABLE ARTEFACT, and the job says so rather than pretending. A Tauri
+#   iOS     — a signed .ipa when the Apple secrets below are configured; otherwise NO
+#             INSTALLABLE ARTEFACT, and the job says so rather than pretending. There is no
+#             unsigned fallback for the same reason there is no unsigned release APK:
+#             nothing can install one. An iOS build cannot be made unsigned at all — a Tauri
 #             Xcode project can only be built by `tauri ios build`, whose export step needs
-#             an Apple signing identity this repository has no secrets for; see the long
-#             comment on the job itself for why `xcodebuild` directly cannot work here and
-#             why the .ipa on v1.4.0/v1.4.1 was a Capacitor build. What it does instead is
-#             compile both halves — the Rust `aarch64-apple-ios` target and the Swift
-#             package — which is what catches a Package.swift, a purpose-string or a
-#             deployment-target break: exactly the class of breakage nobody on a Windows
-#             machine can reproduce, and the half of src-tauri/plugins/cosmos that no other
-#             job compiles at all.
+#             a signing identity; see the long comment on the job itself for why
+#             `xcodebuild` directly cannot work here and why the .ipa on v1.4.0/v1.4.1 was a
+#             Capacitor build. Unsigned, the job still compiles both halves — the Rust
+#             `aarch64-apple-ios` target and the Swift package — which is what catches a
+#             Package.swift, a purpose-string or a deployment-target break: exactly the
+#             class of breakage nobody on a Windows machine can reproduce, and the half of
+#             src-tauri/plugins/cosmos that no other job compiles at all. Those two compile
+#             steps run either way, because they fail faster and more legibly than an
+#             archive does.
 #
-# Signing (optional — set all four as repository secrets to get a Play-ready build):
+# Signing — Android (optional; set all four as repository secrets for a Play-ready build):
 #   ANDROID_KEYSTORE_BASE64    base64 of your release .keystore/.jks  (`base64 -w0 release.jks`)
 #   ANDROID_KEYSTORE_PASSWORD  the store password
 #   ANDROID_KEY_ALIAS          the key alias inside the store
 #   ANDROID_KEY_PASSWORD       that key's password
-# Absent any of them the job says so in its log and falls back to the debug APK rather than
-# failing: a fork and a first-time clone must still get a testable build out of CI.
 #
-# Signing happens with apksigner/jarsigner AFTER Gradle, never through a signingConfig in
-# the generated project. `src-tauri/gen/` is a build output — see CLAUDE.md — so a keystore
-# path written into it would be secret handling that `tauri android init` erases.
+# Signing — iOS (optional; set all four for an .ipa):
+#   IOS_CERTIFICATE_BASE64           base64 of the Apple Distribution .p12 (cert + private key)
+#   IOS_CERTIFICATE_PASSWORD         the password that .p12 was exported with
+#   IOS_PROVISIONING_PROFILE_BASE64  base64 of the matching .mobileprovision
+#   IOS_TEAM_ID                      the 10-character Apple Team ID
+# Optional repository VARIABLE (not a secret — it is not one):
+#   IOS_EXPORT_METHOD          release-testing (default) | app-store-connect | enterprise |
+#                              debugging. `release-testing` is ad-hoc: installable on the
+#                              devices listed in the profile, which is what a download from
+#                              a GitHub Release has to be. `app-store-connect` produces an
+#                              .ipa that ONLY App Store Connect accepts — attaching one to a
+#                              release would be a file nobody can open.
+#
+# Absent any of a platform's secrets that platform says so in its log and degrades rather
+# than failing — the debug APK on Android, a compile check on iOS. A fork and a first-time
+# clone have neither set and must still get a green build with something testable in it.
+#
+# Both platforms sign OUTSIDE the generated project: apksigner/jarsigner after Gradle, and a
+# throwaway keychain the iOS job creates and destroys. `src-tauri/gen/` is a build output —
+# see CLAUDE.md — so a keystore path or a DEVELOPMENT_TEAM written into it would be secret
+# handling that the next `tauri android|ios init` erases without a word.
 
 on:
   workflow_call:
@@ -409,6 +429,76 @@ jobs:
       - name: Build the web bundle
         run: npm run build
 
+      # BEFORE `ios:init`, and that ordering is the whole reason this step is here rather
+      # than next to the build it serves. `tauri ios init` bakes DEVELOPMENT_TEAM into the
+      # Xcode project it generates, reading it from `APPLE_DEVELOPMENT_TEAM`; a team
+      # exported after the project exists is a team the project never saw, and the archive
+      # then fails with "no signing certificate found" while the secret sits right there.
+      #
+      # `$GITHUB_ENV` and not a job-level `env:`, for the unsigned case: a job-level mapping
+      # from an unset secret still SETS the variable, to the empty string, and an empty
+      # DEVELOPMENT_TEAM is not the same thing as no DEVELOPMENT_TEAM. Written here, the
+      # variable simply does not exist unless there is a real team to put in it.
+      - name: Import the Apple signing identity
+        id: apple
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CERTIFICATE_BASE64" ] || [ -z "$CERTIFICATE_PASSWORD" ] \
+             || [ -z "$PROVISIONING_PROFILE_BASE64" ] || [ -z "$TEAM_ID" ]; then
+            echo "Apple signing secrets absent — this run stays a compile check and produces no .ipa."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # A throwaway keychain, never the login one. The login keychain persists between
+          # jobs on a self-hosted runner and is shared with anything else on the machine;
+          # this one is created here, unlocked here and deleted by the cleanup step below,
+          # so the private key exists for the length of one job and nowhere else.
+          KEYCHAIN="$RUNNER_TEMP/cosmos-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          echo "::add-mask::$KEYCHAIN_PASSWORD"
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          # -lut 21600, i.e. do not relock for six hours. The default is a 300-second idle
+          # timeout, and a release archive takes longer than that: the lock lands mid-sign
+          # and codesign reports "User interaction is not allowed", which reads like a
+          # missing certificate rather than a clock.
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+
+          echo "$CERTIFICATE_BASE64" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          # Deleted immediately: the .p12 carries the private key, and $RUNNER_TEMP outlives
+          # this step. The keychain is the only copy from here on.
+          rm -f "$RUNNER_TEMP/cert.p12"
+          # Without a partition list, the first use of the key raises a GUI confirmation
+          # dialog. On a headless runner that is not a refusal, it is a hang until the job
+          # times out.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          # ON the search list, not merely on disk: xcodebuild only looks at keychains the
+          # user's list names, and `create-keychain` does not add them. The existing entries
+          # are kept — replacing the list outright is how the system roots disappear and
+          # every https call in the build starts failing certificate validation.
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+
+          # Both directories, because Xcode 16 moved it and the runner image decides which
+          # Xcode is selected. Writing the one that is not read costs a file nobody opens.
+          for dir in "$HOME/Library/MobileDevice/Provisioning Profiles" \
+                     "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$dir"
+            echo "$PROVISIONING_PROFILE_BASE64" | base64 -d > "$dir/cosmos-pay.mobileprovision"
+          done
+
+          echo "APPLE_DEVELOPMENT_TEAM=$TEAM_ID" >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
       - name: Generate the Xcode project
         run: npm run ios:init
 
@@ -417,9 +507,8 @@ jobs:
       - name: Restore native permissions
         run: npm run native:perms
 
-      # THIS JOB COMPILES THE TWO HALVES; IT DOES NOT PRODUCE AN .ipa. That is a limit of the
-      # runner, not an oversight, and the history is worth keeping because the old shape
-      # looked like it worked:
+      # THE TWO COMPILE STEPS BELOW RUN WHETHER OR NOT THERE IS AN .ipa AT THE END, and the
+      # history behind them is worth keeping because the old shape looked like it worked:
       #
       # Until the migration to Tauri, this job ran `xcodebuild` straight at a CAPACITOR
       # project (`ios/App/App.xcodeproj`), which has no Rust in it, so building it unsigned
@@ -434,14 +523,15 @@ jobs:
       #
       # That is unconditional — it happens in `release` as readily as in `debug`. So the only
       # supported way to build the app is `tauri ios build`, whose export step needs an Apple
-      # signing identity and provisioning profile that this repository has no secrets for.
-      # An unsigned .ipa is not something a runner without an Apple account can produce here.
+      # signing identity and a provisioning profile. There is no unsigned .ipa to fall back
+      # to: unlike Android, where an unsigned APK at least exists as a file, iOS has no
+      # artefact at all without an identity.
       #
-      # What it CAN do is compile both halves, which is what the job was always for: catching
-      # a Package.swift, a purpose-string or a deployment-target break that nobody on a
-      # Windows machine can reproduce. Add the Apple secrets and this can become a real
-      # `tauri ios build`; until then it is a compile check that passes honestly rather than
-      # an .ipa step that has never once succeeded.
+      # `Build the .ipa` below is that build, gated on the secrets. These two steps stay in
+      # front of it either way, and not only for the unsigned case: they are the ones that
+      # catch a Package.swift, a purpose-string or a deployment-target break that nobody on a
+      # Windows machine can reproduce, and they fail in seconds with a compiler message
+      # instead of somewhere inside a release archive.
 
       # `--lib` and not the whole crate: src-tauri also builds a desktop binary, and asking
       # for it here would try to link a macOS-shaped `main` against an iOS target. The lib
@@ -474,3 +564,65 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/swift-build" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
             2>&1 | sed -E '/^[[:space:]]+export [A-Za-z_0-9]/d'
+
+      # The build the rest of this job exists to make possible.
+      #
+      # `--help` is dumped first on purpose, and it is not decoration — it is the same
+      # defence as the `find` above. `tauri ios` refuses to load off macOS, so this is the
+      # one command surface in this file that nobody working on Windows or Linux can check
+      # before pushing; if a CLI upgrade renames the flag, the log carries what the installed
+      # version actually accepts instead of just "unexpected argument".
+      #
+      # `release-testing` by default — ad-hoc, installable on the devices the profile lists,
+      # which is the only export a file attached to a GitHub Release can usefully be. Set the
+      # IOS_EXPORT_METHOD repository VARIABLE to change it; it is not a secret, and storing a
+      # non-secret as one is how a value nobody can read back gets forgotten.
+      - name: Build the .ipa
+        if: steps.apple.outputs.signed == 'true'
+        env:
+          IOS_EXPORT_METHOD: ${{ vars.IOS_EXPORT_METHOD }}
+        run: |
+          set -euo pipefail
+          npx tauri ios build --help || true
+          npm run ios:build -- --export-method "${IOS_EXPORT_METHOD:-release-testing}"
+
+      - name: Collect the .ipa
+        if: steps.apple.outputs.signed == 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          BUILD_NAME="cosmos-pay-$(node -p "require('./package.json').version")"
+          # `find`, not a literal path. src-tauri/gen/apple is generated, its export
+          # directory has moved between Tauri releases, and a stale literal here would upload
+          # nothing at all rather than fail — the one outcome worth engineering against,
+          # because a release with a missing asset looks exactly like a release with one.
+          find src-tauri/gen/apple -name '*.ipa' -exec cp {} "out/$BUILD_NAME.ipa" \;
+          ls -la out
+          # An empty `out` means the archive succeeded and the export landed somewhere this
+          # does not look. Fail here, where the log still has the build in it.
+          test -n "$(ls -A out)"
+
+      - name: Upload the iOS artifact
+        if: steps.apple.outputs.signed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios
+          path: out
+          if-no-files-found: error
+
+      - name: Attach to GitHub Release
+        if: steps.apple.outputs.signed == 'true' && inputs.release-tag != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ inputs.release-tag }}" out/* --clobber
+
+      # `always()`, because the private key must not outlive the job on a runner that may be
+      # reused. Hosted runners are destroyed after every job and this is redundant there; a
+      # self-hosted one is not, and the difference is a signing identity left behind on a
+      # machine that goes on to build something else.
+      - name: Destroy the signing keychain
+        if: always() && steps.apple.outputs.signed == 'true'
+        run: |
+          security delete-keychain "$KEYCHAIN" || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/cosmos-pay.mobileprovision" \
+                "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/cosmos-pay.mobileprovision" || true

@@ -31,8 +31,12 @@ import {
   setActiveId,
   setCustomNetworks as vaultSetCustomNetworks,
   setNetworkId as vaultSetNetworkId,
+  unlockSession,
   unlockWallet,
+  convergeSeals,
+  openVault,
   verifyPassword,
+  verifyVaultKey,
   type CosmosPayAccount,
   type CosmosPayPending,
   type Gender,
@@ -40,9 +44,9 @@ import {
 } from '@/lib/vault';
 import { storageGet, storageSet } from '@/lib/storage';
 import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
-import { WrongPasswordError } from '@/lib/crypto';
+import { VaultKeyMismatchError, WrongPasswordError, deriveVaultKey, newKdfParams, wipeVaultKey, type VaultKey } from '@/lib/crypto';
 import { assertSafeToSign, reviewTx } from '@/lib/txGuard';
-import { appPasswordOk, isSafeHorizonUrl } from '@/lib/validate';
+import { MIN_APP_PWD_LEN, appPasswordOk, isSafeHorizonUrl } from '@/lib/validate';
 import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
 import { codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
 import { FIAT_DECIMALS, fromMinorUnits } from '@/lib/amount';
@@ -135,9 +139,40 @@ export type { Screen, Tab } from '@/lib/screens';
 
 export interface Session {
   publicKey: string;
-  secret: string;
-  mnemonic: string | null;
-  password: string; // kept in memory so new wallets can be sealed without re-prompting
+  /** Which wallet this session opened. `openVault` reads that wallet's box. */
+  walletId: string;
+  /**
+   * The key that opens every box on this device — and the ONLY secret this object holds.
+   *
+   * It used to hold three: the app password (so a second wallet could be sealed without
+   * re-prompting), the Stellar secret and the mnemonic, all three as JS strings, all three
+   * for as long as the session lasted. A string cannot be wiped, so anything that could
+   * read this object's memory at any point in a five-minute session got the seed AND a
+   * password the user may well use elsewhere.
+   *
+   * What is here now is derived from the password, never the password; it is device-local
+   * and `changePassword` replaces it. The seed and the mnemonic are not here at all —
+   * `openVault` fetches the seed for one signature at a time, which is affordable precisely
+   * because the expensive half (PBKDF2) already happened at unlock.
+   */
+  vaultKey: VaultKey;
+}
+
+/**
+ * The wallet's Stellar secret, decrypted for ONE operation.
+ *
+ * Module level and not a hook: it needs nothing but the session, so no dependency array can
+ * forget it.
+ *
+ * This is the shape the redesign turns on. The secret used to be a field on `Session` — a
+ * plain string, resident for the whole five-minute session, next to the mnemonic and the
+ * password. Reading it per signature costs one AES-GCM decrypt of a small blob, which is
+ * affordable only because the expensive half of the work (PBKDF2) already happened once at
+ * unlock. Do not hoist the result into anything that outlives the call that needs it: every
+ * use site below fetches it at the point of use, after `guardSession`.
+ */
+async function secretOf(s: Session): Promise<string> {
+  return (await openVault(s.walletId, s.vaultKey)).secret;
 }
 
 export interface SuccessInfo {
@@ -273,6 +308,18 @@ export function useWalletStore() {
   const [meta, setMetaState] = useState<WalletEntry | null>(null);
   const [wallets, setWallets] = useState<WalletEntry[]>([]);
   const [session, setSession] = useState<Session | null>(null);
+  /**
+   * The live session, readable from a callback that must not depend on it.
+   *
+   * `lock()` is one of those: it is in the dependency list of the idle timer, the Android
+   * back handler and half the money flows, so taking `session` as a dependency would give
+   * it a new identity on every unlock and re-arm all of them. It needs the session only to
+   * wipe the key it carries.
+   */
+  const sessionRef = useRef<Session | null>(null);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
   const [addingWallet, setAddingWallet] = useState(false);
   /** A just-created wallet has a one-time offer to turn on the phone's lock. */
   const [deviceAuthOffer, setDeviceAuthOffer] = useState(false);
@@ -538,7 +585,7 @@ export function useWalletStore() {
           }),
         ]);
       } catch (e) {
-        flash((e as Error).message || 'No se pudieron cargar los datos.', 'err');
+        flash((e as Error).message || t('home.loadError'), 'err');
       } finally {
         setLoading(false);
       }
@@ -677,10 +724,15 @@ export function useWalletStore() {
   const finishOnboarding = useCallback(
     async (password?: string) => {
       if (!draftAccount) return;
-      const pwd = addingWallet ? session?.password : password;
-      if (!pwd) return;
+      // Adding a wallet to an unlocked session reuses that session's key — which is what
+      // "no password screen" means now. The first wallet on a device derives one from the
+      // password the setup screen just collected, and that derivation is what makes its
+      // parameters the ones every later box converges onto.
+      const reuse = addingWallet ? session?.vaultKey : null;
+      if (addingWallet ? !reuse : !password) return;
       setBusy(true);
       try {
+        const vk = reuse ?? (await deriveVaultKey(password as string, newKdfParams()));
         const entry = await vaultAddWallet(
           { secret: draftAccount.secret, mnemonic: draftHasMnemonic ? draftMnemonic : null },
           {
@@ -692,16 +744,11 @@ export function useWalletStore() {
             metricsOptIn: draftMetricsOptIn,
             promoOptIn: draftPromoOptIn,
           },
-          pwd,
+          vk,
         );
         setMetaState(entry);
         setWallets(await listWallets());
-        setSession({
-          publicKey: draftAccount.publicKey,
-          secret: draftAccount.secret,
-          mnemonic: draftHasMnemonic ? draftMnemonic : null,
-          password: pwd,
-        });
+        setSession({ publicKey: draftAccount.publicKey, walletId: entry.id, vaultKey: vk });
         setCosmosPay(null); // fresh wallet — receiving not enabled yet
         setCosmosPayPending(null);
         setSuccessInfo({
@@ -761,6 +808,29 @@ export function useWalletStore() {
   }, []);
 
   /**
+   * The translated line for an error thrown out of `lib/crypto`.
+   *
+   * Those two classes carry stable ENGLISH messages on purpose: `lib/crypto.ts` is the
+   * crypto core, it stays dependency-free, and its message is an identifier for whoever is
+   * reading a stack trace. The rule that follows from that — stated on `WrongPasswordError`
+   * itself — is that the SCREEN renders the translated line and branches on `instanceof`,
+   * never on the text. Flashing `e.message` skipped that half, so a Spanish-default wallet
+   * answered a mistyped password with "Wrong password." and, once the session started
+   * carrying a key, a `VaultKeyMismatchError` with a sentence about KDF parameters.
+   *
+   * Anything else already arrives translated — `lib/` throws through `tNow` — so it is
+   * passed through untouched.
+   */
+  const errLine = useCallback(
+    (e: unknown): string => {
+      if (e instanceof WrongPasswordError) return t('confirmSig.wrongPwd');
+      if (e instanceof VaultKeyMismatchError) return t('vault.keyMismatch');
+      return (e as Error).message;
+    },
+    [t],
+  );
+
+  /**
    * Serialises unlock attempts within this document.
    *
    * A ref, not `busy`: `busy` is React state, so two Enter keydowns in the same frame both
@@ -771,6 +841,23 @@ export function useWalletStore() {
    * this stops them being started at all, which is what keeps the phone responsive.
    */
   const unlockInFlight = useRef(false);
+
+  /**
+   * Everything a session needs once the key is proven, from either door.
+   *
+   * Shared by `unlock` (a typed password) and `unlockWithKey` (the phone's own lock). They
+   * differ only in how the key was obtained; what a session IS must not depend on that, and
+   * when it did, the biometric path quietly skipped `setCosmosPayPending`.
+   */
+  const openSession = useCallback(async (entry: WalletEntry, vaultKey: VaultKey) => {
+    setMetaState(entry);
+    setWallets(await listWallets());
+    setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey });
+    setCosmosPay(await getCosmosPay(entry.id, vaultKey));
+    setCosmosPayPending(await getPendingCosmosPay(entry.id));
+    setTab('home');
+    setScreen('home');
+  }, []);
 
   const unlock = useCallback(
     async (password: string): Promise<UnlockResult> => {
@@ -783,40 +870,91 @@ export function useWalletStore() {
           flash(blocked, 'err');
           return { ok: false, reason: 'throttled' };
         }
-        const active = await getActiveEntry();
-        if (!active) {
-          await releaseAttempt(); // nothing was guessed — see forgetAttempt
-          throw new Error('No hay ninguna wallet guardada en este dispositivo.');
-        }
-        // `getActiveEntry` checks neither that the vault blob exists nor that it parses —
-        // it falls back to `list[0]`. So a throw here is NOT necessarily a wrong password,
-        // and `forgetAttempt` is what keeps a corrupt blob from counting as a guess.
-        const secret = await unlockWallet(active.id, password).catch(async (err: unknown) => {
+        // ONE derivation for the whole session. `unlockSession` finds the active wallet,
+        // derives the key from the typed password and proves it against that wallet's box.
+        // A throw is not necessarily a wrong password — the blob can be missing or
+        // unparseable — and `forgetAttempt` is what keeps that from counting as a guess.
+        const opened = await unlockSession(password).catch(async (err: unknown) => {
           await forgetAttempt(err);
           throw err;
         });
         await noteAttemptSuccess();
-        setMetaState(active);
-        setWallets(await listWallets());
-        setSession({ publicKey: active.publicKey, secret: secret.secret, mnemonic: secret.mnemonic, password });
-        setCosmosPay(await getCosmosPay(active.id, password));
-        setCosmosPayPending(await getPendingCosmosPay(active.id));
-        setTab('home');
-        setScreen('home');
+        // AWAITED, and before the session opens. Every silent path from here on runs on the
+        // session's key, so a box left under other parameters would surface as a failure in
+        // front of the user instead of as a background chore. A device that has already
+        // converged pays one read per box and no crypto at all.
+        const vaultKey = await convergeSeals(password, opened.vaultKey);
+        await openSession(opened.entry, vaultKey);
         return { ok: true };
       } catch (e) {
-        flash((e as Error).message, 'err');
-        // The reason travels back because `unlockWithDevice` acts on it: a password the
-        // envelope produced and that does not decrypt means the enrolment is stale, but a
-        // THROTTLED attempt says nothing about the envelope, and treating the two alike
-        // would delete a working enrolment over a backoff the user triggered by typing.
+        flash(errLine(e), 'err');
+        // The reason is classified rather than folded into a boolean because the unlock
+        // screen says different things about a typo, a throttled attempt and a vault it
+        // could not read at all. `unlockWithKey` below makes the same distinction for the
+        // same reason, and acts on it harder: there, "wrong" costs the user an enrolment.
         return { ok: false, reason: e instanceof WrongPasswordError ? 'wrong' : 'other' };
       } finally {
         unlockInFlight.current = false;
         setBusy(false);
       }
     },
-    [flash, claimAttempt, forgetAttempt],
+    [flash, claimAttempt, forgetAttempt, openSession, errLine],
+  );
+
+  /**
+   * The same unlock, entered with a key the phone's lock screen released instead of a
+   * password (`unlockWithDevice`).
+   *
+   * It runs the SAME ladder. A key that does not open the vault is not a typo — an envelope
+   * cannot mistype — but it is still an attempt at the vault, and leaving this path
+   * unmetered would put an unthrottled oracle beside the metered one.
+   *
+   * IT CONVERGES NOTHING, and that is a real limitation rather than an oversight: bringing
+   * boxes onto new KDF parameters needs the password, and this path deliberately never sees
+   * one. The consequence is narrow. An envelope can only have been written by a session
+   * that had already converged, so its key fits the boxes as they stand; what it cannot do
+   * is carry the device onto a cost this build raised since. A user who unlocks only with
+   * their fingerprint therefore stays on the previously shipped cost until they next type
+   * their password — which they still do, for `changeAppPassword`, `revealBackup` and every
+   * signing prompt when manual confirmation is on. If a future raise is important enough to
+   * force, this is the place that has to ask for the password.
+   */
+  const unlockWithKey = useCallback(
+    async (vaultKey: VaultKey): Promise<UnlockResult> => {
+      if (unlockInFlight.current) return { ok: false, reason: 'busy' };
+      unlockInFlight.current = true;
+      setBusy(true);
+      try {
+        const blocked = await claimAttempt();
+        if (blocked) {
+          flash(blocked, 'err');
+          return { ok: false, reason: 'throttled' };
+        }
+        const entry = await getActiveEntry();
+        if (!entry) {
+          await releaseAttempt(); // nothing was guessed — see forgetAttempt
+          throw new Error(t('vault.notFound'));
+        }
+        await openVault(entry.id, vaultKey).catch(async (err: unknown) => {
+          await forgetAttempt(err);
+          throw err;
+        });
+        await noteAttemptSuccess();
+        await openSession(entry, vaultKey);
+        return { ok: true };
+      } catch (e) {
+        flash(errLine(e), 'err');
+        // Both failures mean the same thing here — this key does not open this vault — and
+        // the caller turns that into "the enrolment is stale". A storage fault does not,
+        // and must not cost the user a working enrolment.
+        const dead = e instanceof WrongPasswordError || e instanceof VaultKeyMismatchError;
+        return { ok: false, reason: dead ? 'wrong' : 'other' };
+      } finally {
+        unlockInFlight.current = false;
+        setBusy(false);
+      }
+    },
+    [flash, claimAttempt, forgetAttempt, openSession, t, errLine],
   );
 
   /**
@@ -842,6 +980,13 @@ export function useWalletStore() {
    * closure captured the draft from before the lock.
    */
   const lock = useCallback(() => {
+    // Zero the derived bytes on the way out. This is the cleanup the previous design could
+    // not do at all: `session.password` was a JS string, and a string cannot be overwritten
+    // — it stayed in the heap until the collector felt like it. The `CryptoKey` handle is
+    // not affected (it lives in the browser's key store, and is dropped with the object),
+    // so this is hygiene rather than a boundary; `sessionEpochRef` is the boundary.
+    const ending = sessionRef.current;
+    if (ending) wipeVaultKey(ending.vaultKey);
     setSession(null);
     // Anything already past the signing gate is now working for a session that no
     // longer exists; the epoch is how it finds out before it uses the key.
@@ -860,7 +1005,7 @@ export function useWalletStore() {
     // it outlived onboarding entirely: `success` is terminal with `back: 'home'`, so the
     // hardware back button skipped both the accept and the dismiss, and every LATER
     // success screen — a payment, a swap, an off-ramp — then routed into the enrolment
-    // screen, where accepting seals the session password behind whatever finger is
+    // screen, where accepting seals the session's vault key behind whatever finger is
     // presented. The justification for not gating that accept is "the user set this
     // password seconds ago, in this same flow"; clearing the flag here is what keeps that
     // sentence true.
@@ -952,13 +1097,17 @@ export function useWalletStore() {
       if (!session || id === meta?.id) return;
       setBusy(true);
       try {
-        const secret = await unlockWallet(id, session.password);
+        // Proves the session's key opens the target BEFORE anything switches — the check
+        // the old code got for free by decrypting to build the new session. It costs a
+        // GCM decrypt now rather than a full PBKDF2 derivation, which is the difference
+        // between switching wallets in microseconds and in about a second.
+        await openVault(id, session.vaultKey);
         await setActiveId(id);
         const entry = wallets.find((w) => w.id === id);
         if (!entry) return;
         setMetaState(entry);
-        setSession({ publicKey: entry.publicKey, secret: secret.secret, mnemonic: secret.mnemonic, password: session.password });
-        setCosmosPay(await getCosmosPay(id, session.password));
+        setSession({ publicKey: entry.publicKey, walletId: id, vaultKey: session.vaultKey });
+        setCosmosPay(await getCosmosPay(id, session.vaultKey));
         setCosmosPayPending(await getPendingCosmosPay(id));
         // No clearing needed: the cache key includes the account, so the new wallet
         // simply reads a different (empty) key while the old one stays warm.
@@ -966,12 +1115,12 @@ export function useWalletStore() {
         setScreen('home');
         flash(t('toast.walletActive', { name: entry.name }), 'info');
       } catch (e) {
-        flash((e as Error).message, 'err');
+        flash(errLine(e), 'err');
       } finally {
         setBusy(false);
       }
     },
-    [session, meta, wallets, t, flash],
+    [session, meta, wallets, t, flash, errLine],
   );
 
   /** Remove the active wallet; switch to another, or fall back to onboarding. */
@@ -991,11 +1140,11 @@ export function useWalletStore() {
         setScreen('welcome');
         return;
       }
-      const secret = await unlockWallet(newActive, session.password);
+      await openVault(newActive, session.vaultKey);
       const entry = remaining.find((w) => w.id === newActive)!;
       setMetaState(entry);
-      setSession({ publicKey: entry.publicKey, secret: secret.secret, mnemonic: secret.mnemonic, password: session.password });
-      setCosmosPay(await getCosmosPay(newActive, session.password));
+      setSession({ publicKey: entry.publicKey, walletId: newActive, vaultKey: session.vaultKey });
+      setCosmosPay(await getCosmosPay(newActive, session.vaultKey));
       setCosmosPayPending(await getPendingCosmosPay(newActive));
       setTab('home');
       setScreen('home');
@@ -1059,7 +1208,7 @@ export function useWalletStore() {
       if (!session) return false;
       // Captured before the gate for the same reason the money flows do it: the gate can
       // now be answered by an OS biometric sheet, which generates no input events and can
-      // stay open past the 5-minute idle auto-lock. Without this, `session.secret` was used
+      // stay open past the 5-minute idle auto-lock. Without this, the session's key was used
       // out of a closure belonging to a session that had already ended.
       const epoch = sessionEpochRef.current;
       const okSig = await requestSignature({
@@ -1070,7 +1219,7 @@ export function useWalletStore() {
       setBusy(true);
       try {
         guardSession(epoch);
-        await stellarAddTrustline({ cfg: network, secret: session.secret, code: code.trim(), issuer: issuer.trim() });
+        await stellarAddTrustline({ cfg: network, secret: await secretOf(session), code: code.trim(), issuer: issuer.trim() });
         await refresh(true);
         flash(t('toast.assetAdded', { code: code.trim() }), 'ok');
         return true;
@@ -1123,7 +1272,7 @@ export function useWalletStore() {
         const asset = toPaymentAsset(send.asset);
         const { hash } = await sendPayment({
           cfg: network,
-          secret: session.secret,
+          secret: await secretOf(session),
           destination: send.to.trim(),
           amount: send.amount,
           memo: send.memo,
@@ -1185,7 +1334,7 @@ export function useWalletStore() {
         email: meta.email,
         name: meta.name,
         stellarAddress: meta.publicKey,
-        secret: session.secret,
+        secret: await secretOf(session),
       });
       if (res.status === 'exists') {
         // Email already has an account — offer to link this wallet via an access code.
@@ -1233,7 +1382,7 @@ export function useWalletStore() {
       const pending = cosmosPayPending;
       // A background poller drives this every few seconds, so its closure routinely
       // outlives the session it captured — and it re-seals the CosmosPay bearer key with
-      // `session.password`. After a password change that string is superseded: the write
+      // that session's vault key. After a password change that key is superseded: the write
       // would succeed, `getCosmosPay` would swallow the decrypt failure as "none", and the
       // wallet would show receiving as enabled with a credential nothing can open.
       const epoch = sessionEpochRef.current;
@@ -1249,7 +1398,7 @@ export function useWalletStore() {
             keys: res.keys,
             organizationId: res.organizationId,
           };
-          const list = await saveCosmosPay(meta.id, account, session.password);
+          const list = await saveCosmosPay(meta.id, account, session.vaultKey);
           setWallets(list);
           const entry = list.find((w) => w.id === meta.id);
           if (entry) setMetaState(entry);
@@ -1297,7 +1446,7 @@ export function useWalletStore() {
         email: meta.email,
         name: meta.name,
         stellarAddress: meta.publicKey,
-        secret: session.secret,
+        secret: await secretOf(session),
       });
       if (res.status === 'not_found') {
         // No account after all — drop back so the user can use the normal create flow.
@@ -1338,7 +1487,7 @@ export function useWalletStore() {
             keys: res.keys,
             organizationId: res.organizationId,
           };
-          const list = await saveCosmosPay(meta.id, account, session.password);
+          const list = await saveCosmosPay(meta.id, account, session.vaultKey);
           setWallets(list);
           const entry = list.find((w) => w.id === meta.id);
           if (entry) setMetaState(entry);
@@ -1463,7 +1612,7 @@ export function useWalletStore() {
             minReceive: { amount: quote.destination.minimum, asset: { code: to.code, issuer: to.issuer } },
           });
           guardSession(epoch);
-          const signedXdr = signXdr(network, session.secret, swap.xdr);
+          const signedXdr = signXdr(network, await secretOf(session), swap.xdr);
           const res = await cpSubmitSwap(apiKey, swap.id, signedXdr);
           if (res.submitted) {
             setSuccessInfo({
@@ -1590,7 +1739,7 @@ export function useWalletStore() {
             ],
           });
           guardSession(epoch);
-          const signedXdr = signXdr(network, session.secret, op.xdr);
+          const signedXdr = signXdr(network, await secretOf(session), op.xdr);
           const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
           if (res.submitted) {
             setSuccessInfo({
@@ -1655,7 +1804,7 @@ export function useWalletStore() {
             poolAmounts: [input.shares],
           });
           guardSession(epoch);
-          const signedXdr = signXdr(network, session.secret, op.xdr);
+          const signedXdr = signXdr(network, await secretOf(session), op.xdr);
           const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
           if (res.submitted) {
             setSuccessInfo({
@@ -1792,7 +1941,7 @@ export function useWalletStore() {
         setCosmosPay(null);
       } else {
         const account: CosmosPayAccount = { ...cosmosPay, keys };
-        const list = await saveCosmosPay(meta.id, account, session.password);
+        const list = await saveCosmosPay(meta.id, account, session.vaultKey);
         setWallets(list);
         const entry = list.find((w) => w.id === meta.id);
         if (entry) setMetaState(entry);
@@ -2017,7 +2166,7 @@ export function useWalletStore() {
             maxSend: { amount: senderAmount, asset: { code: token, issuer: tokenAsset.issuer } },
           });
           guardSession(epoch);
-          const signed = signXdr(network, session.secret, xdr);
+          const signed = signXdr(network, await secretOf(session), xdr);
           const payout = await cpCreatePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar', signed_transaction: signed });
           const fiatMinor = quote.receiver_local_amount || quote.receiver_amount || 0;
           const sent = payout.senderAmount ?? senderAmount ?? '';
@@ -2064,7 +2213,7 @@ export function useWalletStore() {
 
   /**
    * The signing gate's password check. Throttled like `unlock`, because it decrypts the
-   * same vault with the same 210k-iteration derivation and is reachable from a prompt a
+   * same vault with the same PBKDF2 derivation and is reachable from a prompt a
    * dapp can raise.
    *
    * Returns three outcomes rather than a boolean: "you are being throttled" and "that was
@@ -2083,6 +2232,27 @@ export function useWalletStore() {
       // The guess is already counted — `claimAttempt` reserves it before the derivation.
       // `verifyPassword` folds every cause into `false`, so there is nothing to unwind
       // here; a device with no active wallet cannot reach this prompt.
+      return { ok: false, reason: 'wrong', message: t('confirmSig.wrongPwd') };
+    },
+    [claimAttempt, t],
+  );
+
+  /**
+   * The same check, answered by the phone's lock screen instead of a keyboard.
+   *
+   * On the ladder for the reason `checkPassword` is: it opens the same vault, and a path
+   * that skipped the counter would be the cheap one to hammer. What it cannot be is
+   * `checkPassword` itself — what the envelope releases is a key, and there is no password
+   * anywhere in this flow to hand it.
+   */
+  const checkKey = useCallback(
+    async (vk: VaultKey): Promise<PasswordCheck> => {
+      const blocked = await claimAttempt();
+      if (blocked) return { ok: false, reason: 'throttled', message: blocked };
+      if (await verifyVaultKey(vk)) {
+        await noteAttemptSuccess();
+        return { ok: true };
+      }
       return { ok: false, reason: 'wrong', message: t('confirmSig.wrongPwd') };
     },
     [claimAttempt, t],
@@ -2110,9 +2280,10 @@ export function useWalletStore() {
   /**
    * Lock screen: open the wallet with the device check instead of typing.
    *
-   * The device check produces the PASSWORD and then goes through the ordinary
-   * `unlock()`, which still has to decrypt the vault with it. Nothing here is a
-   * second way in — a wrong or stale envelope fails exactly like a typo would.
+   * The device check produces the vault KEY and then goes through `unlockWithKey`, which
+   * still has to decrypt the vault with it and is on the same failed-attempt ladder as the
+   * keyboard. Nothing here is a second way in — a stale envelope fails exactly like a typo
+   * would, and this path never sees the password at all.
    */
   const unlockWithDevice = useCallback(async () => {
     const res = await deviceAuthPrivileged.deviceAuthUnlock('unlock');
@@ -2120,9 +2291,9 @@ export function useWalletStore() {
       flashDeviceAuth(res.failure, res.detail);
       return false;
     }
-    const out = await unlock(res.password);
+    const out = await unlockWithKey(res.vaultKey);
     if (!out.ok && out.reason === 'wrong') {
-      // A password the ENVELOPE produced cannot be a typo. It failing to decrypt means the
+      // A key the ENVELOPE produced cannot be a typo. It failing to decrypt means the
       // envelope and the vault are out of step — a password change interrupted before the
       // re-enrolment, or storage restored from another device — and nothing about that
       // improves on the next attempt. Left standing, the button walks the owner up the
@@ -2132,15 +2303,14 @@ export function useWalletStore() {
       flashDeviceAuth('stale');
     }
     return out.ok;
-  }, [deviceAuthPrivileged, flashDeviceAuth, unlock]);
+  }, [deviceAuthPrivileged, flashDeviceAuth, unlockWithKey]);
 
   /**
    * Signing gate: answer the password prompt with the device check.
    *
-   * Verifies the recovered password rather than resolving the gate outright. The gate's
-   * contract is "this person can produce the password", so an envelope that no longer
-   * decrypts must FAIL it — resolving on the strength of the OS prompt alone would let a
-   * stale enrolment sign.
+   * Verifies the recovered KEY rather than resolving the gate outright. The gate's contract
+   * is "this person can open the vault", so an envelope that no longer does must FAIL it —
+   * resolving on the strength of the OS prompt alone would let a stale enrolment sign.
    *
    * Takes the id of the prompt it is answering, and captures the session epoch, because
    * everything between here and `resolveConfirm` is unbounded wall-clock: an OS sheet can
@@ -2158,14 +2328,14 @@ export function useWalletStore() {
         flashDeviceAuth(res.failure, res.detail);
         return false;
       }
-      // Through `checkPassword`, not a bare `verifyPassword`: this runs the same 210k
-      // derivation as every other password path, so leaving it outside the ladder made it
-      // the cheap one — and, because it never called `noteAttemptSuccess`, a correct
-      // biometric confirmation did not clear a backoff the user had earned by mistyping.
-      const check = await checkPassword(res.password);
+      // Through `checkKey`, which is on the same ladder as `checkPassword`: leaving this
+      // outside it made it the cheap path — and, because it never called
+      // `noteAttemptSuccess`, a correct biometric confirmation did not clear a backoff the
+      // user had earned by mistyping.
+      const check = await checkKey(res.vaultKey);
       if (!check.ok) {
-        // A stale envelope, not a wrong password: the string came from the envelope, not
-        // from a keyboard. Throttling is reported as itself.
+        // A stale envelope, not a wrong password: the key came from the envelope, not from
+        // a keyboard. Throttling is reported as itself.
         if (check.reason === 'throttled') flash(check.message, 'err');
         else flashDeviceAuth('stale');
         return false;
@@ -2178,7 +2348,7 @@ export function useWalletStore() {
       }
       return resolveConfirm(true, reqId);
     },
-    [deviceAuthPrivileged, flashDeviceAuth, checkPassword, resolveConfirm, flash, t],
+    [deviceAuthPrivileged, flashDeviceAuth, checkKey, resolveConfirm, flash, t],
   );
 
   /**
@@ -2188,13 +2358,14 @@ export function useWalletStore() {
    * decides how the wallet can be opened, so an unlocked phone in someone else's
    * hand must not be able to change it silently.
    *
-   * Enabling seals the LIVE session password, never a string typed into this screen:
-   * the session's copy is only ever set by a successful decrypt, so there is no path
-   * that enrols a password which opens nothing.
+   * Enabling seals the LIVE session's vault key, never anything typed into this screen:
+   * that key only ever comes from a successful decrypt, so there is no path that enrols
+   * something which opens nothing. It is not the password, and that is the point — the
+   * envelope on disk no longer holds a string the user may also use elsewhere.
    *
    * The epoch is captured before the gate and re-checked before the seal, because the OS
    * prompt inside `enableDeviceUnlock` can outlast the auto-lock — sealing afterwards would
-   * write a password out of a closure belonging to a session that has ended.
+   * write a key out of a closure belonging to a session that has ended.
    */
   const toggleDeviceAuth = useCallback(async () => {
     if (!session) return;
@@ -2214,7 +2385,7 @@ export function useWalletStore() {
       flash(t('unlock.autoLocked'), 'err');
       return;
     }
-    const failed = await deviceAuthPrivileged.enableDeviceUnlock(session.password);
+    const failed = await deviceAuthPrivileged.enableDeviceUnlock(session.vaultKey);
     if (failed) {
       flashDeviceAuth(failed.failure, failed.detail);
       return;
@@ -2300,8 +2471,8 @@ export function useWalletStore() {
    * change how this wallet opens" is worth more than one saved password entry.
    *
    * The epoch is captured before the gate: the OS prompt inside `enableDeviceUnlock` can
-   * outlast the 5-minute auto-lock, and sealing after that would write the password out of
-   * a closure belonging to a dead session.
+   * outlast the 5-minute auto-lock, and sealing after that would write the key out of a
+   * closure belonging to a dead session.
    */
   const acceptDeviceAuthOffer = useCallback(async () => {
     setDeviceAuthOffer(false);
@@ -2313,7 +2484,7 @@ export function useWalletStore() {
         true,
       );
       if (ok && epoch === sessionEpochRef.current) {
-        const failed = await deviceAuthPrivileged.enableDeviceUnlock(session.password);
+        const failed = await deviceAuthPrivileged.enableDeviceUnlock(session.vaultKey);
         if (failed) {
           flashDeviceAuth(failed.failure, failed.detail);
         } else if (epoch !== sessionEpochRef.current) {
@@ -2340,19 +2511,19 @@ export function useWalletStore() {
    *
    * A store action, not a direct `lib/vault.changePassword` call from the settings form.
    * That call was the one mutation a `.tsx` made that invalidated store state, and nothing
-   * put the state back: `session.password` kept the OLD string, which `switchWallet` then
-   * used to open another wallet, `saveCosmosPay` used to re-seal a bearer API key, and —
-   * once device auth shipped — `toggleDeviceAuth` used to seal into the device envelope.
-   * The last one is the sharpest: it wrote a superseded password into the Keychain, so the
-   * user's own fingerprint would answer "wrong password", which is precisely the failure
-   * the re-wrap exists to prevent, arriving through a different door.
+   * put the state back: the session kept the superseded secret — the app password then, the
+   * vault key now — which `switchWallet` used to open another wallet, `saveCosmosPay` used
+   * to re-seal a bearer API key, and, once device auth shipped, `toggleDeviceAuth` sealed
+   * into the device envelope. The last one is the sharpest: it wrote something superseded
+   * into the Keychain, so the user's own fingerprint would answer "wrong password", which
+   * is precisely the failure the re-wrap exists to prevent, arriving through another door.
    *
-   * The fix is not to patch the field. `changePassword` re-seals every wallet, so a patched
-   * field would assert a password that is true of all of them or none, and the honest
-   * answer after a successful change is that this session is over: `lock()` bumps the
-   * epoch, so every closure still holding the old session fails closed with "auto-locked"
-   * instead of signing under a password that no longer opens anything. The user signs back
-   * in with the password they just chose, which also proves it works.
+   * The fix is not to patch the field. `changePassword` re-seals every wallet under a new
+   * key, so a patched field would assert something true of all of them or none, and the
+   * honest answer after a successful change is that this session is over: `lock()` bumps
+   * the epoch, so every closure still holding the old session fails closed with
+   * "auto-locked" instead of signing under a key that no longer opens anything. The user
+   * signs back in with the password they just chose, which also proves it works.
    *
    * `force`-gated (it changes how the wallet opens) and inside `exclusive.run`, so it
    * cannot interleave with a money flow that is mid-await holding the old password.
@@ -2364,7 +2535,7 @@ export function useWalletStore() {
       // rule could be re-sealed under `aaaaaaaa` — along with every device-lock envelope.
       // A disabled button is a hint; this is the enforcement point.
       if (!appPasswordOk(next)) {
-        flash(t('pwd.weak'), 'err');
+        flash(t('pwd.weak', { n: MIN_APP_PWD_LEN }), 'err');
         return false;
       }
       const ok = await requestSignature(
@@ -2395,11 +2566,11 @@ export function useWalletStore() {
         } catch (e) {
           flash((e as Error).message, 'err');
           // A failure PAST the commit is not recoverable and not survivable by this
-          // session: some wallets are on the new password and `session.password` is true of
+          // session: some wallets are on the new password and the session's key is true of
           // neither set. Carrying on would let `switchWallet` open a wallet with the wrong
-          // string, `saveCosmosPay` re-seal a bearer key under it, and a device enrolment
-          // capture it. `lock()` bumps the epoch, so every closure still holding this
-          // session fails closed; the user signs back in with whichever password works.
+          // key, `saveCosmosPay` re-seal a bearer credential under it, and a device
+          // enrolment capture it. `lock()` bumps the epoch, so every closure still holding
+          // this session fails closed; the user signs back in with whichever password works.
           // A failure BEFORE the commit left the device untouched, so the session stands.
           if (e instanceof PasswordChangeCommitError) lock();
           return false;
@@ -2431,7 +2602,7 @@ export function useWalletStore() {
   /**
    * Sign a raw XDR the user pasted (the manual "sign transaction" screen).
    *
-   * Exists so `session.secret` never has to leave the store: the screen asks for a
+   * Exists so the secret never has to leave the store: the screen asks for a
    * signature, it does not get handed the key. The envelope is decoded and checked
    * first — a pasted XDR is exactly as untrusted as one from a dapp.
    *
@@ -2460,7 +2631,7 @@ export function useWalletStore() {
       if (review.source !== session.publicKey) {
         throw new Error(t('sign.foreignSource'));
       }
-      return signXdr(network, session.secret, xdr.trim());
+      return signXdr(network, await secretOf(session), xdr.trim());
     },
     [session, network, requestSignature, guardSession, t],
   );

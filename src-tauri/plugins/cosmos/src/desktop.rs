@@ -61,4 +61,12 @@ impl<R: Runtime> Cosmos<R> {
     pub async fn app_exit(&self) -> Result<()> {
         Err(Error::unsupported())
     }
+
+    /// Nothing to exclude from: a desktop OS backs up whatever the user tells it to, and
+    /// there is no per-directory flag any of the three offer that this could set. Refuses
+    /// rather than pretending — `lib/storage.ts` only asks on iOS, and a silent success
+    /// here would make a future caller believe something happened.
+    pub async fn exclude_from_backup(&self) -> Result<()> {
+        Err(Error::unsupported())
+    }
 }

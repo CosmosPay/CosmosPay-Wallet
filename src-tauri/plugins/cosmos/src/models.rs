@@ -46,6 +46,18 @@ pub enum Biometry {
     Generic,
 }
 
+/// The directory to keep out of the device's backups.
+///
+/// A path, resolved on the Rust side from `app_data_dir()` rather than accepted from the
+/// frontend. The web layer holds decrypted key material, so a command that took an
+/// arbitrary path would be a command an XSS in the bundle could aim anywhere on the
+/// filesystem — and this one is only ever asked about one directory.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExcludeBackupRequest {
+    pub path: String,
+}
+
 /// What this device can do right now.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
