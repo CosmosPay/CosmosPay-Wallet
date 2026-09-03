@@ -13,12 +13,17 @@
 /**
  * Which wallet flow is asking for a signature. `dapp` is reviewed, not allowlisted.
  *
- * `send` and `trustline` used to be here with their own `ALLOWED_OPS` rows and no
- * call site: the wallet builds both locally (`sendPayment`, `stellarAddTrustline`)
- * and never routes them through the guard. A dead row in a security allowlist reads
- * as coverage that does not exist, so they are gone until a flow needs them.
+ * `send` used to be here with its own `ALLOWED_OPS` row and no call site: the wallet
+ * builds it locally (`sendPayment`) and never routes it through the guard. A dead row
+ * in a security allowlist reads as coverage that does not exist, so it is gone until a
+ * flow needs it.
+ *
+ * `trustline` was gone for the same reason and is back, because a flow now needs it:
+ * `POST /v1/onramp/trustline` returns a GATEWAY-BUILT envelope naming the exact issuer
+ * its onramp will pay out in, and the wallet signs it. `stellarAddTrustline` still
+ * builds the by-hand case locally and still does not come through here.
  */
-export type SignIntent = 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'dapp';
+export type SignIntent = 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'trustline' | 'dapp';
 
 /**
  * Operations that can hand over the account itself, or move value in a way this
@@ -64,6 +69,11 @@ export const ALLOWED_OPS: Record<Exclude<SignIntent, 'dapp'>, readonly string[]>
   'lp-deposit': ['liquidityPoolDeposit', 'changeTrust'],
   'lp-withdraw': ['liquidityPoolWithdraw', 'changeTrust'],
   offramp: ['payment', 'pathPaymentStrictSend', 'pathPaymentStrictReceive'],
+  // Exactly one operation type, and nothing that moves value. The envelope comes from
+  // the gateway, so the interesting refusals are the ones this makes automatic: a
+  // `payment` smuggled alongside the trustline, or a `setOptions` (already refused as
+  // critical) — neither can appear in a transaction whose only allowed op is changeTrust.
+  trustline: ['changeTrust'],
 };
 
 /**

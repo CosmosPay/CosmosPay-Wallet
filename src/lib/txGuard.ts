@@ -612,6 +612,25 @@ export type GuardOptions =
       /** The pool the user chose. The envelope must act on that one. */
       poolId: string;
       poolAmounts: readonly string[];
+    })
+  | (GuardBase & {
+      intent: 'trustline';
+      /**
+       * The assets this envelope may open a trustline for — REQUIRED here, unlike the
+       * optional `trustlines` on the base, and that difference is the whole arm.
+       *
+       * The flow that uses this asks the gateway which issuer its onramp pays out in,
+       * precisely because the wallet does not know. So the bound cannot come from
+       * before the call; it comes from what the user was SHOWN after it. The store
+       * decodes the returned envelope with `reviewTx`, puts the decoded `(code,
+       * issuer)` in front of the user, and passes back exactly what they confirmed.
+       *
+       * Naming it separately rather than reusing the optional base field is what makes
+       * that non-optional: `trustlines?: []` on the base would let a future caller sign
+       * a gateway-chosen trustline having confirmed nothing, which is the shape of every
+       * hole this union was introduced to close.
+       */
+      confirmed: readonly AssetBound[];
     });
 
 /** Does a decoded asset satisfy a confirmed bound? Never a prefix match. */
@@ -706,7 +725,16 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
     ...(maxSend ? [maxSend.asset] : []),
     ...(minReceive ? [minReceive.asset] : []),
     ...(opts.trustlines ?? []),
+    ...(opts.intent === 'trustline' ? opts.confirmed : []),
   ];
+
+  // A `trustline` intent that confirmed nothing would allow nothing, which reads as a
+  // guard that works and is really a flow that can never sign. Refused explicitly so
+  // the failure names the caller's mistake rather than surfacing as
+  // `guard.unconfirmedTrustline` on a perfectly good envelope.
+  if (opts.intent === 'trustline' && !opts.confirmed.length) {
+    fail('guard.noConfirmedTrustline');
+  }
   const counterparties = new Set<string>();
 
   for (const op of review.operations) {

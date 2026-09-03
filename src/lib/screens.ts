@@ -30,6 +30,7 @@ export const SCREEN_IDS = [
   'profile-setup',
   'password',
   'device-auth',
+  'social-login',
   'unlock',
   'home',
   'earn',
@@ -49,6 +50,7 @@ export const SCREEN_IDS = [
   'settings',
   'about',
   'operations',
+  'gateway-ops',
   'history',
   'paylink',
   'fiat',
@@ -104,6 +106,11 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   'device-auth': { back: 'home', terminal: true },
   import: { back: 'welcome' },
   'profile-setup': { back: (c) => (c.hasDraftMnemonic ? 'verify' : 'import') },
+  // Reached from Profile, and from 'welcome' on the add-wallet path — which is the
+  // only time Welcome can offer it, since the bridge needs a CosmosPay key that only an
+  // existing wallet has. Back goes wherever the stack says; 'profile' is the fallback
+  // because that is where both entry points ultimately come from.
+  'social-login': { back: 'profile' },
   password: { back: 'profile-setup' },
   unlock: { back: 'exit' },
 
@@ -145,6 +152,7 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // extras
   operations: { back: 'home' },
   'sign-tx': { back: 'operations' },
+  'gateway-ops': { back: 'operations' },
   'add-network': { back: 'home' },
   'add-asset': { back: 'home' },
   scan: { back: 'send' },

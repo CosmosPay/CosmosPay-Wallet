@@ -33,6 +33,22 @@ export function Welcome({ store }: { store: WalletStore }) {
         <GhostButton onClick={() => { store.setImportText(''); store.setScreen('import'); }}>
           {t('welcome.import')}
         </GhostButton>
+        {/*
+          Social login, offered here because this is where someone looks for it — and
+          gated on `canUsePollar` rather than always shown, because it is not always
+          possible. The bridge that runs the handshake authenticates with the wallet's
+          CosmosPay API key, so this can only work when a wallet on this device already
+          has one: in practice, the "add a wallet" path reached from Profile. On a true
+          first run there is no key yet and the button is absent, which is the honest
+          outcome — a visible button that can only ever explain why it cannot proceed is
+          worse than no button. Lifting that limit needs the developer platform to mint
+          keys carrying the `pollar:*` scopes.
+        */}
+        {store.canUsePollar() && (
+          <GhostButton onClick={() => store.setScreen('social-login')}>
+            {t('pollar.title')}
+          </GhostButton>
+        )}
         <div className="welcome-footer">
           {t('welcome.producer')} · v{APP_VERSION}
         </div>

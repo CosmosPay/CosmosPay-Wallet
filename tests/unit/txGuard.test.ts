@@ -519,3 +519,52 @@ test('reviewTx surfaces destination and amount for the approval window', () => {
   assert.equal(rows.find((r) => r.label === tNow('guard.row.amount'))?.value, '42.5000000 XLM');
   assert.equal(review.feeXlm, '0.00001');
 });
+
+/* ------------------------------ trustline intent -------------------------- */
+//
+// The onramp trustline is the one flow where the wallet cannot pre-declare the asset:
+// it calls the gateway precisely BECAUSE it does not know which issuer the deposit will
+// arrive from. So the bound comes from what the user was shown after decoding, and
+// these tests pin that the arm still refuses everything it is supposed to.
+
+const TRUST_OK = {
+  signer: ME,
+  intent: 'trustline',
+  destinations: 'self',
+  confirmed: [{ code: 'USDC', issuer: OTHER }],
+} as const;
+
+test('a trustline intent accepts exactly the asset the user confirmed', () => {
+  const xdr = envelope([Operation.changeTrust({ asset: USDC }) as never]);
+  assert.doesNotThrow(() => assertSafeToSign(CFG, xdr, TRUST_OK));
+});
+
+test('a trustline intent refuses a different issuer for the same code', () => {
+  // The failure this whole flow exists to prevent: `USDC` from an impostor issuer is a
+  // deposit that lands somewhere the user cannot spend from, and the code alone reads
+  // identical on screen.
+  const xdr = envelope([Operation.changeTrust({ asset: FAKE_USDC }) as never]);
+  // Asserted by KEY only: the params carry a rendered label, and pinning its exact
+  // shape here would make a cosmetic change to `refLabel` fail a security test.
+  throws(() => assertSafeToSign(CFG, xdr, TRUST_OK), 'guard.unconfirmedTrustline');
+});
+
+test('a trustline intent refuses a payment smuggled alongside the trustline', () => {
+  const xdr = envelope([Operation.changeTrust({ asset: USDC }) as never, payment({ destination: ATTACKER })]);
+  throws(() => assertSafeToSign(CFG, xdr, TRUST_OK), 'guard.unexpectedOp', { op: 'payment' });
+});
+
+test('a trustline intent refuses an envelope that confirmed nothing', () => {
+  // An empty `confirmed` would allow no asset at all, so every envelope would fail on
+  // `unconfirmedTrustline` — a guard that looks like it works and is really a flow that
+  // can never sign. Named explicitly so the refusal blames the caller.
+  const xdr = envelope([Operation.changeTrust({ asset: USDC }) as never]);
+  throws(() => assertSafeToSign(CFG, xdr, { ...TRUST_OK, confirmed: [] }), 'guard.noConfirmedTrustline');
+});
+
+test('a trustline intent still refuses a trustline REMOVAL', () => {
+  // limit 0 closes a line. Nothing in the onramp flow ever wants that, and doing it to
+  // an asset holding a balance is how a balance becomes unreachable.
+  const xdr = envelope([Operation.changeTrust({ asset: USDC, limit: '0' }) as never]);
+  throws(() => assertSafeToSign(CFG, xdr, TRUST_OK), 'guard.removesTrustline');
+});

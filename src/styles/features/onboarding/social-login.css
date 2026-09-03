@@ -1,0 +1,79 @@
+/* SocialLogin — src/features/onboarding/SocialLogin.tsx.
+   Pollar sign-in: the custodial warning, the provider buttons and the phase row. */
+
+.social-login-desc {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0 var(--gutter) 14px;
+}
+
+/* The warning outranks the buttons visually, because it outranks them in
+   consequence: past the consent screen the custody decision cannot be taken back. */
+.social-login-warning {
+  margin: 0 var(--gutter) 18px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--text);
+  border: 1px solid var(--danger-soft, rgba(255, 99, 99, 0.35));
+}
+
+.social-login-warning-badge {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.social-login-blocked {
+  margin: 0 var(--gutter) 12px;
+}
+
+.social-login-actions {
+  margin: 0 var(--gutter);
+}
+
+/* Composes .btn-primary for the pill metrics; only the per-provider surface is
+   here, so a new provider is one rule and not a second 54px/999px button. */
+.social-login-btn.is-google {
+  background: #fff;
+  color: #1f1f1f;
+}
+.social-login-btn.is-github {
+  background: #1b1f24;
+  color: #fff;
+}
+
+.social-login-phase {
+  margin: 16px var(--gutter) 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.social-login-cancel,
+.social-login-copy {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 800;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.social-login-copy {
+  margin: 14px var(--gutter) 0;
+  align-self: flex-start;
+}

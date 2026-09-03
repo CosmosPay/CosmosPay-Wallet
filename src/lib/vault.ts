@@ -24,6 +24,7 @@ import {
   openWithKey,
   sameKdf,
   sealWithKey,
+  WrongPasswordError,
   type SealedBox,
   type VaultKey,
 } from '@/lib/crypto';
@@ -50,6 +51,14 @@ const cosmosPayKey = (id: string) => `cosmos.pay.${id}`;
 // the user confirming via the emailed link and (b) the matching stellarAddress.
 // It is not a long-lived secret and needs no password to survive a reload.
 const cosmosPayPendingKey = (id: string) => `cosmos.pay.pending.${id}`;
+// A Pollar (social-login) wallet's session: the bearer + refresh token, the wallet
+// Pollar resolved, and where to reach it. Sealed under the SAME app password as every
+// other box, because a refresh token is a spendable credential for a funded account —
+// it is what lets a stranger with the device file ask Pollar to sign.
+//
+// It also stands in for the secret box on a Pollar wallet, which has none: the app
+// password is proven by opening THIS box instead. See `primaryBoxKey`.
+const pollarKey = (id: string) => `cosmos.pollar.${id}`;
 
 // legacy single-wallet keys (migrated on first run)
 const OLD_VAULT = 'cosmos.vault';
@@ -64,8 +73,27 @@ export interface VaultSecret {
  *  'x' covers non-binary and prefer-not-to-say. */
 export type Gender = 'm' | 'f' | 'x';
 
+/**
+ * How the wallet's key is held.
+ *
+ * `local` (the default, and what every entry written before this existed is) means the
+ * seed is in `cosmos.w.<id>` on this device and the wallet signs for itself. `pollar`
+ * means the key lives in Pollar's KMS: there is no secret box, `secretOf` has nothing
+ * to return, and signing goes out to Pollar through `lib/pollarApi.ts`.
+ *
+ * Absent rather than `'local'` on existing entries on purpose — a migration that
+ * rewrites every WalletEntry to add a field whose absence already means the right
+ * thing is a write that can fail for no gain. `isPollar` reads it, nothing else does.
+ */
+export type WalletKind = 'local' | 'pollar';
+
 export interface WalletEntry {
   id: string;
+  kind?: WalletKind; // absent = 'local'
+  /** Pollar's own user id, for display on the account screen. Pollar wallets only. */
+  pollarUserId?: string | null;
+  /** Which provider the user logged in with ('google' | 'github'). Pollar wallets only. */
+  pollarProvider?: string;
   publicKey: string; // G...
   name: string; // user name / nickname
   birthdate: string; // ISO "YYYY-MM-DD" (required at signup)
@@ -250,8 +278,62 @@ export async function updateWalletMeta(
   return next;
 }
 
+/** Is this a Pollar (social-login, KMS-custodied) wallet? Absent `kind` means local. */
+export function isPollar(entry: Pick<WalletEntry, 'kind'>): boolean {
+  return entry.kind === 'pollar';
+}
+
+/**
+ * The box that PROVES the app password for a wallet.
+ *
+ * For a local wallet that is the secret box, as it always was. A Pollar wallet has no
+ * secret box — the key is in Pollar's KMS — so its session box takes the role: it is
+ * sealed under the same vault key, so opening it establishes exactly what opening the
+ * secret box established, and a Pollar-only device still has something to unlock
+ * against. Without this, `unlockSession` on such a device would throw `vault.notFound`
+ * and the user would be locked out of a wallet that is perfectly intact.
+ */
+function primaryBoxKey(entry: Pick<WalletEntry, 'id' | 'kind'>): string {
+  return isPollar(entry) ? pollarKey(entry.id) : vaultKey(entry.id);
+}
+
+/**
+ * Thrown when something asks a Pollar wallet for a local secret.
+ *
+ * Its own type rather than `vault.notFound`, because the two are opposite situations:
+ * "this wallet is damaged" versus "this wallet works and its key is somewhere else".
+ * A caller that catches this can route to Pollar; one that saw `notFound` could only
+ * tell the user their wallet is missing.
+ */
+export class NoLocalKeyError extends Error {
+  constructor() {
+    super(tNow('vault.noLocalKey'));
+    this.name = 'NoLocalKeyError';
+  }
+}
+
+/**
+ * The SECRET box — the seed. Every caller of this wants a key to sign with.
+ *
+ * A Pollar wallet has no such box, and the honest answer for it is not "that wallet was
+ * not found on this device": the wallet is intact and working, its key is simply in
+ * Pollar's KMS. Told apart by the presence of the session box, so the distinction is
+ * made from what is actually on disk rather than from a flag that could disagree with
+ * it. `revealBackup` and the export screen are the callers this matters to — both would
+ * otherwise tell a Pollar user their wallet is missing.
+ */
 async function readBox(id: string): Promise<SealedBox> {
   const raw = await storageGet(vaultKey(id));
+  if (!raw) {
+    if (await storageGet(pollarKey(id))) throw new NoLocalKeyError();
+    throw new Error(tNow('vault.notFound'));
+  }
+  return JSON.parse(raw) as SealedBox;
+}
+
+/** The password-proving box for an entry, whichever kind it is. */
+async function readPrimaryBox(entry: Pick<WalletEntry, 'id' | 'kind'>): Promise<SealedBox> {
+  const raw = await storageGet(primaryBoxKey(entry));
   if (!raw) throw new Error(tNow('vault.notFound'));
   return JSON.parse(raw) as SealedBox;
 }
@@ -333,7 +415,8 @@ export interface UnlockedVault {
 export async function unlockSession(password: string): Promise<UnlockedVault> {
   const entry = await getActiveEntry();
   if (!entry) throw new Error(tNow('vault.notFound'));
-  const box = await readBox(entry.id);
+  // For a Pollar wallet this is the session box, not a secret box — see `primaryBoxKey`.
+  const box = await readPrimaryBox(entry);
   const vaultKey = await deriveVaultKey(password, kdfOf(box));
   await openWithKey(box, vaultKey); // throws WrongPasswordError — this is the guess
   return { entry, vaultKey };
@@ -387,12 +470,19 @@ export async function convergeSeals(password: string, vk: VaultKey): Promise<Vau
   // `unlockSession` does, so both agree on which box the session key came from.
   const active = await getActiveEntry();
   if (active) {
-    await resealOnto(vaultKey(active.id), password, target);
-    if (!(await coveredBy(vaultKey(active.id), target))) return vk;
+    // `primaryBoxKey`, not `vaultKey`: on a Pollar wallet the box the session key has to
+    // cover is the session box. Checking the secret box there would test something that
+    // does not exist, find it uncovered, and abort every pass forever.
+    const box = primaryBoxKey(active);
+    await resealOnto(box, password, target);
+    if (!(await coveredBy(box, target))) return vk;
   }
   for (const w of await listWallets()) {
     await resealOnto(vaultKey(w.id), password, target);
     await resealOnto(cosmosPayKey(w.id), password, target);
+    // A Pollar wallet has no secret box, so this IS its box — leaving it behind would
+    // hand the session a key that cannot read the credential it is about to sign with.
+    await resealOnto(pollarKey(w.id), password, target);
   }
   return target;
 }
@@ -458,6 +548,101 @@ export async function saveCosmosPay(
   await writeWallets(next);
   return next;
 }
+
+/* ----------------------------- Pollar session ---------------------------- */
+
+/**
+ * A Pollar session at rest: the tokens, the wallet Pollar resolved, and where to reach
+ * Pollar directly.
+ *
+ * Stored sealed, under the same key as everything else. The refresh token is the part
+ * that matters: it is single-use but long-lived, and it buys an access token that can
+ * ask Pollar to sign for a funded account. Plaintext here would mean the device file is
+ * the account.
+ *
+ * `expires_at` travels with it so a resumed session knows whether to refresh before its
+ * first call rather than discovering it with a 401 in the middle of a payment.
+ */
+export interface PollarStoredSession {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_at: number;
+  user_id: string | null;
+  address: string;
+  publishable_key: string;
+  api_base_url: string;
+  provider?: string;
+}
+
+export async function savePollarSession(id: string, data: PollarStoredSession, vk: VaultKey): Promise<void> {
+  await storageSet(pollarKey(id), JSON.stringify(await sealWithKey(JSON.stringify(data), vk)));
+}
+
+export async function getPollarSession(id: string, vk: VaultKey): Promise<PollarStoredSession | null> {
+  const raw = await storageGet(pollarKey(id));
+  if (!raw) return null;
+  try {
+    return JSON.parse(await openWithKey(JSON.parse(raw) as SealedBox, vk)) as PollarStoredSession;
+  } catch {
+    return null;
+  }
+}
+
+/** The same read through the password door, for `changePassword`. See its CosmosPay twin. */
+async function readPollarWithPassword(id: string, password: string): Promise<PollarStoredSession | null> {
+  const raw = await storageGet(pollarKey(id));
+  if (!raw) return null;
+  try {
+    return JSON.parse(await open(JSON.parse(raw) as SealedBox, password)) as PollarStoredSession;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Create a wallet whose key Pollar custodies.
+ *
+ * No secret box is written, because there is no secret: the session box IS this
+ * wallet's box, which is what `primaryBoxKey` encodes and what lets the app password be
+ * proven on a device that has never held a seed.
+ *
+ * The vault key is derived here with fresh parameters when the caller has none — a
+ * first-ever wallet on this device — and passed in when there is already a session, so
+ * the new entry lands under the key the rest of the device is already on. Deriving a
+ * second key for it would leave a device `convergeSeals` has to walk on the next
+ * unlock, and until then a session key that opens some wallets and not others.
+ */
+export async function createPollarWallet(
+  profile: Omit<WalletEntry, 'id' | 'createdAt' | 'kind' | 'publicKey'> & { publicKey: string },
+  session: PollarStoredSession,
+  vk: VaultKey,
+): Promise<{ entry: WalletEntry; wallets: WalletEntry[] }> {
+  const entry: WalletEntry = {
+    ...profile,
+    id: genId(),
+    kind: 'pollar',
+    pollarUserId: session.user_id,
+    pollarProvider: session.provider,
+    createdAt: Date.now(),
+  };
+  await savePollarSession(entry.id, session, vk);
+  const wallets = [...(await listWallets()), entry];
+  await writeWallets(wallets);
+  await setActiveId(entry.id);
+  return { entry, wallets };
+}
+
+// There was a `clearPollarSession(id)` here that dropped the session box and left the
+// entry. It is gone, and it must not come back in that shape: for a Pollar wallet the
+// session box is ALSO the box `unlockSession` opens to prove the app password
+// (`primaryBoxKey`), so removing it leaves the entry in the wallet list as something
+// that can never be unlocked again — with nothing on screen able to say why.
+//
+// Signing out of a Pollar wallet removes the whole entry, via `removeWallet`. That is
+// what sign-out means for an account whose key this device never held, and it costs the
+// user nothing: logging in with the same provider account resolves the same Stellar
+// wallet, funds included.
 
 /** Mark a receiver as the wallet's default BlindPay fiat account. */
 export async function saveDefaultReceiver(id: string, receiverId: string): Promise<WalletEntry[]> {
@@ -571,6 +756,9 @@ export async function removeWallet(
   await disableDeviceAuth(id);
   await storageRemove(cosmosPayKey(id));
   await storageRemove(cosmosPayPendingKey(id));
+  // The Pollar session outlives the entry unless it goes here — and unlike an orphaned
+  // Keystore key it is a live bearer credential for an account that still holds funds.
+  await storageRemove(pollarKey(id));
   const remaining = (await listWallets()).filter((w) => w.id !== id);
   await writeWallets(remaining);
   let active = await getActiveId();
@@ -661,9 +849,15 @@ export async function changePassword(
   //    `WrongPasswordError` on any wallet leaves the device untouched.
   const opened = [];
   for (const w of wallets) {
-    const secret = await unlockWallet(w.id, oldPassword); // throws on wrong password
+    // A Pollar wallet has no secret box; its session box is what the password opens, and
+    // `open` there throws `WrongPasswordError` exactly as `unlockWallet` would. Calling
+    // `unlockWallet` on one would throw `vault.notFound` and abort a password change
+    // that has nothing wrong with it.
+    const secret = isPollar(w) ? null : await unlockWallet(w.id, oldPassword);
     const cosmosPay = await readCosmosPayWithPassword(w.id, oldPassword);
-    opened.push({ entry: w, secret, cosmosPay });
+    const pollar = await readPollarWithPassword(w.id, oldPassword);
+    if (isPollar(w) && !pollar) throw new WrongPasswordError();
+    opened.push({ entry: w, secret, cosmosPay, pollar });
   }
 
   // 2. Seal everything under the new password, still writing nothing. This is pure crypto
@@ -678,9 +872,13 @@ export async function changePassword(
   for (const o of opened) {
     sealed.push({
       entry: o.entry,
-      vault: JSON.stringify(await sealWithKey(JSON.stringify(o.secret), newVaultKey)),
+      vault: o.secret ? JSON.stringify(await sealWithKey(JSON.stringify(o.secret), newVaultKey)) : null,
       // Re-seal the CosmosPay credential too, otherwise it would be undecryptable.
       cosmosPay: o.cosmosPay ? JSON.stringify(await sealWithKey(JSON.stringify(o.cosmosPay), newVaultKey)) : null,
+      // And the Pollar session, for the same reason with a sharper edge: on a Pollar
+      // wallet this box is also what the next unlock opens to prove the password, so
+      // leaving it on the old key locks the user out of the wallet entirely.
+      pollar: o.pollar ? JSON.stringify(await sealWithKey(JSON.stringify(o.pollar), newVaultKey)) : null,
     });
   }
 
@@ -709,8 +907,9 @@ export async function changePassword(
   //    failure is reported as a commit failure and the caller must end the session.
   try {
     for (const s of sealed) {
-      await storageSet(vaultKey(s.entry.id), s.vault);
+      if (s.vault) await storageSet(vaultKey(s.entry.id), s.vault);
       if (s.cosmosPay) await storageSet(cosmosPayKey(s.entry.id), s.cosmosPay);
+      if (s.pollar) await storageSet(pollarKey(s.entry.id), s.pollar);
     }
   } catch (err) {
     throw new PasswordChangeCommitError(err);
@@ -742,6 +941,7 @@ export async function destroyAll(): Promise<void> {
     await disableDeviceAuth(w.id);
     await storageRemove(cosmosPayKey(w.id));
     await storageRemove(cosmosPayPendingKey(w.id));
+    await storageRemove(pollarKey(w.id));
   }
   await storageRemove(WALLETS_KEY);
   await storageRemove(ACTIVE_KEY);

@@ -15,6 +15,7 @@ export function Operations({ store }: { store: WalletStore }) {
   };
 
   const rows: { glyph: string; label: string; sub?: string; onClick: () => void }[] = [
+    { glyph: '☰', label: t('ops.gatewayTitle'), sub: t('ops.gatewaySub'), onClick: () => store.setScreen('gateway-ops') },
     { glyph: '✎', label: t('ops.signTx'), sub: t('ops.signTxSub'), onClick: () => store.setScreen('sign-tx') },
     { glyph: '⛓', label: t('ops.pastePay'), sub: t('ops.pastePaySub'), onClick: pastePayUrl },
     { glyph: '⛶', label: t('scan.scanQr'), onClick: () => store.setScreen('scan') },

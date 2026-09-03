@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { RAILS } from '@/constants/fiat';
+import { availableRails } from '@/lib/fiatRails';
 import { Select } from '@/features/fiat/Select';
 import { Field } from '@/ui/Field';
 import '@/styles/features/fiat/bank-account.css';
@@ -16,7 +17,20 @@ export function BankAccount({ store }: { store: WalletStore }) {
   const [railType, setRailType] = useState(RAILS[0].type);
   const [name, setName] = useState('');
   const [vals, setVals] = useState<Record<string, string>>({});
-  const rail = RAILS.find((r) => r.type === railType) ?? RAILS[0];
+
+  // Which rails the operator has actually enabled, from the gateway. Until it answers
+  // — and forever, if it cannot — this is the full local table, which is exactly the
+  // behaviour this screen had before. The field definitions always come from the local
+  // table: the server says WHICH rails exist, this build says what each one needs.
+  useEffect(() => {
+    void store.loadRails();
+  }, [store]);
+  const rails = useMemo(() => availableRails(store.serverRails), [store.serverRails]);
+
+  // The selected rail can fall out of the list when the server's answer arrives, so it
+  // is resolved against `rails` with a fallback rather than trusted. Without that, a
+  // rail the operator has disabled would keep its form on screen and submit into a 4xx.
+  const rail = rails.find((r) => r.type === railType) ?? rails[0];
   const ok = !!name.trim() && rail.fields.every((f) => (f.options ? true : (vals[f.k] ?? '').trim()));
 
   // BlindPay requires a top-level `beneficiary_name` on every bank account. Default it to
@@ -32,7 +46,9 @@ export function BankAccount({ store }: { store: WalletStore }) {
   const submit = async () => {
     if (!receiverId) return;
     const body: Record<string, unknown> = {
-      type: railType,
+      // `rail.type`, not `railType`: they differ for exactly one render after the
+      // server's rail list lands and invalidates the current selection.
+      type: rail.type,
       name: name.trim(),
       beneficiary_name: beneficiaryName || name.trim(),
       account_class: 'individual',
@@ -49,8 +65,8 @@ export function BankAccount({ store }: { store: WalletStore }) {
     <div className="scr screen col pb-104">
       <BackBar title={t('fiat.addAccount')} onBack={store.goBack} />
       <div className="desc bank-desc">{t('fiat.accountDesc')}</div>
-      <Select label={t('fiat.currency')} value={railType} onChange={changeRail}>
-        {RAILS.map((r) => <option key={r.type} value={r.type}>{t(r.labelKey)}</option>)}
+      <Select label={t('fiat.currency')} value={rail.type} onChange={changeRail}>
+        {rails.map((r) => <option key={r.type} value={r.type}>{t(r.labelKey)}</option>)}
       </Select>
       <Field tone="soft" label={t('fiat.accountName')} value={name} onChange={setName} placeholder={t('fiat.accountNamePlaceholder')} />
       {rail.fields.map((f) =>

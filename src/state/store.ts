@@ -37,9 +37,13 @@ import {
   openVault,
   verifyPassword,
   verifyVaultKey,
+  createPollarWallet,
+  getPollarSession,
+  isPollar,
   type CosmosPayAccount,
   type CosmosPayPending,
   type Gender,
+  type PollarStoredSession,
   type WalletEntry,
 } from '@/lib/vault';
 import { storageGet, storageSet } from '@/lib/storage';
@@ -57,8 +61,14 @@ import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
+import { pollarActivate, pollarAuthorize, pollarExchange, pollarLogout, waitForCode, type PollarHandshake } from '@/lib/pollar';
+import type { PollarProvider } from '@/constants/pollar';
+import { pollarSign } from '@/lib/pollarApi';
+import { clearHandshake, freshSession, fromStored, loadHandshake, saveHandshake, toStored } from '@/lib/pollarSession';
+import { openExternal } from '@/lib/openExternal';
+import { normalizeRails } from '@/lib/fiatRails';
 import { deviceAuthFailureKey, type DeviceAuthFailure } from '@/lib/deviceAuth';
-import { ACCOUNT_PREFIX, HISTORY_PREFIX, PRICES_KEY, TTL, accountKey, historyKey } from '@/lib/dataKeys';
+import { ACCOUNT_PREFIX, HISTORY_PREFIX, PRICES_KEY, TTL, accountKey, historyKey, opsKey, type OpsDomain } from '@/lib/dataKeys';
 import {
   addTrustline as stellarAddTrustline,
   allNetworks,
@@ -70,6 +80,7 @@ import {
   resolveNetwork,
   sendPayment,
   signXdr,
+  submitXdr as stellarSubmitXdr,
   type AccountState,
   type HistoryOp,
   type NetConfig,
@@ -95,6 +106,12 @@ import {
   listLiquidityPools as cpListLiquidityPools,
   liquidityPositions as cpLiquidityPositions,
   listReceivers as cpListReceivers,
+  listRails as cpListRails,
+  onrampTrustlineTx as cpOnrampTrustlineTx,
+  listSwaps as cpListSwaps,
+  listPayins as cpListPayins,
+  listPayouts as cpListPayouts,
+  listLiquidityOps as cpListLiquidityOps,
   listReceiverWallets as cpListReceiverWallets,
   offrampQuote as cpOfframpQuote,
   onrampQuote as cpOnrampQuote,
@@ -173,6 +190,21 @@ export interface Session {
  */
 async function secretOf(s: Session): Promise<string> {
   return (await openVault(s.walletId, s.vaultKey)).secret;
+}
+
+/**
+ * A Pollar session, live enough to sign with.
+ *
+ * Held next to `session` rather than inside it because the two have different
+ * lifetimes: `session` ends at the idle auto-lock, while a Pollar access token expires
+ * on Pollar's clock and is rotated by `freshSession`. Folding them together would mean
+ * either re-deriving the vault key to write a rotated token, or letting a `Session`
+ * carry a mutable field — and `Session` is the one object in this file that is
+ * deliberately immutable and deliberately not handed to components.
+ */
+export interface PollarState {
+  stored: PollarStoredSession;
+  walletId: string;
 }
 
 export interface SuccessInfo {
@@ -326,6 +358,24 @@ export function useWalletStore() {
   // Provisioned CosmosPay account for the active wallet (null until enabled /
   // before unlock). Loaded from the sealed store whenever a session opens.
   const [cosmosPay, setCosmosPay] = useState<CosmosPayAccount | null>(null);
+  /**
+   * The active wallet's Pollar session, when it has one.
+   *
+   * A REF and not state, which is unusual here and deliberate. `signEnvelope` reads it
+   * inside a flow that may have started several awaits ago, and React state read there
+   * is the value from the render that opened the flow — after a token rotation, that is
+   * a refresh token Pollar has already retired, and Pollar treats a replayed refresh
+   * token as a compromise and revokes the whole family. A ref is always the current one.
+   *
+   * Nothing renders from it, so there is no state copy to keep in step: screens branch
+   * on `isPollarWallet`, which is derived from the WalletEntry. That distinction matters
+   * on its own — a Pollar wallet whose session box failed to open is still a Pollar
+   * wallet, and must not render as a local one with an export button.
+   */
+  const pollarRef = useRef<PollarStoredSession | null>(null);
+  const setPollar = useCallback((next: PollarStoredSession | null) => {
+    pollarRef.current = next;
+  }, []);
   // A registration awaiting email confirmation (set after enableReceiving until
   // claimReceiving succeeds). Plaintext-persisted so it survives a reload.
   const [cosmosPayPending, setCosmosPayPending] = useState<CosmosPayPending | null>(null);
@@ -464,6 +514,46 @@ export function useWalletStore() {
     },
     [t],
   );
+
+  /* --------------------------- signing --------------------------- */
+
+  /**
+   * Sign an envelope with whatever holds this wallet's key.
+   *
+   * The one place the two account kinds differ, and it is deliberately the LAST step of
+   * every money flow rather than a fork near the top. Each flow still reads:
+   *
+   *     assertSafeToSign(network, xdr, { intent, signer, ...bounds });
+   *     guardSession(epoch);
+   *     const signed = await signEnvelope(xdr);
+   *
+   * so what the wallet is willing to put its name to is decided in exactly the same
+   * place, by exactly the same guard, for a key in a local vault and a key in Pollar's
+   * KMS. A branch higher up — "if Pollar, call Pollar's build-sign-submit" — would have
+   * given a custodial account its own set of rules, and the rules are the product.
+   *
+   * `pollarRef`, not the `pollar` state: this runs after awaits, and a rotated token
+   * written by a concurrent `freshSession` must not be shadowed by the value this
+   * closure captured. Rotation matters here specifically because Pollar treats a
+   * replayed refresh token as a compromise and revokes the family.
+   */
+  const signEnvelope = useCallback(
+    async (xdr: string): Promise<string> => {
+      if (!session) throw new Error(t('unlock.autoLocked'));
+      const stored = pollarRef.current;
+      if (!stored) return signXdr(network, await secretOf(session), xdr);
+
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      // Refreshing is a bridge call, so it needs the CosmosPay key. Without one the
+      // token still works until it expires — refusing here would break a signature that
+      // was about to succeed, so the stale token is used and Pollar decides.
+      const live = apiKey ? await freshSession(session.walletId, stored, apiKey, session.vaultKey) : stored;
+      if (live !== stored) setPollar(live);
+      return pollarSign(network, fromStored(live), xdr);
+    },
+    [session, network, cosmosPay, t, setPollar],
+  );
+
 
   /** Toggle manual confirmations — always password-gated (prevents an attacker
    *  silently disabling protection on an unlocked wallet). */
@@ -855,9 +945,14 @@ export function useWalletStore() {
     setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey });
     setCosmosPay(await getCosmosPay(entry.id, vaultKey));
     setCosmosPayPending(await getPendingCosmosPay(entry.id));
+    // Only a Pollar wallet has one, and for that wallet this box is also what the
+    // password was just proven against — so a null here on a Pollar entry means the
+    // session opened on a key that cannot read it, which `convergeSeals` treats as the
+    // broken state it is. Reading it eagerly keeps that from first surfacing mid-payment.
+    setPollar(isPollar(entry) ? await getPollarSession(entry.id, vaultKey) : null);
     setTab('home');
     setScreen('home');
-  }, []);
+  }, [setPollar]);
 
   const unlock = useCallback(
     async (password: string): Promise<UnlockResult> => {
@@ -1612,7 +1707,7 @@ export function useWalletStore() {
             minReceive: { amount: quote.destination.minimum, asset: { code: to.code, issuer: to.issuer } },
           });
           guardSession(epoch);
-          const signedXdr = signXdr(network, await secretOf(session), swap.xdr);
+          const signedXdr = await signEnvelope(swap.xdr);
           const res = await cpSubmitSwap(apiKey, swap.id, signedXdr);
           if (res.submitted) {
             setSuccessInfo({
@@ -1645,7 +1740,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, t, flash],
+    [session, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash],
   );
 
   /* ------------------------- liquidity pools ---------------------- */
@@ -1656,6 +1751,350 @@ export function useWalletStore() {
     if (!apiKey) flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
     return apiKey;
   }, [cosmosPay, network, t, flash]);
+
+  /* ----------------------- gateway operations --------------------- */
+
+  /**
+   * What the gateway did with the last things this wallet asked it to do.
+   *
+   * Read through the keyed cache rather than into component state, for the reason the
+   * cache exists: these are scoped to `network x account`, and before it existed a
+   * switch of either left the previous scope's rows on screen. `run` deduplicates the
+   * four domains too — the operations screen mounts all of them at once, and a remount
+   * on navigation would otherwise refetch every one.
+   *
+   * Failures resolve to an empty page rather than rejecting. This is a history view: a
+   * gateway that is down should cost the user the list, not the screen, and the fiat
+   * rows are the half most likely to be unavailable independently of the rest.
+   */
+  const loadOps = useCallback(
+    async (domain: OpsDomain): Promise<void> => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey || !meta) return;
+      await run({
+        key: opsKey(networkId, meta.publicKey, domain),
+        ttl: TTL.ops,
+        fetcher: async () => {
+          switch (domain) {
+            case 'swaps':
+              return (await cpListSwaps(apiKey)).items;
+            case 'payins':
+              return (await cpListPayins(apiKey)).items;
+            case 'payouts':
+              return (await cpListPayouts(apiKey)).items;
+            case 'liquidity':
+              return (await cpListLiquidityOps(apiKey)).items;
+          }
+        },
+      }).catch(() => []);
+    },
+    [cosmosPay, network, networkId, meta],
+  );
+
+  /** The cache key a screen subscribes to. Null until there is an account to scope by. */
+  const opsKeyFor = useCallback(
+    (domain: OpsDomain): string | null => (meta ? opsKey(networkId, meta.publicKey, domain) : null),
+    [meta, networkId],
+  );
+
+  /**
+   * Which bank rails the platform actually offers, from `GET /v1/kyc/rails`.
+   *
+   * Cached device-wide and not per account: the answer is a property of the operator's
+   * BlindPay configuration, not of whose wallet is open, and re-asking it on every
+   * account switch would spend a round trip to learn the same list.
+   *
+   * Null on any failure — unreachable, unrecognised shape, no key — and null means
+   * "use the table we shipped". `availableRails` does that intersection; see the header
+   * on `lib/fiatRails.ts` for why this fails open rather than showing an empty picker.
+   */
+  const [serverRails, setServerRails] = useState<string[] | null>(null);
+
+  const loadRails = useCallback(async (): Promise<void> => {
+    const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+    if (!apiKey || serverRails) return;
+    try {
+      setServerRails(normalizeRails(await cpListRails(apiKey)));
+    } catch {
+      /* stays null — the local table is the fallback, and it is today's behaviour */
+    }
+  }, [cosmosPay, network, serverRails]);
+
+  /**
+   * Open the trustline the gateway's onramp will pay out into.
+   *
+   * The wallet can already build a `changeTrust` itself, and for a user adding an asset
+   * by hand that is the right path. This one is different in the field that matters:
+   * the ISSUER. A deposit is delivered by a specific issuer's asset, the wallet has no
+   * way to know which, and a trustline opened to a plausible-looking USDC issuer is a
+   * deposit that arrives somewhere the user cannot spend from. Asking the gateway which
+   * one is the only way to get it right.
+   *
+   * Which makes the envelope a counterparty's, so it goes through the guard like every
+   * other counterparty envelope. The bound is the interesting part: the wallet cannot
+   * pre-declare the asset — not knowing it is why it called — so the bound comes from
+   * what the USER was shown. `reviewTx` decodes the envelope, the decoded `(code,
+   * issuer)` goes on the confirmation prompt, and the guard is then handed exactly what
+   * the user confirmed. Bounding it with the issuer the gateway just sent would be
+   * checking the gateway against itself, which is the mistake CLAUDE.md calls out by
+   * name in the swap flow.
+   */
+  const openOnrampTrustline = useCallback(async (): Promise<boolean> => {
+    const apiKey = cosmosApiKey();
+    if (!apiKey || !session) return false;
+
+    const run = await exclusive.run('trustline', async () => {
+      const epoch = sessionEpochRef.current;
+      try {
+        const { xdr } = await cpOnrampTrustlineTx(apiKey, session.publicKey);
+        guardSession(epoch);
+
+        // Decode BEFORE asking, so the prompt names the asset rather than asking the
+        // user to approve an opaque envelope.
+        const review = reviewTx(network, xdr);
+        const line = review.operations.find((o) => o.type === 'changeTrust')?.line ?? null;
+        if (!line) {
+          flash(t('fiat.trustlineNoAsset'), 'err');
+          return false;
+        }
+
+        const asset = { code: line.code, issuer: line.issuer ?? null };
+        const okToSign = await requestSignature({
+          title: t('fiat.trustlineConfirmTitle'),
+          message: t('fiat.trustlineConfirmMsg', { asset: asset.code, issuer: asset.issuer ?? '—' }),
+        });
+        if (!okToSign) return false;
+        guardSession(epoch);
+
+        assertSafeToSign(network, xdr, {
+          signer: session.publicKey,
+          intent: 'trustline',
+          // A changeTrust has no destination; stating the policy is still required, and
+          // 'self' is the honest one — nothing may leave for anybody.
+          destinations: 'self',
+          confirmed: [asset],
+        });
+        guardSession(epoch);
+
+        const signed = await signEnvelope(xdr);
+        await stellarSubmitXdr(network, signed);
+        invalidate(ACCOUNT_PREFIX);
+        flash(t('fiat.trustlineOpened', { asset: asset.code }), 'ok');
+        return true;
+      } catch (e) {
+        flash((e as Error).message || t('fiat.error'), 'err');
+        return false;
+      }
+    });
+    // `ran: false` means another flow held the lock — not a failure, but not a success
+    // either, so it reports the same as a refusal rather than a completed trustline.
+    return run.ran ? run.value : false;
+  }, [cosmosApiKey, session, network, exclusive, guardSession, requestSignature, signEnvelope, t, flash]);
+
+  /* ---------------------------- Pollar ---------------------------- */
+
+  /**
+   * Whether a Pollar login can even be started right now.
+   *
+   * The bridge's routes are scoped `pollar:read` / `pollar:write`, and the wallet's only
+   * credential for the gateway is the CosmosPay API key it was provisioned. So a Pollar
+   * login begins from a wallet that already has CosmosPay connected — it ADDS a social
+   * account, it does not replace onboarding.
+   *
+   * That is a real limit, not a design choice: seed-free onboarding would need a key
+   * that exists before any wallet does, and the developer platform does not mint one.
+   * Stated here so the screen can explain it, instead of the user meeting a 403 that
+   * reads like a broken install.
+   */
+  const canUsePollar = useCallback((): boolean => !!(cosmosPay?.keys[networkEnv(network)] ?? null), [cosmosPay, network]);
+
+  /**
+   * Where a login has got to. Three states rather than a boolean, because each needs
+   * different copy and only `waiting` is one the user can act on — by going back to the
+   * browser tab that is asking for their consent.
+   */
+  const [pollarPhase, setPollarPhase] = useState<'idle' | 'opening' | 'waiting' | 'redeeming'>('idle');
+  const [pollarUrl, setPollarUrl] = useState<string | null>(null);
+  const pollarAbort = useRef(false);
+
+  /**
+   * Finish a handshake: poll for the code, redeem it, land the wallet.
+   *
+   * Shared by starting a login and resuming one, because on MV3 those are the same
+   * thing — opening the consent screen dismisses the popup, so the process that starts a
+   * login is usually not the process that finishes it.
+   */
+  const finishPollarLogin = useCallback(
+    async (apiKey: string, hs: PollarHandshake): Promise<boolean> => {
+      if (!session) return false;
+      try {
+        setPollarPhase('waiting');
+        const code = await waitForCode(apiKey, hs, () => pollarAbort.current);
+
+        setPollarPhase('redeeming');
+        const redeemed = await pollarExchange(apiKey, code, hs.verifier);
+        await clearHandshake();
+
+        if (!redeemed.wallet.address) {
+          flash(t('pollar.noWallet'), 'err');
+          return false;
+        }
+
+        // Pollar provisions the account during redemption, but its DEFERRED funding mode
+        // hands back an address with no reserve — a keypair that does not exist on-chain.
+        // Activating here rather than at the first payment means the user never meets a
+        // "destination does not exist" on an account the wallet has just shown them.
+        //
+        // Non-fatal on failure: the address can still receive, the operator can fund it
+        // later, and failing the whole login over the reserve would throw away a session
+        // the user has already consented to.
+        if (redeemed.wallet.exists_on_stellar === false) {
+          try {
+            const act = await pollarActivate(apiKey, redeemed.wallet.address);
+            if (act.activated) flash(t('pollar.activated', { amount: act.amount }), 'ok');
+          } catch {
+            /* see above */
+          }
+        }
+
+        const stored = toStored(redeemed, hs.provider);
+        const { entry, wallets: next } = await createPollarWallet(
+          {
+            publicKey: redeemed.wallet.address,
+            name: redeemed.profile.first_name || meta?.name || 'astronauta',
+            birthdate: meta?.birthdate ?? '',
+            email: redeemed.profile.email || meta?.email || '',
+            avatar: redeemed.profile.avatar,
+          },
+          stored,
+          session.vaultKey,
+        );
+
+        // The new wallet becomes the active one, so everything the session carries about
+        // the previous wallet has to move with it. `cosmosPay` especially: leaving the
+        // old wallet's API key in state would attribute this wallet's swaps and payouts
+        // to an organization it does not belong to.
+        setWallets(next);
+        setMetaState(entry);
+        setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey: session.vaultKey });
+        setPollar(stored);
+        setCosmosPay(null);
+        setCosmosPayPending(null);
+        setScreen('home');
+        return true;
+      } catch (e) {
+        await clearHandshake();
+        flash((e as Error).message || t('pollar.status.failed'), 'err');
+        return false;
+      } finally {
+        setPollarPhase('idle');
+        setPollarUrl(null);
+      }
+    },
+    [session, meta, t, flash, setPollar],
+  );
+
+  /**
+   * Start a login with `provider`.
+   *
+   * The handshake is persisted BEFORE the browser opens, never after. On MV3 the
+   * `openExternal` call is itself what dismisses the popup, so anything written
+   * afterwards is written by a process that may already be gone — and that state is the
+   * only handle on a login the user is at that moment completing.
+   */
+  const pollarLogin = useCallback(
+    async (provider: PollarProvider): Promise<void> => {
+      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!apiKey) {
+        flash(t('pollar.noKey'), 'info');
+        return;
+      }
+      pollarAbort.current = false;
+      setPollarPhase('opening');
+      try {
+        const { authorization, handshake } = await pollarAuthorize(apiKey, provider);
+        await saveHandshake(handshake);
+        setPollarUrl(authorization.authorization_url);
+        if (!(await openExternal(authorization.authorization_url))) flash(t('pollar.openFailed'), 'info');
+        await finishPollarLogin(apiKey, handshake);
+      } catch (e) {
+        setPollarPhase('idle');
+        flash((e as Error).message || t('pollar.status.failed'), 'err');
+      }
+    },
+    [cosmosPay, network, t, flash, finishPollarLogin],
+  );
+
+  /** Pick up a login the popup was closed in the middle of. No-op when there is none. */
+  const resumePollarLogin = useCallback(async (): Promise<void> => {
+    const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+    const hs = await loadHandshake();
+    if (!apiKey || !hs) return;
+    pollarAbort.current = false;
+    setPollarUrl(null);
+    await finishPollarLogin(apiKey, hs);
+  }, [cosmosPay, network, finishPollarLogin]);
+
+  /** Stop waiting. The handshake stays valid server-side until it expires on its own. */
+  const cancelPollarLogin = useCallback(() => {
+    pollarAbort.current = true;
+  }, []);
+
+  /**
+   * Revoke the Pollar session for the active wallet.
+   *
+   * Pollar is told first and the device drops it second, never the other way round: a
+   * local drop that ran first would leave a live refresh token on Pollar's side with
+   * nothing left here able to revoke it. A failed revoke is still followed by the local
+   * drop — the user asked to be signed out, and a token they can no longer reach is
+   * strictly better than one they can.
+   *
+   * Then `lock()`, because for a Pollar wallet the session box IS the box the app
+   * password was proven against: with the credential gone there is nothing left for this
+   * session to act with, and leaving the wallet on screen would be showing an account it
+   * can no longer sign for.
+   */
+  const pollarSignOut = useCallback(async (): Promise<boolean> => {
+    if (!session || !meta || !isPollar(meta)) return false;
+
+    // Force-gated, like everything that changes how the wallet opens (CLAUDE.md:
+    // `toggleDeviceAuth`, `changeAppPassword`, `signRawXdr`). This one removes the
+    // wallet from the device, so it is squarely in that set — and unlike the others it
+    // cannot be undone from Settings, only by logging in again.
+    const confirmed = await requestSignature(
+      { title: t('pollar.signOut'), message: t('pollar.signOutMsg') },
+      true,
+    );
+    if (!confirmed) return false;
+
+    const stored = pollarRef.current;
+    const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
+    if (stored && apiKey) {
+      try {
+        await pollarLogout(apiKey, stored.access_token);
+      } catch {
+        /* revoked already, or unreachable — the local removal below is the user's intent */
+      }
+    }
+
+    // The WHOLE ENTRY, not just the session box.
+    //
+    // Dropping only the box would brick the wallet: for a Pollar entry that box is also
+    // what `unlockSession` opens to prove the app password (`primaryBoxKey`), so the
+    // entry would survive in the list as something that can never be unlocked again —
+    // and nothing on screen would say why.
+    //
+    // Removing it is also what sign-out MEANS for a custodial account. The device holds
+    // no key and no seed for it; without the session there is nothing left here at all.
+    // Nothing is lost: logging in with the same provider account resolves the same
+    // Stellar wallet, funds included.
+    setPollar(null);
+    const { remaining, newActive } = await vaultRemoveWallet(session.walletId);
+    setWallets(remaining);
+    lock();
+    if (!newActive) setScreen('welcome');
+    return true;
+  }, [cosmosPay, network, session, meta, requestSignature, setPollar, lock, t]);
 
   /** Browse on-chain liquidity pools (Horizon proxy). Returns [] on error / not enabled. */
   const listPools = useCallback(
@@ -1739,7 +2178,7 @@ export function useWalletStore() {
             ],
           });
           guardSession(epoch);
-          const signedXdr = signXdr(network, await secretOf(session), op.xdr);
+          const signedXdr = await signEnvelope(op.xdr);
           const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
           if (res.submitted) {
             setSuccessInfo({
@@ -1767,7 +2206,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, account, cosmosApiKey, network, requestSignature, refresh, exclusive, guardSession, t],
+    [session, account, cosmosApiKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
   );
 
   /** Full withdraw flow: build -> sign locally -> submit. Mirrors submitDeposit. */
@@ -1804,7 +2243,7 @@ export function useWalletStore() {
             poolAmounts: [input.shares],
           });
           guardSession(epoch);
-          const signedXdr = signXdr(network, await secretOf(session), op.xdr);
+          const signedXdr = await signEnvelope(op.xdr);
           const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
           if (res.submitted) {
             setSuccessInfo({
@@ -1833,7 +2272,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, cosmosApiKey, network, requestSignature, refresh, exclusive, guardSession, t],
+    [session, cosmosApiKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
   );
 
   /** Create a shareable CosmosPay pay link (SEP-7 pay intent) addressed to this wallet. */
@@ -1860,7 +2299,7 @@ export function useWalletStore() {
     const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
     if (!apiKey) return;
     try {
-      setReceivers(await cpListReceivers(apiKey));
+      setReceivers((await cpListReceivers(apiKey)).items);
     } catch {
       /* best-effort */
     }
@@ -1973,7 +2412,7 @@ export function useWalletStore() {
       const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
       if (!apiKey) return;
       try {
-        setBankAccounts(await cpListBankAccounts(apiKey, receiverId));
+        setBankAccounts((await cpListBankAccounts(apiKey, receiverId)).items);
       } catch {
         /* best-effort */
       }
@@ -2038,7 +2477,7 @@ export function useWalletStore() {
       const net = blindpayNetwork(networkEnv(network));
       try {
         const existing = await cpListReceiverWallets(apiKey, receiverId);
-        const match = existing.find((w) => w.address === meta.publicKey && (!w.network || w.network === net));
+        const match = existing.items.find((w) => w.address === meta.publicKey && (!w.network || w.network === net));
         if (match) return match.id;
         const created = await cpAddReceiverWallet(apiKey, receiverId, { name: 'CosmosPay Wallet', network: net, address: meta.publicKey });
         return created.id;
@@ -2166,7 +2605,7 @@ export function useWalletStore() {
             maxSend: { amount: senderAmount, asset: { code: token, issuer: tokenAsset.issuer } },
           });
           guardSession(epoch);
-          const signed = signXdr(network, await secretOf(session), xdr);
+          const signed = await signEnvelope(xdr);
           const payout = await cpCreatePayout(apiKey, { quote_id: quote.id, sender_wallet_address: session.publicKey, chain: 'stellar', signed_transaction: signed });
           const fiatMinor = quote.receiver_local_amount || quote.receiver_amount || 0;
           const sent = payout.senderAmount ?? senderAmount ?? '';
@@ -2195,7 +2634,7 @@ export function useWalletStore() {
       });
       return run.ran ? run.value : false;
     },
-    [session, account, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, t, flash],
+    [session, account, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash],
   );
 
   /** Unlink the default BlindPay fiat receiver (keeps the CosmosPay keys). */
@@ -2631,9 +3070,9 @@ export function useWalletStore() {
       if (review.source !== session.publicKey) {
         throw new Error(t('sign.foreignSource'));
       }
-      return signXdr(network, await secretOf(session), xdr.trim());
+      return signEnvelope(xdr.trim());
     },
-    [session, network, requestSignature, guardSession, t],
+    [session, network, requestSignature, guardSession, signEnvelope, t],
   );
 
   /**
@@ -2734,6 +3173,31 @@ export function useWalletStore() {
     cosmosPay,
     cosmosPayPending,
     cosmosLink,
+
+    /*
+     * Pollar (social login, Pollar-custodied key).
+     *
+     * `isPollarWallet` is derived from the WalletEntry, never from the session being
+     * loaded — see the note on `pollarRef`.
+     *
+     * The session itself is not exposed, for the same reason `session` is not: it holds
+     * a refresh token, which is spending authority. Screens get the phase and the
+     * actions; the credential stays in here.
+     */
+    isPollarWallet: isPollar(meta ?? {}),
+    pollarProvider: meta?.pollarProvider ?? null,
+    canUsePollar,
+    loadOps,
+    opsKeyFor,
+    serverRails,
+    loadRails,
+    openOnrampTrustline,
+    pollarPhase,
+    pollarUrl,
+    pollarLogin,
+    resumePollarLogin,
+    cancelPollarLogin,
+    pollarSignOut,
     account,
     prices,
     loading,

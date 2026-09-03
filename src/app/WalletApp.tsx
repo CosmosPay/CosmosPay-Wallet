@@ -47,6 +47,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   'profile-setup': lazy(() => import('@/features/onboarding/ProfileSetup').then((m) => ({ default: m.ProfileSetup }))),
   password: lazy(() => import('@/features/onboarding/PasswordSetup').then((m) => ({ default: m.PasswordSetup }))),
   'device-auth': lazy(() => import('@/features/onboarding/DeviceAuthSetup').then((m) => ({ default: m.DeviceAuthSetup }))),
+  'social-login': lazy(() => import('@/features/onboarding/SocialLogin').then((m) => ({ default: m.SocialLogin }))),
   home: Home,
   earn: Earn,
   markets: Markets,
@@ -84,6 +85,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   // lazy — extras
   operations: lazy(() => import('@/features/extras/Operations').then((m) => ({ default: m.Operations }))),
   'sign-tx': lazy(() => import('@/features/extras/SignTx').then((m) => ({ default: m.SignTx }))),
+  'gateway-ops': lazy(() => import('@/features/extras/GatewayOps').then((m) => ({ default: m.GatewayOps }))),
   'add-network': lazy(() => import('@/features/extras/AddNetwork').then((m) => ({ default: m.AddNetwork }))),
   'add-asset': lazy(() => import('@/features/extras/AddAsset').then((m) => ({ default: m.AddAsset }))),
   scan: lazy(() => import('@/features/extras/ScanQR').then((m) => ({ default: m.ScanQR }))),
