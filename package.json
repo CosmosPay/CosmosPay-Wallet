@@ -34,13 +34,13 @@
     "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts"
   },
   "dependencies": {
-    "@astrojs/react": "^6.0.4",
+    "@astrojs/react": "^6.0.5",
     "@stellar/stellar-sdk": "^16.2.0",
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
-    "@tauri-apps/plugin-opener": "^2.5.4",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.3",
+    "@tauri-apps/plugin-opener": "^2.5.5",
     "@tauri-apps/plugin-store": "^2.4.4",
-    "astro": "^7.2.7",
+    "astro": "^7.2.10",
     "bip39": "^3.1.0",
     "buffer": "^6.0.3",
     "country-flag-icons": "^1.6.20",
