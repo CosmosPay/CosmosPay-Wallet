@@ -205,6 +205,8 @@ import {
   VirtualAccountShape,
 } from '@/lib/cosmospayShapes';
 import { tNow } from '@/lib/i18n';
+import type { PollarSession, PollarSessionStatus } from '@/lib/pollar';
+import { PollarSessionStatusShape, SocialAuthorizationShape, SocialClaimShape } from '@/lib/pollarShapes';
 
 /* ------------------------------ transport ------------------------------ */
 
@@ -385,6 +387,100 @@ export async function verifyCosmosLink(input: {
     true,
     LinkVerifyResultShape,
   );
+}
+
+/* ------------------------- social login (brokered) ----------------------- */
+
+/**
+ * The dev platform's half of "Continue with Google".
+ *
+ * These three are the only calls in this file with no credential on them, and that is
+ * the point: they exist for someone who has no CosmosPay account yet, so there is no
+ * API key to send. The platform runs the gateway handshake with its own identity and
+ * hands back both halves at the end — the Pollar session AND the account keys — which
+ * is what makes a seed-free first run possible at all. See `lib/socialLogin.ts` for the
+ * flow and `POST /api/wallet/social/*` for the other side.
+ *
+ * What stands in for a credential is the PKCE verifier: the poll route will show the
+ * code to anyone who knows the `state`, and only the holder of the verifier can spend
+ * it. It never leaves this device until the redemption request.
+ */
+
+/** `POST /api/wallet/social/authorize`. */
+export async function socialAuthorize(
+  env: 'dev' | 'prod',
+  body: { provider: string; codeChallenge: string; codeChallengeMethod: string; deviceLabel?: string },
+): Promise<{ state: string; authorizationUrl: string; provider: string }> {
+  return postJson(
+    withQuery(`${devPlatformUrl()}/api/wallet/social/authorize`, { env }),
+    body,
+    {},
+    true,
+    SocialAuthorizationShape,
+  );
+}
+
+/** `GET /api/wallet/social/session/{state}` — same status contract as the bridge's own. */
+export async function socialStatus(env: 'dev' | 'prod', state: string): Promise<PollarSessionStatus> {
+  return getPlatformJson<PollarSessionStatus>(
+    withQuery(`${devPlatformUrl()}/api/wallet/social/session/${encodeURIComponent(state)}`, { env }),
+    PollarSessionStatusShape,
+  );
+}
+
+/**
+ * What a redeemed social login is worth: the Pollar session, and the CosmosPay account
+ * that was created or attached for the email the provider verified.
+ *
+ * `keys` is null when the provider returned no email. That is a real outcome, not an
+ * error — the wallet still works, because Pollar signs for it; what is missing is the
+ * gateway (swaps, fiat), and the wallet says so rather than pretending.
+ */
+export interface SocialClaim {
+  status: string;
+  session: PollarSession;
+  account: 'created' | 'linked' | 'none';
+  organizationId: string | null;
+  keys: { dev: string | null; prod: string | null } | null;
+  activated?: boolean;
+  activationAmount?: string | null;
+}
+
+/** `POST /api/wallet/social/claim`. Single-use: the code is spent whatever happens. */
+export async function socialClaim(
+  env: 'dev' | 'prod',
+  body: { code: string; codeVerifier: string; name?: string },
+): Promise<SocialClaim> {
+  return postJson<SocialClaim>(
+    withQuery(`${devPlatformUrl()}/api/wallet/social/claim`, { env }),
+    body,
+    {},
+    true,
+    SocialClaimShape,
+  );
+}
+
+/**
+ * GET a dev-platform route with no key, unwrapping its envelope.
+ *
+ * Separate from `getJson` because that one takes an API key and this whole flow exists
+ * for a wallet that does not have one; separate from `postJson` only in method.
+ */
+async function getPlatformJson<T>(url: string, shape: Check<unknown>): Promise<T> {
+  const res = await fetch(url);
+
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* empty / non-JSON body */
+  }
+
+  if (!res.ok) throw apiError(url, res, json, RETRY_AFTER_CAP_S);
+
+  const payload = json && typeof json === 'object' && 'data' in (json as Envelope) ? (json as Envelope).data : json;
+  parseShape(url, shape, payload);
+  return payload as T;
 }
 
 function authHeaders(apiKey: string): Record<string, string> {

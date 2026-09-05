@@ -13,6 +13,7 @@ import test from 'node:test';
 import { Account, Asset, BASE_FEE, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
 import { newPkce } from '@/lib/pkce';
 import { verifySigned, PollarSignatureError } from '@/lib/pollarApi';
+import { waitForCode, PollarHandshakeError, type PollarHandshake, type PollarSessionStatus } from '@/lib/pollar';
 import type { NetConfig } from '@/lib/stellar';
 
 const cfg = { id: 'testnet', passphrase: Networks.TESTNET } as NetConfig;
@@ -164,4 +165,78 @@ test('refuses a fee bump wrapping a DIFFERENT inner transaction', () => {
   bump.sign(sponsor);
 
   assert.equal(reasonOf(() => verifySigned(cfg, shown, bump.toXDR(), kp.publicKey())), 'different-transaction');
+});
+
+/* ------------------------------- the wait loop ---------------------------- */
+
+/**
+ * The loop both logins share. It became testable when the poller became a parameter —
+ * which is also why it is one: the direct path polls the gateway with the wallet's key
+ * and the brokered path polls the dev platform, and a second copy of these rules is a
+ * second place for a login to hang.
+ */
+const handshake = (): PollarHandshake => ({
+  state: 'st4te',
+  provider: 'google',
+  verifier: 'v'.repeat(43),
+  startedAt: Date.now(),
+});
+
+/** A poller that answers the given statuses in order, then repeats the last one. */
+function poller(...answers: PollarSessionStatus[]) {
+  const calls: string[] = [];
+  let i = 0;
+  return {
+    calls,
+    poll: (state: string) => {
+      calls.push(state);
+      return Promise.resolve(answers[Math.min(i++, answers.length - 1)]);
+    },
+  };
+}
+
+const noSleep = () => Promise.resolve();
+
+test('waits through pending answers and returns the code', async () => {
+  const p = poller(
+    { status: 'pending', state: 'st4te' },
+    { status: 'pending', state: 'st4te' },
+    { status: 'authorized', state: 'st4te', code: 'c0de' },
+  );
+  const code = await waitForCode(p.poll, handshake(), () => false, noSleep);
+  assert.equal(code, 'c0de');
+  assert.equal(p.calls.length, 3);
+});
+
+test('every non-pending status stops the loop rather than reading as "keep waiting"', async () => {
+  for (const status of ['failed', 'expired', 'consumed', 'exchanging'] as const) {
+    const p = poller({ status, state: 'st4te' });
+    await assert.rejects(
+      () => waitForCode(p.poll, handshake(), () => false, noSleep),
+      (e: unknown) => e instanceof PollarHandshakeError && e.status === status,
+      `${status} should be terminal`,
+    );
+  }
+});
+
+test('stops before polling when the caller has given up', async () => {
+  // Checked BEFORE each poll, not only between sleeps: the wallet can be locked while a
+  // consent screen is open, and a loop that only notices at its own cadence keeps an
+  // authenticated request going for minutes after the screen that wanted it is gone.
+  const p = poller({ status: 'pending', state: 'st4te' });
+  await assert.rejects(
+    () => waitForCode(p.poll, handshake(), () => true, noSleep),
+    (e: unknown) => e instanceof PollarHandshakeError && e.status === 'timeout',
+  );
+  assert.equal(p.calls.length, 0);
+});
+
+test('gives up on its own once the handshake window has passed', async () => {
+  const stale: PollarHandshake = { ...handshake(), startedAt: Date.now() - 60 * 60 * 1000 };
+  const p = poller({ status: 'authorized', state: 'st4te', code: 'c0de' });
+  await assert.rejects(
+    () => waitForCode(p.poll, stale, () => false, noSleep),
+    (e: unknown) => e instanceof PollarHandshakeError && e.status === 'timeout',
+  );
+  assert.equal(p.calls.length, 0);
 });

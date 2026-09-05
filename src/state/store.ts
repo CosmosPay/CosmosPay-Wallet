@@ -61,7 +61,17 @@ import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
-import { pollarActivate, pollarAuthorize, pollarExchange, pollarLogout, waitForCode, type PollarHandshake } from '@/lib/pollar';
+import {
+  pollarActivate,
+  pollarAuthorize,
+  pollarExchange,
+  pollarLogout,
+  pollarStatus,
+  waitForCode,
+  type PollarHandshake,
+} from '@/lib/pollar';
+import { socialLoginClaim, socialLoginStart, socialPoller } from '@/lib/socialLogin';
+import { ApiRequestError } from '@/lib/apiError';
 import type { PollarProvider } from '@/constants/pollar';
 import { pollarSign } from '@/lib/pollarApi';
 import { clearHandshake, freshSession, fromStored, loadHandshake, saveHandshake, toStored } from '@/lib/pollarSession';
@@ -202,6 +212,34 @@ async function secretOf(s: Session): Promise<string> {
  * carry a mutable field — and `Session` is the one object in this file that is
  * deliberately immutable and deliberately not handed to components.
  */
+/**
+ * A social login that finished before this device had a vault.
+ *
+ * On a first run there is no app password yet, so there is no key to seal the Pollar
+ * session under — and the session is the box that password is later proven against for
+ * this kind of wallet. The redemption has already happened by then (the code is spent
+ * and cannot be replayed), so the redeemed material waits here while the password screen
+ * collects the one missing input, and `finishOnboarding` lands it.
+ *
+ * In memory only, deliberately. It holds a refresh token, which buys signatures from a
+ * funded account; the handshake that preceded it is stored in the clear precisely
+ * because it is worthless on its own, and this is the opposite of that. The cost is that
+ * closing the wallet between the redemption and the password loses the login and the
+ * user starts a new one — a fresh handshake, not a retry, since the code is single-use.
+ */
+export interface PollarDraft {
+  stored: PollarStoredSession;
+  /** Null when the provider returned no email: a working wallet, no gateway account. */
+  account: CosmosPayAccount | null;
+  profile: {
+    publicKey: string;
+    name: string;
+    birthdate: string;
+    email: string;
+    avatar?: string;
+  };
+}
+
 export interface PollarState {
   stored: PollarStoredSession;
   walletId: string;
@@ -811,8 +849,89 @@ export function useWalletStore() {
    * password is reused (no password screen); for the first wallet `password` is
    * supplied by the PasswordSetup screen.
    */
+  /* ------------------------- landing a social wallet -------------------- */
+  /* Declared up here, not down with the rest of the Pollar code, because
+     `finishOnboarding` is the second caller: a first-run social login has no vault to
+     seal its session under, so it waits at the password screen and is landed from there. */
+
+  /** See {@link PollarDraft}: a redeemed first-run login waiting for a password. */
+  const [pollarDraft, setPollarDraft] = useState<PollarDraft | null>(null);
+
+  /**
+   * Put a redeemed Pollar login on this device: the wallet entry, its sealed session,
+   * and the CosmosPay keys that came with it.
+   *
+   * Shared by the two ways of getting here — an unlocked wallet adding a social account,
+   * and a first run finishing at the password screen — because the ONLY difference
+   * between them is where the vault key came from. Written twice, the second copy is the
+   * one that forgets `saveCosmosPay` and leaves a wallet that can sign but cannot swap.
+   */
+  const landPollarWallet = useCallback(
+    async (draft: PollarDraft, vk: VaultKey): Promise<WalletEntry> => {
+      const { entry, wallets: next } = await createPollarWallet(draft.profile, draft.stored, vk);
+      // Sealed under the same key, and only after the entry exists — the box is keyed by
+      // wallet id, so there is nothing to write it against before this point.
+      const list = draft.account ? await saveCosmosPay(entry.id, draft.account, vk) : next;
+      const landed = list.find((w) => w.id === entry.id) ?? entry;
+
+      // The new wallet becomes the active one, so everything the session carries about
+      // the previous wallet has to move with it. `cosmosPay` especially: leaving the old
+      // wallet's API key in state would attribute this wallet's swaps and payouts to an
+      // organization it does not belong to.
+      setWallets(list);
+      setMetaState(landed);
+      setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey: vk });
+      setPollar(draft.stored);
+      setCosmosPay(draft.account);
+      setCosmosPayPending(null);
+      return landed;
+    },
+    [setPollar],
+  );
+
+  /** The profile a Pollar wallet is created with. The provider's names win; `meta` is
+   *  only consulted on the add-a-wallet path, where there is a wallet to inherit from. */
+  const pollarProfileOf = useCallback(
+    (redeemed: { wallet: { address: string | null }; profile: { first_name?: string; email?: string; avatar?: string } }, fallback?: WalletEntry | null) => ({
+      publicKey: redeemed.wallet.address ?? '',
+      name: redeemed.profile.first_name || fallback?.name || 'astronauta',
+      birthdate: fallback?.birthdate ?? '',
+      email: redeemed.profile.email || fallback?.email || '',
+      avatar: redeemed.profile.avatar,
+    }),
+    [],
+  );
+
   const finishOnboarding = useCallback(
     async (password?: string) => {
+      // A social login redeemed before this device had a vault. Checked FIRST and on its
+      // own terms: there is no seed in that flow, so `draftAccount` is null and the guard
+      // below would drop it on the floor — with the code already spent and no way back.
+      if (pollarDraft) {
+        if (!password) return;
+        setBusy(true);
+        try {
+          const vk = await deriveVaultKey(password, newKdfParams());
+          const entry = await landPollarWallet(pollarDraft, vk);
+          setPollarDraft(null);
+          setSuccessInfo({
+            title: t('success.welcome', { name: entry.name }),
+            msg: t('success.protected'),
+            rows: [
+              { label: t('success.user'), val: entry.name },
+              { label: t('success.status'), val: t('success.encrypted') },
+            ],
+          });
+          setDeviceAuthOffer(deviceAuthPublic.deviceAuthPossible && deviceAuthPublic.deviceAuthAvailable);
+          setScreen('success');
+        } catch (e) {
+          flash((e as Error).message, 'err');
+        } finally {
+          setBusy(false);
+        }
+        return;
+      }
+
       if (!draftAccount) return;
       // Adding a wallet to an unlocked session reuses that session's key — which is what
       // "no password screen" means now. The first wallet on a device derives one from the
@@ -864,7 +983,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, draftEmail, draftGender, draftMetricsOptIn, draftPromoOptIn, addingWallet, session, deviceAuthPublic, t, flash],
+    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, draftEmail, draftGender, draftMetricsOptIn, draftPromoOptIn, addingWallet, session, deviceAuthPublic, pollarDraft, landPollarWallet, t, flash],
   );
 
   /* ----------------------------- unlock --------------------------- */
@@ -1894,19 +2013,20 @@ export function useWalletStore() {
   /* ---------------------------- Pollar ---------------------------- */
 
   /**
-   * Whether a Pollar login can even be started right now.
+   * There used to be a `canUsePollar()` here, and it answered false for exactly the
+   * people social login is for.
    *
-   * The bridge's routes are scoped `pollar:read` / `pollar:write`, and the wallet's only
-   * credential for the gateway is the CosmosPay API key it was provisioned. So a Pollar
-   * login begins from a wallet that already has CosmosPay connected — it ADDS a social
-   * account, it does not replace onboarding.
+   * The bridge's routes are scoped `pollar:read` / `pollar:write`, so driving them needs
+   * a CosmosPay key — which a first-run user does not have and could not get, because a
+   * key belongs to an account and an account was created by signing a nonce with a
+   * Stellar secret this kind of wallet never holds. The screen's only honest move was to
+   * hide the button.
    *
-   * That is a real limit, not a design choice: seed-free onboarding would need a key
-   * that exists before any wallet does, and the developer platform does not mint one.
-   * Stated here so the screen can explain it, instead of the user meeting a 403 that
-   * reads like a broken install.
+   * The dev platform now brokers the handshake with its own identity
+   * (`lib/socialLogin.ts`), so the login works with no credential at all and hands back
+   * the account keys at the end. Which path runs is decided per login by whether a key
+   * is already in hand — never by hiding the entry point.
    */
-  const canUsePollar = useCallback((): boolean => !!(cosmosPay?.keys[networkEnv(network)] ?? null), [cosmosPay, network]);
 
   /**
    * Where a login has got to. Three states rather than a boolean, because each needs
@@ -1916,7 +2036,6 @@ export function useWalletStore() {
   const [pollarPhase, setPollarPhase] = useState<'idle' | 'opening' | 'waiting' | 'redeeming'>('idle');
   const [pollarUrl, setPollarUrl] = useState<string | null>(null);
   const pollarAbort = useRef(false);
-
   /**
    * Finish a handshake: poll for the code, redeem it, land the wallet.
    *
@@ -1929,7 +2048,7 @@ export function useWalletStore() {
       if (!session) return false;
       try {
         setPollarPhase('waiting');
-        const code = await waitForCode(apiKey, hs, () => pollarAbort.current);
+        const code = await waitForCode((state) => pollarStatus(apiKey, state), hs, () => pollarAbort.current);
 
         setPollarPhase('redeeming');
         const redeemed = await pollarExchange(apiKey, code, hs.verifier);
@@ -1995,7 +2114,119 @@ export function useWalletStore() {
   );
 
   /**
+   * The same three steps, run through the dev platform because this device has no key.
+   *
+   * Two things happen here that the direct path does not do, and both are the platform's
+   * because they need a credential the wallet cannot hold: the XLM reserve is funded
+   * (a deferred Pollar wallet is an address with no on-chain account, which the user
+   * would otherwise meet as a receive QR nobody can pay), and a CosmosPay account is
+   * created — or attached to the one the provider's email already has — and its keys
+   * come back in the same response.
+   *
+   * `account: 'none'` is not a failure: some providers return no email, and the wallet
+   * still signs through Pollar. What is off is the gateway, and the toast says so
+   * instead of leaving the user to discover it at their first swap.
+   */
+  const finishSocialLogin = useCallback(
+    async (env: 'dev' | 'prod', hs: PollarHandshake): Promise<boolean> => {
+      try {
+        setPollarPhase('waiting');
+        const code = await waitForCode(socialPoller(env), hs, () => pollarAbort.current);
+
+        setPollarPhase('redeeming');
+        const claimed = await socialLoginClaim(env, hs, code, meta?.name);
+        await clearHandshake();
+
+        if (!claimed.session.wallet.address) {
+          flash(t('pollar.noWallet'), 'err');
+          return false;
+        }
+
+        if (claimed.activated && claimed.activationAmount) {
+          flash(t('pollar.activated', { amount: claimed.activationAmount }), 'ok');
+        }
+        flash(
+          t(claimed.account === 'linked' ? 'pollar.accountLinked' : claimed.account === 'created' ? 'pollar.accountCreated' : 'pollar.noAccount'),
+          claimed.account === 'none' ? 'info' : 'ok',
+        );
+
+        const draft: PollarDraft = {
+          stored: toStored(claimed.session, hs.provider),
+          account: claimed.keys ? { keys: claimed.keys, organizationId: claimed.organizationId ?? '' } : null,
+          profile: pollarProfileOf(claimed.session, meta),
+        };
+
+        if (session) {
+          await landPollarWallet(draft, session.vaultKey);
+          setScreen('home');
+        } else {
+          // A true first run: no vault on this device, so no key to seal the session
+          // under yet. The password screen collects it and `finishOnboarding` lands the
+          // draft — see PollarDraft for why this waits in memory and nowhere else.
+          setPollarDraft(draft);
+          setScreen('password');
+        }
+        return true;
+      } catch (e) {
+        await clearHandshake();
+        flash((e as Error).message || t('pollar.status.failed'), 'err');
+        return false;
+      } finally {
+        setPollarPhase('idle');
+        setPollarUrl(null);
+      }
+    },
+    [session, meta, t, flash, landPollarWallet, pollarProfileOf],
+  );
+
+  /**
+   * The direct login, and whether the brokered one should be tried instead.
+   *
+   * Returns false when the login ran (well or badly) and true when the key turned out
+   * not to carry the `pollar:*` scopes — which is not hypothetical: every key minted
+   * before the dev platform started granting them is in exactly that state, and their
+   * holders are the users most likely to have a wallet old enough to want a second,
+   * social one. Left alone, they meet a 403 that reads like a broken install, on a
+   * button that has no other way to work for them.
+   *
+   * The branch is on the gateway's own `code`, never on the message: `insufficient_scope`
+   * is API surface and the sentence beside it is copy that may be reworded tomorrow.
+   *
+   * Falling back is safe because the brokered path provisions the account for the NEW
+   * wallet only — the existing one keeps its own key and its own organization.
+   */
+  const tryDirectPollarLogin = useCallback(
+    async (apiKey: string, provider: PollarProvider): Promise<boolean> => {
+      let handshake: PollarHandshake;
+      let authorizationUrl: string;
+      try {
+        const opened = await pollarAuthorize(apiKey, provider);
+        handshake = opened.handshake;
+        authorizationUrl = opened.authorization.authorization_url;
+      } catch (e) {
+        const denied = e instanceof ApiRequestError && (e.code === 'insufficient_scope' || e.status === 403);
+        if (denied) return true;
+        throw e;
+      }
+
+      await saveHandshake(handshake);
+      setPollarUrl(authorizationUrl);
+      if (!(await openExternal(authorizationUrl))) flash(t('pollar.openFailed'), 'info');
+      await finishPollarLogin(apiKey, handshake);
+      return false;
+    },
+    [t, flash, finishPollarLogin],
+  );
+
+  /**
    * Start a login with `provider`.
+   *
+   * Which path runs is decided by one question — is there a CosmosPay key in hand that
+   * the bridge accepts? With one, the wallet talks to the gateway itself and this is an
+   * ADDITIONAL account on a provisioned device. Without one — no key, or a key minted
+   * before `pollar:*` was granted — the dev platform brokers it and the login also
+   * creates the account. The user is shown the same screen either way; the difference is
+   * whose credential opens the handshake.
    *
    * The handshake is persisted BEFORE the browser opens, never after. On MV3 the
    * `openExternal` call is itself what dismisses the popup, so anything written
@@ -2004,36 +2235,49 @@ export function useWalletStore() {
    */
   const pollarLogin = useCallback(
     async (provider: PollarProvider): Promise<void> => {
-      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
-      if (!apiKey) {
-        flash(t('pollar.noKey'), 'info');
-        return;
-      }
+      const env = networkEnv(network);
+      const apiKey = cosmosPay?.keys[env] ?? null;
       pollarAbort.current = false;
       setPollarPhase('opening');
       try {
-        const { authorization, handshake } = await pollarAuthorize(apiKey, provider);
+        if (apiKey && !(await tryDirectPollarLogin(apiKey, provider))) return;
+
+        const { authorizationUrl, handshake } = await socialLoginStart(env, provider);
         await saveHandshake(handshake);
-        setPollarUrl(authorization.authorization_url);
-        if (!(await openExternal(authorization.authorization_url))) flash(t('pollar.openFailed'), 'info');
-        await finishPollarLogin(apiKey, handshake);
+        setPollarUrl(authorizationUrl);
+        if (!(await openExternal(authorizationUrl))) flash(t('pollar.openFailed'), 'info');
+        await finishSocialLogin(env, handshake);
       } catch (e) {
         setPollarPhase('idle');
         flash((e as Error).message || t('pollar.status.failed'), 'err');
       }
     },
-    [cosmosPay, network, t, flash, finishPollarLogin],
+    [cosmosPay, network, t, flash, tryDirectPollarLogin, finishSocialLogin],
   );
 
-  /** Pick up a login the popup was closed in the middle of. No-op when there is none. */
+  /**
+   * Pick up a login the popup was closed in the middle of. No-op when there is none.
+   *
+   * `brokered` travels in the stored handshake rather than being re-derived from whether
+   * a key is present: the key can appear DURING a login (the brokered flow's own claim
+   * step is what provisions it), and a resume that guessed from the current state would
+   * poll the gateway with a key whose consumer never opened that handshake — a 400 that
+   * reads like an expired login.
+   */
   const resumePollarLogin = useCallback(async (): Promise<void> => {
-    const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
     const hs = await loadHandshake();
-    if (!apiKey || !hs) return;
+    if (!hs) return;
+    const env = networkEnv(network);
+    const apiKey = cosmosPay?.keys[env] ?? null;
     pollarAbort.current = false;
     setPollarUrl(null);
+    if (hs.brokered) {
+      await finishSocialLogin(env, hs);
+      return;
+    }
+    if (!apiKey) return;
     await finishPollarLogin(apiKey, hs);
-  }, [cosmosPay, network, finishPollarLogin]);
+  }, [cosmosPay, network, finishPollarLogin, finishSocialLogin]);
 
   /** Stop waiting. The handshake stays valid server-side until it expires on its own. */
   const cancelPollarLogin = useCallback(() => {
@@ -3115,8 +3359,9 @@ export function useWalletStore() {
       tab,
       addingWallet,
       hasDraftMnemonic: draftHasMnemonic && !!draftMnemonic,
+      hasPollarDraft: !!pollarDraft,
     }),
-    [session, tab, addingWallet, draftHasMnemonic, draftMnemonic],
+    [session, tab, addingWallet, draftHasMnemonic, draftMnemonic, pollarDraft],
   );
 
   /**
@@ -3186,7 +3431,6 @@ export function useWalletStore() {
      */
     isPollarWallet: isPollar(meta ?? {}),
     pollarProvider: meta?.pollarProvider ?? null,
-    canUsePollar,
     loadOps,
     opsKeyFor,
     serverRails,
@@ -3194,6 +3438,8 @@ export function useWalletStore() {
     openOnrampTrustline,
     pollarPhase,
     pollarUrl,
+    /** True while the password screen is finishing a social login rather than a seed. */
+    hasPollarDraft: !!pollarDraft,
     pollarLogin,
     resumePollarLogin,
     cancelPollarLogin,

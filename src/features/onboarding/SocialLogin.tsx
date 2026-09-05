@@ -22,9 +22,15 @@ const PROVIDER_LABEL: Record<PollarProvider, string> = { google: 'Google', githu
  * decision is made.
  *
  * The flow it drives is the poll flow: the wallet opens Pollar's hosted login in the
- * system browser and asks the bridge whether the user has come back. On MV3 that first
- * step closes this popup, which is why `resumePollarLogin` runs on mount — reopening the
- * wallet lands here and picks the same handshake back up rather than starting over.
+ * system browser and asks whether the user has come back. On MV3 that first step closes
+ * this popup, which is why `resumePollarLogin` runs on mount — reopening the wallet lands
+ * here and picks the same handshake back up rather than starting over.
+ *
+ * Who is asked depends on what the device holds, and the screen deliberately does not
+ * show the difference: a wallet with a CosmosPay key polls the gateway itself, and one
+ * without goes through the dev platform, which also creates the account this login will
+ * need. There is no longer a state in which this screen can only explain why it cannot
+ * proceed — that gate is gone, and with it the copy that described it.
  */
 export function SocialLogin({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -58,14 +64,12 @@ export function SocialLogin({ store }: { store: WalletStore }) {
         {t('pollar.custodialWarning')}
       </div>
 
-      {!store.canUsePollar() && <div className="err-line social-login-blocked">{t('pollar.noKey')}</div>}
-
       <div className="col g8 social-login-actions">
         {POLLAR_PROVIDERS.map((p) => (
           <button
             key={p}
             className={cx('btn-primary', `social-login-btn is-${p}`)}
-            disabled={busy || !store.canUsePollar()}
+            disabled={busy}
             onClick={() => void store.pollarLogin(p)}
           >
             {t('pollar.continueWith', { provider: PROVIDER_LABEL[p] })}

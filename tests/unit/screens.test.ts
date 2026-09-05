@@ -11,6 +11,7 @@ const ctx = (over: Partial<BackContext> = {}): BackContext => ({
   tab: 'home',
   addingWallet: false,
   hasDraftMnemonic: false,
+  hasPollarDraft: false,
   ...over,
 });
 
@@ -65,6 +66,17 @@ test('the onboarding chain matches the flow the user walked', () => {
   // profile-setup came from `verify` when a phrase was generated, `import` otherwise.
   assert.equal(backTarget('profile-setup', ctx({ hasDraftMnemonic: true })), 'verify');
   assert.equal(backTarget('profile-setup', ctx({ hasDraftMnemonic: false })), 'import');
+});
+
+test('a social login reaches the password screen from its own flow, not the seed one', () => {
+  // Its session is already redeemed by the time the password is asked for, and there is
+  // no seed and no profile form behind it — sending "back" to `profile-setup` would drop
+  // the user into a form for a wallet that does not exist.
+  assert.equal(backTarget('password', ctx({ hasPollarDraft: true })), 'social-login');
+  assert.equal(backTarget('password', ctx({ hasPollarDraft: false })), 'profile-setup');
+  // And the login screen itself: a first run has no session and came from `welcome`.
+  assert.equal(backTarget('social-login', ctx({ hasSession: false })), 'welcome');
+  assert.equal(backTarget('social-login', ctx({ hasSession: true })), 'profile');
 });
 
 test('session-dependent targets respect the lock state', () => {

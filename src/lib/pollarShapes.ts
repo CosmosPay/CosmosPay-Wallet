@@ -108,6 +108,40 @@ export const PollarActivationShape = object({
 /** `POST /v1/pollar/wallets/{address}/trustlines[/default]`. */
 export const PollarTrustlineShape = object({ code: str });
 
+/* --------------------------- brokered social login ----------------------- */
+
+/**
+ * `POST /api/wallet/social/authorize` on the dev platform.
+ *
+ * The platform's own envelope is unwrapped before this runs, so what is checked here is
+ * its `data`. `authorizationUrl` is asserted as a string and validated as https at the
+ * boundary it crosses — the OS opener — exactly as the direct bridge's is.
+ */
+export const SocialAuthorizationShape = object({
+  state: id,
+  authorizationUrl: str,
+  provider: str,
+});
+
+/**
+ * `POST /api/wallet/social/claim`.
+ *
+ * `keys` is nullable on purpose: a provider that returns no email yields a working
+ * wallet and no CosmosPay account, and the wallet has to be able to tell that apart
+ * from a malformed response. `session` is the same contract the direct redemption
+ * returns, reused rather than restated — one definition, so the two paths cannot drift
+ * into accepting different things.
+ */
+export const SocialClaimShape = object({
+  status: str,
+  session: PollarSessionShape,
+  account: str,
+  organizationId: nullable(str),
+  keys: nullable(object({ dev: nullable(str), prod: nullable(str) })),
+  activated: optional(bool),
+  activationAmount: optional(nullable(str)),
+});
+
 /* ------------------------------ Pollar direct ---------------------------- */
 
 /**

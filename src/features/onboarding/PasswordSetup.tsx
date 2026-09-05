@@ -24,12 +24,19 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
   const match = pwd === confirm && confirm.length > 0;
   const ok = appPasswordOk(pwd) && match && !store.busy;
 
-  const back = () => store.setScreen('profile-setup');
+  // `goBack` and never `setScreen`: two flows arrive here now — the seed one from
+  // `profile-setup`, and a social login straight from `social-login` with its session
+  // already redeemed — and only the navigation stack knows which. The screen table's
+  // fallback covers the case where there is no stack (see SCREENS.password).
+  const back = store.goBack;
 
   return (
     <div className="scr screen col">
       <BackBar title={t('pwd.title')} onBack={back} />
-      <Desc className="pwd-setup-desc">{t('pwd.desc')}</Desc>
+      {/* The social path has no seed to protect — what this password seals is the Pollar
+          session — and saying "your recovery phrase" there would describe something the
+          user was explicitly told they will never have. */}
+      <Desc className="pwd-setup-desc">{t(store.hasPollarDraft ? 'pollar.passwordDesc' : 'pwd.desc')}</Desc>
 
       <Field password label={t('pwd.label')} value={pwd} onChange={setPwd} placeholder={t('pwd.min', { n: MIN_APP_PWD_LEN })} />
       <Field password label={t('pwd.repeat')} value={confirm} onChange={setConfirm} placeholder={t('pwd.repeat')} />

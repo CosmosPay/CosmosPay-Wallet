@@ -36,10 +36,6 @@
   vertical-align: 1px;
 }
 
-.social-login-blocked {
-  margin: 0 var(--gutter) 12px;
-}
-
 .social-login-actions {
   margin: 0 var(--gutter);
 }

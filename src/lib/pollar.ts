@@ -153,6 +153,17 @@ export interface PollarHandshake {
   verifier: string;
   /** Epoch ms. Poll past this and the bridge would refuse anyway. */
   startedAt: number;
+  /**
+   * True when the dev platform opened this handshake on the wallet's behalf, because the
+   * wallet had no CosmosPay key to open it with (`lib/socialLogin.ts`).
+   *
+   * Recorded rather than re-derived, because the key can APPEAR during the login: the
+   * brokered flow's own redemption is what provisions it. A resume that guessed from the
+   * current state would then poll the gateway with a key whose consumer never opened this
+   * handshake, and the user would meet "unknown authorization" at the end of a login that
+   * was going perfectly well.
+   */
+  brokered?: boolean;
 }
 
 /**
@@ -177,7 +188,7 @@ export async function pollarAuthorize(
     ...(deviceLabel ? { device_label: deviceLabel } : {}),
   });
 
-  if (!isHttps(authorization.authorization_url)) {
+  if (!isHttpsUrl(authorization.authorization_url)) {
     throw new ApiRequestError(`${base()}/oauth/authorize`, 502, 'bad_authorization_url', tNow('pollar.badUrl'));
   }
 
@@ -188,7 +199,13 @@ export async function pollarAuthorize(
   };
 }
 
-function isHttps(url: string): boolean {
+/**
+ * Exported because the brokered login (`lib/socialLogin.ts`) hands its URL to the same
+ * OS opener and so needs the same check. One definition: a second copy is a second
+ * chance to forget that `openExternal` refuses everything but https, and a refusal
+ * there is a silent no-op rather than an error anyone can read.
+ */
+export function isHttpsUrl(url: string): boolean {
   try {
     return new URL(url).protocol === 'https:';
   } catch {
@@ -267,13 +284,18 @@ export class PollarHandshakeError extends Error {
  *    public callback, so a busy gateway can refuse a poll that had nothing wrong with
  *    it. The server says how long to wait and this honours it; giving up would throw
  *    away a login the user has already consented to.
+ *  - **The poller is a parameter.** The same wait serves a wallet polling the gateway
+ *    with its own key and one polling the dev platform because it has no key yet
+ *    (`lib/socialLogin.ts`). The loop is the part with the rules in it — the timeout, the
+ *    429 pause, which statuses are terminal — and two copies of those rules is two
+ *    chances for a login to hang in one shell and not the other.
  *  - **Every non-`pending` status is terminal.** `authorized` returns the code;
  *    everything else — `failed`, `expired`, and also `consumed`/`exchanging`, which
  *    mean another caller got there first — stops the loop. A status the contract does
  *    not know throws out of `parseShape` rather than reading as "keep waiting".
  */
 export async function waitForCode(
-  apiKey: string,
+  poll: (state: string) => Promise<PollarSessionStatus>,
   handshake: PollarHandshake,
   shouldStop: () => boolean,
   sleep: (ms: number) => Promise<void> = defaultSleep,
@@ -286,7 +308,7 @@ export async function waitForCode(
 
     let status: PollarSessionStatus;
     try {
-      status = await pollarStatus(apiKey, handshake.state);
+      status = await poll(handshake.state);
     } catch (e) {
       const wait = e instanceof ApiRequestError && e.status === 429 ? retryDelay(e) : null;
       if (wait === null) throw e;
