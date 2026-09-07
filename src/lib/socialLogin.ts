@@ -122,23 +122,16 @@ export function socialPoller(env: SocialEnv): (state: string) => Promise<PollarS
  * `name` is only a fallback for the display name — the provider profile wins when it
  * carries one.
  *
- * `stellarAddress` is the public half of a key THIS DEVICE generated, and it is what
- * makes the testnet flow work: the account and its API keys are registered against it
- * instead of against the address Pollar custodies, and the platform skips the funding
- * that only a custodied wallet needs. Left out on mainnet, where the wallet has no key
- * of its own to name. See `state/store.ts`'s `finishSocialLogin` for who decides.
+ * The testnet wallet this login also creates is NOT named here, and does not need to be:
+ * the account it belongs to is the one this claim returns, and a CosmosPay API key is not
+ * bound to a Stellar address anywhere in the payments API. So the local wallet uses the
+ * same `keys.dev` without any address of its own having to be registered.
  */
 export function socialLoginClaim(
   env: SocialEnv,
   handshake: PollarHandshake,
   code: string,
   name?: string,
-  stellarAddress?: string,
 ): Promise<SocialClaim> {
-  return socialClaim(env, {
-    code,
-    codeVerifier: handshake.verifier,
-    ...(name ? { name } : {}),
-    ...(stellarAddress ? { stellarAddress } : {}),
-  });
+  return socialClaim(env, { code, codeVerifier: handshake.verifier, ...(name ? { name } : {}) });
 }

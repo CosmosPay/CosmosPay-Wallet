@@ -3,7 +3,6 @@ import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { Spinner } from '@/ui/Spinner';
 import { cx } from '@/lib/cx';
-import { networkEnv } from '@/lib/stellar';
 import { copyText } from '@/lib/clipboard';
 import { POLLAR_PROVIDERS, type PollarProvider } from '@/constants/pollar';
 import '@/styles/features/onboarding/social-login.css';
@@ -15,18 +14,17 @@ const PROVIDER_LABEL: Record<PollarProvider, string> = { google: 'Google', githu
 /**
  * Sign in with Google or GitHub and get a Stellar account.
  *
- * The screen exists to make one thing unmissable before the user commits: WHO HOLDS THE
- * KEY, which is not the same answer on both networks. On mainnet the account is custodial
- * — a key in Pollar's KMS, no recovery phrase to lose and none to hold, unlike every
- * other wallet in this app. On testnet the wallet generates the seed here and Pollar
- * custodies nothing, because activating a custodied wallet spends the operator's XLM and
- * a faucet network is not worth real lumens. The notice is not a disclaimer pushed to the
+ * The screen exists to make one thing unmissable before the user commits: this account is
+ * CUSTODIAL. Every other wallet in this app is a seed in a local vault that only its owner
+ * can spend from; this one is a key in Pollar's KMS, which means no recovery phrase to
+ * lose and also no recovery phrase to hold. The warning is not a disclaimer pushed to the
  * bottom — it sits above the buttons, because after the consent screen the decision is
- * made, and it says which of the two is happening.
+ * made.
  *
- * The network is the ONLY input to that difference, and the branch that acts on it lives
- * in `state/store.ts`'s `finishSocialLogin`. This screen reads the same `networkEnv` so
- * the promise it makes and the wallet it produces cannot disagree.
+ * One login also produces a SECOND wallet: an ordinary seed one, generated on the device
+ * for testnet, under the same password. That is stated here rather than left to be
+ * discovered, because the surprise would otherwise arrive later, in a wallet switcher
+ * showing two entries with one name. `state/store.ts`'s `SocialDraft` has the why.
  *
  * The flow it drives is the poll flow: the wallet opens Pollar's hosted login in the
  * system browser and asks whether the user has come back. On MV3 that first step closes
@@ -43,12 +41,6 @@ export function SocialLogin({ store }: { store: WalletStore }) {
   const t = store.t;
   const { pollarPhase, pollarUrl, resumePollarLogin } = store;
   const busy = pollarPhase !== 'idle';
-
-  // What the login produces differs by network, so the warning above the buttons has to
-  // as well: on mainnet Pollar custodies the key, on testnet the wallet generates one
-  // here. Saying "custodial" on both would be a promise the testnet arm does not keep,
-  // and this notice is the last thing the user reads before consenting.
-  const custodial = networkEnv(store.network) === 'prod';
 
   // Resume a handshake the popup was closed in the middle of. Runs once per mount and
   // no-ops when there is none, so arriving here fresh costs a storage read.
@@ -69,15 +61,18 @@ export function SocialLogin({ store }: { store: WalletStore }) {
     <div className="scr screen col">
       <BackBar title={t('pollar.title')} onBack={store.goBack} />
 
-      <div className="social-login-desc">{t(custodial ? 'pollar.desc' : 'pollar.localDesc')}</div>
+      <div className="social-login-desc">{t('pollar.desc')}</div>
 
       {/* Above the buttons on purpose: after the consent screen the choice is made. */}
       <div className="glass-soft social-login-warning">
-        <span className="social-login-warning-badge">
-          {t(custodial ? 'pollar.custodialBadge' : 'pollar.localBadge')}
-        </span>
-        {t(custodial ? 'pollar.custodialWarning' : 'pollar.localWarning')}
+        <span className="social-login-warning-badge">{t('pollar.custodialBadge')}</span>
+        {t('pollar.custodialWarning')}
       </div>
+
+      {/* The second wallet is not a footnote to the custody notice — it is the part a
+          reader would otherwise be surprised by later, when the switcher has two entries
+          under one name. */}
+      <div className="desc">{t('pollar.alsoTestnet')}</div>
 
       <div className="col g8 social-login-actions">
         {POLLAR_PROVIDERS.map((p) => (

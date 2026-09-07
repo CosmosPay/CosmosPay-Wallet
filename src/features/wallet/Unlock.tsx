@@ -148,7 +148,7 @@ export function Unlock({ store }: { store: WalletStore }) {
                   <div onClick={() => { setWalletOpen(false); setDeletingId(''); }} className="unlock-switch-overlay" />
                   <div className="scr glass unlock-switch-menu">
                     {store.wallets.map((w) => {
-                      const active = w.id === store.meta?.id;
+                      const active = w.id === store.activeWalletId;
                       if (deletingId === w.id) {
                         return (
                           <div key={w.id} className="unlock-del">

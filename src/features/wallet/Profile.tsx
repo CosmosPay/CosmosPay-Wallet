@@ -114,7 +114,9 @@ export function Profile({ store }: { store: WalletStore }) {
       </div>
       <div className="glass profile-list">
         {store.wallets.map((w) => {
-          const active = w.id === store.meta?.id;
+          // The identity, not the raw active entry: on testnet a social wallet is standing
+          // on its hidden seeded half, and the row to highlight is still the account.
+          const active = w.id === store.activeWalletId;
           return (
             <div key={w.id} onClick={() => !active && store.switchWallet(w.id)} className={cx('tap profile-wallet-row', active && 'is-active')}>
               <div className="profile-wallet-avatar">{w.name.slice(0, 1).toUpperCase()}</div>

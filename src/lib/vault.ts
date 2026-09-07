@@ -94,6 +94,17 @@ export interface WalletEntry {
   pollarUserId?: string | null;
   /** Which provider the user logged in with ('google' | 'github'). Pollar wallets only. */
   pollarProvider?: string;
+  /**
+   * Set on the TESTNET half of a social login, naming the wallet it belongs to.
+   *
+   * A social login produces two addresses because a custodied mainnet account cannot be
+   * used on testnet, but the user has ONE account and expects one row in the switcher.
+   * So the seeded half is hidden and reached through the network selector instead: the
+   * pair is (identity, network), and `entryForNetwork` is what resolves it. Absent on
+   * every other wallet, which is how a plain seed wallet stays free to be used on any
+   * network without any of this applying to it.
+   */
+  testnetFor?: string;
   publicKey: string; // G...
   name: string; // user name / nickname
   birthdate: string; // ISO "YYYY-MM-DD" (required at signup)
@@ -238,7 +249,7 @@ export async function migrate(): Promise<void> {
  */
 export async function addWallet(
   secret: VaultSecret,
-  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean },
+  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean; testnetFor?: string },
   vk: VaultKey,
 ): Promise<WalletEntry> {
   const list = await listWallets();
@@ -260,6 +271,7 @@ export async function addWallet(
     gender: info.gender,
     metricsOptIn: info.metricsOptIn,
     promoOptIn: info.promoOptIn,
+    testnetFor: info.testnetFor,
     createdAt: Date.now(),
   };
   await writeWallets([...list, entry]);
@@ -281,6 +293,41 @@ export async function updateWalletMeta(
 /** Is this a Pollar (social-login, KMS-custodied) wallet? Absent `kind` means local. */
 export function isPollar(entry: Pick<WalletEntry, 'kind'>): boolean {
   return entry.kind === 'pollar';
+}
+
+/**
+ * The wallet the USER means, which is never a testnet half.
+ *
+ * A social login writes two entries and shows one. Everything the user points at — the
+ * row in the switcher, the row highlighted as active, the wallet they ask to delete — is
+ * the identity; the seeded half is an implementation detail of being on testnet.
+ */
+export function identityOf(entry: WalletEntry, wallets: WalletEntry[]): WalletEntry {
+  if (!entry.testnetFor) return entry;
+  return wallets.find((w) => w.id === entry.testnetFor) ?? entry;
+}
+
+/**
+ * Resolve (identity, network) to the entry that actually holds a key there.
+ *
+ * This is the whole of the pairing rule, in one function so the network selector and the
+ * wallet switcher cannot disagree about it. A custodied wallet has an address on mainnet
+ * and nowhere else; its seeded half has one everywhere but is only ever reached off
+ * mainnet. A plain local wallet has neither a sibling nor a parent, so both branches
+ * return it unchanged and none of this touches it.
+ *
+ * Falls back to the entry it was given when the other half is missing — a pair whose
+ * seeded half was deleted still works on mainnet, and the caller decides whether being
+ * off mainnet with no sibling is an error.
+ */
+export function entryForNetwork(
+  entry: WalletEntry,
+  wallets: WalletEntry[],
+  mainnet: boolean,
+): WalletEntry {
+  const identity = identityOf(entry, wallets);
+  if (mainnet) return identity;
+  return wallets.find((w) => w.testnetFor === identity.id) ?? identity;
 }
 
 /**
@@ -688,6 +735,8 @@ export async function createSocialLocalWallet(
       gender: profile.gender,
       metricsOptIn: profile.metricsOptIn,
       promoOptIn: profile.promoOptIn,
+      // What makes it the hidden half of a pair rather than a second wallet in the list.
+      testnetFor: profile.testnetFor,
     },
     vk,
   );
@@ -823,10 +872,22 @@ export async function removeWallet(
   // The Pollar session outlives the entry unless it goes here — and unlike an orphaned
   // Keystore key it is a live bearer credential for an account that still holds funds.
   await storageRemove(pollarKey(id));
-  const remaining = (await listWallets()).filter((w) => w.id !== id);
+  // The testnet half goes with it. Hidden from every picker, an orphan would be a wallet
+  // holding a seed that nothing on screen can reach, name or delete — and one the user
+  // believes they already deleted.
+  const paired = (await listWallets()).filter((w) => w.testnetFor === id).map((w) => w.id);
+  for (const sibling of paired) {
+    await storageRemove(vaultKey(sibling));
+    await disableDeviceAuth(sibling);
+    await storageRemove(cosmosPayKey(sibling));
+    await storageRemove(cosmosPayPendingKey(sibling));
+    await storageRemove(pollarKey(sibling));
+  }
+  const dropped = new Set([id, ...paired]);
+  const remaining = (await listWallets()).filter((w) => !dropped.has(w.id));
   await writeWallets(remaining);
   let active = await getActiveId();
-  if (active === id) {
+  if (active !== null && dropped.has(active)) {
     active = remaining[0]?.id ?? null;
     if (active) await setActiveId(active);
     else await storageRemove(ACTIVE_KEY);

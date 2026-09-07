@@ -32,6 +32,14 @@ export interface NetConfig {
   custom?: boolean;
 }
 
+/**
+ * The id of the mainnet entry, named because code has to select it rather than merely
+ * offer it: a wallet whose key Pollar custodies exists on mainnet and nowhere else, so
+ * adopting one moves the app here. A bare `'public'` at those call sites is a string that
+ * has to agree with the table below and cannot be checked against it.
+ */
+export const MAINNET_ID = 'public';
+
 export const BUILTIN_NETWORKS: NetConfig[] = [
   {
     id: 'testnet',
@@ -41,7 +49,7 @@ export const BUILTIN_NETWORKS: NetConfig[] = [
     friendbot: 'https://friendbot.stellar.org',
   },
   {
-    id: 'public',
+    id: MAINNET_ID,
     label: 'Mainnet',
     horizon: 'https://horizon.stellar.org',
     passphrase: Networks.PUBLIC,

@@ -41,6 +41,8 @@ import {
   createPollarWallet,
   createSocialLocalWallet,
   getPollarSession,
+  entryForNetwork,
+  identityOf,
   isPollar,
   type CosmosPayAccount,
   type CosmosPayPending,
@@ -89,6 +91,7 @@ import {
   getAccountState,
   getHistory,
   getPrices,
+  MAINNET_ID,
   networkEnv,
   resolveNetwork,
   sendPayment,
@@ -239,45 +242,42 @@ export interface SocialDraftProfile {
   avatar?: string;
 }
 
-export interface PollarDraft {
-  kind: 'pollar';
-  stored: PollarStoredSession;
-  /** Null when the provider returned no email: a working wallet, no gateway account. */
-  account: CosmosPayAccount | null;
-  profile: SocialDraftProfile;
-}
-
 /**
- * The testnet arm: a social login whose key this device generated and holds.
+ * One login, TWO wallets, and both halves are required.
  *
- * Same login, same account, different custody — and the difference is the whole reason
- * the arm exists. Activating a Pollar wallet funds its XLM reserve out of the operator's
- * balance, which is worth doing for an account someone will actually use and not for a
- * network whose lumens come from a faucet. So on testnet the wallet makes its own seed,
- * tells the platform which address to register the account to, and lands an ordinary
- * local wallet that happens to have been created by signing in with Google.
+ * A social login always runs against mainnet (see `SOCIAL_LOGIN_ENV`), and what it hands
+ * back is the account whose key Pollar custodies. That wallet is useless on testnet: its
+ * reserve is funded out of the operator's XLM, which is worth spending on an account
+ * somebody will use and not on a network whose lumens come from a faucet. So the same
+ * login also makes an ORDINARY seed wallet — generated here, sealed under the same vault
+ * key, indistinguishable from one created by hand except that nobody typed anything.
  *
- * The mnemonic is generated here and never shown. That is deliberate — this flow has no
- * backup screen and the user did not ask for a seed — but it is not lost either: it is
- * sealed with the wallet and `revealBackup` in Settings will hand it over. On mainnet
- * there is no seed at all, which is a real difference between the two networks and the
- * reason the login screen says something different on each.
+ * They are created together rather than the second one appearing when the user first
+ * switches network, because the moment to seal something under the vault key is the
+ * moment the vault key is in hand. Deferring it would mean either holding a seed in
+ * memory until an unrelated network switch, or asking for the password again to create a
+ * wallet the user thought they already had.
+ *
+ * The two have different addresses and that is expected — a custodied wallet and a local
+ * seed have nothing to do with each other. What they share is the password, the CosmosPay
+ * account behind them, and the login that made them.
+ *
+ * The generated mnemonic is never shown. This flow has no backup screen and the user did
+ * not ask for a seed, but it is not lost either: it is sealed with the wallet and
+ * `revealBackup` in Settings hands it over.
+ *
+ * Both halves are required fields rather than optionals, for the reason `GuardOptions` in
+ * `lib/txGuard.ts` is a union: a landing that forgot one would leave the user a login that
+ * half worked, and which half depended on the network they happened to be on.
  */
-export interface LocalSocialDraft {
-  kind: 'local';
-  /** The generated key, exactly as `addWallet` wants it. */
-  secret: VaultSecret;
+export interface SocialDraft {
+  /** Mainnet: the account whose key lives in Pollar's KMS. No secret box. */
+  pollar: { stored: PollarStoredSession; profile: SocialDraftProfile };
+  /** Testnet: a seed this device generated. No session box. */
+  local: { secret: VaultSecret; profile: SocialDraftProfile };
+  /** Null when the provider returned no email: working wallets, no gateway account. */
   account: CosmosPayAccount | null;
-  profile: SocialDraftProfile;
 }
-
-/**
- * A discriminated union rather than a `stored?` / `secret?` pair of optionals, for the
- * reason `GuardOptions` in `lib/txGuard.ts` is one: with both optional, a landing that
- * forgot to check would seal a wallet with neither a session nor a seed and nothing would
- * fail until the user tried to sign.
- */
-export type SocialDraft = PollarDraft | LocalSocialDraft;
 
 export interface PollarState {
   stored: PollarStoredSession;
@@ -897,6 +897,24 @@ export function useWalletStore() {
   const [pollarDraft, setPollarDraft] = useState<SocialDraft | null>(null);
 
   /**
+   * Move the app to mainnet, because the wallet being adopted only exists there.
+   *
+   * Not a preference and not a convenience: a Pollar wallet's address is a mainnet
+   * account, so every read for it on another network asks Horizon about an address that
+   * was never created there. Horizon answers 404, `getAccountState` reports `exists:
+   * false`, and the screen says the account is not active while Pollar's own SDK shows it
+   * funded — which is exactly the state this exists to prevent.
+   *
+   * Written as a bare pair rather than through `switchNetwork` because that one is
+   * declared far below this and does the same two statements; the cache needs no clearing
+   * either way, since its keys carry the network id.
+   */
+  const goMainnet = useCallback(async () => {
+    setNetworkIdState(MAINNET_ID);
+    await vaultSetNetworkId(MAINNET_ID);
+  }, []);
+
+  /**
    * Put a redeemed social login on this device: the wallet entry, whatever holds its key,
    * and the CosmosPay keys that came with it.
    *
@@ -905,21 +923,45 @@ export function useWalletStore() {
    * between them is where the vault key came from. Written twice, the second copy is the
    * one that forgets `saveCosmosPay` and leaves a wallet that can sign but cannot swap.
    *
-   * The two DRAFT arms differ in one statement and nothing else: mainnet seals a Pollar
-   * session and writes no secret box, testnet seals the seed it generated and writes no
-   * session. Everything after — the account keys, which wallet becomes active, what the
-   * session in memory carries — is the same, and keeping it that way is why the branch is
-   * here rather than in two copies of the function.
+   * BOTH wallets are written here, under the one key: the custodied mainnet account and
+   * the local testnet seed. See {@link SocialDraft} for why they are created together
+   * rather than one of them appearing at the first network switch.
+   *
+   * Which of the two ends up active is the only thing the current network decides. It is
+   * a display choice, not a security one — the other wallet is already on the device and
+   * one tap away in the switcher — so there is nothing here that has to be revisited when
+   * the user changes network afterwards.
    */
   const landPollarWallet = useCallback(
     async (draft: SocialDraft, vk: VaultKey): Promise<WalletEntry> => {
-      const { entry, wallets: next } =
-        draft.kind === 'local'
-          ? await createSocialLocalWallet(draft.profile, draft.secret, vk)
-          : await createPollarWallet(draft.profile, draft.stored, vk);
-      // Sealed under the same key, and only after the entry exists — the box is keyed by
-      // wallet id, so there is nothing to write it against before this point.
-      const list = draft.account ? await saveCosmosPay(entry.id, draft.account, vk) : next;
+      const { entry: custodied } = await createPollarWallet(draft.pollar.profile, draft.pollar.stored, vk);
+      const { entry: seeded } = await createSocialLocalWallet(
+        // Linked to the custodied one, which is what keeps it out of the switcher and
+        // makes the network selector the way back to it — see `entryForNetwork`.
+        { ...draft.local.profile, testnetFor: custodied.id },
+        draft.local.secret,
+        vk,
+      );
+
+      // Both get the account: the keys are per-wallet boxes, and the testnet one needs
+      // `keys.dev` to reach the gateway at all. A CosmosPay key is not bound to a Stellar
+      // address anywhere in the payments API, which is what makes one account serving two
+      // addresses correct rather than a workaround.
+      if (draft.account) {
+        await saveCosmosPay(custodied.id, draft.account, vk);
+        await saveCosmosPay(seeded.id, draft.account, vk);
+      }
+
+      // The custodied one is what the user just asked for by signing in, so it is the one
+      // they land on — and it is a MAINNET account, which is why the network moves with
+      // it. Left on testnet, Horizon would be asked for a mainnet address, answer 404, and
+      // the wallet would report "not active" for an account Pollar had just funded.
+      const entry = custodied;
+      // Last word on which is active: both creators set it as they went, so whichever ran
+      // second would otherwise win by accident.
+      await setActiveId(entry.id);
+      await goMainnet();
+      const list = await listWallets();
       const landed = list.find((w) => w.id === entry.id) ?? entry;
 
       // The new wallet becomes the active one, so everything the session carries about
@@ -929,16 +971,16 @@ export function useWalletStore() {
       setWallets(list);
       setMetaState(landed);
       setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey: vk });
-      // Null for a local wallet, and it has to be: `pollar` is what tells every signing
-      // path to send the envelope to Pollar instead of using the seed. A leftover session
-      // here would route a wallet this device CAN sign for to a custodian that has never
-      // heard of its address.
-      setPollar(draft.kind === 'pollar' ? draft.stored : null);
+      // Follows the ACTIVE wallet, not the draft: `pollar` is what tells every signing
+      // path to send the envelope to Pollar instead of using the seed, so setting it while
+      // the seeded wallet is active would route a wallet this device can sign for to a
+      // custodian that has never heard of its address.
+      setPollar(draft.pollar.stored);
       setCosmosPay(draft.account);
       setCosmosPayPending(null);
       return landed;
     },
-    [setPollar],
+    [goMainnet, setPollar],
   );
 
   /** The profile a Pollar wallet is created with. The provider's names win; `meta` is
@@ -1123,9 +1165,15 @@ export function useWalletStore() {
     // session opened on a key that cannot read it, which `convergeSeals` treats as the
     // broken state it is. Reading it eagerly keeps that from first surfacing mid-payment.
     setPollar(isPollar(entry) ? await getPollarSession(entry.id, vaultKey) : null);
+    // Every unlock funnels through here — the password screen, the device prompt, the
+    // boot path restoring a saved session — and each of them restores the network id that
+    // was saved, which for an install predating this rule can be testnet with a custodied
+    // wallet active. That combination has no address to read, so correct it on the way in
+    // rather than leave the user looking at a funded account reported as empty.
+    if (isPollar(entry)) await goMainnet();
     setTab('home');
     setScreen('home');
-  }, [setPollar]);
+  }, [goMainnet, setPollar]);
 
   /**
    * Prove the live session's key opens `entry`, and return the Pollar session it holds.
@@ -1395,25 +1443,68 @@ export function useWalletStore() {
     setTab('profile');
   }, []);
 
+  /**
+   * Make `entry` the active wallet under the live session's key.
+   *
+   * The shared half of switching WALLET and switching NETWORK, because for a social login
+   * those are the same operation seen from two angles: one identity, two addresses, and
+   * either control can be the one that moves between them. Written twice, the second copy
+   * is the one that forgets `setPollar` and routes a seed wallet's envelope to a
+   * custodian — which is exactly what the third copy of this used to do.
+   */
+  const activateWallet = useCallback(
+    async (entry: WalletEntry, vaultKey: VaultKey) => {
+      const stored = await adoptWallet(entry, vaultKey);
+      await setActiveId(entry.id);
+      setMetaState(entry);
+      setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey });
+      setPollar(stored);
+      setCosmosPay(await getCosmosPay(entry.id, vaultKey));
+      setCosmosPayPending(await getPendingCosmosPay(entry.id));
+    },
+    [adoptWallet, setPollar],
+  );
+
+  /**
+   * The wallets a PICKER may show, and which of them is current.
+   *
+   * A social login writes two entries and the user has one account, so the seeded testnet
+   * half never appears as a row of its own — it is reached by changing network, and
+   * `entryForNetwork` is what does that. Both pickers read these instead of the raw list:
+   * `wallets` still holds every entry, because switching, deleting and resolving all need
+   * the hidden one, and filtering the list they work from would have quietly broken them.
+   *
+   * `activeWalletId` is the IDENTITY's id, never the seeded half's. Standing on testnet
+   * with a social wallet, the row to highlight is still the account the user knows about.
+   */
+  const visibleWallets = useMemo(() => wallets.filter((w) => !w.testnetFor), [wallets]);
+  const activeWalletId = useMemo(
+    () => (meta ? identityOf(meta, wallets).id : null),
+    [meta, wallets],
+  );
+
   const switchWallet = useCallback(
     async (id: string) => {
       if (!session || id === meta?.id) return;
       setBusy(true);
       try {
-        const entry = wallets.find((w) => w.id === id);
-        if (!entry) return;
-        // Proves the session's key opens the target BEFORE anything switches — the check
-        // the old code got for free by decrypting to build the new session. It costs a
-        // GCM decrypt now rather than a full PBKDF2 derivation, which is the difference
-        // between switching wallets in microseconds and in about a second. Which box is
-        // opened depends on the kind; see `adoptWallet`.
-        const stored = await adoptWallet(entry, session.vaultKey);
-        await setActiveId(id);
-        setMetaState(entry);
-        setSession({ publicKey: entry.publicKey, walletId: id, vaultKey: session.vaultKey });
-        setPollar(stored);
-        setCosmosPay(await getCosmosPay(id, session.vaultKey));
-        setCosmosPayPending(await getPendingCosmosPay(id));
+        const picked = wallets.find((w) => w.id === id);
+        if (!picked) return;
+        // The row the user tapped names an IDENTITY; which of its addresses they get is
+        // the network's business, not theirs. On testnet a social login resolves to its
+        // seeded half, which is why nothing here has to force the network any more.
+        const entry = entryForNetwork(picked, wallets, networkEnv(network) === 'prod');
+        if (entry.id === meta?.id) return;
+        // `activateWallet` proves the session's key opens the target BEFORE anything
+        // switches — the check the old code got for free by decrypting to build the new
+        // session. It costs a GCM decrypt now rather than a full PBKDF2 derivation, which
+        // is the difference between switching wallets in microseconds and in about a
+        // second.
+        await activateWallet(entry, session.vaultKey);
+        // Only when the resolution above had nowhere else to go: a custodied wallet with
+        // no seeded half is a mainnet-only account, and reading it anywhere else asks
+        // Horizon about an address that was never created there.
+        if (isPollar(entry)) await goMainnet();
         // No clearing needed: the cache key includes the account, so the new wallet
         // simply reads a different (empty) key while the old one stays warm.
         setTab('home');
@@ -1425,7 +1516,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [session, meta, wallets, t, flash, errLine, adoptWallet, setPollar],
+    [session, meta, wallets, network, t, flash, errLine, activateWallet, goMainnet],
   );
 
   /** Remove the active wallet; switch to another, or fall back to onboarding. */
@@ -1468,14 +1559,39 @@ export function useWalletStore() {
   /* -------------------------- network switch ---------------------- */
   const switchNetwork = useCallback(
     async (id: string) => {
-      // No toast on switch — the network label already updates in the dropdown.
+      // For a social login the network selector is ALSO the wallet selector: one identity
+      // with an address per network, and this is the control that moves between them. The
+      // seeded half is not a row anybody can pick, so if this did not swap it, it would be
+      // a wallet the user owns and has no way to reach.
+      if (meta && session) {
+        const next = entryForNetwork(meta, wallets, networkEnv(resolveNetwork(id, customNetworks)) === 'prod');
+        if (next.id !== meta.id) {
+          try {
+            await activateWallet(next, session.vaultKey);
+          } catch (e) {
+            // The network does NOT move when its wallet could not be opened — leaving it
+            // on a network whose key never loaded is the state that reads as "my funded
+            // account is empty".
+            flash(errLine(e), 'err');
+            return;
+          }
+        } else if (isPollar(meta) && id !== MAINNET_ID) {
+          // A custodied wallet whose seeded half is gone. Not a view the user could have
+          // wanted — a funded account reported as not active, every balance zero, nothing
+          // on screen able to say why — so it is refused with the sentence that makes it
+          // actionable rather than entered.
+          flash(t('net.pollarMainnetOnly'), 'info');
+          return;
+        }
+      }
+      // No toast on a real switch — the network label already updates in the dropdown.
       setNetworkIdState(id);
       await vaultSetNetworkId(id);
       // Nothing to clear: the cache key carries the network id, so the new network
       // reads its own key. This is what kills the stale-write race — a request still
       // in flight for the previous network resolves into the key nobody is reading.
     },
-    [],
+    [meta, session, wallets, customNetworks, t, flash, errLine, activateWallet],
   );
 
   const addNetwork = useCallback(
@@ -2229,34 +2345,26 @@ export function useWalletStore() {
         const code = await waitForCode(socialPoller(env), hs, () => pollarAbort.current);
 
         setPollarPhase('redeeming');
-        // Who holds the key is the WALLET'S network, not `env` — `env` is always `prod`
-        // (see SOCIAL_LOGIN_ENV) because the account behind a Google login is the same
-        // account on either network. Reading it off `env` meant a fresh install, which
-        // opens on testnet, produced a mainnet identity with a locally generated key.
-        //
-        // The seed is made HERE, before the redemption, because its public half is what
-        // the platform registers the CosmosPay account against. Sent after the fact it
-        // would be too late — the account would already name the address Pollar
-        // custodies, and this wallet could not sign for that one.
-        //
-        // Through `walletLib()` like every other caller: SEP-5 derivation is ~240 KB that
-        // an unlock must never load, and a static import here would put it on that path
-        // for the sake of a branch mainnet does not take.
-        let own: (DerivedAccount & { mnemonic: string }) | null = null;
-        if (networkEnv(network) !== 'prod') {
-          const { createMnemonic, accountFromMnemonic } = await walletLib();
-          const mnemonic = createMnemonic();
-          own = { ...(await accountFromMnemonic(mnemonic)), mnemonic };
-        }
-        const claimed = await socialLoginClaim(env, hs, code, meta?.name, own?.publicKey);
+        const claimed = await socialLoginClaim(env, hs, code, meta?.name);
         await clearHandshake();
 
-        // Checked on both paths, because it is the login that is being judged and not the
-        // custody: no wallet at all means the provider round trip produced nothing.
         if (!claimed.session.wallet.address) {
           flash(t('pollar.noWallet'), 'err');
           return false;
         }
+
+        // The testnet half of the same login — see SocialDraft. Generated after the claim
+        // rather than before, because a claim that fails leaves nothing behind and there
+        // is no reason to have derived a key for it.
+        //
+        // Through `walletLib()` like every other caller: SEP-5 derivation is ~240 KB that
+        // an unlock must never load, and a static import here would put it on that path.
+        const { createMnemonic, accountFromMnemonic } = await walletLib();
+        const mnemonic = createMnemonic();
+        const own: DerivedAccount & { mnemonic: string } = {
+          ...(await accountFromMnemonic(mnemonic)),
+          mnemonic,
+        };
 
         if (claimed.activated && claimed.activationAmount) {
           flash(t('pollar.activated', { amount: claimed.activationAmount }), 'ok');
@@ -2266,19 +2374,18 @@ export function useWalletStore() {
           claimed.account === 'none' ? 'info' : 'ok',
         );
 
-        const account = claimed.keys
-          ? { keys: claimed.keys, organizationId: claimed.organizationId ?? '' }
-          : null;
         const profile = pollarProfileOf(claimed.session, meta);
-        const draft: SocialDraft = own
-          ? {
-              kind: 'local',
-              secret: { secret: own.secret, mnemonic: own.mnemonic },
-              account,
-              // The address is this device's, not the custodied one the profile carries.
-              profile: { ...profile, publicKey: own.publicKey },
-            }
-          : { kind: 'pollar', stored: toStored(claimed.session, hs.provider), account, profile };
+        const draft: SocialDraft = {
+          pollar: { stored: toStored(claimed.session, hs.provider), profile },
+          local: {
+            secret: { secret: own.secret, mnemonic: own.mnemonic },
+            // Same person, same name — only the address differs, and it has to.
+            profile: { ...profile, publicKey: own.publicKey },
+          },
+          account: claimed.keys
+            ? { keys: claimed.keys, organizationId: claimed.organizationId ?? '' }
+            : null,
+        };
 
         if (session) {
           await landPollarWallet(draft, session.vaultKey);
@@ -2300,7 +2407,7 @@ export function useWalletStore() {
         setPollarUrl(null);
       }
     },
-    [session, meta, network, t, flash, landPollarWallet, pollarProfileOf],
+    [session, meta, t, flash, landPollarWallet, pollarProfileOf],
   );
 
   /**
@@ -3542,7 +3649,8 @@ export function useWalletStore() {
     networkId,
     networks,
     meta,
-    wallets,
+    wallets: visibleWallets,
+    activeWalletId,
     addingWallet,
     /**
      * SECURITY: the raw session — which holds the decrypted Stellar secret AND the
