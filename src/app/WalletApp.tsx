@@ -18,6 +18,8 @@ import { cx } from '@/lib/cx';
 import { tNow } from '@/lib/i18n';
 import { useKeyboardInset } from '@/hooks/useKeyboardInset';
 import { nativeInvoke, nativeListen } from '@/lib/nativeBridge';
+import { report, startTelemetry } from '@/lib/telemetry';
+import { EVENT } from '@/constants/telemetry';
 
 type ScreenComponent = ComponentType<{ store: WalletStore }> | LazyExoticComponent<ComponentType<{ store: WalletStore }>>;
 
@@ -47,6 +49,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   'profile-setup': lazy(() => import('@/features/onboarding/ProfileSetup').then((m) => ({ default: m.ProfileSetup }))),
   password: lazy(() => import('@/features/onboarding/PasswordSetup').then((m) => ({ default: m.PasswordSetup }))),
   'device-auth': lazy(() => import('@/features/onboarding/DeviceAuthSetup').then((m) => ({ default: m.DeviceAuthSetup }))),
+  'social-login': lazy(() => import('@/features/onboarding/SocialLogin').then((m) => ({ default: m.SocialLogin }))),
   home: Home,
   earn: Earn,
   markets: Markets,
@@ -84,6 +87,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   // lazy — extras
   operations: lazy(() => import('@/features/extras/Operations').then((m) => ({ default: m.Operations }))),
   'sign-tx': lazy(() => import('@/features/extras/SignTx').then((m) => ({ default: m.SignTx }))),
+  'gateway-ops': lazy(() => import('@/features/extras/GatewayOps').then((m) => ({ default: m.GatewayOps }))),
   'add-network': lazy(() => import('@/features/extras/AddNetwork').then((m) => ({ default: m.AddNetwork }))),
   'add-asset': lazy(() => import('@/features/extras/AddAsset').then((m) => ({ default: m.AddAsset }))),
   scan: lazy(() => import('@/features/extras/ScanQR').then((m) => ({ default: m.ScanQR }))),
@@ -98,6 +102,10 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
  * `tNow` rather than `store.t` for the same reason: the store is what may have thrown.
  */
 export default function WalletApp() {
+  // Started here, ABOVE the store, for the same reason the outer boundary is here:
+  // the store hook is one of the things that can throw, and the global error handlers
+  // this wires are what would carry that out of the device.
+  startTelemetry();
   return (
     <ErrorBoundary title={tNow('error.appTitle')} message={tNow('error.screenMsg')} reloadLabel={tNow('error.reload')}>
       <WalletAppShell />
@@ -149,6 +157,12 @@ function WalletAppShell() {
       }),
     [],
   );
+
+  // One event per screen the user actually reached. `boot` is skipped: it is the
+  // absence of a screen, and reporting it would put a row between every real pair.
+  useEffect(() => {
+    if (screen !== 'boot') report(EVENT.screenView, { category: 'navigation', props: { screen } });
+  }, [screen]);
 
   const showNav = NAV_SCREENS.includes(screen) && store.hasSession;
   const Screen = screen === 'boot' ? null : SCREEN_COMPONENTS[screen];

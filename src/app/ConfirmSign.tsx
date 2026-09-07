@@ -28,7 +28,7 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
 
   const submit = async () => {
     // A ref, checked first: `busy` is React state, so two Enter keydowns in the same frame
-    // both read `false` and both start a 210k-iteration derivation — each one a password
+    // both read `false` and both start a full PBKDF2 derivation — each one a password
     // attempt against the ladder. The state flag stays for the disabled button.
     if (!pwd || busy || inFlight.current) return;
     inFlight.current = true;

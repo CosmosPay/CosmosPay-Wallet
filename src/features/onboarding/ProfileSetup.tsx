@@ -5,7 +5,7 @@ import { Spinner } from '@/ui/Spinner';
 import { ageFromBirthdate } from '@/lib/greeting';
 import { EMAIL_RE } from '@/lib/validate';
 import { GENDER_OPTIONS, MIN_AGE, NAME_MAX_LEN, EMAIL_MAX_LEN } from '@/constants/onboarding';
-import { CheckRow } from '@/features/onboarding/CheckRow';
+import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
 import { Field } from '@/ui/Field';
 import { cx } from '@/lib/cx';
 import '@/styles/ui/field.css';
@@ -79,13 +79,9 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
         ))}
       </div>
 
-      {/* Optional consents — both default OFF and never block the flow. */}
-      <CheckRow on={store.draftMetricsOptIn} onToggle={() => store.setDraftMetricsOptIn(!store.draftMetricsOptIn)} className="profile-setup-check-metrics">
-        {t('setup.metricsOptIn')}
-      </CheckRow>
-      <CheckRow on={store.draftPromoOptIn} onToggle={() => store.setDraftPromoOptIn(!store.draftPromoOptIn)} className="profile-setup-check-promo">
-        {t('setup.promoOptIn')}
-      </CheckRow>
+      {/* Optional consents — both default OFF and never block the flow. Shared with the
+          social path, which asks for the same two after its password step. */}
+      <OptionalConsents store={store} />
 
       <div className="spacer" />
       <div className="kb-dock">

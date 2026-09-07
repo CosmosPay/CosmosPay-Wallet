@@ -29,7 +29,7 @@ export function Unlock({ store }: { store: WalletStore }) {
    * `store.busy` as well as the empty check — and the store holds a ref guard behind it.
    *
    * This fired on every Enter keydown with no re-entry guard at all, so key auto-repeat
-   * (~30/s held down) launched a fresh 210k-iteration derivation every frame. Each one is
+   * (~30/s held down) launched a fresh PBKDF2 derivation every frame. Each one is
    * a password attempt; the backoff ladder only bounds attempts it gets to see finish.
    */
   const submit = async () => {
@@ -148,7 +148,7 @@ export function Unlock({ store }: { store: WalletStore }) {
                   <div onClick={() => { setWalletOpen(false); setDeletingId(''); }} className="unlock-switch-overlay" />
                   <div className="scr glass unlock-switch-menu">
                     {store.wallets.map((w) => {
-                      const active = w.id === store.meta?.id;
+                      const active = w.id === store.activeWalletId;
                       if (deletingId === w.id) {
                         return (
                           <div key={w.id} className="unlock-del">

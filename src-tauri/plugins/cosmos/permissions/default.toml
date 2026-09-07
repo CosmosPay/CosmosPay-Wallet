@@ -13,4 +13,5 @@ permissions = [
   "allow-auth-delete",
   "allow-share-text",
   "allow-app-exit",
+  "allow-exclude-from-backup",
 ]

@@ -167,13 +167,13 @@ export default function ApprovePopup() {
   if (doneHash) {
     return (
       <Frame>
-        <Title>Pago enviado ✓</Title>
+        <Title>{t('approve.paymentSent')}</Title>
         <div className="approve-card">
           <Row label={t('approve.rowHash')} value={short(doneHash, 12)} mono />
-          <Row label="Red" value={cfg.label} />
+          <Row label={t('approve.rowNetwork')} value={cfg.label} />
         </div>
-        <p className="approve-success">La transacción se firmó en tu dispositivo y se envió a la red.</p>
-        <Btn kind="approve" onClick={() => window.close()}>Cerrar</Btn>
+        <p className="approve-success">{t('approve.paymentSentBody')}</p>
+        <Btn kind="approve" onClick={() => window.close()}>{t('approve.close')}</Btn>
       </Frame>
     );
   }
@@ -193,7 +193,7 @@ export default function ApprovePopup() {
 
       // Everything below needs the secret -> unlock first, and THAT is a password guess
       // like any other. This window was the one path that derived a key from a typed
-      // string with no backoff at all: same vault, same 210k iterations, same
+      // string with no backoff at all: same vault, same PBKDF2 cost, same
       // localStorage, opened on demand by any page calling window.cosmosWallet.* — an
       // unmetered oracle sitting beside the metered ones. `beginAttempt` reserves the
       // guess before the derivation, so concurrent windows cannot all read a clean record.
@@ -301,7 +301,7 @@ export default function ApprovePopup() {
   return (
     <Frame>
       <div className="approve-origin">
-        <div className="approve-origin-label">Solicitud de</div>
+        <div className="approve-origin-label">{t('approve.requestFrom')}</div>
         <div className="approve-origin-host">{originLabel}</div>
       </div>
 
@@ -310,7 +310,7 @@ export default function ApprovePopup() {
       <div className="approve-card">
         <Row label={t('approve.rowWallet')} value={entry.name || t('approve.defaultWalletName')} />
         <Row label={t('approve.rowYourAddress')} value={short(entry.publicKey)} mono />
-        <Row label="Red" value={cfg.label} />
+        <Row label={t('approve.rowNetwork')} value={cfg.label} />
 
         {isPay && pay && (
           <>
@@ -325,7 +325,7 @@ export default function ApprovePopup() {
         {req.method === 'signMessage' && (
           <>
             <div className="approve-divider" />
-            <div className="approve-row-label">Mensaje a firmar</div>
+            <div className="approve-row-label">{t('approve.messageToSign')}</div>
             <div className="approve-msg">{String(req.params.message || '')}</div>
           </>
         )}

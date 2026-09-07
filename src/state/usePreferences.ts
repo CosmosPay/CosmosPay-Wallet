@@ -1,13 +1,19 @@
 /**
- * Device preferences: theme, language, and the manual-signing toggle.
+ * Device preferences: theme, language, the manual-signing toggle, and diagnostics.
  *
  * Split out of the store hook, which was doing routing, session, network, prices,
  * history, CosmosPay, fiat, liquidity, toasts, theme and i18n in one 2100-line
- * function. These three share one trait that makes them a real slice: they persist
- * to local storage, apply to `document`, and depend on nothing else in the app.
+ * function. These share one trait that makes them a real slice: they persist to local
+ * storage, apply to `document` or to a module, and depend on nothing else in the app.
+ *
+ * Diagnostics is the one whose VALUE lives elsewhere: `lib/telemetry` owns the key,
+ * because turning reporting off has to drop what is already queued, and a preference
+ * slice writing the flag while the reporter kept its buffer would be an opt-out that
+ * still sent the last few minutes.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '@/lib/i18n';
+import { setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
 
 export type Theme = 'dark' | 'light';
 
@@ -46,6 +52,7 @@ export function usePreferences(onLangChange: (message: string) => void) {
   const [theme, setThemeState] = useState<Theme>(savedTheme);
   const [lang, setLangState] = useState<Lang>(savedLang);
   const [requireConfirm, setRequireConfirmState] = useState<boolean>(savedRequireConfirm);
+  const [diagnostics, setDiagnosticsState] = useState<boolean>(telemetryEnabled);
 
   const t = useMemo(() => makeT(lang), [lang]);
   const locale = useMemo(() => localeOf(lang), [lang]);
@@ -57,6 +64,11 @@ export function usePreferences(onLangChange: (message: string) => void) {
     } catch {
       /* ignore */
     }
+  }, []);
+
+  const setDiagnostics = useCallback((on: boolean) => {
+    setDiagnosticsState(on);
+    setTelemetryEnabled(on);
   }, []);
 
   const setTheme = useCallback((th: Theme) => {
@@ -88,5 +100,5 @@ export function usePreferences(onLangChange: (message: string) => void) {
     [onLangChange],
   );
 
-  return { theme, setTheme, lang, setLang, t, locale, requireConfirm, setRequireConfirm };
+  return { theme, setTheme, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics };
 }

@@ -70,7 +70,15 @@ export function Deposit({ store }: { store: WalletStore }) {
       <div className="scr screen col pb-104">
         <BackBar title={t('fiat.depositTitle')} onBack={store.goBack} />
         <div className="glass fiat-note-card fiat-note-card-gap">{t('fiat.noTrustedToken')}</div>
-        <PrimaryButton onClick={() => store.setScreen('add-asset')}>{t('fiat.addTrustline')}</PrimaryButton>
+        {/* Was `add-asset`, which asks the user to pick an issuer by hand — and the
+            issuer is the one field they cannot check by eye. A deposit is delivered by
+            a specific issuer's asset, so a plausible-looking wrong one is money that
+            arrives somewhere unspendable. This asks the gateway which issuer its own
+            onramp pays out in, shows it, and signs that. `add-asset` stays for adding
+            an arbitrary asset, which is a different intention. */}
+        <PrimaryButton disabled={store.busy} onClick={() => void store.openOnrampTrustline()}>
+          {store.busy ? <Spinner /> : t('fiat.addTrustline')}
+        </PrimaryButton>
       </div>
     );
   }

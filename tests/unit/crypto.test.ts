@@ -10,15 +10,91 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { open, seal, toBase64, fromBase64, WrongPasswordError } from '@/lib/crypto';
+import {
+  open,
+  openUnderWrapKey,
+  seal,
+  sealUnderWrapKey,
+  needsReseal,
+  toBase64,
+  fromBase64,
+  WrongPasswordError,
+} from '@/lib/crypto';
+import { PBKDF2_ITERATIONS } from '@/constants/crypto';
+import { legacyBox, SHIPPED_ITERATIONS } from '../legacyBox.ts';
 import { signMessagePayload, SIGN_MESSAGE_DOMAIN } from '@/lib/signMessage';
 
 test('seal -> open round trips', async () => {
   const secret = JSON.stringify({ secret: 'SABC…', mnemonic: 'a b c' });
   const box = await seal(secret, 'correct horse battery staple');
-  assert.equal(box.v, 1);
+  assert.equal(box.v, 2);
+  assert.equal(box.iter, PBKDF2_ITERATIONS); // the cost travels with the box
   assert.notEqual(box.data, secret); // actually encrypted
   assert.equal(await open(box, 'correct horse battery staple'), secret);
+});
+
+/* --------------------------- the cost, and moving it --------------------------- */
+
+test('a box written before `iter` existed still opens', async () => {
+  const box = await legacyBox('the seed', 'right password');
+  assert.equal(box.iter, undefined);
+  assert.equal(await open(box, 'right password'), 'the seed');
+});
+
+test('the old cost is reported as needing a re-seal, the current one is not', async () => {
+  assert.equal(needsReseal(await legacyBox('x', 'pw')), true);
+  assert.equal(needsReseal(await seal('x', 'pw')), false);
+});
+
+test('the iteration count participates in the derivation', async () => {
+  // Which is why it has to be stored, and why rewriting it is not a downgrade an attacker
+  // can use: a box opened at a cost it was not sealed at yields a different key, and GCM
+  // refuses. It arrives as a wrong password because that is what it is indistinguishable
+  // from — the point is that it does NOT open.
+  const box = await seal('payload', 'pw');
+  await assert.rejects(() => open({ ...box, iter: SHIPPED_ITERATIONS }, 'pw'), WrongPasswordError);
+});
+
+test('an unusable iteration count is refused, and is not counted as a guess', async () => {
+  // The ceiling is the half that matters: `iter: 1e12` would leave the unlock screen
+  // deriving until the user force-quits. Refused as a broken box, never as a wrong
+  // password — every caller reserves a failed attempt before it gets here.
+  const box = await seal('payload', 'pw');
+  for (const iter of [0, -1, 1.5, 1e12, Number.NaN]) {
+    await assert.rejects(
+      () => open({ ...box, iter }, 'pw'),
+      (e: unknown) => {
+        assert.ok(!(e instanceof WrongPasswordError), `iter=${iter} must not count as a guess`);
+        return true;
+      },
+    );
+  }
+});
+
+/* ----------------------------- sealing under a key ----------------------------- */
+
+test('a wrapping-key box round trips, and is not stretched', async () => {
+  const wrapKey = toBase64(crypto.getRandomValues(new Uint8Array(32)));
+  const box = await sealUnderWrapKey('the app password', wrapKey);
+  assert.equal(box.iter, 1); // nothing to stretch in 256 bits of CSPRNG output
+  assert.equal(await openUnderWrapKey(box, wrapKey), 'the app password');
+});
+
+test('a wrapping-key box refuses anything that is not a 32-byte key', async () => {
+  // The structural guard that keeps a human password from ever being sealed at the
+  // wrapping-key cost — the mistake an `iterations` argument on `seal` would have allowed.
+  await assert.rejects(() => sealUnderWrapKey('secret', 'correct horse battery staple'));
+  await assert.rejects(() => sealUnderWrapKey('secret', toBase64(new Uint8Array(16))));
+  const box = await seal('secret', 'pw');
+  await assert.rejects(() => openUnderWrapKey(box, 'pw'));
+});
+
+test('an enrolment sealed by an older build still opens under its key', async () => {
+  // `openUnderWrapKey` has no version branch on purpose: envelopes written before
+  // `sealUnderWrapKey` existed are v1 boxes, and `open` derives those at the legacy cost.
+  const wrapKey = toBase64(crypto.getRandomValues(new Uint8Array(32)));
+  const box = await legacyBox('the app password', wrapKey);
+  assert.equal(await openUnderWrapKey(box, wrapKey), 'the app password');
 });
 
 test('a wrong password throws WrongPasswordError, which is what callers branch on', async () => {

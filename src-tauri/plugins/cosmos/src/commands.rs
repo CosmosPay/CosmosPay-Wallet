@@ -1,8 +1,8 @@
-//! The five commands the frontend may name. Every one of them is a thin forward to the
-//! platform implementation — no logic lives here, so the desktop and mobile halves cannot
-//! drift apart behind a shared "convenience".
+//! Every command the frontend may name. Each is a thin forward to the platform
+//! implementation — no logic lives here, so the desktop and mobile halves cannot drift
+//! apart behind a shared "convenience".
 //!
-//! All five are `async`, and that is load-bearing rather than idiomatic drift: a
+//! All of them are `async`, and that is load-bearing rather than idiomatic drift: a
 //! synchronous Tauri command runs on the main thread, and the Android half raises a
 //! `BiometricPrompt` that must be posted TO the main thread from somewhere else. A
 //! synchronous command would be waiting on the very thread the prompt needs in order to
@@ -42,4 +42,11 @@ pub(crate) async fn share_text<R: Runtime>(app: AppHandle<R>, payload: ShareRequ
 #[tauri::command]
 pub(crate) async fn app_exit<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     app.cosmos().app_exit().await
+}
+
+/// Takes no arguments on purpose — the directory is resolved on the Rust side. See
+/// `ExcludeBackupRequest` in `models.rs`.
+#[tauri::command]
+pub(crate) async fn exclude_from_backup<R: Runtime>(app: AppHandle<R>) -> Result<()> {
+    app.cosmos().exclude_from_backup().await
 }

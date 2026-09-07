@@ -8,12 +8,13 @@
 use serde::de::DeserializeOwned;
 use tauri::{
     plugin::{PluginApi, PluginHandle},
-    AppHandle, Runtime,
+    AppHandle, Manager, Runtime,
 };
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::models::{
-    AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest, ShareRequest,
+    AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest,
+    ExcludeBackupRequest, Failure, ShareRequest,
 };
 
 #[cfg(target_os = "ios")]
@@ -55,5 +56,21 @@ impl<R: Runtime> Cosmos<R> {
 
     pub async fn app_exit(&self) -> Result<()> {
         self.0.run_mobile_plugin("appExit", ()).map_err(Into::into)
+    }
+
+    /// The path is resolved HERE, not taken from the frontend — see `ExcludeBackupRequest`.
+    ///
+    /// The directory rather than the file inside it: `tauri-plugin-store` rewrites
+    /// `cosmos-wallet.json`, and an attribute set on an inode does not survive that file
+    /// being replaced. Set on the directory it covers every write into it.
+    pub async fn exclude_from_backup(&self) -> Result<()> {
+        let dir = self
+            .0
+            .app()
+            .path()
+            .app_data_dir()
+            .map_err(|err| Error::with_detail(Failure::Failed, err.to_string()))?;
+        let payload = ExcludeBackupRequest { path: dir.to_string_lossy().into_owned() };
+        self.0.run_mobile_plugin("excludeFromBackup", payload).map_err(Into::into)
     }
 }

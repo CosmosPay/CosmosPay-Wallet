@@ -109,3 +109,9 @@
 }
 
 /* flexible gap pushing the CTA to the bottom of column screens */
+
+/* optional consents (OptionalConsents) — shared by profile-setup and the social
+   path's second password step, so the spacing lives with the component rather
+   than in whichever screen happened to render it first */
+.ob-consent-metrics { margin-bottom: 10px; }
+.ob-consent-promo { margin-bottom: 14px; }

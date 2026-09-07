@@ -16,7 +16,7 @@ import {
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
 import { coingeckoBase } from '@/lib/endpoints';
-import { normalizeMemo, type MemoKind } from '@/lib/memo';
+import { defaultMemo, normalizeMemo, type MemoKind } from '@/lib/memo';
 import { tNow } from '@/lib/i18n';
 
 // A network is identified by an id; built-ins are testnet/public, plus any
@@ -32,6 +32,14 @@ export interface NetConfig {
   custom?: boolean;
 }
 
+/**
+ * The id of the mainnet entry, named because code has to select it rather than merely
+ * offer it: a wallet whose key Pollar custodies exists on mainnet and nowhere else, so
+ * adopting one moves the app here. A bare `'public'` at those call sites is a string that
+ * has to agree with the table below and cannot be checked against it.
+ */
+export const MAINNET_ID = 'public';
+
 export const BUILTIN_NETWORKS: NetConfig[] = [
   {
     id: 'testnet',
@@ -41,7 +49,7 @@ export const BUILTIN_NETWORKS: NetConfig[] = [
     friendbot: 'https://friendbot.stellar.org',
   },
   {
-    id: 'public',
+    id: MAINNET_ID,
     label: 'Mainnet',
     horizon: 'https://horizon.stellar.org',
     passphrase: Networks.PUBLIC,
@@ -141,10 +149,21 @@ export interface SendParams {
 
 /**
  * Turn a (value, kind) pair into the SDK memo, applying the byte-accurate limit.
- * Returns null when there is nothing to attach.
+ *
+ * With NO memo to attach the wallet signs its own: `Cosmos Wallet v1.5.0`, so a
+ * transaction says on chain which client built it and which release. That default is
+ * only ever reached when the field is genuinely empty — a memo the user typed, and a
+ * memo a SEP-7 request carried, are both left exactly as they are.
+ *
+ * The rule matters more than it looks: a memo is routinely an exchange's deposit
+ * reference, so a client that overwrote one would credit somebody's deposit to nobody.
+ * Hence `normalizeMemo` first, default second, and never the other way round.
+ *
+ * Returns null only if the default itself does not survive normalization, which would
+ * mean an empty {@link MEMO_SIGNATURE} — a transaction with no memo, exactly as before.
  */
 function buildMemo(value?: string, kind: MemoKind = 'text'): Memo | null {
-  const m = normalizeMemo(value ?? '', kind);
+  const m = normalizeMemo(value ?? '', kind) ?? defaultMemo();
   if (!m) return null;
   return m.kind === 'id' ? Memo.id(m.value) : Memo.text(m.value);
 }
@@ -392,10 +411,16 @@ export async function addTrustline({
     /* fallback */
   }
 
-  const tx = new TransactionBuilder(source, { fee, networkPassphrase: cfg.passphrase })
-    .addOperation(Operation.changeTrust({ asset: new Asset(code, issuer), limit }))
-    .setTimeout(180)
-    .build();
+  const builder = new TransactionBuilder(source, { fee, networkPassphrase: cfg.passphrase }).addOperation(
+    Operation.changeTrust({ asset: new Asset(code, issuer), limit }),
+  );
+  // The same signature the payments carry. There is no memo to displace here — a
+  // trustline has no counterparty and no reference — so this is purely the wallet
+  // saying, on chain, that it built the transaction.
+  const memoOp = buildMemo();
+  if (memoOp) builder.addMemo(memoOp);
+
+  const tx = builder.setTimeout(180).build();
   tx.sign(keypair);
 
   try {

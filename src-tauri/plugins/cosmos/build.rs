@@ -11,6 +11,7 @@ const COMMANDS: &[&str] = &[
     "auth_delete",
     "share_text",
     "app_exit",
+    "exclude_from_backup",
 ];
 
 fn main() {

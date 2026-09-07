@@ -33,6 +33,18 @@ export function Welcome({ store }: { store: WalletStore }) {
         <GhostButton onClick={() => { store.setImportText(''); store.setScreen('import'); }}>
           {t('welcome.import')}
         </GhostButton>
+        {/*
+          Social login, offered here because this is where someone looks for it — and
+          unconditionally, which it was not. It used to be hidden unless a wallet on this
+          device already held a CosmosPay key, because the bridge that runs the handshake
+          needed one; on a true first run the button simply was not there, which is the
+          one case social login exists for. The dev platform now brokers the handshake
+          with its own identity and hands back the account keys at the end, so this path
+          works from an empty device.
+        */}
+        <GhostButton onClick={() => store.setScreen('social-login')}>
+          {t('pollar.title')}
+        </GhostButton>
         <div className="welcome-footer">
           {t('welcome.producer')} · v{APP_VERSION}
         </div>

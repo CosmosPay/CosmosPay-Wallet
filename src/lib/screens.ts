@@ -30,6 +30,7 @@ export const SCREEN_IDS = [
   'profile-setup',
   'password',
   'device-auth',
+  'social-login',
   'unlock',
   'home',
   'earn',
@@ -49,6 +50,7 @@ export const SCREEN_IDS = [
   'settings',
   'about',
   'operations',
+  'gateway-ops',
   'history',
   'paylink',
   'fiat',
@@ -73,6 +75,10 @@ export interface BackContext {
   addingWallet: boolean;
   /** True when onboarding created a phrase (so `profile-setup` came from `verify`). */
   hasDraftMnemonic: boolean;
+  /** True while a social login is waiting for the password that will seal its session —
+   *  the password screen was then reached from `social-login`, and there is no seed
+   *  draft and no `profile-setup` behind it to go back to. */
+  hasPollarDraft: boolean;
 }
 
 /** `'exit'` leaves the app on native; on the other shells it simply does nothing. */
@@ -104,7 +110,15 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   'device-auth': { back: 'home', terminal: true },
   import: { back: 'welcome' },
   'profile-setup': { back: (c) => (c.hasDraftMnemonic ? 'verify' : 'import') },
-  password: { back: 'profile-setup' },
+  // Reached from Profile, from 'welcome' on the add-wallet path, and — since the dev
+  // platform started brokering the handshake — from a genuine first run, where it is the
+  // first screen after 'welcome'. Back goes wherever the stack says; 'profile' is only
+  // the fallback, and on a first run the stack is what answers.
+  'social-login': { back: (c) => (c.hasSession ? 'profile' : 'welcome') },
+  // Two flows end here. The seed one arrives from `profile-setup`; a social login arrives
+  // straight from `social-login` with the session already redeemed and nothing but the
+  // password left to collect, and must not be sent back into a profile form it never saw.
+  password: { back: (c) => (c.hasPollarDraft ? 'social-login' : 'profile-setup') },
   unlock: { back: 'exit' },
 
   // tabs
@@ -145,6 +159,7 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // extras
   operations: { back: 'home' },
   'sign-tx': { back: 'operations' },
+  'gateway-ops': { back: 'operations' },
   'add-network': { back: 'home' },
   'add-asset': { back: 'home' },
   scan: { back: 'send' },

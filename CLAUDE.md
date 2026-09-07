@@ -251,9 +251,18 @@ Two more that fall out of the same principle:
 
 ## Unlocking with the phone, and answering the gate
 
-`src/lib/deviceAuth.ts` seals the app password under a random 32-byte key and puts only that
-key in the OS secure store — through `src-tauri/plugins/cosmos/`, the wallet's own native
-plugin. Seven rules, and most of them are holes it shipped with:
+`src/lib/deviceAuth.ts` seals the session's **vault key** under a random 32-byte key and
+puts only that wrapping key in the OS secure store — through `src-tauri/plugins/cosmos/`,
+the wallet's own native plugin. Eight rules, and most of them are holes it shipped with:
+
+- **It is not the password, and it used to be.** What the envelope held for its first
+  releases was the app password itself: a string its owner very likely types into other
+  services, on disk for as long as the feature was on. It now holds the key that password
+  derives — device-local, replaced by `changePassword`, worth nothing on another device.
+  Envelopes of the old shape are refused rather than migrated (`v: 1` is rejected by
+  `readEnvelope`), because turning a password into a key needs the salt it was derived
+  with, and asking for the password to do so would defeat the exercise. It fails once,
+  quietly, as "not enrolled", and the user turns it back on.
 
 - **The wrapping key is stored bound, or not at all.** **One rung**, and otherwise a
   **refusal**. On Android the Keystore key carries `setUserAuthenticationRequired(true)`, a
@@ -312,8 +321,9 @@ plugin. Seven rules, and most of them are holes it shipped with:
 device-lock enrolment **before** the commit and re-creates it after, and the caller then
 calls `lock()`. Do not re-order those: an enrolment re-wrapped *after* the vault moves holds
 the old password if anything interrupts the pass, and the user meets "wrong password" coming
-from their own fingerprint. Do not patch `session.password` instead of locking: a partially
-applied change would make the store assert a password true of some wallets and not others.
+from their own fingerprint. Do not patch the session's `vaultKey` instead of locking: a
+partially applied change would make the store assert a key true of some wallets and not
+others.
 
 ## Validation lives in `src/lib/`, never in a component
 
@@ -454,11 +464,87 @@ Both live in `lib/`, not in the store hook — the hook is unreachable from
 
 ## The session is not a field
 
-`session` — the decrypted Stellar secret *and* the app password — is deliberately
-**not** on the object screens receive. They get `hasSession` and `publicKey`; anything
-needing the key goes through a gated action inside the store (`signRawXdr`,
-`revealBackup`, `submitSend`, …). Do not re-expose it: 56 components hold that object,
-and every new screen would inherit spending authority by default.
+`session` is deliberately **not** on the object screens receive. They get `hasSession` and
+`publicKey`; anything needing the key goes through a gated action inside the store
+(`signRawXdr`, `revealBackup`, `submitSend`, …). Do not re-expose it: 56 components hold
+that object, and every new screen would inherit spending authority by default.
+
+**And what a session holds is one key, not three secrets.** It used to carry the decrypted
+Stellar secret, the mnemonic and the app password, all three as JS strings, all three for
+the whole five-minute session — so anything that could read that memory at any point in it
+got the seed and a password the user may well reuse elsewhere. A session now holds a
+`VaultKey` (`src/lib/crypto.ts`): derived from the password at unlock, never the password,
+and `lock()` zeroes its bytes on the way out — which a string never allowed. The seed is
+fetched per signature by `secretOf()` and the mnemonic only by `revealBackup`, which
+re-asks for the password anyway.
+
+That is only affordable because the expensive half happens once. `unlockSession` derives
+ONE key and `convergeSeals` brings every box on the device under it, so switching wallets
+or reading a credential costs an AES-GCM decrypt instead of a full PBKDF2 run — which is
+also what made raising the iteration count affordable in the first place. The two are the
+same decision: a per-operation derivation is a standing argument for a cheap KDF.
+
+A box carries the salt and cost it was sealed with, so a key is only valid for boxes that
+match it. `openWithKey` refuses a mismatch with `VaultKeyMismatchError` — never
+`WrongPasswordError`, because nobody typed anything and the failed-attempt ladder must not
+count it.
+
+## Diagnostics report what the device knows, and only what the user allowed
+
+`src/lib/telemetry.ts` is the wallet's own trail: errors, screen views, gateway timings
+and the operations it built. It exists because a console is not a trail here — an MV3
+popup's console dies with the popup and a phone's WebView console needs a cable — and
+because the failures worth having never reach the gateway at all (a crash on `send`, a
+cancelled signature, a Horizon submit refused on the device).
+
+Four rules, and none of them is style:
+
+- **It is OFF until the user opts in.** `STORE_LISTING.md` discloses it as optional and
+  off by default, so a default of on would make a published statement false. **Both
+  onboarding paths have to ask**, and that is the part that was wrong once: the seed path
+  asks on `profile-setup`, and the social path — which skips that screen, because Pollar
+  supplies the name, the email and the avatar — asked nowhere, so a Pollar wallet was
+  created with `metricsOptIn` absent and the user never given the choice. It now has a
+  second step on `PasswordSetup` (shared `OptionalConsents`), placed after the password
+  because a separate screen would have to carry the typed password across a navigation.
+  `finishOnboarding` writes the answer in both branches; Settings → Privacy flips it
+  afterwards.
+- **The transport is decided by whether the wallet has an account.** With a Cosmos Pay
+  key it posts to the gateway with it and the events land in that account's own
+  dashboard; without one it posts to the platform's public route and is filed under a
+  shared consumer. A 401/403 from the keyed path (every key minted before
+  `activity:write` existed) falls back rather than going silent.
+- **Nothing account-identifying travels anonymously.** `ACCOUNT_PROPS` — address,
+  destination, amount, txHash — are stripped on the anonymous route. A new prop that
+  names an account or a transaction belongs in that list the day it is added.
+- **Memo text is never reported, on either path.** A memo is a message to a third
+  party, and often an exchange's deposit reference.
+
+`report()` never throws and never awaits, because its callers are `catch` blocks, the
+error boundary and a global handler. `tests/unit/telemetry.test.ts` pins the four rules
+above; that suite is why the network-failure-reads-as-success bug in `flushTelemetry`
+was caught before it shipped.
+
+## The wallet signs its own transactions with a memo — never over one
+
+`buildMemo` (`src/lib/stellar.ts`) falls back to `defaultMemo()` (`src/lib/memo.ts`),
+which is `Cosmos Wallet v<version>` derived from `APP_VERSION` — so a transaction says
+on chain which client built it and which release.
+
+**It only ever fills an EMPTY field.** A memo the user typed, and a memo a SEP-7 request
+carried, are left exactly as they are: a memo is routinely an exchange's deposit
+reference, and a client that overwrote one would credit somebody's deposit to nobody.
+`normalizeMemo` first, default second, never the other way round.
+
+The label lives in `constants/app.ts` as `MEMO_SIGNATURE`, and its length is
+load-bearing: a text memo is 28 BYTES, and the label plus ` v` plus a semver leaves nine
+bytes of headroom. The prerelease suffix the release bot produces (`1.5.0-dev.412`) is
+dropped BEFORE the clamp — cutting mid-version would put `v1.5.0-de` on chain, which
+reads like a version and is not one.
+
+Swaps and liquidity operations are **not** covered by this: their envelope is built by
+the gateway, whose `memo` field is a numeric MEMO_ID and whose own commission memo
+already labels those transactions. Do not send a text memo there.
 
 ## Consolidating components
 

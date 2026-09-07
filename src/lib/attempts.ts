@@ -4,10 +4,12 @@
  * Every path that turns a typed string into the seed — `unlock`, the signing gate's
  * `checkPassword`, and `revealBackup`, which hands back the mnemonic — decrypts the vault
  * to find out whether the password was right. Until this module existed, the only cost of
- * a wrong guess was one PBKDF2 derivation: 210,000 iterations is roughly 200-400ms on a
- * phone, so an unattended-but-locked wallet accepted on the order of ten thousand guesses
- * an hour, and `revealBackup` in particular would answer every one of them with the seed
- * phrase on the first hit.
+ * a wrong guess was one PBKDF2 derivation — a second or so on a phone at the cost in
+ * `constants/crypto.ts`, and a fraction of that on the desktop build — so an
+ * unattended-but-locked wallet accepted guesses by the thousand per hour, and
+ * `revealBackup` in particular would answer every one of them with the seed phrase on the
+ * first hit. Raising the iteration count moves that number; it does not change the shape
+ * of the problem, which is why this module is not a substitute for it or it for this.
  *
  * This does NOT protect the vault blob itself. Someone holding the file attacks it offline
  * where no app-side counter exists — that is what the PBKDF2 cost and the password's own

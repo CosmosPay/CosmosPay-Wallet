@@ -258,7 +258,7 @@ internal object DeviceAuth {
                     // A GCM tag failure here means the ciphertext and the key no longer
                     // belong together. NOT dropped: a read can also fail transiently, and
                     // wiping a working enrolment over one bad read costs the user their
-                    // setup for something a retry fixes. `deviceAuthPassword` decides.
+                    // setup for something a retry fixes. `deviceAuthVaultKey` decides.
                     done.fail(Failure.FAILED, err.message)
                 }
             }

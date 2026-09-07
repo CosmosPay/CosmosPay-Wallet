@@ -1,15 +1,19 @@
 //! Cosmos Pay's own native plugin.
 //!
-//! Two unrelated capabilities share this crate, and only this crate: a Tauri mobile plugin
+//! Unrelated capabilities share this crate, and only this crate: a Tauri mobile plugin
 //! carries a Gradle module and a Swift package with it, and duplicating that boilerplate to
-//! separate two commands buys nothing. They share NO code — separate Rust modules, separate
-//! Kotlin classes, separate Swift files, no shared state — because one of them is on the
-//! signing path and the other opens a share sheet.
+//! separate a handful of commands buys nothing. They share NO code — separate Rust modules,
+//! separate Kotlin classes, separate Swift files, no shared state — because one of them is
+//! on the signing path and the others are not.
 //!
 //! - **device auth** (`auth_*`) is the hardware-bound secure store behind
 //!   `src/lib/deviceAuth.ts`. Read that module's header first: it is the design, and this
 //!   is only its native half.
 //! - **share** (`share_text`) raises the OS share sheet on Android and iOS.
+//! - **backup exclusion** (`exclude_from_backup`) keeps the app-data directory — which is
+//!   where `src/lib/storage.ts` puts the sealed vault — out of iCloud. Android needs no
+//!   command for this: `scripts/native-permissions.ts` closes it in the manifest, which is
+//!   why the Kotlin half answers and does nothing.
 //!
 //! The platform contracts live beside their implementations: `android/src/main/java/
 //! lat/cosmospay/plugin/cosmos/DeviceAuth.kt` and `ios/Sources/CosmosPlugin/DeviceAuth.swift`
@@ -36,8 +40,8 @@ use mobile::Cosmos;
 
 pub use error::{Error, Result};
 pub use models::{
-    AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest, Biometry, Failure,
-    Prompt, ShareRequest,
+    AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest, Biometry,
+    ExcludeBackupRequest, Failure, Prompt, ShareRequest,
 };
 
 /// Reaches the platform implementation from any `Manager` — `app.cosmos()`.
@@ -60,6 +64,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::auth_delete,
             commands::share_text,
             commands::app_exit,
+            commands::exclude_from_backup,
         ])
         .setup(|app, api| {
             #[cfg(mobile)]

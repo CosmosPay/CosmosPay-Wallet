@@ -110,7 +110,7 @@ No remote code is executed. All JavaScript ships inside the package; network req
 ## Data usage disclosures (Privacy tab)
 
 - Collects: **email address** (only if the user opts into Cosmos Pay account linking — sent to the Cosmos Pay backend to create/link their account), **financial information** (public Stellar addresses and transaction data submitted to the public Stellar network at the user's request).
-- Optional, off by default: anonymous usage metrics and promotional emails (explicit opt-in checkboxes at signup).
+- Optional, off by default: anonymous usage metrics and promotional emails (explicit opt-in checkboxes at signup). The metrics consent is what enables **diagnostics**: error messages, screen names, request timings and the operations the user runs (asset code and amount, never the destination and never the memo), sent to the Cosmos Pay backend. It can be turned off again at any time in Settings → Privacy. A wallet with no Cosmos Pay account reports anonymously and without any address, amount or transaction hash at all.
 - Does NOT collect: browsing history, page content, location, or any credentials. Private keys never leave the device.
 - Data is not sold nor transferred to third parties except as required to operate the service (Stellar network, price feed, Cosmos Pay backend).
 

@@ -25,10 +25,28 @@ export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  * under it. The weakest of two disagreeing rules is the one that ends up protecting the
  * seed.
  *
+ * SIX characters, and that is a product decision about friction, not a security argument —
+ * the number was twelve and the comment here used to make the case for it. Be clear about
+ * what it costs, because the length is the half of the vault's strength that the iteration
+ * count in `constants/crypto.ts` cannot buy back: a KDF multiplies the cost of each guess,
+ * the password decides how many guesses there are. Against a vault file an attacker HOLDS —
+ * a restored backup, a copied profile directory — six characters from the classes below is
+ * a small keyspace at any PBKDF2 cost this app can afford to spend on an unlock a user
+ * waits for. What still protects a wallet at this floor is the attacker never getting the
+ * file: the device lock in `lib/deviceAuth.ts`, and the failed-attempt ladder in
+ * `lib/attempts.ts` for the guesses made through the app.
+ *
+ * It binds only what is SET from here on: `appPasswordOk` is checked when a password is
+ * chosen or changed, never when one is used. So lowering it locks nobody out and shortens
+ * nobody's existing password — a twelve-character one keeps working, and keeps being worth
+ * more than this floor asks for.
+ *
  * Each criterion is separate because the onboarding screen shows them as a live checklist;
- * `appPasswordOk` is what everything else asks.
+ * `appPasswordOk` is what everything else asks. The copy is not allowed to restate the
+ * number either: the four strings that name it take it as a `{n}` parameter, so this line
+ * is the only place it is written down.
  */
-export const MIN_APP_PWD_LEN = 8;
+export const MIN_APP_PWD_LEN = 6;
 
 export const APP_PWD_CRITERIA = {
   length: (p: string) => p.length >= MIN_APP_PWD_LEN,

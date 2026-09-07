@@ -1,0 +1,100 @@
+/* GatewayOps — src/features/extras/GatewayOps.tsx.
+   The gateway's own record of swaps, fiat payins/payouts and liquidity moves. */
+
+.gateway-ops-tabs {
+  margin: 0 var(--gutter) 14px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.gateway-ops-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.gateway-ops-tab {
+  flex: 0 0 auto;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.gateway-ops-tab.is-on {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* flexShrink 0: inside the column scroller the card would compress to fit rather
+   than overflow, which is the same trap operations.css documents. */
+.gateway-ops-card {
+  margin: 0 var(--gutter);
+  flex-shrink: 0;
+  padding: 4px 0;
+}
+
+.gateway-ops-row {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-soft, rgba(255, 255, 255, 0.06));
+}
+.gateway-ops-row:last-child {
+  border-bottom: none;
+}
+
+.gateway-ops-title {
+  font-size: 14px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gateway-ops-sub {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gateway-ops-right {
+  align-items: flex-end;
+  flex: 0 0 auto;
+}
+
+.gateway-ops-amount {
+  font-size: 13.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* The gateway's own status vocabulary is the label; only the colour is mapped, so a
+   status this build has never seen still renders — in the neutral tone. */
+.gateway-ops-status {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+.gateway-ops-status.is-ok {
+  color: var(--ok, #3ddc97);
+}
+.gateway-ops-status.is-bad {
+  color: var(--danger);
+}
+.gateway-ops-status.is-wait {
+  color: var(--muted);
+}
+
+.gateway-ops-loading,
+.gateway-ops-empty {
+  margin: 24px var(--gutter);
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: center;
+}

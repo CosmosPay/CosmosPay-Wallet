@@ -166,6 +166,8 @@ export interface CreateSwapInput extends QuoteSwapInput {
 }
 
 import { parseShape, type Check } from '@/lib/apiShape';
+import { apiError } from '@/lib/apiError';
+import { PAGE_SIZE, RETRY_AFTER_CAP_S } from '@/constants/api';
 import {
   AuthorizePayoutShape,
   BankAccountListShape,
@@ -173,16 +175,20 @@ import {
   ClaimResultShape,
   LinkStartResultShape,
   LinkVerifyResultShape,
+  LiquidityOpListShape,
   LiquidityOperationShape,
   LiquidityPoolListShape,
   LiquidityPoolShape,
   LiquidityPositionListShape,
   LiquiditySubmitResultShape,
   PayIntentShape,
+  PayinListShape,
   PayinQuoteShape,
   PayinShape,
+  PayoutListShape,
   PayoutQuoteShape,
   PayoutShape,
+  RailsShape,
   ReceiverListShape,
   ReceiverShape,
   RegisterResultShape,
@@ -190,11 +196,19 @@ import {
   RegisteredWalletShape,
   SignMessageShape,
   SubmitResultShape,
+  SwapListShape,
   SwapQuoteShape,
   SwapShape,
   TosShape,
+  TrustlineTxShape,
+  VirtualAccountListShape,
+  VirtualAccountShape,
 } from '@/lib/cosmospayShapes';
 import { tNow } from '@/lib/i18n';
+import { report, reportError } from '@/lib/telemetry';
+import { EVENT, SLOW_REQUEST_MS } from '@/constants/telemetry';
+import type { PollarSession, PollarSessionStatus } from '@/lib/pollar';
+import { PollarSessionStatusShape, SocialAuthorizationShape, SocialClaimShape } from '@/lib/pollarShapes';
 
 /* ------------------------------ transport ------------------------------ */
 
@@ -203,6 +217,51 @@ interface Envelope {
   code?: number;
   status?: string;
   message?: string;
+}
+
+/**
+ * A gateway path with its ids removed, e.g. `/v1/kyc/receivers/:id/wallets`.
+ *
+ * What the activity feed groups on has to be the ROUTE, not the URL: with the id left
+ * in, "which endpoint is failing" becomes one row per receiver and the answer is
+ * invisible. It is also the privacy line — an id names one of the user's own records,
+ * and a wallet with no Cosmos Pay account reports anonymously.
+ *
+ * The test is shape, not a route table: a table here would be a second copy of the
+ * gateway's routes, kept in sync by hand, in a client that ships weeks behind it.
+ */
+function apiRoute(url: string): string {
+  try {
+    // A relative base for the same-origin dev case, where `url` has no origin at all.
+    const { pathname } = new URL(url, 'http://wallet.local');
+    return pathname
+      .split('/')
+      .map((seg) => (/^(?:[a-z]{2,5}_)?[A-Za-z0-9_-]{12,}$/.test(seg) ? ':id' : seg))
+      .join('/');
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * Report what a gateway call did, once the outcome is known.
+ *
+ * Failures at `error`, because a refused call is what the user meets as a screen that
+ * will not load; a call that merely took too long is `warn` and a separate event, so
+ * "it hangs" — which no error log can answer — has something behind it. A 2xx is not
+ * reported at all: the point is the exceptions, and one row per successful read would
+ * bury them and cost a request per screen.
+ */
+function reportCall(url: string, startedAt: number, status: number, err?: unknown): void {
+  const durationMs = Math.round(Date.now() - startedAt);
+  const props = { route: apiRoute(url), status, durationMs };
+  if (err) {
+    reportError(EVENT.apiError, err, props);
+    return;
+  }
+  if (durationMs >= SLOW_REQUEST_MS) {
+    report(EVENT.apiSlow, { level: 'warn', category: 'metric', durationMs, props });
+  }
 }
 
 /**
@@ -222,11 +281,20 @@ async function postJson<T>(
   unwrap: boolean,
   shape: Check<unknown>,
 ): Promise<T> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-  });
+  const startedAt = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // A transport failure, not an HTTP one: no status, and it is the shape an offline
+    // wallet takes. Status 0 is how the feed tells the two apart.
+    reportCall(url, startedAt, 0, e);
+    throw e;
+  }
 
   let json: unknown = null;
   try {
@@ -236,10 +304,11 @@ async function postJson<T>(
   }
 
   if (!res.ok) {
-    const env = (json ?? {}) as Envelope & { error?: string };
-    const msg = env.message || env.error || tNow('api.requestFailed', { status: res.status });
-    throw new Error(msg);
+    const err = apiError(url, res, json, RETRY_AFTER_CAP_S);
+    reportCall(url, startedAt, res.status, err);
+    throw err;
   }
+  reportCall(url, startedAt, res.status);
 
   const payload =
     unwrap && json && typeof json === 'object' && 'data' in (json as Envelope) ? (json as Envelope).data : json;
@@ -377,6 +446,100 @@ export async function verifyCosmosLink(input: {
     true,
     LinkVerifyResultShape,
   );
+}
+
+/* ------------------------- social login (brokered) ----------------------- */
+
+/**
+ * The dev platform's half of "Continue with Google".
+ *
+ * These three are the only calls in this file with no credential on them, and that is
+ * the point: they exist for someone who has no CosmosPay account yet, so there is no
+ * API key to send. The platform runs the gateway handshake with its own identity and
+ * hands back both halves at the end — the Pollar session AND the account keys — which
+ * is what makes a seed-free first run possible at all. See `lib/socialLogin.ts` for the
+ * flow and `POST /api/wallet/social/*` for the other side.
+ *
+ * What stands in for a credential is the PKCE verifier: the poll route will show the
+ * code to anyone who knows the `state`, and only the holder of the verifier can spend
+ * it. It never leaves this device until the redemption request.
+ */
+
+/** `POST /api/wallet/social/authorize`. */
+export async function socialAuthorize(
+  env: 'dev' | 'prod',
+  body: { provider: string; codeChallenge: string; codeChallengeMethod: string; deviceLabel?: string },
+): Promise<{ state: string; authorizationUrl: string; provider: string }> {
+  return postJson(
+    withQuery(`${devPlatformUrl()}/api/wallet/social/authorize`, { env }),
+    body,
+    {},
+    true,
+    SocialAuthorizationShape,
+  );
+}
+
+/** `GET /api/wallet/social/session/{state}` — same status contract as the bridge's own. */
+export async function socialStatus(env: 'dev' | 'prod', state: string): Promise<PollarSessionStatus> {
+  return getPlatformJson<PollarSessionStatus>(
+    withQuery(`${devPlatformUrl()}/api/wallet/social/session/${encodeURIComponent(state)}`, { env }),
+    PollarSessionStatusShape,
+  );
+}
+
+/**
+ * What a redeemed social login is worth: the Pollar session, and the CosmosPay account
+ * that was created or attached for the email the provider verified.
+ *
+ * `keys` is null when the provider returned no email. That is a real outcome, not an
+ * error — the wallet still works, because Pollar signs for it; what is missing is the
+ * gateway (swaps, fiat), and the wallet says so rather than pretending.
+ */
+export interface SocialClaim {
+  status: string;
+  session: PollarSession;
+  account: 'created' | 'linked' | 'none';
+  organizationId: string | null;
+  keys: { dev: string | null; prod: string | null } | null;
+  activated?: boolean;
+  activationAmount?: string | null;
+}
+
+/** `POST /api/wallet/social/claim`. Single-use: the code is spent whatever happens. */
+export async function socialClaim(
+  env: 'dev' | 'prod',
+  body: { code: string; codeVerifier: string; name?: string },
+): Promise<SocialClaim> {
+  return postJson<SocialClaim>(
+    withQuery(`${devPlatformUrl()}/api/wallet/social/claim`, { env }),
+    body,
+    {},
+    true,
+    SocialClaimShape,
+  );
+}
+
+/**
+ * GET a dev-platform route with no key, unwrapping its envelope.
+ *
+ * Separate from `getJson` because that one takes an API key and this whole flow exists
+ * for a wallet that does not have one; separate from `postJson` only in method.
+ */
+async function getPlatformJson<T>(url: string, shape: Check<unknown>): Promise<T> {
+  const res = await fetch(url);
+
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* empty / non-JSON body */
+  }
+
+  if (!res.ok) throw apiError(url, res, json, RETRY_AFTER_CAP_S);
+
+  const payload = json && typeof json === 'object' && 'data' in (json as Envelope) ? (json as Envelope).data : json;
+  parseShape(url, shape, payload);
+  return payload as T;
 }
 
 function authHeaders(apiKey: string): Record<string, string> {
@@ -624,7 +787,14 @@ export async function createPayLink(apiKey: string, input: PayLinkInput): Promis
 /** GET helper for the gateway (the payments API returns raw shapes, no envelope).
  *  `shape` is required for the same reason it is on postJson. */
 async function getJson<T>(url: string, apiKey: string, shape: Check<unknown>): Promise<T> {
-  const res = await fetch(url, { headers: authHeaders(apiKey) });
+  const startedAt = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: authHeaders(apiKey) });
+  } catch (e) {
+    reportCall(url, startedAt, 0, e);
+    throw e;
+  }
   let json: unknown = null;
   try {
     json = await res.json();
@@ -632,11 +802,40 @@ async function getJson<T>(url: string, apiKey: string, shape: Check<unknown>): P
     /* empty / non-JSON */
   }
   if (!res.ok) {
-    const env = (json ?? {}) as { message?: string; error?: string };
-    throw new Error(env.message || env.error || tNow('api.requestFailed', { status: res.status }));
+    const err = apiError(url, res, json, RETRY_AFTER_CAP_S);
+    reportCall(url, startedAt, res.status, err);
+    throw err;
   }
+  reportCall(url, startedAt, res.status);
   parseShape(url, shape, json);
   return json as T;
+}
+
+/**
+ * Read one page of a list endpoint and return its rows plus the matching-row count.
+ *
+ * Every list under `/v1` now answers `{ data, total, take, skip }`; several used to
+ * answer a bare array, and the wallet's readers still accept both because an installed
+ * copy can be pointed at an older gateway. What they cannot keep doing is ignoring
+ * `total`: the page is clamped at {@link PAGE_SIZE}, so a bare `.data` read is a silent
+ * truncation — the user simply stops seeing their eleventh bank account, with nothing
+ * on screen or in the console saying a page boundary was involved.
+ *
+ * So `total` comes back to the caller, which is what lets a screen say "showing 100 of
+ * 137" instead of quietly lying. `total` is the number of MATCHING rows, never
+ * `data.length`: on a full page those are equal, which is exactly why paginating on
+ * `data.length` can never detect the last page.
+ */
+async function getPage<T>(
+  url: string,
+  apiKey: string,
+  shape: Check<unknown>,
+  take = PAGE_SIZE,
+): Promise<{ items: T[]; total: number }> {
+  const res = await getJson<T[] | { data?: T[]; total?: number }>(withQuery(url, { take }), apiKey, shape);
+  if (Array.isArray(res)) return { items: res, total: res.length };
+  const items = res.data ?? [];
+  return { items, total: typeof res.total === 'number' ? res.total : items.length };
 }
 
 export type ReceiverKycType = 'light' | 'standard' | 'enhanced';
@@ -713,9 +912,8 @@ export async function uploadKycDoc(apiKey: string, file: Blob, bucket = 'onboard
   return json as { file_url: string };
 }
 
-export async function listReceivers(apiKey: string): Promise<Receiver[]> {
-  const res = await getJson<Receiver[] | { data?: Receiver[] }>(`${gatewayApi()}/v1/kyc/receivers`, apiKey, ReceiverListShape);
-  return Array.isArray(res) ? res : res.data ?? [];
+export async function listReceivers(apiKey: string): Promise<{ items: Receiver[]; total: number }> {
+  return getPage<Receiver>(`${gatewayApi()}/v1/kyc/receivers`, apiKey, ReceiverListShape);
 }
 
 export async function getReceiver(apiKey: string, id: string): Promise<Receiver> {
@@ -756,13 +954,15 @@ export async function addReceiverWallet(
 }
 
 /** List the Stellar/blockchain wallets registered to a receiver. */
-export async function listReceiverWallets(apiKey: string, receiverId: string): Promise<RegisteredWallet[]> {
-  const res = await getJson<RegisteredWallet[] | { data?: RegisteredWallet[] }>(
+export async function listReceiverWallets(
+  apiKey: string,
+  receiverId: string,
+): Promise<{ items: RegisteredWallet[]; total: number }> {
+  return getPage<RegisteredWallet>(
     `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/wallets`,
     apiKey,
     RegisteredWalletListShape,
   );
-  return Array.isArray(res) ? res : res.data ?? [];
 }
 
 export async function requestTos(apiKey: string, receiverId: string, redirectUrl: string): Promise<{ url?: string }> {
@@ -808,13 +1008,15 @@ export async function addBankAccount(apiKey: string, receiverId: string, body: R
   );
 }
 
-export async function listBankAccounts(apiKey: string, receiverId: string): Promise<BankAccount[]> {
-  const res = await getJson<BankAccount[] | { data?: BankAccount[] }>(
+export async function listBankAccounts(
+  apiKey: string,
+  receiverId: string,
+): Promise<{ items: BankAccount[]; total: number }> {
+  return getPage<BankAccount>(
     `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/bank-accounts`,
     apiKey,
     BankAccountListShape,
   );
-  return Array.isArray(res) ? res : res.data ?? [];
 }
 
 /** Delete a payout/deposit bank account from a receiver. */
@@ -830,8 +1032,10 @@ export async function deleteBankAccount(apiKey: string, receiverId: string, acco
     } catch {
       /* empty / non-JSON body */
     }
-    const env = (json ?? {}) as { message?: string; error?: string };
-    throw new Error(env.message || env.error || `No se pudo eliminar la cuenta (${res.status}).`);
+    // Was a Spanish literal, which meant a French user reading a German UI got told in
+    // Spanish that their bank account could not be deleted. `apiError` carries the
+    // status and the gateway's own machine code, and translates the fallback copy.
+    throw apiError(res.url, res, json, RETRY_AFTER_CAP_S);
   }
 }
 
@@ -983,4 +1187,157 @@ export async function createPayout(
   body: { quote_id: string; sender_wallet_address: string; chain: 'stellar' | 'solana'; signed_transaction: string },
 ): Promise<Payout> {
   return postJson<Payout>(`${gatewayApi()}/v1/offramp/payouts`, body, authHeaders(apiKey), false, PayoutShape);
+}
+
+
+/* ======================= operation history ============================== */
+
+/**
+ * What the gateway did, after the wallet asked it to.
+ *
+ * Every money flow in this client is currently write-only: `createSwap` returns an
+ * envelope, `submitSwap` says whether it landed, and then the wallet forgets. Anything
+ * that resolves later — a payin waiting on a bank transfer, a payout in compliance
+ * review, a swap the network is still confirming — simply vanishes from the user's
+ * view, and the only place they can look is a block explorer that knows nothing about
+ * the fiat half.
+ *
+ * These reads are scoped to the API key's organization server-side, so there is no
+ * account parameter: the key already says whose rows these are.
+ */
+
+export interface SwapRow {
+  id: string;
+  status: string;
+  sendAsset: string;
+  sendAmount: string;
+  destAsset: string;
+  destEstimated: string;
+  txHash?: string | null;
+  createdAt?: string;
+}
+
+/** `status` narrows server-side, so an unfinished-only view costs no client filtering. */
+export async function listSwaps(apiKey: string, status?: string): Promise<{ items: SwapRow[]; total: number }> {
+  return getPage<SwapRow>(withQuery(`${gatewayApi()}/v1/swaps`, { status }), apiKey, SwapListShape);
+}
+
+export interface PayinRow {
+  id: string;
+  status?: string | null;
+  token?: string | null;
+  paymentMethod?: string | null;
+  /** Minor units — see `fromMinorUnits` in lib/amount.ts. */
+  senderAmount?: number | null;
+  receiverAmount?: number | null;
+  createdAt?: string;
+}
+
+export async function listPayins(apiKey: string): Promise<{ items: PayinRow[]; total: number }> {
+  return getPage<PayinRow>(`${gatewayApi()}/v1/onramp/payins`, apiKey, PayinListShape);
+}
+
+export interface PayoutRow {
+  id: string;
+  status?: string | null;
+  token?: string | null;
+  rail?: string | null;
+  senderAmount?: string | null;
+  receiverAmount?: number | null;
+  createdAt?: string;
+}
+
+export async function listPayouts(apiKey: string): Promise<{ items: PayoutRow[]; total: number }> {
+  return getPage<PayoutRow>(`${gatewayApi()}/v1/offramp/payouts`, apiKey, PayoutListShape);
+}
+
+export interface LiquidityOpRow {
+  id: string;
+  kind: string;
+  status: string;
+  poolId: string;
+  assetA: string;
+  assetB: string;
+  amountA: string;
+  amountB: string;
+  txHash?: string | null;
+  createdAt?: string;
+}
+
+export async function listLiquidityOps(apiKey: string, kind?: 'deposit' | 'withdraw'): Promise<{ items: LiquidityOpRow[]; total: number }> {
+  return getPage<LiquidityOpRow>(withQuery(`${gatewayApi()}/v1/liquidity-pools/operations`, { kind }), apiKey, LiquidityOpListShape);
+}
+
+/* ===================== deposits: trustline + virtual accounts ============ */
+
+/**
+ * An unsigned trustline envelope for the asset the onramp is about to deliver.
+ *
+ * The wallet can build a `changeTrust` itself — `stellarAddTrustline` does — and for a
+ * user adding an asset by hand that is the right thing. This one is different: it is
+ * the gateway naming the exact `(code, issuer)` its own onramp will pay out in. A
+ * hand-built trustline to a plausible-looking USDC issuer is a deposit that arrives
+ * nowhere, and the issuer is the one field a user cannot check by eye.
+ *
+ * Still signed locally, and still through `assertSafeToSign` — the envelope comes from
+ * the gateway, which by this wallet's rules makes it a counterparty like any other.
+ */
+export async function onrampTrustlineTx(apiKey: string, address: string): Promise<{ xdr: string }> {
+  return postJson<{ xdr: string }>(`${gatewayApi()}/v1/onramp/trustline`, { address }, authHeaders(apiKey), false, TrustlineTxShape);
+}
+
+/**
+ * A virtual account: permanent bank details a receiver can be paid into repeatedly.
+ *
+ * The difference from a payin is who initiates. A payin is quoted, then funded once,
+ * against instructions that expire; a virtual account is an account number the user can
+ * save and their employer can pay into every month, with the conversion happening on
+ * arrival. For a payroll or remittance user that is the whole product, and the wallet
+ * currently makes them re-quote every time.
+ *
+ * Fields vary by rail and country, so only `id` is contracted — the rest is rendered as
+ * whatever came back, the same treatment the bank-account forms already give BlindPay.
+ */
+export type VirtualAccount = { id: string } & Record<string, unknown>;
+
+export async function listVirtualAccounts(apiKey: string, receiverId: string): Promise<{ items: VirtualAccount[]; total: number }> {
+  return getPage<VirtualAccount>(
+    `${gatewayApi()}/v1/onramp/receivers/${encodeURIComponent(receiverId)}/virtual-accounts`,
+    apiKey,
+    VirtualAccountListShape,
+  );
+}
+
+export async function createVirtualAccount(apiKey: string, receiverId: string, body: Record<string, unknown>): Promise<VirtualAccount> {
+  return postJson<VirtualAccount>(
+    `${gatewayApi()}/v1/onramp/receivers/${encodeURIComponent(receiverId)}/virtual-accounts`,
+    body,
+    authHeaders(apiKey),
+    false,
+    VirtualAccountShape,
+  );
+}
+
+/* ============================== rail catalogue =========================== */
+
+/**
+ * The rails the platform actually offers, and the fields one of them needs.
+ *
+ * `src/constants/fiat.ts` has carried both as hardcoded tables, which means adding a
+ * country or a rail has been a wallet release — shipped through two app stores and MV3
+ * review, for a change the operator made in a dashboard. These two reads move that to
+ * configuration.
+ *
+ * Both are BlindPay passthroughs and BlindPay does not publish their content shape, so
+ * the contract is `unchecked` and the interpreting happens in `lib/fiatRails.ts`, in
+ * one function, with the local table as the fallback. Guessing a schema in a contract
+ * would turn an unfamiliar response into a thrown ApiShapeError that takes the deposit
+ * screen down; guessing it in a normaliser turns it into "use the table we shipped".
+ */
+export async function listRails(apiKey: string): Promise<unknown> {
+  return getJson<unknown>(`${gatewayApi()}/v1/kyc/rails`, apiKey, RailsShape);
+}
+
+export async function railBankDetails(apiKey: string, rail: string): Promise<unknown> {
+  return getJson<unknown>(withQuery(`${gatewayApi()}/v1/kyc/bank-details`, { rail }), apiKey, RailsShape);
 }

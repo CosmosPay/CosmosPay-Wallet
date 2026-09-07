@@ -12,6 +12,7 @@ so a partial grant would present a broken enrolment rather than an absent one.
 - `allow-auth-delete`
 - `allow-share-text`
 - `allow-app-exit`
+- `allow-exclude-from-backup`
 
 ## Permission Table
 
@@ -148,6 +149,32 @@ Enables the auth_store command without any pre-configured scope.
 <td>
 
 Denies the auth_store command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`cosmos:allow-exclude-from-backup`
+
+</td>
+<td>
+
+Enables the exclude_from_backup command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`cosmos:deny-exclude-from-backup`
+
+</td>
+<td>
+
+Denies the exclude_from_backup command without any pre-configured scope.
 
 </td>
 </tr>
