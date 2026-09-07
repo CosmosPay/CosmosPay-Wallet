@@ -365,6 +365,27 @@ export async function openVault(id: string, vk: VaultKey): Promise<VaultSecret> 
   return JSON.parse(await openWithKey(await readBox(id), vk)) as VaultSecret;
 }
 
+/**
+ * Prove a vault key opens `entry`, whichever box that wallet actually keeps.
+ *
+ * The key-door twin of what `unlockSession` does through the password door, and the one
+ * to reach for whenever a live session adopts another wallet — switching to it, falling
+ * onto it after a removal, unlocking with the device. Those three all called `openVault`,
+ * which asks for the SECRET box, so every one of them failed on a Pollar wallet that has
+ * none: switching refused with an error, and the biometric unlock refused an enrolment
+ * that was perfectly good.
+ *
+ * Throws what the caller needs to tell apart: `VaultKeyMismatchError` when the key is
+ * wrong, `vault.notFound` when the box is missing. Returns nothing — the proof is the
+ * point, and a caller that wants the contents asks for them by name.
+ */
+export async function openPrimaryBox(
+  entry: Pick<WalletEntry, 'id' | 'kind'>,
+  vk: VaultKey,
+): Promise<void> {
+  await openWithKey(await readPrimaryBox(entry), vk);
+}
+
 /** Verify the app password by decrypting the active wallet. */
 export async function verifyPassword(password: string): Promise<boolean> {
   const id = await getActiveId();
@@ -386,10 +407,13 @@ export async function verifyPassword(password: string): Promise<boolean> {
  * was built beside — and proving it means opening the active wallet with it.
  */
 export async function verifyVaultKey(vk: VaultKey): Promise<boolean> {
-  const id = await getActiveId();
-  if (!id) return false;
+  const entry = await getActiveEntry();
+  if (!entry) return false;
   try {
-    await openVault(id, vk);
+    // The proving box, not the secret one: a device whose active wallet came from a
+    // social login has no secret box, and answering `false` there would call a good key
+    // bad — on the one wallet kind that cannot fall back to typing a seed.
+    await openPrimaryBox(entry, vk);
     return true;
   } catch {
     return false;
@@ -631,6 +655,46 @@ export async function createPollarWallet(
   await writeWallets(wallets);
   await setActiveId(entry.id);
   return { entry, wallets };
+}
+
+/**
+ * The same wallet from the same login, with the key on THIS device instead.
+ *
+ * Testnet takes this path: the login is real, the account and its API keys are real, and
+ * the seed was generated here rather than custodied by Pollar — because activating a
+ * custodied wallet funds its reserve out of the operator's XLM, and a network whose
+ * lumens come from a faucet is not worth spending real ones on.
+ *
+ * So it is an ORDINARY local wallet: a secret box, no session box, `kind` left absent the
+ * way every seed wallet leaves it. Nothing downstream needs to know it began as a social
+ * login — which is the point, because everything downstream already works for a wallet
+ * that signs for itself.
+ *
+ * Split from `addWallet` only for the avatar: the provider hands back a picture, and a
+ * signup form has no field that would have collected one.
+ */
+export async function createSocialLocalWallet(
+  profile: Omit<WalletEntry, 'id' | 'createdAt' | 'kind' | 'publicKey'> & { publicKey: string },
+  secret: VaultSecret,
+  vk: VaultKey,
+): Promise<{ entry: WalletEntry; wallets: WalletEntry[] }> {
+  const entry = await addWallet(
+    secret,
+    {
+      publicKey: profile.publicKey,
+      name: profile.name,
+      birthdate: profile.birthdate,
+      email: profile.email,
+      gender: profile.gender,
+      metricsOptIn: profile.metricsOptIn,
+      promoOptIn: profile.promoOptIn,
+    },
+    vk,
+  );
+  const wallets = profile.avatar
+    ? await updateWalletMeta(entry.id, { avatar: profile.avatar })
+    : await listWallets();
+  return { entry: wallets.find((w) => w.id === entry.id) ?? entry, wallets };
 }
 
 // There was a `clearPollarSession(id)` here that dropped the session box and left the

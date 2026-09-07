@@ -43,6 +43,29 @@ import type { PollarProvider } from '@/constants/pollar';
 export type SocialEnv = 'dev' | 'prod';
 
 /**
+ * A social login always runs against `prod`, whatever network the wallet is showing.
+ *
+ * Two different questions were being answered by one variable, and the wallet's default
+ * network — testnet — made the wrong answer the common one. They are:
+ *
+ *  - **Which Pollar app and which CosmosPay account is this?** Always the mainnet one. An
+ *    account with Google is a real account belonging to a real person: it is created once
+ *    from an email a provider verified, and the claim mints BOTH keys (`keys.dev` and
+ *    `keys.prod`) for it, so it serves either network afterwards. Opening it against
+ *    Pollar's testnet app would make a second, throwaway identity for the same person,
+ *    and a fresh install would get that one by accident simply because nobody had
+ *    switched the network yet.
+ *  - **Who holds the Stellar key?** That one IS the wallet's current network, and it is
+ *    decided in `state/store.ts` by `networkEnv(network)` — Pollar custodies on mainnet,
+ *    the device generates a seed anywhere else.
+ *
+ * Keeping them apart is the whole point of this constant. `authorize`, the poll and the
+ * claim must all use the same value: the handshake is scoped to the consumer and network
+ * that opened it, so a poll under a different env is an unknown handshake.
+ */
+export const SOCIAL_LOGIN_ENV: SocialEnv = 'prod';
+
+/**
  * Open a login and return the URL to send the user to, plus the handshake to keep.
  *
  * Same two-value shape as `pollarAuthorize`, and the same https check on the URL before
@@ -98,12 +121,24 @@ export function socialPoller(env: SocialEnv): (state: string) => Promise<PollarS
  *
  * `name` is only a fallback for the display name — the provider profile wins when it
  * carries one.
+ *
+ * `stellarAddress` is the public half of a key THIS DEVICE generated, and it is what
+ * makes the testnet flow work: the account and its API keys are registered against it
+ * instead of against the address Pollar custodies, and the platform skips the funding
+ * that only a custodied wallet needs. Left out on mainnet, where the wallet has no key
+ * of its own to name. See `state/store.ts`'s `finishSocialLogin` for who decides.
  */
 export function socialLoginClaim(
   env: SocialEnv,
   handshake: PollarHandshake,
   code: string,
   name?: string,
+  stellarAddress?: string,
 ): Promise<SocialClaim> {
-  return socialClaim(env, { code, codeVerifier: handshake.verifier, ...(name ? { name } : {}) });
+  return socialClaim(env, {
+    code,
+    codeVerifier: handshake.verifier,
+    ...(name ? { name } : {}),
+    ...(stellarAddress ? { stellarAddress } : {}),
+  });
 }

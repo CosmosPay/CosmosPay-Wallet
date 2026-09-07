@@ -446,10 +446,17 @@ export interface SocialClaim {
   activationAmount?: string | null;
 }
 
-/** `POST /api/wallet/social/claim`. Single-use: the code is spent whatever happens. */
+/**
+ * `POST /api/wallet/social/claim`. Single-use: the code is spent whatever happens.
+ *
+ * `stellarAddress` is sent when this device holds the key — testnet, where the wallet
+ * generates its own seed rather than take one Pollar custodies and funds. It is the
+ * address the CosmosPay account gets registered to, so omitting it on that path would
+ * mint keys for the wallet Pollar holds instead of the one the user can sign with.
+ */
 export async function socialClaim(
   env: 'dev' | 'prod',
-  body: { code: string; codeVerifier: string; name?: string },
+  body: { code: string; codeVerifier: string; name?: string; stellarAddress?: string },
 ): Promise<SocialClaim> {
   return postJson<SocialClaim>(
     withQuery(`${devPlatformUrl()}/api/wallet/social/claim`, { env }),
