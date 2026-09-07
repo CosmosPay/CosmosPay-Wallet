@@ -2,6 +2,30 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.6.1] - 2026-09-07
+
+### Miscellaneous
+- Bump the minor-and-patch group across 1 directory with 5 updates (8997b5f)
+
+## [1.6.0] - 2026-09-07
+
+### Features
+- Add styles for GatewayOps and SocialLogin components (3e9fbbd)
+- Implement brokered social login flow (39c3a5a)
+- Update external link handling and social login flow (85963ce)
+- Add diagnostics preference and telemetry reporting (d5cbab1)
+- Update README with social login details and enhance package dependencies (d72b460)
+
+### Refactor
+- Update device authentication to use vault key instead of app password (add2518)
+
+## [1.5.1] - 2026-08-30
+
+### Miscellaneous
+- Bump actions/setup-java from 5 to 6 (#64) (d3f1672)
+- Bump android-actions/setup-android from 3 to 4 (#63) (c9ed297)
+- Bump the minor-and-patch group with 4 updates (#65) (ab300e6)
+
 ## [1.5.0] - 2026-08-25
 
 ### Bug Fixes
