@@ -77,6 +77,15 @@ export function Settings({ store }: { store: WalletStore }) {
         {pwOpen && <ChangePassword store={store} onDone={() => setPwOpen(false)} />}
       </SettingsSection>
 
+      <SettingsSection title={t('settings.privacy')}>
+        <ToggleRow
+          label={t('settings.diagnostics')}
+          desc={t('settings.diagnosticsDesc')}
+          on={store.diagnostics}
+          onChange={store.setDiagnostics}
+        />
+      </SettingsSection>
+
       <ConnectedSites store={store} />
 
       <DevModeSection store={store} />

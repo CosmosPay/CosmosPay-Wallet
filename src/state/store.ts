@@ -158,6 +158,8 @@ import { usePreferences, applySavedThemeEarly, savedRequireConfirm } from '@/sta
 import { useSigningGate } from '@/state/useSigningGate';
 import { parseStellarQr } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
+import { configureTelemetry, report, reportError, setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
+import { EVENT } from '@/constants/telemetry';
 
 export type { Theme } from '@/state/usePreferences';
 
@@ -277,6 +279,19 @@ export interface SocialDraft {
   local: { secret: VaultSecret; profile: SocialDraftProfile };
   /** Null when the provider returned no email: working wallets, no gateway account. */
   account: CosmosPayAccount | null;
+}
+
+/**
+ * The two optional consents an onboarding flow collects, as an answered pair.
+ *
+ * A pair rather than two loose booleans because they are answered together, on one
+ * screen, and written together into the profile — and because `metricsOptIn` alone
+ * decides whether the wallet reports anything at all (`lib/telemetry.ts`), which makes
+ * "it was never asked" and "it was declined" worth being unable to confuse.
+ */
+export interface ConsentAnswers {
+  metricsOptIn: boolean;
+  promoOptIn: boolean;
 }
 
 export interface PollarState {
@@ -506,7 +521,7 @@ export function useWalletStore() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta, network, networkId]);
-  const { theme, setTheme, lang, setLang, t, locale, requireConfirm, setRequireConfirm } =
+  const { theme, setTheme, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics } =
     usePreferences(useCallback((msg: string) => flash(msg, 'info'), [flash]));
 
   // onboarding drafts
@@ -877,8 +892,15 @@ export function useWalletStore() {
       setDraftAccount(acc);
       setDraftMnemonic(mnemonic ?? '');
       setDraftHasMnemonic(!!mnemonic);
+      // Reported HERE rather than at the end of onboarding, so an import that parsed but
+      // was abandoned at the password screen is still visible — the drop-off between
+      // these two events is the thing worth seeing.
+      report(EVENT.walletImported, { category: 'lifecycle', props: { hasMnemonic: !!mnemonic } });
       setScreen('profile-setup');
     } catch (e) {
+      // The message only ever describes the FORM of what was pasted ("not a valid secret
+      // key or recovery phrase"); the text itself is a seed and never leaves the device.
+      reportError(EVENT.walletImported, e);
       flash((e as Error).message, 'err');
     }
   }, [importText, flash]);
@@ -932,13 +954,29 @@ export function useWalletStore() {
    * one tap away in the switcher — so there is nothing here that has to be revisited when
    * the user changes network afterwards.
    */
+  /**
+   * The two optional consents, as the onboarding screens collect them. Passed EXPLICITLY
+   * into `landPollarWallet` rather than read from the drafts inside it, because the
+   * function has two callers with genuinely different answers: a first run has just asked
+   * the user, while adding a social wallet to an unlocked device has not — and inherits
+   * what that device already agreed to.
+   */
   const landPollarWallet = useCallback(
-    async (draft: SocialDraft, vk: VaultKey): Promise<WalletEntry> => {
-      const { entry: custodied } = await createPollarWallet(draft.pollar.profile, draft.pollar.stored, vk);
+    async (draft: SocialDraft, vk: VaultKey, consents: ConsentAnswers): Promise<WalletEntry> => {
+      // BOTH halves carry the answer. They are one person's one wallet as far as the
+      // consent is concerned, and a device that switches to testnet must not find a
+      // profile that never recorded it — `metricsOptIn` is read back as the record of
+      // what was agreed to, not merely as the thing that flipped a flag at signup.
+      const profileConsents = { metricsOptIn: consents.metricsOptIn, promoOptIn: consents.promoOptIn };
+      const { entry: custodied } = await createPollarWallet(
+        { ...draft.pollar.profile, ...profileConsents },
+        draft.pollar.stored,
+        vk,
+      );
       const { entry: seeded } = await createSocialLocalWallet(
         // Linked to the custodied one, which is what keeps it out of the switcher and
         // makes the network selector the way back to it — see `entryForNetwork`.
-        { ...draft.local.profile, testnetFor: custodied.id },
+        { ...draft.local.profile, ...profileConsents, testnetFor: custodied.id },
         draft.local.secret,
         vk,
       );
@@ -1008,8 +1046,15 @@ export function useWalletStore() {
         setBusy(true);
         try {
           const vk = await deriveVaultKey(password, newKdfParams());
-          const entry = await landPollarWallet(pollarDraft, vk);
+          // The consent step that follows the password on this path (PasswordSetup) fills
+          // the same two drafts the seed path fills on `profile-setup`. Applied BEFORE the
+          // wallet is landed, so the profile records the answer at creation and the very
+          // first event this wallet could report is already covered by it.
+          const consents = { metricsOptIn: draftMetricsOptIn, promoOptIn: draftPromoOptIn };
+          setTelemetryEnabled(consents.metricsOptIn);
+          const entry = await landPollarWallet(pollarDraft, vk, consents);
           setPollarDraft(null);
+          report(EVENT.walletCreated, { category: 'lifecycle', props: { added: false, social: true } });
           setSuccessInfo({
             title: t('success.welcome', { name: entry.name }),
             msg: t('success.protected'),
@@ -1063,6 +1108,19 @@ export function useWalletStore() {
             { label: t('success.user'), val: entry.name },
             { label: t('success.status'), val: t('success.encrypted') },
           ],
+        });
+        // The signup consent is what decides whether this wallet reports anything at
+        // all — `setup.metricsOptIn`, unchecked by default. Applied BEFORE the first
+        // report below, so the event that announces the wallet is itself covered by
+        // the answer the user just gave. The social branch above does the same with
+        // the same drafts; both paths ask, neither assumes. See lib/telemetry.ts.
+        setTelemetryEnabled(!!draftMetricsOptIn);
+        // That a wallet now exists, and nothing about it: no address, no name, no email.
+        // `added` separates a second wallet from a first run — the two have very
+        // different completion rates and only one of them is onboarding.
+        report(EVENT.walletCreated, {
+          category: 'lifecycle',
+          props: { added: addingWallet, social: !!pollarDraft },
         });
         setAddingWallet(false);
         // Offered after the success card, not instead of it. Only when the device can
@@ -1233,8 +1291,13 @@ export function useWalletStore() {
         // converged pays one read per box and no crypto at all.
         const vaultKey = await convergeSeals(password, opened.vaultKey);
         await openSession(opened.entry, vaultKey);
+        report(EVENT.unlockOk, { category: 'auth', props: { method: 'password' } });
         return { ok: true };
       } catch (e) {
+        // By CLASS, never by the rendered line: `errLine` is translated copy, so a feed
+        // grouped on it would split one failure across five languages. `reportError`
+        // keeps the class name and the gateway's code, which is what groups.
+        reportError(EVENT.unlockFailed, e, { method: 'password', wrong: e instanceof WrongPasswordError });
         flash(errLine(e), 'err');
         // The reason is classified rather than folded into a boolean because the unlock
         // screen says different things about a typo, a throttled attempt and a vault it
@@ -1292,8 +1355,10 @@ export function useWalletStore() {
         });
         await noteAttemptSuccess();
         await openSession(entry, vaultKey);
+        report(EVENT.unlockOk, { category: 'auth', props: { method: 'device' } });
         return { ok: true };
       } catch (e) {
+        reportError(EVENT.unlockFailed, e, { method: 'device' });
         flash(errLine(e), 'err');
         // Both failures mean the same thing here — this key does not open this vault — and
         // the caller turns that into "the enrolment is stale". A storage fault does not,
@@ -1363,6 +1428,10 @@ export function useWalletStore() {
     setDeviceAuthOffer(false);
     stackRef.current = [];
     setScreen('unlock');
+    // Which transport carries this is decided when the queue flushes, not here, and by
+    // then the effect above has already dropped the key: a lock is reported the same way
+    // whether or not the ended session had an account.
+    report(EVENT.lock, { category: 'auth' });
   }, [cancelPending, exclusive]);
 
   /**
@@ -1646,9 +1715,11 @@ export function useWalletStore() {
         guardSession(epoch);
         await stellarAddTrustline({ cfg: network, secret: await secretOf(session), code: code.trim(), issuer: issuer.trim() });
         await refresh(true);
+        report(EVENT.trustlineAdded, { category: 'transaction', props: { asset: code.trim() } });
         flash(t('toast.assetAdded', { code: code.trim() }), 'ok');
         return true;
       } catch (e) {
+        reportError(EVENT.trustlineFailed, e, { asset: code.trim() });
         flash((e as Error).message, 'err');
         return false;
       } finally {
@@ -1704,6 +1775,14 @@ export function useWalletStore() {
           memoKind: send.memoKind,
           asset,
         });
+        // The asset and the amount, never the destination and never the memo: a memo
+        // is a message to somebody else (and, for an exchange deposit, their routing
+        // reference), and the destination is a third party who did not choose to be
+        // in anyone's telemetry.
+        report(EVENT.paymentSent, {
+          category: 'transaction',
+          props: { asset: code, amount: send.amount, memoKind: send.memoKind, hasMemo: !!send.memo, txHash: hash },
+        });
         setSuccessInfo({
           kind: 'ok',
           title: t('success.sent'),
@@ -1718,6 +1797,7 @@ export function useWalletStore() {
         setSend({ to: '', amount: '0', memo: '', memoKind: 'text', asset: XLM });
         refresh(true);
       } catch (e) {
+        reportError(EVENT.paymentFailed, e, { asset: code, amount: send.amount });
         // show a red error confirmation screen instead of a transient toast
         setSuccessInfo({
           kind: 'err',
@@ -2040,6 +2120,16 @@ export function useWalletStore() {
           const signedXdr = await signEnvelope(swap.xdr);
           const res = await cpSubmitSwap(apiKey, swap.id, signedXdr);
           if (res.submitted) {
+            report(EVENT.swapSubmitted, {
+              category: 'transaction',
+              props: {
+                from: from.code,
+                to: to.code,
+                amount: swap.sendAmount,
+                received: swap.destEstimated,
+                txHash: res.txHash ?? undefined,
+              },
+            });
             setSuccessInfo({
               kind: 'ok',
               title: t('swap.success'),
@@ -2054,6 +2144,16 @@ export function useWalletStore() {
             refresh(true);
           } else {
             const codes = res.resultCodes ? JSON.stringify(res.resultCodes) : '';
+            // A refused submit is not a thrown error: the gateway answered, and its
+            // `reason` (or Horizon's result codes) is the only thing that says why.
+            // Reported at the same level as a throw because to the user they are the
+            // same event — the swap did not happen.
+            report(EVENT.swapFailed, {
+              level: 'error',
+              category: 'error',
+              message: res.reason || codes || 'swap not submitted',
+              props: { from: from.code, to: to.code, amount, status: res.status },
+            });
             setSuccessInfo({
               kind: 'err',
               title: t('swap.failed'),
@@ -2063,6 +2163,7 @@ export function useWalletStore() {
             setScreen('success');
           }
         } catch (e) {
+          reportError(EVENT.swapFailed, e, { from: from.code, to: to.code, amount });
           setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: (e as Error).message, rows: [] });
           setScreen('success');
         } finally {
@@ -2076,6 +2177,20 @@ export function useWalletStore() {
   /* ------------------------- liquidity pools ---------------------- */
 
   /** The CosmosPay key for the wallet's current network, or null (flashes a hint). */
+  /**
+   * Keep the activity reporter pointed at the account and network in use.
+   *
+   * The key decides WHERE an event goes, not merely how it is labelled: with one, the
+   * wallet reports to the gateway and the events land in that account's own dashboard;
+   * without one they go to the platform's anonymous route. So this runs on every change
+   * to either — including `lock()`, which clears `cosmosPay` and must therefore stop
+   * attributing anything to the account whose session just ended.
+   */
+  useEffect(() => {
+    const env = networkEnv(network);
+    configureTelemetry({ apiKey: cosmosPay?.keys[env] ?? null, env, network: network.id });
+  }, [cosmosPay, network]);
+
   const cosmosApiKey = useCallback((): string | null => {
     const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
     if (!apiKey) flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
@@ -2387,8 +2502,23 @@ export function useWalletStore() {
             : null,
         };
 
+        // The provider and whether an account came back — never the email the provider
+        // returned, which is the one field in `claimed` that names a person.
+        report(EVENT.socialLogin, {
+          category: 'auth',
+          props: { provider: hs.provider, account: claimed.account, activated: claimed.activated, brokered: true },
+        });
+
         if (session) {
-          await landPollarWallet(draft, session.vaultKey);
+          // Adding a social wallet to a device that already has one: nobody is asked
+          // again, so the answers already on this device carry over — the diagnostics
+          // preference as it stands now, and the promotional one from the wallet the
+          // user is adding this beside. Asking a second time would be asking the same
+          // person the same question about the same device.
+          await landPollarWallet(draft, session.vaultKey, {
+            metricsOptIn: telemetryEnabled(),
+            promoOptIn: meta?.promoOptIn ?? false,
+          });
           setScreen('home');
         } else {
           // A true first run: no vault on this device, so no key to seal anything under
@@ -2399,6 +2529,7 @@ export function useWalletStore() {
         }
         return true;
       } catch (e) {
+        reportError(EVENT.socialLoginFailed, e, { provider: hs.provider, brokered: true });
         await clearHandshake();
         flash((e as Error).message || t('pollar.status.failed'), 'err');
         return false;
@@ -2673,6 +2804,10 @@ export function useWalletStore() {
           const signedXdr = await signEnvelope(op.xdr);
           const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
           if (res.submitted) {
+            report(EVENT.liquidityDeposit, {
+              category: 'transaction',
+              props: { assetA: input.assetA.code, assetB: input.assetB.code, amount: op.amountA, txHash: res.txHash ?? undefined },
+            });
             setSuccessInfo({
               kind: 'ok',
               title: t('lp.depositSuccess'),
@@ -2687,10 +2822,17 @@ export function useWalletStore() {
             refresh(true);
           } else {
             const codes = res.resultCodes ? JSON.stringify(res.resultCodes) : '';
+            report(EVENT.liquidityFailed, {
+              level: 'error',
+              category: 'error',
+              message: res.reason || codes || 'lp deposit not submitted',
+              props: { op: 'deposit', assetA: input.assetA.code, assetB: input.assetB.code },
+            });
             setSuccessInfo({ kind: 'err', title: t('lp.depositFailed'), msg: res.reason || codes || t('lp.depositFailed'), rows: [] });
             setScreen('success');
           }
         } catch (e) {
+          reportError(EVENT.liquidityFailed, e, { op: 'deposit', assetA: input.assetA.code, assetB: input.assetB.code });
           setSuccessInfo({ kind: 'err', title: t('lp.depositFailed'), msg: (e as Error).message, rows: [] });
           setScreen('success');
         } finally {
@@ -2738,6 +2880,10 @@ export function useWalletStore() {
           const signedXdr = await signEnvelope(op.xdr);
           const res = await cpSubmitLiquidity(apiKey, op.id, signedXdr);
           if (res.submitted) {
+            report(EVENT.liquidityWithdraw, {
+              category: 'transaction',
+              props: { shares: op.shares ?? input.shares, txHash: res.txHash ?? undefined },
+            });
             setSuccessInfo({
               kind: 'ok',
               title: t('lp.withdrawSuccess'),
@@ -2753,10 +2899,17 @@ export function useWalletStore() {
             refresh(true);
           } else {
             const codes = res.resultCodes ? JSON.stringify(res.resultCodes) : '';
+            report(EVENT.liquidityFailed, {
+              level: 'error',
+              category: 'error',
+              message: res.reason || codes || 'lp withdraw not submitted',
+              props: { op: 'withdraw', shares: input.shares },
+            });
             setSuccessInfo({ kind: 'err', title: t('lp.withdrawFailed'), msg: res.reason || codes || t('lp.withdrawFailed'), rows: [] });
             setScreen('success');
           }
         } catch (e) {
+          reportError(EVENT.liquidityFailed, e, { op: 'withdraw', shares: input.shares });
           setSuccessInfo({ kind: 'err', title: t('lp.withdrawFailed'), msg: (e as Error).message, rows: [] });
           setScreen('success');
         } finally {
@@ -2777,8 +2930,14 @@ export function useWalletStore() {
         return null;
       }
       try {
-        return await cpCreatePayLink(apiKey, { destination: meta.publicKey, ...input });
+        const intent = await cpCreatePayLink(apiKey, { destination: meta.publicKey, ...input });
+        report(EVENT.payLinkCreated, {
+          category: 'transaction',
+          props: { asset: input.assetCode ?? 'XLM', amount: input.amount },
+        });
+        return intent;
       } catch (e) {
+        reportError(EVENT.payLinkFailed, e, { asset: input.assetCode ?? 'XLM' });
         flash((e as Error).message || t('paylink.error'), 'err');
         return null;
       }
@@ -3708,6 +3867,11 @@ export function useWalletStore() {
     requireConfirm,
     setRequireConfirm,
     toggleConfirm,
+    // Not password-gated, unlike `toggleConfirm`: turning diagnostics off REMOVES a
+    // capability rather than granting one, so an attacker gains nothing by it, and
+    // making a privacy opt-out ask for a password is how an opt-out goes unused.
+    diagnostics,
+    setDiagnostics,
     confirmReq,
     requestSignature,
     resolveConfirm,

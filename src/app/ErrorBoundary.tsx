@@ -12,6 +12,8 @@
  * called `t()` would be reaching into the thing that may have just thrown.
  */
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { reportError } from '@/lib/telemetry';
+import { EVENT } from '@/constants/telemetry';
 import '@/styles/app/error-boundary.css';
 
 interface Props {
@@ -41,8 +43,18 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    // Nothing reports for a solo-maintained wallet, so the console is the trail.
+    // The console is the trail on the machine that has one. Neither of the two hosts
+    // this boundary exists for does: an MV3 popup's console dies with the popup and a
+    // phone's WebView console needs a cable, which is why the same failure also goes
+    // to the activity feed. `reportError` never throws and never awaits — a boundary
+    // that could fail while handling a failure would take the last screen with it.
     console.error('[wallet] render failed', error, info.componentStack);
+    reportError(EVENT.renderFailed, error, {
+      // The component stack, not the error stack: it names the screen that broke,
+      // and it is the wallet's own tree rather than minified chunk offsets. Bounded
+      // because the gateway caps a message and a `props` blob alike.
+      componentStack: (info.componentStack ?? '').slice(0, 600),
+    });
   }
 
   render(): ReactNode {

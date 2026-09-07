@@ -16,6 +16,7 @@
  * a `MemoKind` into the SDK object.
  */
 import { tNow } from '@/lib/i18n';
+import { APP_VERSION, MEMO_SIGNATURE } from '@/constants/app';
 
 /** The memo kinds the wallet can attach to a payment it builds. */
 export type MemoKind = 'text' | 'id';
@@ -81,6 +82,38 @@ export function normalizeMemo(value: string, kind: MemoKind = 'text'): { kind: M
     return isValidMemoId(v) ? { kind: 'id', value: v } : { kind: 'text', value: clampMemoText(v) };
   }
   return { kind: 'text', value: clampMemoText(v) };
+}
+
+/**
+ * The memo a transaction gets when the user did not write one.
+ *
+ * Stellar memos are free-form and most payments leave the field empty, so the wallet
+ * signs its own work: `Cosmos Wallet v1.5.0` on chain says which client built a
+ * transaction and which release, which is the difference between a support report of
+ * "the payment looked wrong" and knowing what built it.
+ *
+ * IT NEVER REPLACES A MEMO THE USER OR A PAYMENT REQUEST SUPPLIED. That is the whole
+ * rule, and it is not a style preference: a memo is frequently an exchange's deposit
+ * reference, and a payment that arrives with a marketing string where the reference
+ * should be is a deposit credited to nobody. `defaultMemo()` is therefore only ever
+ * consulted when the field is genuinely empty — see `buildMemo` in lib/stellar.ts.
+ *
+ * It is derived from {@link APP_VERSION}, so it carries the release actually running
+ * rather than a literal somebody has to remember to bump, and it is clamped like any
+ * other text memo: 28 BYTES. A prerelease version (`1.5.0-dev.412`, which the release
+ * bot produces) can exceed that, so the prerelease suffix is dropped BEFORE clamping —
+ * cutting mid-version would put `v1.5.0-de` on chain, which reads like a real version
+ * and is not one.
+ */
+export function defaultMemoText(): string {
+  // The prerelease suffix goes BEFORE the clamp, never by being cut off by it.
+  const version = APP_VERSION.split('-')[0];
+  return clampMemoText(`${MEMO_SIGNATURE} v${version}`);
+}
+
+/** The default memo as a (kind, value) pair, or null if it somehow does not fit. */
+export function defaultMemo(): { kind: MemoKind; value: string } | null {
+  return normalizeMemo(defaultMemoText(), 'text');
 }
 
 /** Why a typed memo is not acceptable, for the UI. Null when it is fine (or empty). */

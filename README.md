@@ -30,6 +30,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 | SEP-7 links | `web+stellar:pay` via provider, Firefox protocol handler, `pay` omnibox keyword and address-bar detection |
 | Extension surfaces | Popup (400×600) and side panel / sidebar, with a persistent preference toggle |
 | Developer mode | Live-overridable endpoints (prices API, Developer Platform, payments gateway) from Settings |
+| Diagnostics | Opt-in (Settings → Privacy). Errors, screen views, gateway timings and the operations built — never the seed, the password, an address or a memo. With a Cosmos Pay account they reach that account's own dashboard; without one they are anonymous |
 
 Key derivation is verified against the official **SEP-5 test vector**.
 
@@ -293,7 +294,7 @@ src/
                   useSigningGate)
   hooks/          React hooks shared across features
   lib/            behaviour with no React in it — crypto, vault, stellar, cosmospay,
-                  txGuard, validation, amount/memo/asset rules
+                  txGuard, telemetry, validation, amount/memo/asset rules
   constants/      data only: no functions, no runtime imports from lib/
   styles/         mirrors all of the above, file for file
 extension-src/    inpage.js (provider) · content.js (bridge) · sw.js (router)

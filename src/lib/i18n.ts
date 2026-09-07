@@ -228,6 +228,17 @@ export const T: Record<string, Record<Lang, string>> = {
   'setup.genderF': { es: 'Femenino', en: 'Female', pt: 'Feminino', de: 'Weiblich', fr: 'Féminin' },
   'setup.genderX': { es: 'Prefiero no decir', en: 'Prefer not to say', pt: 'Prefiro não dizer', de: 'Keine Angabe', fr: 'Je préfère ne pas le dire' },
   'setup.tooYoung': { es: 'Debes tener al menos 13 años para usar Cosmos Pay.', en: 'You must be at least 13 years old to use Cosmos Pay.', pt: 'Tens de ter pelo menos 13 anos para usar o Cosmos Pay.', de: 'Du musst mindestens 13 Jahre alt sein, um Cosmos Pay zu nutzen.', fr: 'Tu dois avoir au moins 13 ans pour utiliser Cosmos Pay.' },
+  // The consent step the SOCIAL path gets after its password screen. The seed path asks
+  // the same two on `profile-setup`, inside a form the user is already filling in; here
+  // they are the whole screen, so they need a heading that says why it is being asked.
+  'setup.optionalTitle': { es: 'Opcionales', en: 'Optional', pt: 'Opcionais', de: 'Optionales', fr: 'Optionnels' },
+  'setup.optionalDesc': {
+    es: 'Dos permisos opcionales. Puedes cambiarlos cuando quieras en Ajustes.',
+    en: 'Two optional permissions. You can change them any time in Settings.',
+    pt: 'Duas permissões opcionais. Podes alterá-las quando quiseres em Definições.',
+    de: 'Zwei optionale Berechtigungen. Du kannst sie jederzeit in den Einstellungen ändern.',
+    fr: 'Deux autorisations facultatives. Tu peux les modifier à tout moment dans les Réglages.',
+  },
   'setup.metricsOptIn': {
     es: 'Acepto compartir métricas de uso anónimas para mejorar el producto (opcional).',
     en: 'I agree to share anonymous usage metrics to improve the product (optional).',
@@ -1152,6 +1163,20 @@ export const T: Record<string, Record<Lang, string>> = {
   'devAuth.errDetail': { es: '{base} ({msg})', en: '{base} ({msg})', pt: '{base} ({msg})', de: '{base} ({msg})', fr: '{base} ({msg})' },
 
   'settings.confirmSignsDesc': { es: 'Pedir la contraseña antes de firmar cualquier operación (envíos, trustlines, transacciones).', en: 'Ask for your password before signing any operation (payments, trustlines, transactions).', pt: 'Pedir a palavra-passe antes de assinar qualquer operação (envios, trustlines, transações).', de: 'Vor jedem Signieren (Zahlungen, Trustlines, Transaktionen) nach dem Passwort fragen.', fr: 'Demander le mot de passe avant de signer toute opération (paiements, trustlines, transactions).' },
+  // ---- diagnostics (src/lib/telemetry.ts) ----
+  // The copy has to be specific about what leaves the device, because "help us improve"
+  // tells a user with a non-custodial wallet exactly nothing about whether their keys
+  // are involved. They are not, and the description is where that is said.
+  'settings.privacy': { es: 'Privacidad', en: 'Privacy', pt: 'Privacidade', de: 'Privatsphäre', fr: 'Confidentialité' },
+  'settings.diagnostics': { es: 'Enviar diagnósticos', en: 'Send diagnostics', pt: 'Enviar diagnósticos', de: 'Diagnosedaten senden', fr: 'Envoyer des diagnostics' },
+  'settings.diagnosticsDesc': {
+    es: 'Errores, tiempos de respuesta y las operaciones que haces, para detectar fallos. Nunca tu frase, tu clave ni tu contraseña.',
+    en: 'Errors, response times and the operations you run, so failures can be found. Never your recovery phrase, your key or your password.',
+    pt: 'Erros, tempos de resposta e as operações que fazes, para detetar falhas. Nunca a tua frase, a tua chave ou a tua palavra-passe.',
+    de: 'Fehler, Antwortzeiten und die von dir ausgeführten Vorgänge, damit Probleme gefunden werden. Niemals deine Wiederherstellungsphrase, dein Schlüssel oder dein Passwort.',
+    fr: 'Erreurs, temps de réponse et opérations effectuées, pour détecter les pannes. Jamais votre phrase de récupération, votre clé ni votre mot de passe.',
+  },
+
   // ---- transaction guard (src/lib/txGuard.ts) ----
   // Refusals and the review rows the approval window renders. These were Spanish
   // literals inside the guard itself, which meant a French user read a Spanish

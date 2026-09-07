@@ -489,6 +489,63 @@ match it. `openWithKey` refuses a mismatch with `VaultKeyMismatchError` — neve
 `WrongPasswordError`, because nobody typed anything and the failed-attempt ladder must not
 count it.
 
+## Diagnostics report what the device knows, and only what the user allowed
+
+`src/lib/telemetry.ts` is the wallet's own trail: errors, screen views, gateway timings
+and the operations it built. It exists because a console is not a trail here — an MV3
+popup's console dies with the popup and a phone's WebView console needs a cable — and
+because the failures worth having never reach the gateway at all (a crash on `send`, a
+cancelled signature, a Horizon submit refused on the device).
+
+Four rules, and none of them is style:
+
+- **It is OFF until the user opts in.** `STORE_LISTING.md` discloses it as optional and
+  off by default, so a default of on would make a published statement false. **Both
+  onboarding paths have to ask**, and that is the part that was wrong once: the seed path
+  asks on `profile-setup`, and the social path — which skips that screen, because Pollar
+  supplies the name, the email and the avatar — asked nowhere, so a Pollar wallet was
+  created with `metricsOptIn` absent and the user never given the choice. It now has a
+  second step on `PasswordSetup` (shared `OptionalConsents`), placed after the password
+  because a separate screen would have to carry the typed password across a navigation.
+  `finishOnboarding` writes the answer in both branches; Settings → Privacy flips it
+  afterwards.
+- **The transport is decided by whether the wallet has an account.** With a Cosmos Pay
+  key it posts to the gateway with it and the events land in that account's own
+  dashboard; without one it posts to the platform's public route and is filed under a
+  shared consumer. A 401/403 from the keyed path (every key minted before
+  `activity:write` existed) falls back rather than going silent.
+- **Nothing account-identifying travels anonymously.** `ACCOUNT_PROPS` — address,
+  destination, amount, txHash — are stripped on the anonymous route. A new prop that
+  names an account or a transaction belongs in that list the day it is added.
+- **Memo text is never reported, on either path.** A memo is a message to a third
+  party, and often an exchange's deposit reference.
+
+`report()` never throws and never awaits, because its callers are `catch` blocks, the
+error boundary and a global handler. `tests/unit/telemetry.test.ts` pins the four rules
+above; that suite is why the network-failure-reads-as-success bug in `flushTelemetry`
+was caught before it shipped.
+
+## The wallet signs its own transactions with a memo — never over one
+
+`buildMemo` (`src/lib/stellar.ts`) falls back to `defaultMemo()` (`src/lib/memo.ts`),
+which is `Cosmos Wallet v<version>` derived from `APP_VERSION` — so a transaction says
+on chain which client built it and which release.
+
+**It only ever fills an EMPTY field.** A memo the user typed, and a memo a SEP-7 request
+carried, are left exactly as they are: a memo is routinely an exchange's deposit
+reference, and a client that overwrote one would credit somebody's deposit to nobody.
+`normalizeMemo` first, default second, never the other way round.
+
+The label lives in `constants/app.ts` as `MEMO_SIGNATURE`, and its length is
+load-bearing: a text memo is 28 BYTES, and the label plus ` v` plus a semver leaves nine
+bytes of headroom. The prerelease suffix the release bot produces (`1.5.0-dev.412`) is
+dropped BEFORE the clamp — cutting mid-version would put `v1.5.0-de` on chain, which
+reads like a version and is not one.
+
+Swaps and liquidity operations are **not** covered by this: their envelope is built by
+the gateway, whose `memo` field is a numeric MEMO_ID and whose own commission memo
+already labels those transactions. Do not send a text memo there.
+
 ## Consolidating components
 
 Merge what is *the same*, not what looks similar. `Field` absorbed three components by

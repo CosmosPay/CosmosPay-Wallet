@@ -45,5 +45,3 @@
   border: 1px solid var(--primary-border);
 }
 .profile-setup-gender-off { color: var(--text); } /* surface comes from .glass-soft */
-.profile-setup-check-metrics { margin-bottom: 10px; }
-.profile-setup-check-promo { margin-bottom: 14px; }

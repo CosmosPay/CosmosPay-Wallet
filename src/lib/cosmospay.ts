@@ -205,6 +205,8 @@ import {
   VirtualAccountShape,
 } from '@/lib/cosmospayShapes';
 import { tNow } from '@/lib/i18n';
+import { report, reportError } from '@/lib/telemetry';
+import { EVENT, SLOW_REQUEST_MS } from '@/constants/telemetry';
 import type { PollarSession, PollarSessionStatus } from '@/lib/pollar';
 import { PollarSessionStatusShape, SocialAuthorizationShape, SocialClaimShape } from '@/lib/pollarShapes';
 
@@ -215,6 +217,51 @@ interface Envelope {
   code?: number;
   status?: string;
   message?: string;
+}
+
+/**
+ * A gateway path with its ids removed, e.g. `/v1/kyc/receivers/:id/wallets`.
+ *
+ * What the activity feed groups on has to be the ROUTE, not the URL: with the id left
+ * in, "which endpoint is failing" becomes one row per receiver and the answer is
+ * invisible. It is also the privacy line — an id names one of the user's own records,
+ * and a wallet with no Cosmos Pay account reports anonymously.
+ *
+ * The test is shape, not a route table: a table here would be a second copy of the
+ * gateway's routes, kept in sync by hand, in a client that ships weeks behind it.
+ */
+function apiRoute(url: string): string {
+  try {
+    // A relative base for the same-origin dev case, where `url` has no origin at all.
+    const { pathname } = new URL(url, 'http://wallet.local');
+    return pathname
+      .split('/')
+      .map((seg) => (/^(?:[a-z]{2,5}_)?[A-Za-z0-9_-]{12,}$/.test(seg) ? ':id' : seg))
+      .join('/');
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
+ * Report what a gateway call did, once the outcome is known.
+ *
+ * Failures at `error`, because a refused call is what the user meets as a screen that
+ * will not load; a call that merely took too long is `warn` and a separate event, so
+ * "it hangs" — which no error log can answer — has something behind it. A 2xx is not
+ * reported at all: the point is the exceptions, and one row per successful read would
+ * bury them and cost a request per screen.
+ */
+function reportCall(url: string, startedAt: number, status: number, err?: unknown): void {
+  const durationMs = Math.round(Date.now() - startedAt);
+  const props = { route: apiRoute(url), status, durationMs };
+  if (err) {
+    reportError(EVENT.apiError, err, props);
+    return;
+  }
+  if (durationMs >= SLOW_REQUEST_MS) {
+    report(EVENT.apiSlow, { level: 'warn', category: 'metric', durationMs, props });
+  }
 }
 
 /**
@@ -234,11 +281,20 @@ async function postJson<T>(
   unwrap: boolean,
   shape: Check<unknown>,
 ): Promise<T> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...headers },
-    body: JSON.stringify(body),
-  });
+  const startedAt = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    // A transport failure, not an HTTP one: no status, and it is the shape an offline
+    // wallet takes. Status 0 is how the feed tells the two apart.
+    reportCall(url, startedAt, 0, e);
+    throw e;
+  }
 
   let json: unknown = null;
   try {
@@ -248,8 +304,11 @@ async function postJson<T>(
   }
 
   if (!res.ok) {
-    throw apiError(url, res, json, RETRY_AFTER_CAP_S);
+    const err = apiError(url, res, json, RETRY_AFTER_CAP_S);
+    reportCall(url, startedAt, res.status, err);
+    throw err;
   }
+  reportCall(url, startedAt, res.status);
 
   const payload =
     unwrap && json && typeof json === 'object' && 'data' in (json as Envelope) ? (json as Envelope).data : json;
@@ -728,7 +787,14 @@ export async function createPayLink(apiKey: string, input: PayLinkInput): Promis
 /** GET helper for the gateway (the payments API returns raw shapes, no envelope).
  *  `shape` is required for the same reason it is on postJson. */
 async function getJson<T>(url: string, apiKey: string, shape: Check<unknown>): Promise<T> {
-  const res = await fetch(url, { headers: authHeaders(apiKey) });
+  const startedAt = Date.now();
+  let res: Response;
+  try {
+    res = await fetch(url, { headers: authHeaders(apiKey) });
+  } catch (e) {
+    reportCall(url, startedAt, 0, e);
+    throw e;
+  }
   let json: unknown = null;
   try {
     json = await res.json();
@@ -736,8 +802,11 @@ async function getJson<T>(url: string, apiKey: string, shape: Check<unknown>): P
     /* empty / non-JSON */
   }
   if (!res.ok) {
-    throw apiError(url, res, json, RETRY_AFTER_CAP_S);
+    const err = apiError(url, res, json, RETRY_AFTER_CAP_S);
+    reportCall(url, startedAt, res.status, err);
+    throw err;
   }
+  reportCall(url, startedAt, res.status);
   parseShape(url, shape, json);
   return json as T;
 }

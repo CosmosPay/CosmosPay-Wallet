@@ -8,12 +8,15 @@ import assert from 'node:assert/strict';
 import {
   MEMO_TEXT_MAX_BYTES,
   clampMemoText,
+  defaultMemo,
+  defaultMemoText,
   isValidMemoId,
   memoByteLength,
   memoKindFromSep7,
   memoProblem,
   normalizeMemo,
 } from '@/lib/memo';
+import { APP_VERSION, MEMO_SIGNATURE } from '@/constants/app';
 import { tNow } from '@/lib/i18n';
 
 test('memo is clamped by BYTES, not characters', () => {
@@ -89,4 +92,36 @@ test('memoProblem explains a rejection', () => {
   // 28 two-byte characters = 56 bytes, so exactly 28 over the limit.
   assert.equal(memoProblem('ñ'.repeat(28), 'text'), tNow('memo.overByteLimit', { max: 28, over: 28 }));
   assert.equal(memoProblem('no-num', 'id'), tNow('memo.idMustBeInteger'));
+});
+
+/**
+ * The wallet's own memo, and the one rule around it that costs real money if it is
+ * ever relaxed: it fills an EMPTY field and never replaces a supplied one. A memo is
+ * routinely an exchange's deposit reference, so a client that overwrote one would
+ * credit somebody's deposit to nobody.
+ */
+test('the default memo names the wallet and its version', () => {
+  const memo = defaultMemoText();
+  assert.ok(memo.startsWith(`${MEMO_SIGNATURE} v`));
+  // The release actually running, not a literal somebody has to remember to bump.
+  assert.ok(memo.includes(APP_VERSION.split('-')[0]));
+});
+
+test('the default memo fits a text memo, prerelease versions included', () => {
+  assert.ok(memoByteLength(defaultMemoText()) <= MEMO_TEXT_MAX_BYTES);
+  // The suffix the release bot produces is dropped whole rather than cut by the clamp:
+  // `v1.5.0-de` would read like a version and not be one.
+  assert.ok(!defaultMemoText().includes('-'));
+  assert.deepEqual(defaultMemo(), { kind: 'text', value: defaultMemoText() });
+});
+
+test('a supplied memo is never replaced by the default', () => {
+  // normalizeMemo is what buildMemo consults first; the default is only reached when
+  // this returns null. Asserted here because the branch that matters lives in
+  // lib/stellar.ts, which needs the Stellar SDK and a network to exercise.
+  assert.deepEqual(normalizeMemo('12345', 'id'), { kind: 'id', value: '12345' });
+  assert.deepEqual(normalizeMemo('order-42', 'text'), { kind: 'text', value: 'order-42' });
+  // Only an empty field falls through to it.
+  assert.equal(normalizeMemo('', 'text'), null);
+  assert.equal(normalizeMemo('   ', 'text'), null);
 });
