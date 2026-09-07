@@ -2,6 +2,11 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.6.1] - 2026-09-07
+
+### Miscellaneous
+- Bump the minor-and-patch group across 1 directory with 5 updates (8997b5f)
+
 ## [1.6.0] - 2026-09-07
 
 ### Features
