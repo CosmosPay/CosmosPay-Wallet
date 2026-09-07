@@ -11,6 +11,11 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 
 > **Truly non-custodial:** keys are generated and encrypted on your device. Neither the recovery
 > phrase nor the secret key ever leaves it. Servers only receive locally-signed transactions.
+>
+> The one exception is **social login** (Google / GitHub), which is opt-in and **custodial**:
+> that key lives in Pollar's KMS, so there is no recovery phrase to lose and none to hold.
+> The onboarding screen states this above the buttons — before the consent screen, not after.
+> Wallets created or imported from a recovery phrase are unaffected.
 
 ## Features
 
@@ -19,6 +24,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 | Create / import / export wallet | 12-word BIP-39 + **SEP-5** derivation (`m/44'/148'/0'`); import from phrase or secret key (`S…`) |
 | Encrypted vault | **AES-256-GCM**, key derived with **PBKDF2** (210k iters); unlock decrypts in memory only |
 | Idle auto-lock | The session is dropped after 5 minutes without interaction; getting back in needs the password |
+| Unlock with the phone | Opt-in on Android/iOS. The vault key is sealed under a key the OS releases only for a live biometric check, and that is destroyed when the biometric set changes; the password keeps working throughout |
 | Signing guard | `assertSafeToSign` decodes every XDR before the key touches it and refuses what does not fit the flow (see Security model) |
 | Balances, send & receive | Horizon; QR receive; XLM send creates the destination account when needed |
 | Swap | Via the Cosmos Pay gateway (auto-quotes, slippage protection) |
@@ -26,6 +32,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 | History | Last operations with color-coded icons (green in / red out / white neutral) + genesis marker |
 | Favorites & markets | Star assets to pin them in the top-5; live prices (CoinGecko) with animated tickers |
 | Multi-wallet | Create / import / switch under one password; per-wallet email, gender-aware greetings |
+| Social login | Sign in with Google or GitHub for a Stellar account without a recovery phrase. **Custodial** (Pollar KMS) — flagged as such before the consent screen. One login also creates an ordinary seed wallet for testnet under the same password |
 | Dapp provider | `window.cosmosWallet` (SEP-43-style): `getAddress`, `getNetwork`, `signTransaction`, `signMessage`, `requestPayment` |
 | SEP-7 links | `web+stellar:pay` via provider, Firefox protocol handler, `pay` omnibox keyword and address-bar detection |
 | Extension surfaces | Popup (400×600) and side panel / sidebar, with a persistent preference toggle |
@@ -50,9 +57,16 @@ Key derivation is verified against the official **SEP-5 test vector**.
    build itself — the envelope the gateway returns, the one a dapp hands over — goes through
    `assertSafeToSign` (`src/lib/txGuard.ts`): it decodes the XDR, checks the source is us,
    allowlists only the operations that flow may contain, refuses account-takeover operations
-   (`setOptions`, `accountMerge`, sponsorship, clawback), caps the fee, rejects fee-bump wrappers,
-   and bounds the amount by the quote the user just confirmed. Refuse, don't warn.
-7. The **network passphrase is never taken from the counterparty** — it is read from the wallet's
+   (`setOptions`, `accountMerge`, sponsorship, clawback, `invokeHostFunction`), caps the fee and
+   the operation count, rejects fee-bump wrappers, checks **where** the value lands, and bounds
+   the amount by the quote the user just confirmed — never by the response that carried the XDR.
+   Refuse, don't warn.
+7. **A signature has to stop being valid.** The guard requires a bounded validity window: no
+   `maxTime` is a refusal, and so is an expired one, one further out than 15 minutes, or a
+   `minTime` in the future. The counterparty is the one who submits these envelopes, so an
+   unbounded window would be a free option handed to it. A 5-minute clock-skew allowance
+   applies at both ends, because a phone's clock is not NTP-disciplined.
+8. The **network passphrase is never taken from the counterparty** — it is read from the wallet's
    own network config, so a "Testnet" approval cannot yield a valid Mainnet signature.
    `signMessage` signs a domain-separated digest, never the caller's bytes, so a 32-byte "message"
    that is really a transaction hash cannot come back as a valid transaction signature.
