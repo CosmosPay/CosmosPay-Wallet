@@ -686,6 +686,14 @@ export const T: Record<string, Record<Lang, string>> = {
     fr: 'The swap is built and signed on your device; CosmosPay submits it to the network. The fee is set by your organization’s plan.',
   },
 
+  'swap.publicRate': {
+    es: 'Estás usando el acceso público de CosmosPay: 1,5 % de comisión. Crea una cuenta gratuita para acceder a las tasas promocionales.',
+    en: 'You are using CosmosPay public access: 1.5% commission. Create a free account to get the promotional rates.',
+    pt: 'Estás a usar o acesso público da CosmosPay: 1,5% de comissão. Cria uma conta gratuita para obter as taxas promocionais.',
+    de: 'Du nutzt den öffentlichen CosmosPay-Zugang: 1,5 % Provision. Erstelle ein kostenloses Konto für die Aktionskonditionen.',
+    fr: 'Tu utilises l’accès public CosmosPay : 1,5 % de commission. Crée un compte gratuit pour bénéficier des taux promotionnels.',
+  },
+
   // ---- earn ----
   'earn.title': { es: 'Ganar', en: 'Earn', pt: 'Ganhar', de: 'Verdienen', fr: 'Gagner' },
   'earn.totalAssets': { es: 'Valor total de tus activos', en: 'Total value of your assets', pt: 'Valor total dos teus ativos', de: 'Gesamtwert deiner Assets', fr: 'Valeur totale de tes actifs' },
@@ -942,6 +950,42 @@ export const T: Record<string, Record<Lang, string>> = {
     pt: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. You sign with your Stellar key and confirm by email — no secrets stored in the app.',
     de: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. You sign with your Stellar key and confirm by email — no secrets stored in the app.',
     fr: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. You sign with your Stellar key and confirm by email — no secrets stored in the app.',
+  },
+
+  'addAsset.verified': {
+    es: 'Emisores verificados',
+    en: 'Verified issuers',
+    pt: 'Emissores verificados',
+    de: 'Verifizierte Emittenten',
+    fr: 'Émetteurs vérifiés',
+  },
+  'addAsset.unverified': {
+    es: 'Sin verificar',
+    en: 'Unverified',
+    pt: 'Não verificados',
+    de: 'Nicht verifiziert',
+    fr: 'Non vérifiés',
+  },
+  'addAsset.unverifiedWarn': {
+    es: 'No comprobamos quién controla estos emisores. Cualquiera puede emitir un token con un código conocido: revisá la dirección del emisor antes de confiar en él.',
+    en: 'We have not checked who controls these issuers. Anyone can issue a token using a well-known code — check the issuer address before trusting it.',
+    pt: 'Não verificámos quem controla estes emissores. Qualquer pessoa pode emitir um token com um código conhecido — confirma o endereço do emissor antes de confiar.',
+    de: 'Wir haben nicht geprüft, wer diese Emittenten kontrolliert. Jeder kann ein Token mit einem bekannten Code ausgeben — prüfe die Emittenten-Adresse, bevor du ihr vertraust.',
+    fr: 'Nous n’avons pas vérifié qui contrôle ces émetteurs. N’importe qui peut émettre un jeton avec un code connu — vérifie l’adresse de l’émetteur avant de lui faire confiance.',
+  },
+  'addAsset.issuedBy': {
+    es: 'Emitido por {name}',
+    en: 'Issued by {name}',
+    pt: 'Emitido por {name}',
+    de: 'Ausgegeben von {name}',
+    fr: 'Émis par {name}',
+  },
+  'addAsset.clawbackWarn': {
+    es: 'El emisor puede congelar o recuperar este saldo.',
+    en: 'The issuer can freeze or claw back this balance.',
+    pt: 'O emissor pode congelar ou recuperar este saldo.',
+    de: 'Der Emittent kann dieses Guthaben einfrieren oder zurückholen.',
+    fr: 'L’émetteur peut geler ou récupérer ce solde.',
   },
   'cosmospay.cta': { es: 'Conectar', en: 'Connect', pt: 'Conectar', de: 'Verbinden', fr: 'Connecter' },
   'cosmospay.manage': { es: 'Cosmos Pay', en: 'Cosmos Pay', pt: 'Cosmos Pay', de: 'Cosmos Pay', fr: 'Cosmos Pay' },

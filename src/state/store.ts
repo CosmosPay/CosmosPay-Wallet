@@ -158,6 +158,7 @@ import { usePreferences, applySavedThemeEarly, savedRequireConfirm } from '@/sta
 import { useSigningGate } from '@/state/useSigningGate';
 import { parseStellarQr } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
+import { cachedPublicKey, warmPublicKey } from '@/lib/publicKey';
 import { configureTelemetry, report, reportError, setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
 import { EVENT } from '@/constants/telemetry';
 
@@ -471,6 +472,16 @@ export function useWalletStore() {
   // A registration awaiting email confirmation (set after enableReceiving until
   // claimReceiving succeeds). Plaintext-persisted so it survives a reload.
   const [cosmosPayPending, setCosmosPayPending] = useState<CosmosPayPending | null>(null);
+  /**
+   * Whether a gateway credential is available at all — this account's, or the
+   * shared public one once it has loaded.
+   *
+   * State rather than a derived boolean because the public key arrives from a
+   * fetch: the swap screen must enable itself when it lands, and a plain
+   * `cachedPublicKey()` read during render would be false on the first pass and
+   * never re-run.
+   */
+  const [publicKeyReady, setPublicKeyReady] = useState(false);
   // Account-linking flow, shown when registration reports the email already has an
   // account: 'offer' (prompt to link) → 'sent' (access code emailed, awaiting the code).
   // In-memory only — the code lives in the user's email and is short-lived; a reload
@@ -2036,15 +2047,54 @@ export function useWalletStore() {
     return () => clearInterval(id);
   }, [cosmosPayPending, cosmosPay]);
 
+  /**
+   * A key for the endpoints that need no account: quotes, envelope builders and
+   * on-chain reads.
+   *
+   * This account's own key when it has one — the plan's commission is lower — and
+   * the shared public key otherwise. That fallback is the whole point: swapping
+   * used to end at "create an account first", a registration wall in front of the
+   * thing the user opened the wallet to do. Now it costs 150 bps instead of
+   * nothing, and registering is what lowers it.
+   *
+   * Returns null only when neither exists, which means the platform was
+   * unreachable on a build that shipped no compiled-in key.
+   */
+  const openAccessKey = useCallback((): string | null => {
+    const env = networkEnv(network);
+    const own = cosmosPay?.keys[env] ?? null;
+    if (own) return own;
+    const shared = cachedPublicKey(env);
+    if (!shared) flash(t('cosmospay.enableFirst'), 'info');
+    return shared;
+  }, [cosmosPay, network, t, flash]);
+
+  /**
+   * True when the wallet is operating on the shared key rather than its own.
+   *
+   * Screens read it to show the public commission and the offer to lower it. It is
+   * derived from the account, not from the key's text: a wallet that HAS an
+   * account is never on the public rate, even in the moment before its key loads.
+   */
+  const publicAccess = !cosmosPay?.keys[networkEnv(network)];
+
+  /**
+   * Whether the quote/build endpoints are reachable — with an account or without.
+   *
+   * What the swap and liquidity screens gate on now. They used to gate on having a
+   * CosmosPay account, which put a registration wall in front of the feature; the
+   * account changes the commission, not whether the button works.
+   */
+  const gatewayAccess = !publicAccess || publicKeyReady;
+
   /** Fetch a swap quote for `from` -> `to`. Returns null on error / not enabled. */
   const quoteSwap = useCallback(
     async (amount: string, from: SwapAsset, to: SwapAsset): Promise<SwapQuote | null> => {
-      // Pick the key for the wallet's current network (testnet -> dev, mainnet -> prod).
-      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
-      if (!apiKey) {
-        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
-        return null;
-      }
+      // This account's key when it has one, the shared public key otherwise — a
+      // quote needs no account, only a commission rate, and the gateway injects
+      // that per consumer.
+      const apiKey = openAccessKey();
+      if (!apiKey) return null;
       try {
         return await cpQuoteSwap(apiKey, {
           amount,
@@ -2069,11 +2119,8 @@ export function useWalletStore() {
   const submitSwap = useCallback(
     async (amount: string, from: SwapAsset, to: SwapAsset, quote: SwapQuote) => {
       if (!session) return;
-      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
-      if (!apiKey) {
-        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
-        return;
-      }
+      const apiKey = openAccessKey();
+      if (!apiKey) return;
       await exclusive.run('swap', async () => {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
@@ -2188,14 +2235,45 @@ export function useWalletStore() {
    */
   useEffect(() => {
     const env = networkEnv(network);
-    configureTelemetry({ apiKey: cosmosPay?.keys[env] ?? null, env, network: network.id });
+    const own = cosmosPay?.keys[env] ?? null;
+    if (own) {
+      configureTelemetry({ apiKey: own, shared: false, env, network: network.id });
+      setPublicKeyReady(true);
+      return;
+    }
+    // No account: report under the shared public key so a wallet nobody registered
+    // still delivers its crashes. `shared` is what keeps that honest — the events
+    // reach the gateway, but stripped of anything naming an account, because the
+    // consumer they authenticate as is every anonymous wallet at once.
+    const compiled = cachedPublicKey(env);
+    configureTelemetry({ apiKey: compiled, shared: true, env, network: network.id });
+    setPublicKeyReady(!!compiled);
+    let alive = true;
+    void warmPublicKey(env).then((key) => {
+      if (!alive || !key) return;
+      configureTelemetry({ apiKey: key, shared: true, env, network: network.id });
+      setPublicKeyReady(true);
+    });
+    return () => {
+      alive = false;
+    };
   }, [cosmosPay, network]);
 
+  /**
+   * THIS ACCOUNT's key, or nothing.
+   *
+   * For the endpoints that read back what a consumer wrote, or that hold one
+   * person's identity documents and bank accounts. The shared public key is
+   * deliberately not offered here: the gateway refuses it on those routes, and
+   * substituting it would turn a clear "connect an account" prompt into a 403
+   * from somewhere the user cannot act on.
+   */
   const cosmosApiKey = useCallback((): string | null => {
     const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
     if (!apiKey) flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
     return apiKey;
   }, [cosmosPay, network, t, flash]);
+
 
   /* ----------------------- gateway operations --------------------- */
 
@@ -2722,7 +2800,7 @@ export function useWalletStore() {
   /** Browse on-chain liquidity pools (Horizon proxy). Returns [] on error / not enabled. */
   const listPools = useCallback(
     async (input: ListPoolsInput = {}): Promise<LiquidityPool[]> => {
-      const apiKey = cosmosApiKey();
+      const apiKey = openAccessKey();
       if (!apiKey) return [];
       try {
         return (await cpListLiquidityPools(apiKey, input)).data;
@@ -2731,13 +2809,13 @@ export function useWalletStore() {
         return [];
       }
     },
-    [cosmosApiKey, t, flash],
+    [openAccessKey, t, flash],
   );
 
   /** This wallet's pool share positions (with redeemable amounts). [] on error. */
   const liquidityPositions = useCallback(async (): Promise<LiquidityPosition[]> => {
     if (!meta) return [];
-    const apiKey = cosmosApiKey();
+    const apiKey = openAccessKey();
     if (!apiKey) return [];
     try {
       return (await cpLiquidityPositions(apiKey, meta.publicKey)).data;
@@ -2745,7 +2823,7 @@ export function useWalletStore() {
       flash((e as Error).message || t('lp.loadError'), 'err');
       return [];
     }
-  }, [meta, cosmosApiKey, t, flash]);
+  }, [meta, openAccessKey, t, flash]);
 
   /**
    * Full deposit flow: build (server prices it + builds the XDR) -> sign locally
@@ -2754,7 +2832,7 @@ export function useWalletStore() {
   const submitDeposit = useCallback(
     async (input: { assetA: SwapAsset; assetB: SwapAsset; maxAmountA: string; maxAmountB?: string }) => {
       if (!session) return;
-      const apiKey = cosmosApiKey();
+      const apiKey = openAccessKey();
       if (!apiKey) return;
       await exclusive.run('lp-deposit', async () => {
         const epoch = sessionEpochRef.current;
@@ -2840,14 +2918,14 @@ export function useWalletStore() {
         }
       });
     },
-    [session, account, cosmosApiKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
+    [session, account, openAccessKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
   );
 
   /** Full withdraw flow: build -> sign locally -> submit. Mirrors submitDeposit. */
   const submitWithdraw = useCallback(
     async (input: { poolId: string; shares: string }) => {
       if (!session) return;
-      const apiKey = cosmosApiKey();
+      const apiKey = openAccessKey();
       if (!apiKey) return;
       await exclusive.run('lp-withdraw', async () => {
         const epoch = sessionEpochRef.current;
@@ -2917,18 +2995,17 @@ export function useWalletStore() {
         }
       });
     },
-    [session, cosmosApiKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
+    [session, openAccessKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
   );
 
   /** Create a shareable CosmosPay pay link (SEP-7 pay intent) addressed to this wallet. */
   const createPayLink = useCallback(
     async (input: { amount?: string; assetCode?: string; assetIssuer?: string; memo?: string; msg?: string }): Promise<PayIntent | null> => {
       if (!meta) return null;
-      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
-      if (!apiKey) {
-        flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
-        return null;
-      }
+      // A pay link is built from the request and addressed to this wallet, so it
+      // needs no account of its own.
+      const apiKey = openAccessKey();
+      if (!apiKey) return null;
       try {
         const intent = await cpCreatePayLink(apiKey, { destination: meta.publicKey, ...input });
         report(EVENT.payLinkCreated, {
@@ -3825,6 +3902,11 @@ export function useWalletStore() {
     revealBackup,
     cosmosPay,
     cosmosPayPending,
+    // True while the wallet is swapping on the shared public key. Screens read it
+    // to show the public commission and the offer to lower it; the fee itself is
+    // always the one the gateway returned in the quote, never this.
+    publicAccess,
+    gatewayAccess,
     cosmosLink,
 
     /*

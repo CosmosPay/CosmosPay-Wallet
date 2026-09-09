@@ -5,7 +5,6 @@ import { BackBar } from '@/ui/BackBar';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { trim } from '@/lib/format';
-import { networkEnv } from '@/lib/stellar';
 import { cx } from '@/lib/cx';
 import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
 import type { SwapQuote } from '@/lib/cosmospay';
@@ -55,7 +54,12 @@ export function Swap({ store }: { store: WalletStore }) {
   // "Enabled" for swapping means we have a CosmosPay key for the wallet's CURRENT network
   // (testnet -> dev, mainnet -> prod). If the account exists but lacks this network's key
   // (e.g. an older single-key account), the link card shows so the user can mint both.
-  const enabled = !!store.cosmosPay?.keys[networkEnv(store.network)];
+  // Swapping needs a gateway credential, not an ACCOUNT. Without one of their own
+  // the user swaps on the shared public key at the community rate (150 bps); with
+  // one they get their plan's. Gating this on `cosmosPay` — as it did — put a
+  // registration wall in front of the feature, when the account only ever changed
+  // the price. `store.publicAccess` is what the rate notice below reads.
+  const enabled = store.gatewayAccess;
   const sameAsset = isSameAsset(fromRef, toRef);
   // Spendable amount of the source asset — XLM keeps the account's minimum reserve free,
   // so the swap (which sends the gross amount) can't exceed it. Prevents op_underfunded.
@@ -187,6 +191,15 @@ export function Swap({ store }: { store: WalletStore }) {
         </div>
       )}
 
+      {/* On the shared key: say what it costs and what an account would change.
+          The percentage shown in the rows above is always the gateway's own
+          number from the quote — this is the offer, not the price. */}
+      {enabled && store.publicAccess && (
+        <div className="glass exchange-note">
+          {t('swap.publicRate')}
+        </div>
+      )}
+
       <div className="spacer" />
       {enabled ? (
         // The quote travels with the submit: the guard bounds the envelope by what THIS
@@ -198,8 +211,9 @@ export function Swap({ store }: { store: WalletStore }) {
           </PrimaryButton>
         </div>
       ) : (
-        // Not provisioned/linked yet — route through the same Cosmos account flow as Home
-        // (enable → confirm email, or link an existing account via a one-time access code).
+        // No credential at all: the platform was unreachable and this build shipped
+        // no compiled-in public key. Falling back to the account flow is right —
+        // it is the one path that does not depend on that fetch.
         <EnableReceivingCard store={store} />
       )}
     </div>

@@ -22,3 +22,13 @@ export const PAGE_SIZE = 100;
  * early and was refused again", which at least says so.
  */
 export const RETRY_AFTER_CAP_S = 3600;
+
+/**
+ * How long a fetched public API key is reused before asking the platform again.
+ *
+ * Short next to the asset registry's hour, because the reason the key is fetched
+ * at all rather than only compiled in is that a rotation should take effect
+ * quickly. Five minutes bounds how long a wallet keeps presenting a key that is
+ * on its way to being deleted; the compiled-in value covers the gap either way.
+ */
+export const PUBLIC_KEY_TTL_MS = 5 * 60 * 1000;

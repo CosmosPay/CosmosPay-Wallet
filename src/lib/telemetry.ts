@@ -49,6 +49,7 @@
  * Turning it off drops what is already queued rather than keeping it for later — an
  * opt-out that still sends the last few minutes is not one.
  */
+import { isPublicKey } from '@/lib/publicKey';
 import { APP_VERSION } from '@/constants/app';
 import {
   DEVICE_KEY,
@@ -121,6 +122,18 @@ let keyRefused = false;
    call site because a crash handler has no access to the store — the whole point of
    this module is that it works when the app does not. */
 let apiKey: string | null = null;
+/**
+ * Whether {@link apiKey} is the SHARED public key rather than this user's own.
+ *
+ * It changes what may travel, not where it goes. The shared key authenticates
+ * every anonymous wallet as one consumer, so events sent with it land in a
+ * dashboard that is not the user's — which makes it an anonymous path wearing a
+ * credential, and {@link ACCOUNT_PROPS} must be stripped exactly as they are on
+ * the keyless route. Without this flag the mere presence of a key is read as
+ * "this account owns these events", and an address, an amount and a txHash would
+ * be published to a shared tenant.
+ */
+let sharedKey = false;
 let env: 'dev' | 'prod' = 'dev';
 let network: string | null = null;
 
@@ -136,13 +149,25 @@ let distinctId = '';
  * with no Cosmos Pay account and also the correct state after `lock()` — a locked
  * wallet has no business attributing anything.
  */
-export function configureTelemetry(cfg: { apiKey?: string | null; env?: 'dev' | 'prod'; network?: string | null }): void {
+export function configureTelemetry(cfg: {
+  apiKey?: string | null;
+  /** True when `apiKey` is the shared public key — see {@link sharedKey}. */
+  shared?: boolean;
+  env?: 'dev' | 'prod';
+  network?: string | null;
+}): void {
   if (cfg.apiKey !== undefined) {
     // A different key is a different account: whatever it refused is not this one's
     // problem, so the fallback latch is released.
     if (cfg.apiKey !== apiKey) keyRefused = false;
     apiKey = cfg.apiKey;
+    // Derived, not defaulted. An explicit flag would be one a caller can forget,
+    // and the cost of forgetting is publishing an address to a shared tenant —
+    // so the answer comes from the module that handed the key out. `shared` is
+    // still accepted, for a caller that knows something this cannot.
+    sharedKey = cfg.shared ?? isPublicKey(cfg.apiKey);
   }
+  if (cfg.shared !== undefined) sharedKey = cfg.shared;
   if (cfg.env) env = cfg.env;
   if (cfg.network !== undefined) network = cfg.network;
 }
@@ -304,7 +329,11 @@ export async function flushTelemetry(): Promise<void> {
   try {
     const key = apiKey;
     if (key && !keyRefused) {
-      const res = await postEvents(`${gatewayApi()}/v1/activity/events`, { events: batch }, {
+      // The shared public key reaches the gateway like any other — the ingest route
+      // admits it — but what it carries is anonymized first, because the consumer it
+      // authenticates as is every anonymous wallet at once.
+      const events = sharedKey ? anonymize(batch) : batch;
+      const res = await postEvents(`${gatewayApi()}/v1/activity/events`, { events }, {
         Authorization: `Bearer ${key}`,
       });
       // 401/403 = this key predates the `activity:write` scope (or lost it). Every

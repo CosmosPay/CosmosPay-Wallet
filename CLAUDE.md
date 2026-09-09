@@ -377,6 +377,57 @@ from their own fingerprint. Do not patch the session's `vaultKey` instead of loc
 partially applied change would make the store assert a key true of some wallets and not
 others.
 
+## An asset is a (code, issuer) pair, and the registry says whose
+
+`src/lib/assetRegistry.ts` answers "which asset is this, and who issues it?" from three
+sources, each covering the one before: **our API** (`/api/assets`, no key — a first-run
+wallet has no credential and still has to name what it is about to trust), the
+**bundled table** in `src/constants/assetRegistry.ts`, and the **user's own Horizon**
+via `resolveAssetIssuer`.
+
+The whole thing exists because a code is not an identifier. Mainnet carries twenty-odd
+accounts issuing `USDC` and eight issuing `USDT0`; on testnet not one issuer publishes a
+home domain, so an explorer shows nothing that separates thirteen `USDT0` candidates,
+none of which is Tether. Four rules follow:
+
+- **`verified` is a claim about IDENTITY, not quality.** It means the issuing account was
+  checked against the organization named in `issuerName`. Unverified entries are shown,
+  below a warning — hiding them pushes the user into the manual issuer field, where they
+  have less information, not more.
+- **Horizon's answer is never verified.** `resolveAssetIssuer` ranks by trustline count,
+  which is a popularity contest; the most-held issuer of a code and the legitimate one
+  are different claims, and conflating them is what the registry exists to prevent.
+- **`issuerDomain` is the issuer's own on-chain `home_domain` or empty.** Never a third
+  party's attribution: rendered beside a token it reads as the issuer's own claim, which
+  is exactly the move an impostor makes. USDT0 is the worked example — stellar.expert
+  attributes it to `usdt0.to`, the ledger says nothing, so the field is empty and its
+  identity rests on the SAC id.
+- **The fetched list REPLACES the bundled one, never merges.** A merge would resurrect an
+  entry the server deliberately dropped — an issuer that turned out to be an impostor —
+  still wearing the badge it had the day we vouched for it. A registry has to shrink.
+
+Two `EURC` rows from different issuers (Circle and MyKobo) are both legitimate and both
+kept, deliberately: they are what breaks any screen that keys on a bare code.
+
+## Swapping does not require an account; it changes the price
+
+`openAccessKey()` in the store returns this account's key when it has one and the
+**shared public key** otherwise (`src/lib/publicKey.ts`). Swap, liquidity and pay links
+go through it; KYC, the fiat rails and the onramp trustline keep `cosmosApiKey()`, which
+is account-only — the gateway refuses the public key there, and substituting it would
+turn a clear "connect an account" prompt into a 403 the user cannot act on.
+
+The public key is not a secret and nothing pretends it is: it ships in an open-source
+binary. What confines it is server-side — it carries `role: 'public'`, and the gateway
+admits that role only on handlers marked `@AllowPublicKey()`, which return no
+per-consumer rows. It signs nothing; the device still holds the key that signs.
+
+Screens gate on `store.gatewayAccess` (a credential exists), not on `store.cosmosPay` (an
+account exists). Gating on the account put a registration wall in front of the feature
+when the account only ever changed the commission: 150 bps on the public key, the plan's
+rate with one. `store.publicAccess` is what a screen reads to show that difference — the
+percentage displayed in a quote is always the gateway's own number, never this flag.
+
 ## Validation lives in `src/lib/`, never in a component
 
 **No `.tsx` file computes validity from a regex or a length literal.** Import a named
@@ -563,9 +614,15 @@ Four rules, and none of them is style:
   afterwards.
 - **The transport is decided by whether the wallet has an account.** With a Cosmos Pay
   key it posts to the gateway with it and the events land in that account's own
-  dashboard; without one it posts to the platform's public route and is filed under a
-  shared consumer. A 401/403 from the keyed path (every key minted before
+  dashboard; without one it posts with the SHARED public key, which the gateway's
+  ingest route admits and files under one consumer, and falls back to the platform's
+  keyless route if that fails. A 401/403 from the keyed path (every key minted before
   `activity:write` existed) falls back rather than going silent.
+  **A key is not the same as an account**, and `sharedKey` is what keeps the two apart:
+  events sent under the public key are stripped exactly as the keyless ones are, because
+  the consumer they authenticate as is every anonymous wallet at once. That flag is
+  *derived* (`isPublicKey`), not passed — an explicit argument is one a caller can
+  forget, and forgetting it publishes an address to a shared tenant.
 - **Nothing account-identifying travels anonymously.** `ACCOUNT_PROPS` — address,
   destination, amount, txHash — are stripped on the anonymous route. A new prop that
   names an account or a transaction belongs in that list the day it is added.
