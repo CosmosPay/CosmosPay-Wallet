@@ -1260,12 +1260,14 @@ export const T: Record<string, Record<Lang, string>> = {
   'guard.row.dataValue': { es: 'Valor', en: 'Value', pt: 'Valor', de: 'Wert', fr: 'Valeur' },
   'guard.row.contract': { es: 'Contrato', en: 'Contract', pt: 'Contrato', de: 'Vertrag', fr: 'Contrat' },
   'guard.row.function': { es: 'Función', en: 'Function', pt: 'Função', de: 'Funktion', fr: 'Fonction' },
+  'guard.row.hostFunction': { es: 'Tipo de llamada', en: 'Call type', pt: 'Tipo de chamada', de: 'Aufruftyp', fr: 'Type d’appel' },
   'guard.row.operation': { es: 'Operación', en: 'Operation', pt: 'Operação', de: 'Operation', fr: 'Opération' },
 
   // Row values that are copy rather than decoded data.
   'guard.val.removeTrustline': { es: 'ELIMINAR trustline', en: 'REMOVE trustline', pt: 'REMOVER trustline', de: 'Trustline ENTFERNEN', fr: 'SUPPRIMER la trustline' },
   'guard.val.deleteEntry': { es: 'BORRAR', en: 'DELETE', pt: 'APAGAR', de: 'LÖSCHEN', fr: 'SUPPRIMER' },
   'guard.val.binary': { es: '(binario)', en: '(binary)', pt: '(binário)', de: '(binär)', fr: '(binaire)' },
+  'guard.val.poolShares': { es: 'Participaciones de pool', en: 'Pool shares', pt: 'Participações de pool', de: 'Pool-Anteile', fr: 'Parts de pool' },
   'guard.val.sorobanOpaque': { es: 'Invocación de contrato Soroban (no legible)', en: 'Soroban contract call (not readable)', pt: 'Invocação de contrato Soroban (não legível)', de: 'Soroban-Vertragsaufruf (nicht lesbar)', fr: 'Appel de contrat Soroban (illisible)' },
   'guard.val.unreadableOp': { es: 'La wallet no sabe leer esta operación', en: 'The wallet cannot read this operation', pt: 'A wallet não sabe ler esta operação', de: 'Die Wallet kann diese Operation nicht lesen', fr: 'Le portefeuille ne sait pas lire cette opération' },
   'guard.val.signerWeight': { es: '{key} (peso {weight})', en: '{key} (weight {weight})', pt: '{key} (peso {weight})', de: '{key} (Gewicht {weight})', fr: '{key} (poids {weight})' },
@@ -1283,6 +1285,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'approve.notFound': { es: 'Solicitud no encontrada', en: 'Request not found', pt: 'Pedido não encontrado', de: 'Anfrage nicht gefunden', fr: 'Demande introuvable' },
   'approve.notFoundBody': { es: 'La solicitud caducó o ya se resolvió. Puedes cerrar esta ventana.', en: 'The request expired or was already answered. You can close this window.', pt: 'O pedido caducou ou já foi respondido. Podes fechar esta janela.', de: 'Die Anfrage ist abgelaufen oder wurde bereits beantwortet. Du kannst dieses Fenster schließen.', fr: 'La demande a expiré ou a déjà été traitée. Tu peux fermer cette fenêtre.' },
   'approve.noWallet': { es: 'No hay wallet', en: 'No wallet', pt: 'Sem wallet', de: 'Keine Wallet', fr: 'Aucun portefeuille' },
+  'approve.noWalletBody': { es: 'Abre Cosmos Wallet y crea o importa una wallet antes de conectar con una web.', en: 'Open Cosmos Wallet and create or import a wallet before connecting to a site.', pt: 'Abre a Cosmos Wallet e cria ou importa uma wallet antes de ligar a um site.', de: 'Öffne Cosmos Wallet und erstelle oder importiere eine Wallet, bevor du dich mit einer Website verbindest.', fr: 'Ouvre Cosmos Wallet et crée ou importe un portefeuille avant de te connecter à un site.' },
   'approve.close': { es: 'Cerrar', en: 'Close', pt: 'Fechar', de: 'Schließen', fr: 'Fermer' },
   'approve.addressBar': { es: 'Barra de direcciones', en: 'Address bar', pt: 'Barra de endereços', de: 'Adressleiste', fr: 'Barre d’adresse' },
   'approve.defaultWalletName': { es: 'astronauta', en: 'astronaut', pt: 'astronauta', de: 'Astronaut', fr: 'astronaute' },
@@ -1334,7 +1337,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'approve.sending': { es: 'Enviando…', en: 'Sending…', pt: 'A enviar…', de: 'Wird gesendet…', fr: 'Envoi…' },
   'approve.signing': { es: 'Firmando…', en: 'Signing…', pt: 'A assinar…', de: 'Wird signiert…', fr: 'Signature…' },
 
-  // ---- Stellar operation names (src/constants/app.ts OP_LABEL_KEYS) ----
+  // ---- Stellar operation names (src/constants/dapp.ts OP_LABEL_KEYS) ----
   'op.payment': { es: 'Pago', en: 'Payment', pt: 'Pagamento', de: 'Zahlung', fr: 'Paiement' },
   'op.createAccount': { es: 'Crear cuenta', en: 'Create account', pt: 'Criar conta', de: 'Konto erstellen', fr: 'Créer un compte' },
   'op.pathPaymentStrictSend': { es: 'Intercambio (envío fijo)', en: 'Swap (fixed send)', pt: 'Troca (envio fixo)', de: 'Tausch (fester Versand)', fr: 'Échange (envoi fixe)' },
@@ -1371,6 +1374,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'tx.err.badSequence': { es: 'Error de secuencia, inténtalo de nuevo.', en: 'Sequence error, please try again.', pt: 'Erro de sequência, tenta novamente.', de: 'Sequenzfehler, bitte erneut versuchen.', fr: 'Erreur de séquence, réessaie.' },
   'tx.err.rejected': { es: 'La red rechazó la transacción ({code}).', en: 'The network rejected the transaction ({code}).', pt: 'A rede rejeitou a transação ({code}).', de: 'Das Netzwerk hat die Transaktion abgelehnt ({code}).', fr: 'Le réseau a rejeté la transaction ({code}).' },
   'tx.err.submitFailed': { es: 'No se pudo enviar la transacción.', en: 'The transaction could not be submitted.', pt: 'Não foi possível enviar a transação.', de: 'Die Transaktion konnte nicht gesendet werden.', fr: 'La transaction n’a pas pu être envoyée.' },
+  'tx.err.friendbotFailed': { es: 'No se pudo financiar la cuenta con Friendbot.', en: 'The account could not be funded with Friendbot.', pt: 'Não foi possível financiar a conta com o Friendbot.', de: 'Das Konto konnte nicht über Friendbot finanziert werden.', fr: 'Le compte n’a pas pu être financé avec Friendbot.' },
   'tx.err.friendbotTestnetOnly': { es: 'Friendbot solo está disponible en Testnet.', en: 'Friendbot is only available on Testnet.', pt: 'O Friendbot só está disponível na Testnet.', de: 'Friendbot ist nur im Testnet verfügbar.', fr: 'Friendbot n’est disponible que sur Testnet.' },
 
   'wallet.badMnemonic': { es: 'La frase de recuperación no es válida.', en: 'That recovery phrase is not valid.', pt: 'A frase de recuperação não é válida.', de: 'Diese Wiederherstellungsphrase ist ungültig.', fr: 'Cette phrase de récupération n’est pas valide.' },

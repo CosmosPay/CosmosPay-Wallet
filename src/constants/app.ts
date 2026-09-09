@@ -60,52 +60,7 @@ export const SPLASH_DONE_MS = 2100;
 export const AUTO_LOCK_MS = 5 * 60_000;
 export const AUTO_LOCK_CHECK_MS = 15_000;
 
-/** chrome.storage.local key for the service worker's read-only dapp mirror
- *  (public address + network + approved origins). The SW keeps its own copy of
- *  this literal (extension-src/sw.js `MIRROR_KEY`) — keep both in sync. */
-export const DAPP_MIRROR_KEY = 'cosmos.dapp';
-
-/** i18n keys for the dapp-approval window titles per request method (see ApprovePopup).
- *  KEYS, not copy: this file is data, and `constants/` may not import from `lib/` at
- *  runtime — so it cannot call the translator, and holding a Spanish literal here was
- *  the same thing as holding it in the component. The window resolves these. */
-export const APPROVE_TITLE_KEYS: Record<
-  'getAddress' | 'signTransaction' | 'signMessage' | 'requestPayment',
-  string
-> = {
-  getAddress: 'approve.title.getAddress',
-  signTransaction: 'approve.title.signTransaction',
-  signMessage: 'approve.title.signMessage',
-  requestPayment: 'approve.title.requestPayment',
-};
-
-/** i18n keys for the Stellar operations the approval window renders, in plain language.
- *  An unmapped type falls back to its raw SDK name — visible, never hidden. The
- *  `⚠️` prefix on the critical ones lives in the translation, not here. */
-export const OP_LABEL_KEYS: Record<string, string> = {
-  payment: 'op.payment',
-  createAccount: 'op.createAccount',
-  pathPaymentStrictSend: 'op.pathPaymentStrictSend',
-  pathPaymentStrictReceive: 'op.pathPaymentStrictReceive',
-  changeTrust: 'op.changeTrust',
-  manageSellOffer: 'op.manageSellOffer',
-  manageBuyOffer: 'op.manageBuyOffer',
-  createPassiveSellOffer: 'op.createPassiveSellOffer',
-  liquidityPoolDeposit: 'op.liquidityPoolDeposit',
-  liquidityPoolWithdraw: 'op.liquidityPoolWithdraw',
-  manageData: 'op.manageData',
-  bumpSequence: 'op.bumpSequence',
-  createClaimableBalance: 'op.createClaimableBalance',
-  claimClaimableBalance: 'op.claimClaimableBalance',
-  invokeHostFunction: 'op.invokeHostFunction',
-  // Critical — the window renders these behind a red warning.
-  setOptions: 'op.setOptions',
-  accountMerge: 'op.accountMerge',
-  allowTrust: 'op.allowTrust',
-  setTrustLineFlags: 'op.setTrustLineFlags',
-  clawback: 'op.clawback',
-  clawbackClaimableBalance: 'op.clawbackClaimableBalance',
-  beginSponsoringFutureReserves: 'op.beginSponsoringFutureReserves',
-  endSponsoringFutureReserves: 'op.endSponsoringFutureReserves',
-  revokeSponsorship: 'op.revokeSponsorship',
-};
+/* The dapp surface's data — the mirror key, the approval window's title and operation
+   labels, and the web transport's wire constants — moved to src/constants/dapp.ts. It
+   is one area with four readers (the approval window, lib/dappOrigins.ts,
+   lib/webSigner.ts and public/cosmos-wallet.js), and this file is the app SHELL's. */

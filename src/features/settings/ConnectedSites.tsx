@@ -10,18 +10,23 @@ import '@/styles/features/settings/connected-sites.css';
  * Sites allowed to read the wallet's public address without asking again.
  *
  * The approval window grants an origin on "Connect" and never had anything to take
- * it back, so the grant list only grew. Extension-only: no other build has an
- * origin to grant.
+ * it back, so the grant list only grew.
+ *
+ * Shown on the two builds a website can actually reach — the extension, and the hosted
+ * web build now that `src/lib/webSigner.ts` gives a page a way to ask. It stays hidden
+ * in the Tauri windows, which no origin can address, so the section is absent rather
+ * than permanently empty.
  */
 export function ConnectedSites({ store }: { store: WalletStore }) {
   const t = store.t;
-  const isExt = buildKind() === 'ext';
+  const kind = buildKind();
+  const grantable = kind === 'ext' || kind === 'web';
   const [origins, setOrigins] = useState<string[] | null>(null);
 
   useEffect(() => {
-    if (!isExt) return;
+    if (!grantable) return;
     void listApprovedOrigins().then(setOrigins);
-  }, [isExt]);
+  }, [grantable]);
 
   const flash = store.flash;
   const revoke = useCallback(
@@ -32,7 +37,7 @@ export function ConnectedSites({ store }: { store: WalletStore }) {
     [flash, t],
   );
 
-  if (!isExt || origins === null) return null;
+  if (!grantable || origins === null) return null;
 
   return (
     <SettingsSection title={t('settings.sites')}>

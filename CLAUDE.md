@@ -249,6 +249,58 @@ Two more that fall out of the same principle:
   A 32-byte "message" that is really a transaction hash would otherwise come back as a
   valid transaction signature.
 
+## A dapp reaches the wallet two ways; one approval screen answers both
+
+A website asks for a signature over one of two transports, and they differ only in how
+the request arrives:
+
+- **extension** — `extension-src/content.js` stamps the origin (a page cannot forge it,
+  having no way to open the port itself), `extension-src/sw.js` routes on an internal
+  `rid` the page never sees, and the approval window is opened by the worker.
+- **web** — `src/lib/webSigner.ts`. Hosted as a page the wallet has no background to
+  route through, so the dapp opens `approve/?web=1&n=…&o=…` itself and posts the request
+  to it. `public/cosmos-wallet.js` is the provider it loads from the wallet's origin to
+  do that; it defines the same `window.cosmosWallet`, and stands down when the
+  extension's provider is already there.
+
+Both end in `src/app/ApprovePopup.tsx`, and that is the point: the decode, the warnings,
+the acknowledgement, the password and the signature are one code path. A second approval
+screen for the web would be a second place for a check to be missing.
+
+Four rules hold the web half together:
+
+- **The origin is `MessageEvent.origin`, never the `o=` parameter.** A page writes its
+  own URLs, so `o=` is only ever a postMessage TARGET — aiming `ready` at an origin the
+  opener does not have means the opener simply never receives it. What is displayed,
+  granted and replied to is the browser's stamp. Both must agree, and the message must
+  come from `window.opener`.
+- **`'null'` is not an origin.** A sandboxed frame, a `data:` document and a `file://`
+  page all carry it; it names no site, so a user cannot judge it and a grant recorded
+  against it would be a grant to everything else that shares the same nothing.
+- **A refusal is silence.** Every check in `readWebRequest` returns null rather than
+  posting an error back: a sender that failed one is by definition not the peer this
+  window is talking to. The real dapp times out; the provider also settles when the user
+  closes the window.
+- **The provider holds its own copy of the wire literals** — it is a plain file served to
+  dapps, with no bundler and no imports, the same arrangement `sw.js` has with the mirror
+  key. `tests/unit/webSigner.test.ts` compares the two files, because a rename that lands
+  in one of them alone still builds and produces a window waiting for a request nobody
+  sends.
+
+Grants live in `src/lib/dappOrigins.ts`: the service worker's mirror on the extension
+(the SW answers reads from it and can see nothing else), `lib/storage.ts` on the web.
+Settings → Connected sites lists and revokes both. Signing once never grants an origin —
+only the explicit Connect does.
+
+**A contract call is rendered, not allowlisted.** `invokeHostFunction` is in
+`CRITICAL_OPS`, so no internal flow can carry one, but the dapp path shows it behind a
+red warning and an explicit acknowledgement instead of refusing: legitimate dapps are
+contract calls. That makes the identity row the whole defence, and it was decorative for
+a while — `contractAddress()` returns an `xdr.ScAddress` whose `toString()` is Object's,
+so every external contract rendered as the literal text `[object Object]`. Read a
+contract id through `Address`, and assert the row's VALUE when you test it: a test that
+counted rows passed throughout.
+
 ## Unlocking with the phone, and answering the gate
 
 `src/lib/deviceAuth.ts` seals the session's **vault key** under a random 32-byte key and
