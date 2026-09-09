@@ -162,6 +162,21 @@ export function bundledAssets(networkId: string): RegistryAsset[] {
 }
 
 /**
+ * The registry WITHOUT waiting: the fetched list if one has loaded this session,
+ * the bundled table otherwise.
+ *
+ * For callers that run during render and cannot await — `computePortfolio` is the
+ * one that matters, since it decides which balances count toward the USD total and
+ * is recomputed on every price tick. Returning the bundled list rather than nothing
+ * is what keeps that decision correct on a cold start: the compiled-in table is
+ * already verified against the chain, so the worst case is missing an issuer added
+ * since the build, which costs a row its price and never mis-attributes one.
+ */
+export function registrySnapshot(networkId: string): RegistryAsset[] {
+  return memory.get(networkId)?.data ?? bundledAssets(networkId);
+}
+
+/**
  * The registry for a network: freshest of the three sources, sorted verified
  * first.
  *

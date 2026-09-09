@@ -1,6 +1,6 @@
 /** Turn raw Horizon balances + a price map into display rows + a USD total. */
 import type { AccountState, PriceInfo } from '@/lib/stellar';
-import { KNOWN_ISSUERS } from '@/constants/extras';
+import { findRegistryAsset, registrySnapshot } from '@/lib/assetRegistry';
 
 export interface AssetRow {
   code: string;
@@ -13,7 +13,12 @@ export interface AssetRow {
 
 // USD-pegged stables assumed at $1 when no live price is available.
 // (EURC is euro-pegged, not $1, and we fetch its real price — so it's excluded.)
-const STABLE = new Set(['USDC', 'USD']);
+//
+// USDT0 is here because it is USD-pegged and has no CoinGecko entry: without it a
+// user holding Tether's Stellar token saw the balance row but a portfolio total
+// that ignored it entirely, which reads as "my money is gone" on the one number
+// people check after being paid.
+const STABLE = new Set(['USDC', 'USD', 'USDT0']);
 
 /**
  * Is this the real issuer of that code on this network?
@@ -25,15 +30,21 @@ const STABLE = new Set(['USDC', 'USD']);
  *
  * An unknown issuer gets `price: null`, so the row still shows its balance but adds
  * nothing to the total.
+ *
+ * Answered from the asset registry, which is the one place that decides who issues
+ * what. It used to be a second table (`KNOWN_ISSUERS`) maintained by hand next to
+ * the registry, and the two had already diverged: the registry gained USDT0 and
+ * that table did not, so Tether's token was priced at nothing while the picker
+ * three screens away showed it as verified. Two lists answering one question is
+ * the failure the registry exists to prevent — it does not get an exception here.
  */
 function isTrustedStableIssuer(code: string, issuer: string | null, networkId?: string): boolean {
-  if (!issuer) return false;
-  const known = KNOWN_ISSUERS[code];
-  if (!known) return false;
-  // Custom networks have no curated issuer list — nothing to trust there.
-  if (networkId === 'public') return known.public === issuer;
-  if (networkId === 'testnet') return known.testnet === issuer;
-  return false;
+  if (!issuer || !networkId) return false;
+  // `verified` is the identity check. A registry entry that is merely LISTED — we
+  // name its issuer but never confirmed who runs it — must not license the $1
+  // assumption, which is a claim about what the balance is worth.
+  const entry = findRegistryAsset(registrySnapshot(networkId), { code, issuer });
+  return !!entry?.verified;
 }
 
 /** XLM is the native asset — always show it (0 balance when unfunded), never "no assets". */
