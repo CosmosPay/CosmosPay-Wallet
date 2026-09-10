@@ -3,7 +3,15 @@
 import '@/styles/app/approve-popup.css';
 import { useEffect, useMemo, useState } from 'react';
 import { Keypair } from '@stellar/stellar-sdk';
-import { DAPP_MIRROR_KEY, APPROVE_TITLE_KEYS, OP_LABEL_KEYS } from '@/constants/app';
+import { DAPP_MIRROR_KEY, APPROVE_TITLE_KEYS, OP_LABEL_KEYS, type DappMethod } from '@/constants/dapp';
+import {
+  awaitWebRequest,
+  replyWebRequest,
+  webSignerContext,
+  type WebSignerNetwork,
+  type WebSignerRequest,
+} from '@/lib/webSigner';
+import { grantApprovedOrigin, listApprovedOrigins } from '@/lib/dappOrigins';
 import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type WalletEntry } from '@/lib/vault';
 import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
 import { WrongPasswordError } from '@/lib/crypto';
@@ -20,32 +28,57 @@ import { makeT, savedLang, type TFn } from '@/lib/i18n';
 declare const chrome: any;
 
 /**
- * Dapp-approval window (chrome-extension://…/approve/index.html?req=<id>).
- *
- * Opened by the service worker when a page calls window.cosmosWallet.* and needs the
- * user. Self-contained: reuses the vault/stellar libs and shares the wallet's
- * localStorage (same extension origin). No secret ever leaves this window.
+ * Dapp-approval window. Self-contained: reuses the vault/stellar libs and shares the
+ * wallet's own storage (same origin either way). No secret ever leaves this window.
  *
  *  - getAddress (connect): consent only — returns the PUBLIC key, remembers the origin.
  *  - signTransaction / signMessage: password -> unlock -> sign locally.
  *  - requestPayment (SEP-7 web+stellar:pay): password -> unlock -> build, sign & submit.
+ *
+ * TWO TRANSPORTS reach it, and the difference is confined to `loadReq` / `respond`:
+ *
+ *   extension  chrome-extension://…/approve/index.html?req=<internal rid>. The service
+ *              worker parked the request in session storage and routes the answer back
+ *              to the page's port. See extension-src/sw.js.
+ *   web        https://<wallet>/approve/?web=1&n=…&o=… — the dapp opened this window
+ *              itself and hands the request over by postMessage, because a hosted page
+ *              has no background worker to route through. See src/lib/webSigner.ts.
+ *
+ * Everything between those two ends — the decode, the warnings, the acknowledgement,
+ * the password, the signature — is one code path on purpose. A second approval screen
+ * for the web is a second place for a check to be missing.
  */
-
-type Method = 'getAddress' | 'signTransaction' | 'signMessage' | 'requestPayment';
 
 interface DappReq {
   id: string;
   origin: string;
-  method: Method;
+  method: DappMethod;
   params: { xdr?: string; message?: string; uri?: string; networkPassphrase?: string };
 }
+
+/**
+ * The web handshake this window is part of, or null when it was opened by the
+ * extension (or by a human typing the address). Read once at module scope: it comes
+ * from this document's own URL, which does not change while it is open.
+ */
+const WEB_CTX = typeof window === 'undefined' ? null : webSignerContext(window.location.href);
 
 function hasChrome(): boolean {
   return typeof chrome !== 'undefined' && !!chrome.runtime && !!chrome.storage;
 }
 
-async function loadReq(id: string): Promise<DappReq | null> {
+/** The network facts every web reply carries, so the dapp never has to ask separately. */
+function netInfo(cfg: NetConfig): WebSignerNetwork {
+  return { network: cfg.id === 'public' ? 'PUBLIC' : cfg.id.toUpperCase(), networkPassphrase: cfg.passphrase, networkUrl: cfg.horizon };
+}
+
+async function loadReq(): Promise<DappReq | null> {
+  if (WEB_CTX) {
+    const req: WebSignerRequest | null = await awaitWebRequest(WEB_CTX);
+    return req && { id: req.id, origin: req.origin, method: req.method, params: req.params };
+  }
   if (!hasChrome()) return null;
+  const id = new URL(window.location.href).searchParams.get('req') || '';
   const key = 'cosmos.req.' + id;
   const o = await chrome.storage.session.get(key);
   return (o[key] as DappReq) || null;
@@ -68,7 +101,22 @@ async function writeMirror(patch: { address: string; cfg: NetConfig; addOrigin?:
   });
 }
 
-function respond(id: string, ok: boolean, result?: unknown, error?: string, keepOpen = false) {
+/**
+ * Answer the request and close, on whichever transport brought it.
+ *
+ * `net` is merged into a successful web result: the provider has no background page to
+ * ask which network the wallet is on, so every reply tells it. It is added rather than
+ * substituted — a dapp reading `signedTxXdr` keeps reading `signedTxXdr` — and the
+ * extension's replies are left byte-for-byte as they were, because those travel to
+ * pages built against them.
+ */
+function respond(req: DappReq, ok: boolean, result?: unknown, error?: string, keepOpen = false, net?: WebSignerNetwork) {
+  if (WEB_CTX) {
+    const payload = ok && net && result && typeof result === 'object' ? { ...(result as object), ...net } : result;
+    replyWebRequest(req, ok, payload, error);
+    if (!keepOpen) window.close();
+    return;
+  }
   if (!hasChrome()) {
     if (!keepOpen) window.close();
     return;
@@ -77,7 +125,7 @@ function respond(id: string, ok: boolean, result?: unknown, error?: string, keep
     // Close only once the SW has acknowledged the message, not on a fixed timer: a
     // cold service-worker start can take longer than a short timeout, and closing
     // early risks the message going out after the sender (this window) is gone.
-    chrome.runtime.sendMessage({ type: 'cosmos-approve-result', id, ok, result, error }, () => {
+    chrome.runtime.sendMessage({ type: 'cosmos-approve-result', id: req.id, ok, result, error }, () => {
       void chrome.runtime.lastError;
       // Address-bar requests have no page waiting: keep the window open to show the result.
       if (!keepOpen) window.close();
@@ -112,12 +160,20 @@ export default function ApprovePopup() {
   useEffect(() => {
     (async () => {
       try {
-        const id = new URL(window.location.href).searchParams.get('req') || '';
-        const [r, e, netId, custom] = await Promise.all([loadReq(id), getActiveEntry(), getNetworkId(), getCustomNetworks()]);
+        const [r, e, netId, custom] = await Promise.all([loadReq(), getActiveEntry(), getNetworkId(), getCustomNetworks()]);
         const c = resolveNetwork(netId, custom);
         setReq(r);
         setEntry(e);
         setCfg(c);
+        // A site the user already connected does not get asked about again — the same
+        // answer the extension's service worker gives from its mirror without opening
+        // anything. On the web there is no mirror to read, so the window opens, answers
+        // and closes; what it must NOT do is turn a re-connect into a fresh consent
+        // dialog the user learns to click through.
+        if (WEB_CTX && r && e && r.method === 'getAddress' && (await listApprovedOrigins()).includes(r.origin)) {
+          respond(r, true, { address: e.publicKey }, undefined, false, netInfo(c));
+          return;
+        }
         if (r && r.method === 'requestPayment') {
           const parsed = parseStellarQr(String(r.params.uri || ''));
           if (parsed) setPay(parsed);
@@ -152,8 +208,8 @@ export default function ApprovePopup() {
     return (
       <Frame>
         <Title>{t('approve.noWallet')}</Title>
-        <p className="approve-muted">Abre Cosmos Wallet y crea o importa una wallet antes de conectar con una web.</p>
-        <Btn kind="reject" onClick={() => respond(req.id, false, undefined, 'No wallet on this device.')}>{t('approve.close')}</Btn>
+        <p className="approve-muted">{t('approve.noWalletBody')}</p>
+        <Btn kind="reject" onClick={() => respond(req, false, undefined, 'No wallet on this device.')}>{t('approve.close')}</Btn>
       </Frame>
     );
   }
@@ -186,8 +242,13 @@ export default function ApprovePopup() {
     setErr('');
     try {
       if (req.method === 'getAddress') {
+        // Two stores, one meaning: the extension's grant lives in the service worker's
+        // mirror (which is also how it answers a read without opening a window), the
+        // web's in this build's own storage. `grantApprovedOrigin` picks; both are what
+        // Settings → Connected sites lists and revokes.
         await writeMirror({ address: entry.publicKey, cfg, addOrigin: req.origin });
-        respond(req.id, true, { address: entry.publicKey });
+        await grantApprovedOrigin(req.origin);
+        respond(req, true, { address: entry.publicKey }, undefined, false, netInfo(cfg));
         return;
       }
 
@@ -198,7 +259,7 @@ export default function ApprovePopup() {
       // unmetered oracle sitting beside the metered ones. `beginAttempt` reserves the
       // guess before the derivation, so concurrent windows cannot all read a clean record.
       const wait = await beginAttempt();
-      if (wait > 0) throw new Error(`Demasiados intentos. Espera ${blockSeconds(wait)} s antes de volver a probar.`);
+      if (wait > 0) throw new Error(t('pwd.tooManyAttempts', { secs: String(blockSeconds(wait)) }));
       const { secret } = await unlockWallet(entry.id, pwd).catch(async (e: unknown) => {
         // Only a failed GCM tag is a guess. A missing or unparseable vault blob must not
         // walk the owner up the ladder while the screen blames their password.
@@ -216,7 +277,7 @@ export default function ApprovePopup() {
         if (reviewErr) throw new Error(reviewErr);
         // `cfg` — the wallet's network — and never req.params.networkPassphrase.
         const signedTxXdr = signXdr(cfg, secret, String(req.params.xdr || ''));
-        respond(req.id, true, { signedTxXdr, signerAddress: entry.publicKey });
+        respond(req, true, { signedTxXdr, signerAddress: entry.publicKey }, undefined, false, netInfo(cfg));
         return;
       }
       if (req.method === 'signMessage') {
@@ -225,11 +286,14 @@ export default function ApprovePopup() {
         // transaction signature. See lib/signMessage.ts.
         const digest = await signMessagePayload(String(req.params.message || ''));
         const sig = Keypair.fromSecret(secret).sign(Buffer.from(digest));
-        respond(req.id, true, {
-          signedMessage: sig.toString('base64'),
-          signerAddress: entry.publicKey,
-          domain: SIGN_MESSAGE_DOMAIN,
-        });
+        respond(
+          req,
+          true,
+          { signedMessage: sig.toString('base64'), signerAddress: entry.publicKey, domain: SIGN_MESSAGE_DOMAIN },
+          undefined,
+          false,
+          netInfo(cfg),
+        );
         return;
       }
       if (req.method === 'requestPayment') {
@@ -246,7 +310,7 @@ export default function ApprovePopup() {
           asset: pay.assetCode && pay.assetIssuer ? { code: pay.assetCode, issuer: pay.assetIssuer } : null,
         });
         const fromBar = req.origin === 'address-bar';
-        respond(req.id, true, { hash, signerAddress: entry.publicKey }, undefined, fromBar);
+        respond(req, true, { hash, signerAddress: entry.publicKey }, undefined, fromBar, netInfo(cfg));
         if (fromBar) {
           setDoneHash(hash);
           setBusy(false);
@@ -268,7 +332,7 @@ export default function ApprovePopup() {
       // against Spanish UI copy, deciding retryable-vs-terminal. One i18n pass and every
       // mistyped password here became a terminal rejection — and that pass has now
       // happened. `WrongPasswordError` is imported two lines above and exists for this.
-      if (!wrongPwd) respond(req.id, false, undefined, message, true);
+      if (!wrongPwd) respond(req, false, undefined, message, true);
     }
   };
 
@@ -420,7 +484,7 @@ export default function ApprovePopup() {
       {err && <div className="approve-error">{err}</div>}
 
       <div className="approve-actions">
-        <Btn kind="reject" onClick={() => respond(req.id, false, undefined, 'Rejected by the user.')}>{t('approve.reject')}</Btn>
+        <Btn kind="reject" onClick={() => respond(req, false, undefined, 'Rejected by the user.')}>{t('approve.reject')}</Btn>
         <Btn kind="approve" onClick={approve} disabled={busy || !canApprove}>
           {busy
             ? isPay

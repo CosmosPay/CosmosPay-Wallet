@@ -10,7 +10,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { Account, Asset, BASE_FEE, Claimant, Keypair, LiquidityPoolAsset, LiquidityPoolFeeV18, Networks, Operation, TimeoutInfinite, TransactionBuilder, getLiquidityPoolId } from '@stellar/stellar-sdk';
+import { Account, Address, Asset, BASE_FEE, Claimant, Keypair, LiquidityPoolAsset, LiquidityPoolFeeV18, Networks, Operation, TimeoutInfinite, TransactionBuilder, getLiquidityPoolId, nativeToScVal } from '@stellar/stellar-sdk';
 import {
   assertSafeToSign,
   reviewTx,
@@ -567,4 +567,54 @@ test('a trustline intent still refuses a trustline REMOVAL', () => {
   // an asset holding a balance is how a balance becomes unreachable.
   const xdr = envelope([Operation.changeTrust({ asset: USDC, limit: '0' }) as never]);
   throws(() => assertSafeToSign(CFG, xdr, TRUST_OK), 'guard.removesTrustline');
+});
+
+/* ------------------------- external Soroban contracts ---------------------- */
+
+/** A real contract id, so the assertions below are about a strkey and not a shape. */
+const CONTRACT = 'CA3D5KRYM6CB7OWQ6TWYRR3Z4T7GNZLKERYNZGGA5SOAOPIFY6YQGAXE';
+
+const invoke = (fn = 'transfer') =>
+  Operation.invokeContractFunction({
+    contract: CONTRACT,
+    function: fn,
+    args: [new Address(ME).toScVal(), new Address(ATTACKER).toScVal(), nativeToScVal(1000, { type: 'i128' })],
+  }) as never;
+
+test('a contract call names the contract the user is about to trust', () => {
+  // THE ROW EXISTED AND SAID `[object Object]`. `contractAddress()` returns an
+  // `xdr.ScAddress` union, whose `toString()` is the one it inherits from Object, so
+  // the single row that tells "the pool you meant to use" from "the drainer that asked"
+  // rendered as that literal text — on the one path an arbitrary website reaches.
+  // Asserted on the VALUE, because a test that only counted the rows passed throughout.
+  const rows = reviewTx(CFG, envelope([invoke()])).operations[0].rows;
+  const contract = rows.find((r) => r.label === tNow('guard.row.contract'));
+  assert.ok(contract, 'the contract row is missing');
+  assert.equal(contract.value.includes('[object'), false);
+  // Shortened for the column it renders in, but both ends are the real strkey.
+  assert.ok(contract.value.startsWith(CONTRACT.slice(0, 8)));
+  assert.ok(contract.value.endsWith(CONTRACT.slice(-8)));
+  assert.equal(rows.find((r) => r.label === tNow('guard.row.function'))?.value, 'transfer');
+  assert.equal(rows.find((r) => r.label === tNow('guard.row.hostFunction'))?.value, 'invokeContract');
+});
+
+test('a host function that is not a call still says which one it is', () => {
+  // Uploading WASM and creating a contract arrive as the same operation type. They
+  // carry no contract id to show, so the kind row is the whole answer.
+  const xdr = envelope([Operation.createStellarAssetContract({ asset: USDC }) as never]);
+  const rows = reviewTx(CFG, xdr).operations[0].rows;
+  assert.equal(rows.find((r) => r.label === tNow('guard.row.hostFunction'))?.value, 'createContract');
+});
+
+test('a contract call is unquantifiable, so no internal flow can carry one', () => {
+  // It may move value through an asset's SAC and the wallet cannot see how much, which
+  // is both why it is critical and why the amount cap could never bound it.
+  const op = reviewTx(CFG, envelope([invoke()])).operations[0];
+  assert.equal(op.movesValue, true);
+  assert.deepEqual(op.sends, []);
+  throws(
+    () => assertSafeToSign(CFG, envelope([invoke()]), { signer: ME, intent: 'offramp', destinations: 'counterparty', maxSend: CAP_XLM }),
+    'guard.criticalOp',
+    { op: 'invokeHostFunction' },
+  );
 });

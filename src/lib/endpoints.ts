@@ -11,22 +11,22 @@
  * via Settings -> custom networks.)
  */
 
+import { DEFAULT_DEV_PLATFORM_URL, DEFAULT_GATEWAY_ENTRY, DEFAULT_GATEWAY_URL } from '@/constants/backends';
 import { buildKind } from '@/lib/platform';
 
 const ENV = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
 
 /**
- * Production bases. Same-origin ('') only works in the WEB dev server, where the
- * Vite proxy forwards /api and /cosmos-api. The extension (chrome-extension://) and
- * every Tauri build — mobile and desktop alike, on tauri://localhost — have no proxy,
- * so '' would point nowhere and these production URLs are the default outside 'web'
- * (env/dev-mode still win).
+ * Same-origin ('') only works in the WEB dev server, where the Vite proxy forwards /api
+ * and /cosmos-api. The extension (chrome-extension://) and every Tauri build — mobile and
+ * desktop alike, on tauri://localhost — have no proxy, so '' would point nowhere and the
+ * `@/constants/backends` defaults answer outside 'web' (env/dev-mode still win).
  *
- * Those origins are also what the gateway's CORS policy has to allow: a Tauri window is
- * a cross-origin caller exactly as the extension popup already is.
+ * Those origins are also what the backends' CORS policy has to allow: a Tauri window is a
+ * cross-origin caller exactly as the extension popup already is, except that nothing
+ * exempts it the way `host_permissions` exempts the popup. `.env.example` lists the exact
+ * origins each shell presents.
  */
-const PROD_DEV_PLATFORM = 'https://dev.cosmospay.lat';
-const PROD_GATEWAY = 'https://api.cosmospay.lat';
 const sameOriginWorks = () => buildKind() === 'web';
 
 const MODE_KEY = 'cosmos.devMode';
@@ -101,14 +101,14 @@ export const coingeckoBase = (): string => resolve('coingeckoBase', undefined, '
 
 /** Cosmos Developer Platform base ('' = same-origin `/api/...`, dev-proxied — web only). */
 export const devPlatformUrl = (): string =>
-  resolve('devPlatformUrl', ENV.PUBLIC_COSMOS_DEV_PLATFORM_URL || undefined, sameOriginWorks() ? '' : PROD_DEV_PLATFORM);
+  resolve('devPlatformUrl', ENV.PUBLIC_COSMOS_DEV_PLATFORM_URL || undefined, sameOriginWorks() ? '' : DEFAULT_DEV_PLATFORM_URL);
 
 /** APISIX gateway base ('' = same-origin, dev-proxied — web only). */
 export const gatewayUrl = (): string =>
-  resolve('gatewayUrl', ENV.PUBLIC_COSMOS_GATEWAY_URL || undefined, sameOriginWorks() ? '' : PROD_GATEWAY);
+  resolve('gatewayUrl', ENV.PUBLIC_COSMOS_GATEWAY_URL || undefined, sameOriginWorks() ? '' : DEFAULT_GATEWAY_URL);
 
 /** Gateway entry prefix (APISIX strips it before forwarding). */
-export const gatewayEntry = (): string => resolve('gatewayEntry', ENV.PUBLIC_COSMOS_GATEWAY_ENTRY || undefined, '/cosmos-api');
+export const gatewayEntry = (): string => resolve('gatewayEntry', ENV.PUBLIC_COSMOS_GATEWAY_ENTRY || undefined, DEFAULT_GATEWAY_ENTRY);
 
 /** Full gateway API base, e.g. `/cosmos-api` in dev or `https://gw.x.y/cosmos-api`. */
 export const gatewayApi = (): string => `${gatewayUrl()}${gatewayEntry()}`;
@@ -119,12 +119,12 @@ export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; 
   {
     key: 'devPlatformUrl',
     labelKey: 'settings.epDevPlatform',
-    getDefault: () => ENV.PUBLIC_COSMOS_DEV_PLATFORM_URL || (sameOriginWorks() ? '' : PROD_DEV_PLATFORM),
+    getDefault: () => ENV.PUBLIC_COSMOS_DEV_PLATFORM_URL || (sameOriginWorks() ? '' : DEFAULT_DEV_PLATFORM_URL),
   },
   {
     key: 'gatewayUrl',
     labelKey: 'settings.epGateway',
-    getDefault: () => ENV.PUBLIC_COSMOS_GATEWAY_URL || (sameOriginWorks() ? '' : PROD_GATEWAY),
+    getDefault: () => ENV.PUBLIC_COSMOS_GATEWAY_URL || (sameOriginWorks() ? '' : DEFAULT_GATEWAY_URL),
   },
-  { key: 'gatewayEntry', labelKey: 'settings.epGatewayEntry', getDefault: () => ENV.PUBLIC_COSMOS_GATEWAY_ENTRY || '/cosmos-api' },
+  { key: 'gatewayEntry', labelKey: 'settings.epGatewayEntry', getDefault: () => ENV.PUBLIC_COSMOS_GATEWAY_ENTRY || DEFAULT_GATEWAY_ENTRY },
 ];

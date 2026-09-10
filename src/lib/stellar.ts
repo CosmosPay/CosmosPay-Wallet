@@ -382,7 +382,7 @@ export async function fundWithFriendbot(cfg: NetConfig, publicKey: string): Prom
   }
   const res = await fetch(`${cfg.friendbot}/?addr=${encodeURIComponent(publicKey)}`);
   if (!res.ok) {
-    throw new Error('No se pudo financiar la cuenta con Friendbot.');
+    throw new Error(tNow('tx.err.friendbotFailed'));
   }
 }
 

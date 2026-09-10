@@ -49,8 +49,11 @@
  * Turning it off drops what is already queued rather than keeping it for later — an
  * opt-out that still sends the last few minutes is not one.
  */
+import { isPublicKey } from '@/lib/publicKey';
 import { APP_VERSION } from '@/constants/app';
 import {
+  ATTESTATION_PROP,
+  ATTESTATION_PROPS_BUDGET,
   DEVICE_KEY,
   FLUSH_INTERVAL_MS,
   MAX_BATCH,
@@ -59,6 +62,7 @@ import {
   OPT_OUT_KEY,
   QUEUE_KEY,
 } from '@/constants/telemetry';
+import { attestationFresh, type OwnershipAttestation } from '@/lib/attestation';
 import { devPlatformUrl, gatewayApi } from '@/lib/endpoints';
 import { buildKind } from '@/lib/platform';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
@@ -101,6 +105,13 @@ const ACCOUNT_PROPS = [
   'destination',
   'source',
   'txHash',
+  // The ownership attestation NAMES an account and proves who owns it — the single most
+  // account-identifying thing this module can carry. It is attached only on the keyed
+  // own-account path (see `attachOwnership`), and stripped here so that a path change,
+  // a stale `shared` flag or a queue hydrated from a previous configuration cannot
+  // publish an address to the shared tenant. Two independent gates, deliberately: the
+  // one that decides to attach, and this one that decides what may leave.
+  ATTESTATION_PROP,
   // Every field that carries a QUANTITY, not just the one called `amount`. The swap
   // event reports what came back as `received` and the pool withdrawal reports
   // `shares`; stripping `amount` while those went through would have been the rule
@@ -121,8 +132,33 @@ let keyRefused = false;
    call site because a crash handler has no access to the store — the whole point of
    this module is that it works when the app does not. */
 let apiKey: string | null = null;
+/**
+ * Whether {@link apiKey} is the SHARED public key rather than this user's own.
+ *
+ * It changes what may travel, not where it goes. The shared key authenticates
+ * every anonymous wallet as one consumer, so events sent with it land in a
+ * dashboard that is not the user's — which makes it an anonymous path wearing a
+ * credential, and {@link ACCOUNT_PROPS} must be stripped exactly as they are on
+ * the keyless route. Without this flag the mere presence of a key is read as
+ * "this account owns these events", and an address, an amount and a txHash would
+ * be published to a shared tenant.
+ */
+let sharedKey = false;
 let env: 'dev' | 'prod' = 'dev';
 let network: string | null = null;
+/**
+ * The signed proof that this install belongs to the account it reports as.
+ *
+ * Held here rather than built here: signing needs the vault key, which lives in the store
+ * and is deliberately unreachable from `lib/`. The store mints one after unlock and hands
+ * it over through {@link configureTelemetry}, which is also how `lock()` takes it away —
+ * a locked wallet must vouch for nothing.
+ *
+ * It cannot be built on demand at all, and that is structural: `report()` never awaits,
+ * because its callers are `catch` blocks and a global error handler. A signature is
+ * asynchronous, so it has to already exist by the time a batch is sent.
+ */
+let ownership: OwnershipAttestation | null = null;
 
 let sessionId = '';
 let distinctId = '';
@@ -136,15 +172,42 @@ let distinctId = '';
  * with no Cosmos Pay account and also the correct state after `lock()` — a locked
  * wallet has no business attributing anything.
  */
-export function configureTelemetry(cfg: { apiKey?: string | null; env?: 'dev' | 'prod'; network?: string | null }): void {
+export function configureTelemetry(cfg: {
+  apiKey?: string | null;
+  /** True when `apiKey` is the shared public key — see {@link sharedKey}. */
+  shared?: boolean;
+  env?: 'dev' | 'prod';
+  network?: string | null;
+  /**
+   * Proof of ownership for the reporting account, or null to stop vouching.
+   *
+   * `null` is not "leave it as it is": passing it CLEARS the attestation, which is what
+   * `lock()` and a wallet switch need. An attestation naming the previous account would
+   * otherwise keep riding batches produced by the next one.
+   */
+  ownership?: OwnershipAttestation | null;
+}): void {
   if (cfg.apiKey !== undefined) {
     // A different key is a different account: whatever it refused is not this one's
     // problem, so the fallback latch is released.
     if (cfg.apiKey !== apiKey) keyRefused = false;
     apiKey = cfg.apiKey;
+    // Derived, not defaulted. An explicit flag would be one a caller can forget,
+    // and the cost of forgetting is publishing an address to a shared tenant —
+    // so the answer comes from the module that handed the key out. `shared` is
+    // still accepted, for a caller that knows something this cannot.
+    sharedKey = cfg.shared ?? isPublicKey(cfg.apiKey);
   }
+  if (cfg.shared !== undefined) sharedKey = cfg.shared;
   if (cfg.env) env = cfg.env;
   if (cfg.network !== undefined) network = cfg.network;
+  if (cfg.ownership !== undefined) ownership = cfg.ownership;
+}
+
+/** Does the reporter currently hold a usable attestation? Read by the store to know
+ *  whether minting another one is worth a vault read. */
+export function hasFreshOwnership(): boolean {
+  return attestationFresh(ownership);
 }
 
 /**
@@ -200,6 +263,24 @@ async function loadDistinctId(): Promise<string> {
   const fresh = randomId();
   await storageSet(DEVICE_KEY, fresh).catch(() => {});
   return fresh;
+}
+
+/**
+ * The install id an attestation must be bound to.
+ *
+ * Exported because the ownership proof is signed in the store — signing needs the vault
+ * key, which `lib/` cannot reach — and the claim is "this install belongs to this
+ * account". Signing over an id that turned out not to be the one the events carry would
+ * produce a proof about nothing, so the value comes from here rather than being minted
+ * beside the signature.
+ *
+ * Loads on demand: `startTelemetry` normally fills {@link distinctId} first, but the
+ * store's attestation effect can run before that resolves on a cold start.
+ */
+export async function telemetryInstallId(): Promise<string> {
+  if (distinctId) return distinctId;
+  distinctId = await loadDistinctId();
+  return distinctId;
 }
 
 /* ------------------------------- reporting --------------------------------- */
@@ -277,6 +358,42 @@ function anonymize(events: QueuedEvent[]): QueuedEvent[] {
   });
 }
 
+/**
+ * Attach the ownership proof to ONE event in the batch.
+ *
+ * One, not all hundred. The claim is "install X belongs to account Y", so a reader that
+ * has verified it once has attributed every event carrying that `distinctId` — repeating
+ * a ~250-byte signature on every row buys nothing and spends the props budget of each.
+ * Per BATCH rather than per session, so a batch is self-contained: it can be verified by
+ * whoever receives it without server-side state about what an earlier batch carried.
+ *
+ * It goes on the first event with ROOM for it. The gateway caps serialized `props` at
+ * 8192 bytes and replaces an oversized object with a marker rather than rejecting the
+ * event — so appending to an event already near the cap would destroy that event's own
+ * props AND the attestation, and the only symptom would be a `_dropped` marker. If no
+ * event has room the batch simply goes unvouched, which is the honest outcome and still
+ * delivers the diagnostics.
+ *
+ * Returns the batch UNCHANGED when there is nothing to attach or nothing fits, so the
+ * caller never has to care which happened.
+ */
+function attachOwnership(events: QueuedEvent[]): QueuedEvent[] {
+  if (!attestationFresh(ownership)) return events;
+  const size = JSON.stringify(ownership).length;
+
+  for (let i = 0; i < events.length; i += 1) {
+    const props = events[i].props ?? {};
+    // Already carries one (a re-queued batch after a failed flush) — leave it be rather
+    // than stamp a second copy on the way back out.
+    if (ATTESTATION_PROP in props) return events;
+    if (JSON.stringify(props).length + size > ATTESTATION_PROPS_BUDGET) continue;
+    const out = events.slice();
+    out[i] = { ...events[i], props: { ...props, [ATTESTATION_PROP]: ownership } };
+    return out;
+  }
+  return events;
+}
+
 /** Events too old for the gateway to keep their own timestamp are not worth sending. */
 function fresh(events: QueuedEvent[]): QueuedEvent[] {
   const cutoff = Date.now() - MAX_EVENT_AGE_MS;
@@ -304,7 +421,15 @@ export async function flushTelemetry(): Promise<void> {
   try {
     const key = apiKey;
     if (key && !keyRefused) {
-      const res = await postEvents(`${gatewayApi()}/v1/activity/events`, { events: batch }, {
+      // The shared public key reaches the gateway like any other — the ingest route
+      // admits it — but what it carries is anonymized first, because the consumer it
+      // authenticates as is every anonymous wallet at once.
+      // Vouched only on this account's OWN key. Under the shared public key the consumer
+      // is every anonymous wallet at once, so `anonymize` strips the attestation with the
+      // rest of ACCOUNT_PROPS — attaching it first and stripping it after would be two
+      // JSON walks to reach the same batch, so it is simply not attached.
+      const events = sharedKey ? anonymize(batch) : attachOwnership(batch);
+      const res = await postEvents(`${gatewayApi()}/v1/activity/events`, { events }, {
         Authorization: `Bearer ${key}`,
       });
       // 401/403 = this key predates the `activity:write` scope (or lost it). Every

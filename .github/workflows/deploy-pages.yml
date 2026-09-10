@@ -49,6 +49,11 @@ jobs:
           PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
           PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
           PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
+          # Compiled-in fallbacks for the shared public key. Unset is the normal case:
+          # the wallet then fetches the current one from /api/public-key, which is what
+          # lets it rotate without a redeploy. See src/lib/publicKey.ts.
+          PUBLIC_COSMOS_PUBLIC_KEY_DEV: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_DEV }}
+          PUBLIC_COSMOS_PUBLIC_KEY_PROD: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_PROD }}
 
       - uses: actions/configure-pages@v6
         with:

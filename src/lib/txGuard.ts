@@ -32,6 +32,7 @@
  * "no limit".
  */
 import {
+  Address,
   Asset,
   FeeBumpTransaction,
   LiquidityPoolAsset,
@@ -186,7 +187,7 @@ function refLabel(ref: AssetRef | null): string {
 
 /** Display label for anything the SDK hands us as an asset. */
 function assetLabel(asset: unknown): string {
-  if (isPoolShare(asset)) return 'Participaciones de pool';
+  if (isPoolShare(asset)) return tNow('guard.val.poolShares');
   return refLabel(assetRefOf(asset));
 }
 
@@ -194,16 +195,62 @@ function str(v: unknown): string | null {
   return typeof v === 'string' && v ? v : null;
 }
 
-/** Best-effort Soroban summary: contract id and function name, or nothing. */
+/**
+ * A contract address as the user can check it: the `C…` strkey.
+ *
+ * `String(scAddress)` is NOT that. The SDK hands over an `xdr.ScAddress` union whose
+ * `toString()` is the one it inherits from Object, so every external contract call
+ * rendered its identity as the literal text `[object Object]` — in the single row a
+ * user has to tell "the pool you meant to use" from "the drainer that asked". The row
+ * was there, the check was not: nothing in the suite asserted the VALUE of a row the
+ * approval window is built around.
+ *
+ * Read through `Address`, which decodes both halves of the union (a contract and an
+ * account address can both appear in that position), and fall back to nothing rather
+ * than to a placeholder: a row that cannot name the contract is worse than the
+ * `sorobanOpaque` line, which at least says so.
+ */
+function contractIdOf(addr: unknown): string | null {
+  if (typeof addr === 'string') return addr || null;
+  if (!addr) return null;
+  try {
+    return Address.fromScAddress(addr as Parameters<typeof Address.fromScAddress>[0]).toString() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** `hostFunctionTypeInvokeContract` -> `invokeContract`; null when unreadable. */
+function hostFunctionKind(fn: unknown): string | null {
+  try {
+    const name = (fn as { switch?: () => { name?: unknown } } | undefined)?.switch?.()?.name;
+    if (typeof name !== 'string' || !name) return null;
+    const bare = name.replace(/^hostFunctionType/, '');
+    return bare ? bare.charAt(0).toLowerCase() + bare.slice(1) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Best-effort Soroban summary: which host function, plus the contract id and function
+ * name when it is a contract call.
+ *
+ * The KIND is worth a row of its own because three of the four are not calls at all —
+ * uploading WASM and creating a contract reach the same operation type, and rendering
+ * them under a `sorobanOpaque` line that says "call" describes the wrong thing.
+ */
 function sorobanRows(o: Record<string, unknown>): { label: string; value: string }[] {
   const rows: { label: string; value: string }[] = [];
+  const fn = o.func;
+  const kind = hostFunctionKind(fn);
+  if (kind) rows.push({ label: tNow('guard.row.hostFunction'), value: kind });
   try {
-    const fn = o.func as { invokeContract?: () => { contractAddress: () => unknown; functionName: () => unknown } } | undefined;
-    const call = typeof fn?.invokeContract === 'function' ? fn.invokeContract() : null;
+    const f = fn as { invokeContract?: () => { contractAddress: () => unknown; functionName: () => unknown } } | undefined;
+    const call = typeof f?.invokeContract === 'function' ? f.invokeContract() : null;
     if (call) {
-      const addr = call.contractAddress?.();
       const name = call.functionName?.();
-      const id = typeof addr === 'string' ? addr : String((addr as { toString?: () => string })?.toString?.() ?? '');
+      const id = contractIdOf(call.contractAddress?.());
       const fname = name instanceof Uint8Array ? new TextDecoder().decode(name) : String(name ?? '');
       if (id) rows.push({ label: tNow('guard.row.contract'), value: short(id, 8) });
       if (fname) rows.push({ label: tNow('guard.row.function'), value: fname });

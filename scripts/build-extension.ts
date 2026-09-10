@@ -17,8 +17,21 @@
  */
 import { cp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
+import { loadEnv } from 'vite';
+import { DEFAULT_DEV_PLATFORM_URL, DEFAULT_GATEWAY_URL } from '../src/constants/backends.ts';
+import { cosmosHostPermissions } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
+
+/**
+ * The same `.env` the bundle was built against.
+ *
+ * Read with Vite's own loader rather than from `process.env`, so this script sees exactly
+ * what `astro build` saw: the `.env` file AND any variable the CI job exported. The empty
+ * prefix makes it read non-PUBLIC_ vars too — harmless here, and it keeps the call
+ * identical to the one in astro.config.ts.
+ */
+const env = loadEnv(process.env.NODE_ENV || 'production', process.cwd(), '');
 
 // Single source of truth for the version: package.json. The release workflow bumps
 // package.json (conventional commits) before this runs, so the manifest tracks it
@@ -240,6 +253,18 @@ const DATA_COLLECTION = {
   optional: ['personallyIdentifyingInfo', 'financialAndPaymentInfo'],
 };
 
+/**
+ * The Cosmos Pay hosts this build actually talks to, as MV3 match patterns.
+ *
+ * DERIVED from the same two variables the bundle was compiled with, never a second list —
+ * the rule and the reason live in `scripts/hostPermissions.ts`, which is where the test
+ * can reach them.
+ */
+const COSMOS_HOST_PERMISSIONS = cosmosHostPermissions([
+  env.PUBLIC_COSMOS_DEV_PLATFORM_URL || DEFAULT_DEV_PLATFORM_URL,
+  env.PUBLIC_COSMOS_GATEWAY_URL || DEFAULT_GATEWAY_URL,
+]);
+
 // MV3 manifest
 const manifest = {
   manifest_version: 3,
@@ -280,11 +305,7 @@ const manifest = {
     'https://horizon-testnet.stellar.org/*',
     'https://friendbot.stellar.org/*',
     'https://api.coingecko.com/*',
-    // Cosmos Pay backends (dev-platform provisioning + APISIX payments gateway).
-    // Host permission => Chrome exempts extension-page fetches from CORS, so the
-    // platform's origin allowlist doesn't need to know the extension's origin.
-    'https://cosmospay.lat/*',
-    'https://*.cosmospay.lat/*',
+    ...COSMOS_HOST_PERMISSIONS,
   ],
   // Inject the provider bridge into every web page so dapps can find window.cosmosWallet.
   content_scripts: [
@@ -328,3 +349,6 @@ const manifest = {
 await writeFile(join(OUT, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
 
 console.log(`✓ ${OUT}/ ready [${TARGET}] (${n} inline scripts externalised, provider + approval window wired). Load it as an unpacked extension.`);
+// Printed because it is the one manifest field a build can get wrong SILENTLY: the popup
+// then reaches nothing and reports it as the backend being down. Read it on every build.
+console.log(`  backends: ${COSMOS_HOST_PERMISSIONS.join(' ')}`);

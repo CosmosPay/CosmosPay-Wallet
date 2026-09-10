@@ -239,12 +239,18 @@ export const T: Record<string, Record<Lang, string>> = {
     de: 'Zwei optionale Berechtigungen. Du kannst sie jederzeit in den Einstellungen ändern.',
     fr: 'Deux autorisations facultatives. Tu peux les modifier à tout moment dans les Réglages.',
   },
+  /* Said "anonymous" until the reports began carrying a signature from the wallet that
+     sent them. On a wallet with a CosmosPay account they are now attributable BY DESIGN —
+     that is the point of the attestation — so the word had to go rather than the feature
+     be left undisclosed. A wallet with no account still reports anonymously and is still
+     stripped of anything naming it (ACCOUNT_PROPS), which is why the second sentence is
+     conditional rather than flat. */
   'setup.metricsOptIn': {
-    es: 'Acepto compartir métricas de uso anónimas para mejorar el producto (opcional).',
-    en: 'I agree to share anonymous usage metrics to improve the product (optional).',
-    pt: 'Aceito partilhar métricas de uso anónimas para melhorar o produto (opcional).',
-    de: 'Ich stimme zu, anonyme Nutzungsdaten zur Produktverbesserung zu teilen (optional).',
-    fr: 'J’accepte de partager des statistiques d’usage anonymes pour améliorer le produit (facultatif).',
+    es: 'Acepto compartir métricas de uso para mejorar el producto. Con una cuenta CosmosPay, los reportes se firman con tu wallet para verificar que son tuyos (opcional).',
+    en: 'I agree to share usage metrics to improve the product. With a CosmosPay account, reports are signed by your wallet so we can verify they are yours (optional).',
+    pt: 'Aceito partilhar métricas de uso para melhorar o produto. Com uma conta CosmosPay, os relatórios são assinados pela tua wallet para verificar que são teus (opcional).',
+    de: 'Ich stimme zu, Nutzungsdaten zur Produktverbesserung zu teilen. Mit einem CosmosPay-Konto werden Berichte von deiner Wallet signiert, damit wir bestätigen können, dass sie von dir stammen (optional).',
+    fr: 'J’accepte de partager des statistiques d’usage pour améliorer le produit. Avec un compte CosmosPay, les rapports sont signés par votre portefeuille afin de vérifier qu’ils sont les vôtres (facultatif).',
   },
   'setup.promoOptIn': {
     es: 'Quiero recibir novedades, promociones y ofertas (opcional).',
@@ -686,6 +692,14 @@ export const T: Record<string, Record<Lang, string>> = {
     fr: 'The swap is built and signed on your device; CosmosPay submits it to the network. The fee is set by your organization’s plan.',
   },
 
+  'swap.publicRate': {
+    es: 'Estás usando el acceso público de CosmosPay: 1,5 % de comisión. Crea una cuenta gratuita para acceder a las tasas promocionales.',
+    en: 'You are using CosmosPay public access: 1.5% commission. Create a free account to get the promotional rates.',
+    pt: 'Estás a usar o acesso público da CosmosPay: 1,5% de comissão. Cria uma conta gratuita para obter as taxas promocionais.',
+    de: 'Du nutzt den öffentlichen CosmosPay-Zugang: 1,5 % Provision. Erstelle ein kostenloses Konto für die Aktionskonditionen.',
+    fr: 'Tu utilises l’accès public CosmosPay : 1,5 % de commission. Crée un compte gratuit pour bénéficier des taux promotionnels.',
+  },
+
   // ---- earn ----
   'earn.title': { es: 'Ganar', en: 'Earn', pt: 'Ganhar', de: 'Verdienen', fr: 'Gagner' },
   'earn.totalAssets': { es: 'Valor total de tus activos', en: 'Total value of your assets', pt: 'Valor total dos teus ativos', de: 'Gesamtwert deiner Assets', fr: 'Valeur totale de tes actifs' },
@@ -943,6 +957,42 @@ export const T: Record<string, Record<Lang, string>> = {
     de: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. You sign with your Stellar key and confirm by email — no secrets stored in the app.',
     fr: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. You sign with your Stellar key and confirm by email — no secrets stored in the app.',
   },
+
+  'addAsset.verified': {
+    es: 'Emisores verificados',
+    en: 'Verified issuers',
+    pt: 'Emissores verificados',
+    de: 'Verifizierte Emittenten',
+    fr: 'Émetteurs vérifiés',
+  },
+  'addAsset.unverified': {
+    es: 'Sin verificar',
+    en: 'Unverified',
+    pt: 'Não verificados',
+    de: 'Nicht verifiziert',
+    fr: 'Non vérifiés',
+  },
+  'addAsset.unverifiedWarn': {
+    es: 'No comprobamos quién controla estos emisores. Cualquiera puede emitir un token con un código conocido: revisá la dirección del emisor antes de confiar en él.',
+    en: 'We have not checked who controls these issuers. Anyone can issue a token using a well-known code — check the issuer address before trusting it.',
+    pt: 'Não verificámos quem controla estes emissores. Qualquer pessoa pode emitir um token com um código conhecido — confirma o endereço do emissor antes de confiar.',
+    de: 'Wir haben nicht geprüft, wer diese Emittenten kontrolliert. Jeder kann ein Token mit einem bekannten Code ausgeben — prüfe die Emittenten-Adresse, bevor du ihr vertraust.',
+    fr: 'Nous n’avons pas vérifié qui contrôle ces émetteurs. N’importe qui peut émettre un jeton avec un code connu — vérifie l’adresse de l’émetteur avant de lui faire confiance.',
+  },
+  'addAsset.issuedBy': {
+    es: 'Emitido por {name}',
+    en: 'Issued by {name}',
+    pt: 'Emitido por {name}',
+    de: 'Ausgegeben von {name}',
+    fr: 'Émis par {name}',
+  },
+  'addAsset.clawbackWarn': {
+    es: 'El emisor puede congelar o recuperar este saldo.',
+    en: 'The issuer can freeze or claw back this balance.',
+    pt: 'O emissor pode congelar ou recuperar este saldo.',
+    de: 'Der Emittent kann dieses Guthaben einfrieren oder zurückholen.',
+    fr: 'L’émetteur peut geler ou récupérer ce solde.',
+  },
   'cosmospay.cta': { es: 'Conectar', en: 'Connect', pt: 'Conectar', de: 'Verbinden', fr: 'Connecter' },
   'cosmospay.manage': { es: 'Cosmos Pay', en: 'Cosmos Pay', pt: 'Cosmos Pay', de: 'Cosmos Pay', fr: 'Cosmos Pay' },
   'cosmospay.integrationDesc': {
@@ -1170,11 +1220,11 @@ export const T: Record<string, Record<Lang, string>> = {
   'settings.privacy': { es: 'Privacidad', en: 'Privacy', pt: 'Privacidade', de: 'Privatsphäre', fr: 'Confidentialité' },
   'settings.diagnostics': { es: 'Enviar diagnósticos', en: 'Send diagnostics', pt: 'Enviar diagnósticos', de: 'Diagnosedaten senden', fr: 'Envoyer des diagnostics' },
   'settings.diagnosticsDesc': {
-    es: 'Errores, tiempos de respuesta y las operaciones que haces, para detectar fallos. Nunca tu frase, tu clave ni tu contraseña.',
-    en: 'Errors, response times and the operations you run, so failures can be found. Never your recovery phrase, your key or your password.',
-    pt: 'Erros, tempos de resposta e as operações que fazes, para detetar falhas. Nunca a tua frase, a tua chave ou a tua palavra-passe.',
-    de: 'Fehler, Antwortzeiten und die von dir ausgeführten Vorgänge, damit Probleme gefunden werden. Niemals deine Wiederherstellungsphrase, dein Schlüssel oder dein Passwort.',
-    fr: 'Erreurs, temps de réponse et opérations effectuées, pour détecter les pannes. Jamais votre phrase de récupération, votre clé ni votre mot de passe.',
+    es: 'Errores, tiempos de respuesta y las operaciones que haces, para detectar fallos. Nunca tu frase, tu clave ni tu contraseña. Si tienes cuenta CosmosPay, se adjunta una firma de tu wallet que prueba que el reporte es tuyo.',
+    en: 'Errors, response times and the operations you run, so failures can be found. Never your recovery phrase, your key or your password. With a CosmosPay account, a signature from your wallet is attached proving the report is yours.',
+    pt: 'Erros, tempos de resposta e as operações que fazes, para detetar falhas. Nunca a tua frase, a tua chave ou a tua palavra-passe. Com conta CosmosPay, é anexada uma assinatura da tua wallet que prova que o relatório é teu.',
+    de: 'Fehler, Antwortzeiten und die von dir ausgeführten Vorgänge, damit Probleme gefunden werden. Niemals deine Wiederherstellungsphrase, dein Schlüssel oder dein Passwort. Mit einem CosmosPay-Konto wird eine Signatur deiner Wallet angehängt, die belegt, dass der Bericht von dir stammt.',
+    fr: 'Erreurs, temps de réponse et opérations effectuées, pour détecter les pannes. Jamais votre phrase de récupération, votre clé ni votre mot de passe. Avec un compte CosmosPay, une signature de votre portefeuille est jointe et prouve que le rapport est le vôtre.',
   },
 
   // ---- transaction guard (src/lib/txGuard.ts) ----
@@ -1260,12 +1310,14 @@ export const T: Record<string, Record<Lang, string>> = {
   'guard.row.dataValue': { es: 'Valor', en: 'Value', pt: 'Valor', de: 'Wert', fr: 'Valeur' },
   'guard.row.contract': { es: 'Contrato', en: 'Contract', pt: 'Contrato', de: 'Vertrag', fr: 'Contrat' },
   'guard.row.function': { es: 'Función', en: 'Function', pt: 'Função', de: 'Funktion', fr: 'Fonction' },
+  'guard.row.hostFunction': { es: 'Tipo de llamada', en: 'Call type', pt: 'Tipo de chamada', de: 'Aufruftyp', fr: 'Type d’appel' },
   'guard.row.operation': { es: 'Operación', en: 'Operation', pt: 'Operação', de: 'Operation', fr: 'Opération' },
 
   // Row values that are copy rather than decoded data.
   'guard.val.removeTrustline': { es: 'ELIMINAR trustline', en: 'REMOVE trustline', pt: 'REMOVER trustline', de: 'Trustline ENTFERNEN', fr: 'SUPPRIMER la trustline' },
   'guard.val.deleteEntry': { es: 'BORRAR', en: 'DELETE', pt: 'APAGAR', de: 'LÖSCHEN', fr: 'SUPPRIMER' },
   'guard.val.binary': { es: '(binario)', en: '(binary)', pt: '(binário)', de: '(binär)', fr: '(binaire)' },
+  'guard.val.poolShares': { es: 'Participaciones de pool', en: 'Pool shares', pt: 'Participações de pool', de: 'Pool-Anteile', fr: 'Parts de pool' },
   'guard.val.sorobanOpaque': { es: 'Invocación de contrato Soroban (no legible)', en: 'Soroban contract call (not readable)', pt: 'Invocação de contrato Soroban (não legível)', de: 'Soroban-Vertragsaufruf (nicht lesbar)', fr: 'Appel de contrat Soroban (illisible)' },
   'guard.val.unreadableOp': { es: 'La wallet no sabe leer esta operación', en: 'The wallet cannot read this operation', pt: 'A wallet não sabe ler esta operação', de: 'Die Wallet kann diese Operation nicht lesen', fr: 'Le portefeuille ne sait pas lire cette opération' },
   'guard.val.signerWeight': { es: '{key} (peso {weight})', en: '{key} (weight {weight})', pt: '{key} (peso {weight})', de: '{key} (Gewicht {weight})', fr: '{key} (poids {weight})' },
@@ -1283,6 +1335,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'approve.notFound': { es: 'Solicitud no encontrada', en: 'Request not found', pt: 'Pedido não encontrado', de: 'Anfrage nicht gefunden', fr: 'Demande introuvable' },
   'approve.notFoundBody': { es: 'La solicitud caducó o ya se resolvió. Puedes cerrar esta ventana.', en: 'The request expired or was already answered. You can close this window.', pt: 'O pedido caducou ou já foi respondido. Podes fechar esta janela.', de: 'Die Anfrage ist abgelaufen oder wurde bereits beantwortet. Du kannst dieses Fenster schließen.', fr: 'La demande a expiré ou a déjà été traitée. Tu peux fermer cette fenêtre.' },
   'approve.noWallet': { es: 'No hay wallet', en: 'No wallet', pt: 'Sem wallet', de: 'Keine Wallet', fr: 'Aucun portefeuille' },
+  'approve.noWalletBody': { es: 'Abre Cosmos Wallet y crea o importa una wallet antes de conectar con una web.', en: 'Open Cosmos Wallet and create or import a wallet before connecting to a site.', pt: 'Abre a Cosmos Wallet e cria ou importa uma wallet antes de ligar a um site.', de: 'Öffne Cosmos Wallet und erstelle oder importiere eine Wallet, bevor du dich mit einer Website verbindest.', fr: 'Ouvre Cosmos Wallet et crée ou importe un portefeuille avant de te connecter à un site.' },
   'approve.close': { es: 'Cerrar', en: 'Close', pt: 'Fechar', de: 'Schließen', fr: 'Fermer' },
   'approve.addressBar': { es: 'Barra de direcciones', en: 'Address bar', pt: 'Barra de endereços', de: 'Adressleiste', fr: 'Barre d’adresse' },
   'approve.defaultWalletName': { es: 'astronauta', en: 'astronaut', pt: 'astronauta', de: 'Astronaut', fr: 'astronaute' },
@@ -1334,7 +1387,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'approve.sending': { es: 'Enviando…', en: 'Sending…', pt: 'A enviar…', de: 'Wird gesendet…', fr: 'Envoi…' },
   'approve.signing': { es: 'Firmando…', en: 'Signing…', pt: 'A assinar…', de: 'Wird signiert…', fr: 'Signature…' },
 
-  // ---- Stellar operation names (src/constants/app.ts OP_LABEL_KEYS) ----
+  // ---- Stellar operation names (src/constants/dapp.ts OP_LABEL_KEYS) ----
   'op.payment': { es: 'Pago', en: 'Payment', pt: 'Pagamento', de: 'Zahlung', fr: 'Paiement' },
   'op.createAccount': { es: 'Crear cuenta', en: 'Create account', pt: 'Criar conta', de: 'Konto erstellen', fr: 'Créer un compte' },
   'op.pathPaymentStrictSend': { es: 'Intercambio (envío fijo)', en: 'Swap (fixed send)', pt: 'Troca (envio fixo)', de: 'Tausch (fester Versand)', fr: 'Échange (envoi fixe)' },
@@ -1371,6 +1424,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'tx.err.badSequence': { es: 'Error de secuencia, inténtalo de nuevo.', en: 'Sequence error, please try again.', pt: 'Erro de sequência, tenta novamente.', de: 'Sequenzfehler, bitte erneut versuchen.', fr: 'Erreur de séquence, réessaie.' },
   'tx.err.rejected': { es: 'La red rechazó la transacción ({code}).', en: 'The network rejected the transaction ({code}).', pt: 'A rede rejeitou a transação ({code}).', de: 'Das Netzwerk hat die Transaktion abgelehnt ({code}).', fr: 'Le réseau a rejeté la transaction ({code}).' },
   'tx.err.submitFailed': { es: 'No se pudo enviar la transacción.', en: 'The transaction could not be submitted.', pt: 'Não foi possível enviar a transação.', de: 'Die Transaktion konnte nicht gesendet werden.', fr: 'La transaction n’a pas pu être envoyée.' },
+  'tx.err.friendbotFailed': { es: 'No se pudo financiar la cuenta con Friendbot.', en: 'The account could not be funded with Friendbot.', pt: 'Não foi possível financiar a conta com o Friendbot.', de: 'Das Konto konnte nicht über Friendbot finanziert werden.', fr: 'Le compte n’a pas pu être financé avec Friendbot.' },
   'tx.err.friendbotTestnetOnly': { es: 'Friendbot solo está disponible en Testnet.', en: 'Friendbot is only available on Testnet.', pt: 'O Friendbot só está disponível na Testnet.', de: 'Friendbot ist nur im Testnet verfügbar.', fr: 'Friendbot n’est disponible que sur Testnet.' },
 
   'wallet.badMnemonic': { es: 'La frase de recuperación no es válida.', en: 'That recovery phrase is not valid.', pt: 'A frase de recuperação não é válida.', de: 'Diese Wiederherstellungsphrase ist ungültig.', fr: 'Cette phrase de récupération n’est pas valide.' },

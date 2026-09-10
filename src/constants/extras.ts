@@ -8,19 +8,11 @@ export const SCAN_DECODE_MAX_PX = 1400;
 // memos at 28 BYTES, not characters, so it needs a clamp function, not a constant.
 
 /* ----------------------------- AddAsset ----------------------------- */
-// Issuers we trust outright per network; everything else is resolved from Horizon
-// (so testnet variants and less-common assets get the right, real issuer).
-export const KNOWN_ISSUERS: Record<string, { public?: string; testnet?: string }> = {
-  USDC: {
-    public: 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN',
-    testnet: 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5',
-  },
-  // BlindPay's dev/test stablecoin (used by the fiat on/off-ramp) — testnet only.
-  USDB: { testnet: 'GCQSSIMOW5OCGULZATDXKU5MOJBOMFX6G65X6CXZDQ7AIB3SKFUZ67NX' },
-  EURC: { public: 'GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2' },
-  AQUA: { public: 'GBNZILSTVQZ4R7IKQDGHYGY2QXL5QOFJYQMXPKWRRM5PAV7Y4M67AQUA' },
-  yXLM: { public: 'GARDNV3Q7YGT4AKSDF25LT32YSCCW4EV22Y2TV3I2PU2MMXJTEDL5T55' },
-};
+// Issuer identity lives in the asset registry (src/lib/assetRegistry.ts), which is
+// checked against live Horizon. `KNOWN_ISSUERS` used to sit here as a second,
+// hand-maintained copy and the two had already diverged — the registry gained
+// USDT0 and this table had not, so the portfolio priced Tether's token at nothing
+// while the picker showed it as verified. One question, one answer: it is gone.
 
 // Common asset codes offered in the quick list; the issuer is resolved per network,
 // so each one only shows up when it actually exists on the current network (USDB is

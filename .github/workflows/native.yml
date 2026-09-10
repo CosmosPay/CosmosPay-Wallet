@@ -99,6 +99,20 @@ on:
 # separate native version script any more — there is nothing left for it to keep in sync.
 env:
   CARGO_TERM_COLOR: always
+  # Where the embedded web bundle points. `tauri build` runs `npm run build` itself
+  # through beforeBuildCommand, so these have to be on the JOB's environment — there is
+  # no build step here to hang them on. Repository VARIABLES, never secrets: every one
+  # ships inside the client bundle, and `.env.example` says why that is fine. Unset
+  # arrives as an empty string, which falls through to src/constants/backends.ts.
+  #
+  # A Tauri window has NO CORS exemption (there is no tauri-plugin-http in
+  # src-tauri/Cargo.toml, deliberately), so whatever host these name must also allow the
+  # `tauri://localhost` and `http://tauri.localhost` origins — see .env.example.
+  PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
+  PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
+  PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
+  PUBLIC_COSMOS_PUBLIC_KEY_DEV: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_DEV }}
+  PUBLIC_COSMOS_PUBLIC_KEY_PROD: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_PROD }}
 
 jobs:
   # ---------------------------------------------------------------- desktop

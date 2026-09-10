@@ -49,6 +49,74 @@ export const OPT_OUT_KEY = 'cosmos.telemetry';
  */
 export const MAX_EVENT_AGE_MS = 6 * 24 * 60 * 60 * 1000;
 
+/* ------------------------- request tracing ------------------------- */
+
+/**
+ * Header carrying a per-request trace id to the gateway and the dev platform.
+ *
+ * The point is joining two halves of one failure. A wallet reports `api.error` with a
+ * status and a route; the gateway has its own access-log line for the same call. Without
+ * a shared id the only way to pair them is a timestamp and a guess, which stops working
+ * the moment two users hit the same route in the same second.
+ *
+ * It must survive the gateway to be worth anything: APISIX's `proxy-rewrite` on the
+ * Cosmos route strips `Authorization`, `apikey` and the `X-Cosmos-*` internal markers,
+ * and this is deliberately none of those.
+ *
+ * It names no account. A fresh random value per request cannot be correlated across
+ * calls, let alone back to a person, which is what lets it travel on the anonymous
+ * route unstripped — unlike {@link ACCOUNT_PROPS}, which cannot.
+ */
+export const TRACE_HEADER = 'X-Cosmos-Trace-Id';
+
+/** Where the same id is recorded on the event, so the two feeds join on one key. */
+export const TRACE_PROP = 'traceId';
+
+/* --------------------- diagnostics ownership attestation --------------------- */
+
+/**
+ * Domain tag for the diagnostics attestation. NEVER {@link SIGN_MESSAGE_DOMAIN}'s.
+ *
+ * Sharing a tag with the dapp-facing `signMessage` would mean a website could ask a user
+ * to sign a plain "message" that is really a well-formed attestation, and receive
+ * something this pipeline accepts as proof that the user's wallet vouched for a report.
+ * Two protocols, two tags — see `lib/signMessage.ts`.
+ */
+export const ATTESTATION_DOMAIN = 'Cosmos Wallet diagnostics attestation v1';
+
+/** Attestation version, carried in the signed body so a verifier can refuse an old shape. */
+export const ATTESTATION_VERSION = 1;
+
+/**
+ * How long a signed attestation stays attachable before it is rebuilt.
+ *
+ * Bounded for the reason every signature in this wallet is bounded: an unbounded one is a
+ * standing credential, and this one is produced with no prompt at all. Twelve hours is
+ * long enough that an ordinary user signs one per day, and short enough that a copy lifted
+ * off a device stops verifying while its owner still has the wallet.
+ */
+export const ATTESTATION_MAX_AGE_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * The single prop the attestation travels in.
+ *
+ * One key rather than four, because every one of them is account-identifying and
+ * {@link ACCOUNT_PROPS} strips by exact key name — four keys is four chances to add the
+ * fifth and forget. `tests/unit/telemetry.test.ts` asserts it is stripped anonymously.
+ */
+export const ATTESTATION_PROP = 'ownership';
+
+/**
+ * Byte budget an event's `props` must stay under for the attestation to be added.
+ *
+ * The gateway caps serialized `props` at 8192 bytes and REPLACES an oversized object with
+ * a marker rather than rejecting the event — so appending an attestation to an event
+ * already near the cap would silently destroy the event's own props AND the attestation.
+ * The headroom is what makes attaching it safe; a batch whose every event is too big
+ * simply carries no proof, which is the honest outcome.
+ */
+export const ATTESTATION_PROPS_BUDGET = 7_168;
+
 /**
  * Every event name the wallet reports, in one table.
  *

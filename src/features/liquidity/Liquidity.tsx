@@ -9,7 +9,6 @@ import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { TokenAvatar } from '@/ui/TokenAvatar';
 import { trim } from '@/lib/format';
-import { networkEnv } from '@/lib/stellar';
 import { cx } from '@/lib/cx';
 import '@/styles/features/liquidity/liquidity.css';
 
@@ -105,7 +104,12 @@ function LpCard({
 
 export function Liquidity({ store }: { store: WalletStore }) {
   const t = store.t;
-  const enabled = !!store.cosmosPay?.keys[networkEnv(store.network)];
+  // Pools need a gateway credential, not an ACCOUNT: browsing is on-chain data and
+  // a deposit is an envelope the device signs. Without an account of their own the
+  // user operates on the shared public key at the community rate; with one, at
+  // their plan's. This used to gate on `cosmosPay`, which hid the whole feature
+  // from anyone who had not registered.
+  const enabled = store.gatewayAccess;
   const [tab, setTab] = useState<'pools' | 'positions'>('positions');
 
   const [pools, setPools] = useState<LiquidityPool[] | null>(null);

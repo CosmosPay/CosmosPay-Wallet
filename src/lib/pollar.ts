@@ -34,6 +34,8 @@ import { parseShape, type Check } from '@/lib/apiShape';
 import { apiError, ApiRequestError } from '@/lib/apiError';
 import { RETRY_AFTER_CAP_S } from '@/constants/api';
 import { gatewayApi } from '@/lib/endpoints';
+import { newTraceId } from '@/lib/trace';
+import { TRACE_HEADER } from '@/constants/telemetry';
 import { tNow } from '@/lib/i18n';
 import { newPkce, type Pkce } from '@/lib/pkce';
 import {
@@ -127,7 +129,14 @@ async function call<T>(
   const url = `${base()}${path}`;
   const res = await fetch(url, {
     method,
-    headers: { ...auth(apiKey), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    headers: {
+      ...auth(apiKey),
+      // The login path is the one where a failure is hardest to chase — it spans the
+      // wallet, the bridge and Pollar — so every bridge call carries a trace id the
+      // gateway's own log line can be joined on. See lib/trace.ts.
+      [TRACE_HEADER]: newTraceId(),
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 

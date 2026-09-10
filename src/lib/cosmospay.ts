@@ -36,6 +36,7 @@ import { Keypair } from '@stellar/stellar-sdk';
 // so a dev can repoint them live from Settings without rebuilding. The gateway
 // still exposes the payments API behind an entry prefix (default `/cosmos-api`).
 import { devPlatformUrl, gatewayApi } from '@/lib/endpoints';
+import { newTraceId } from '@/lib/trace';
 
 /** Default slippage tolerance for swaps (0.5%). */
 export const DEFAULT_SLIPPAGE_BPS = 50;
@@ -206,7 +207,7 @@ import {
 } from '@/lib/cosmospayShapes';
 import { tNow } from '@/lib/i18n';
 import { report, reportError } from '@/lib/telemetry';
-import { EVENT, SLOW_REQUEST_MS } from '@/constants/telemetry';
+import { EVENT, SLOW_REQUEST_MS, TRACE_HEADER, TRACE_PROP } from '@/constants/telemetry';
 import type { PollarSession, PollarSessionStatus } from '@/lib/pollar';
 import { PollarSessionStatusShape, SocialAuthorizationShape, SocialClaimShape } from '@/lib/pollarShapes';
 
@@ -252,9 +253,17 @@ function apiRoute(url: string): string {
  * reported at all: the point is the exceptions, and one row per successful read would
  * bury them and cost a request per screen.
  */
-function reportCall(url: string, startedAt: number, status: number, err?: unknown): void {
+/**
+ * File what one call did, under the trace id that call sent.
+ *
+ * `traceId` is what makes the event joinable to the gateway's own log line for the same
+ * request. It is not an identity — a fresh random value per call — so unlike the fields in
+ * ACCOUNT_PROPS it travels on the anonymous route too, which is the route where a failure
+ * is hardest to chase and this is the only handle on it.
+ */
+function reportCall(url: string, startedAt: number, status: number, traceId: string, err?: unknown): void {
   const durationMs = Math.round(Date.now() - startedAt);
-  const props = { route: apiRoute(url), status, durationMs };
+  const props = { route: apiRoute(url), status, durationMs, [TRACE_PROP]: traceId };
   if (err) {
     reportError(EVENT.apiError, err, props);
     return;
@@ -282,17 +291,20 @@ async function postJson<T>(
   shape: Check<unknown>,
 ): Promise<T> {
   const startedAt = Date.now();
+  // Minted per CALL, not per operation: a retry is a different request and must not claim
+  // to be the same one. See lib/trace.ts.
+  const traceId = newTraceId();
   let res: Response;
   try {
     res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...headers },
+      headers: { 'Content-Type': 'application/json', [TRACE_HEADER]: traceId, ...headers },
       body: JSON.stringify(body),
     });
   } catch (e) {
     // A transport failure, not an HTTP one: no status, and it is the shape an offline
     // wallet takes. Status 0 is how the feed tells the two apart.
-    reportCall(url, startedAt, 0, e);
+    reportCall(url, startedAt, 0, traceId, e);
     throw e;
   }
 
@@ -305,10 +317,10 @@ async function postJson<T>(
 
   if (!res.ok) {
     const err = apiError(url, res, json, RETRY_AFTER_CAP_S);
-    reportCall(url, startedAt, res.status, err);
+    reportCall(url, startedAt, res.status, traceId, err);
     throw err;
   }
-  reportCall(url, startedAt, res.status);
+  reportCall(url, startedAt, res.status, traceId);
 
   const payload =
     unwrap && json && typeof json === 'object' && 'data' in (json as Envelope) ? (json as Envelope).data : json;
@@ -526,7 +538,7 @@ export async function socialClaim(
  * for a wallet that does not have one; separate from `postJson` only in method.
  */
 async function getPlatformJson<T>(url: string, shape: Check<unknown>): Promise<T> {
-  const res = await fetch(url);
+  const res = await fetch(url, { headers: { [TRACE_HEADER]: newTraceId() } });
 
   let json: unknown = null;
   try {
@@ -788,11 +800,12 @@ export async function createPayLink(apiKey: string, input: PayLinkInput): Promis
  *  `shape` is required for the same reason it is on postJson. */
 async function getJson<T>(url: string, apiKey: string, shape: Check<unknown>): Promise<T> {
   const startedAt = Date.now();
+  const traceId = newTraceId();
   let res: Response;
   try {
-    res = await fetch(url, { headers: authHeaders(apiKey) });
+    res = await fetch(url, { headers: { ...authHeaders(apiKey), [TRACE_HEADER]: traceId } });
   } catch (e) {
-    reportCall(url, startedAt, 0, e);
+    reportCall(url, startedAt, 0, traceId, e);
     throw e;
   }
   let json: unknown = null;
@@ -803,10 +816,10 @@ async function getJson<T>(url: string, apiKey: string, shape: Check<unknown>): P
   }
   if (!res.ok) {
     const err = apiError(url, res, json, RETRY_AFTER_CAP_S);
-    reportCall(url, startedAt, res.status, err);
+    reportCall(url, startedAt, res.status, traceId, err);
     throw err;
   }
-  reportCall(url, startedAt, res.status);
+  reportCall(url, startedAt, res.status, traceId);
   parseShape(url, shape, json);
   return json as T;
 }
@@ -896,7 +909,7 @@ export async function uploadKycDoc(apiKey: string, file: Blob, bucket = 'onboard
   // Note: no Content-Type header — the browser sets the multipart boundary itself.
   const res = await fetch(`${gatewayApi()}/v1/kyc/upload`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: { Authorization: `Bearer ${apiKey}`, [TRACE_HEADER]: newTraceId() },
     body: form,
   });
   let json: unknown = null;
@@ -1023,7 +1036,7 @@ export async function listBankAccounts(
 export async function deleteBankAccount(apiKey: string, receiverId: string, accountId: string): Promise<void> {
   const res = await fetch(
     `${gatewayApi()}/v1/kyc/receivers/${encodeURIComponent(receiverId)}/bank-accounts/${encodeURIComponent(accountId)}`,
-    { method: 'DELETE', headers: authHeaders(apiKey) },
+    { method: 'DELETE', headers: { ...authHeaders(apiKey), [TRACE_HEADER]: newTraceId() } },
   );
   if (!res.ok) {
     let json: unknown = null;
