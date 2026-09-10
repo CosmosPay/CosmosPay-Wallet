@@ -239,12 +239,18 @@ export const T: Record<string, Record<Lang, string>> = {
     de: 'Zwei optionale Berechtigungen. Du kannst sie jederzeit in den Einstellungen ändern.',
     fr: 'Deux autorisations facultatives. Tu peux les modifier à tout moment dans les Réglages.',
   },
+  /* Said "anonymous" until the reports began carrying a signature from the wallet that
+     sent them. On a wallet with a CosmosPay account they are now attributable BY DESIGN —
+     that is the point of the attestation — so the word had to go rather than the feature
+     be left undisclosed. A wallet with no account still reports anonymously and is still
+     stripped of anything naming it (ACCOUNT_PROPS), which is why the second sentence is
+     conditional rather than flat. */
   'setup.metricsOptIn': {
-    es: 'Acepto compartir métricas de uso anónimas para mejorar el producto (opcional).',
-    en: 'I agree to share anonymous usage metrics to improve the product (optional).',
-    pt: 'Aceito partilhar métricas de uso anónimas para melhorar o produto (opcional).',
-    de: 'Ich stimme zu, anonyme Nutzungsdaten zur Produktverbesserung zu teilen (optional).',
-    fr: 'J’accepte de partager des statistiques d’usage anonymes pour améliorer le produit (facultatif).',
+    es: 'Acepto compartir métricas de uso para mejorar el producto. Con una cuenta CosmosPay, los reportes se firman con tu wallet para verificar que son tuyos (opcional).',
+    en: 'I agree to share usage metrics to improve the product. With a CosmosPay account, reports are signed by your wallet so we can verify they are yours (optional).',
+    pt: 'Aceito partilhar métricas de uso para melhorar o produto. Com uma conta CosmosPay, os relatórios são assinados pela tua wallet para verificar que são teus (opcional).',
+    de: 'Ich stimme zu, Nutzungsdaten zur Produktverbesserung zu teilen. Mit einem CosmosPay-Konto werden Berichte von deiner Wallet signiert, damit wir bestätigen können, dass sie von dir stammen (optional).',
+    fr: 'J’accepte de partager des statistiques d’usage pour améliorer le produit. Avec un compte CosmosPay, les rapports sont signés par votre portefeuille afin de vérifier qu’ils sont les vôtres (facultatif).',
   },
   'setup.promoOptIn': {
     es: 'Quiero recibir novedades, promociones y ofertas (opcional).',
@@ -1214,11 +1220,11 @@ export const T: Record<string, Record<Lang, string>> = {
   'settings.privacy': { es: 'Privacidad', en: 'Privacy', pt: 'Privacidade', de: 'Privatsphäre', fr: 'Confidentialité' },
   'settings.diagnostics': { es: 'Enviar diagnósticos', en: 'Send diagnostics', pt: 'Enviar diagnósticos', de: 'Diagnosedaten senden', fr: 'Envoyer des diagnostics' },
   'settings.diagnosticsDesc': {
-    es: 'Errores, tiempos de respuesta y las operaciones que haces, para detectar fallos. Nunca tu frase, tu clave ni tu contraseña.',
-    en: 'Errors, response times and the operations you run, so failures can be found. Never your recovery phrase, your key or your password.',
-    pt: 'Erros, tempos de resposta e as operações que fazes, para detetar falhas. Nunca a tua frase, a tua chave ou a tua palavra-passe.',
-    de: 'Fehler, Antwortzeiten und die von dir ausgeführten Vorgänge, damit Probleme gefunden werden. Niemals deine Wiederherstellungsphrase, dein Schlüssel oder dein Passwort.',
-    fr: 'Erreurs, temps de réponse et opérations effectuées, pour détecter les pannes. Jamais votre phrase de récupération, votre clé ni votre mot de passe.',
+    es: 'Errores, tiempos de respuesta y las operaciones que haces, para detectar fallos. Nunca tu frase, tu clave ni tu contraseña. Si tienes cuenta CosmosPay, se adjunta una firma de tu wallet que prueba que el reporte es tuyo.',
+    en: 'Errors, response times and the operations you run, so failures can be found. Never your recovery phrase, your key or your password. With a CosmosPay account, a signature from your wallet is attached proving the report is yours.',
+    pt: 'Erros, tempos de resposta e as operações que fazes, para detetar falhas. Nunca a tua frase, a tua chave ou a tua palavra-passe. Com conta CosmosPay, é anexada uma assinatura da tua wallet que prova que o relatório é teu.',
+    de: 'Fehler, Antwortzeiten und die von dir ausgeführten Vorgänge, damit Probleme gefunden werden. Niemals deine Wiederherstellungsphrase, dein Schlüssel oder dein Passwort. Mit einem CosmosPay-Konto wird eine Signatur deiner Wallet angehängt, die belegt, dass der Bericht von dir stammt.',
+    fr: 'Erreurs, temps de réponse et opérations effectuées, pour détecter les pannes. Jamais votre phrase de récupération, votre clé ni votre mot de passe. Avec un compte CosmosPay, une signature de votre portefeuille est jointe et prouve que le rapport est le vôtre.',
   },
 
   // ---- transaction guard (src/lib/txGuard.ts) ----

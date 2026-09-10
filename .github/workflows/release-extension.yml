@@ -42,6 +42,24 @@ concurrency:
 permissions:
   contents: write # commit the bump (main), push tags, create releases
 
+# Where a build points. Each is a repository VARIABLE (Settings -> Secrets and variables
+# -> Actions -> Variables), never a secret: all five ship inside the client bundle and
+# `.env.example` says why none of them is one. An unset variable arrives as an empty
+# string, which src/lib/endpoints.ts and src/lib/publicKey.ts read as "use the compiled-in
+# default" (src/constants/backends.ts) — so a fork with nothing configured still builds a
+# working wallet. `.env` is the same surface locally and is the file to read first.
+#
+# These belong at WORKFLOW level rather than on the build step: `npm run build:ext` runs
+# astro build and the manifest writer, `tauri build` runs astro build through
+# beforeBuildCommand, and a variable attached to only one of those produces a bundle and a
+# manifest that disagree about which backend the extension may reach.
+env:
+  PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
+  PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
+  PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
+  PUBLIC_COSMOS_PUBLIC_KEY_DEV: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_DEV }}
+  PUBLIC_COSMOS_PUBLIC_KEY_PROD: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_PROD }}
+
 jobs:
   # Gate: the bot only proceeds to version/publish if the whole suite is green and
   # there are no known-vulnerable shipped dependencies.

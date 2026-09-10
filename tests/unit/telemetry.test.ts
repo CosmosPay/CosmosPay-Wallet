@@ -15,7 +15,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { configureTelemetry, flushTelemetry, report, setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
-import { EVENT } from '@/constants/telemetry';
+import { ATTESTATION_PROP, ATTESTATION_PROPS_BUDGET, EVENT, TRACE_PROP } from '@/constants/telemetry';
 
 interface Sent {
   url: string;
@@ -37,7 +37,7 @@ beforeEach(() => {
     return { status: 202 } as Response;
   }) as typeof fetch;
   setTelemetryEnabled(true);
-  configureTelemetry({ apiKey: null, env: 'dev', network: 'testnet' });
+  configureTelemetry({ apiKey: null, env: 'dev', network: 'testnet', ownership: null });
 });
 
 afterEach(async () => {
@@ -175,4 +175,106 @@ test('a failed flush keeps the events for the next one', async () => {
   await flushTelemetry();
   assert.equal(sent.length, 1);
   assert.equal(sent[0].body.events[0].type, 'app.open');
+});
+
+
+/* --------------------- ownership attestation + trace id --------------------- */
+
+/** A signed attestation shaped like the real one, without needing a keypair here. */
+const OWNERSHIP = {
+  v: 1,
+  address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ234567ABCDEFGHIJKLMNOPQRS',
+  installId: 'install-1',
+  network: 'Test SDF Network ; September 2015',
+  issuedAt: Date.now(),
+  sig: 'a'.repeat(88),
+};
+
+test('the ownership proof never travels on the shared public key', async () => {
+  // It NAMES an account and proves who owns it — the most account-identifying thing the
+  // reporter can carry. Under the shared key the consumer is every anonymous wallet at
+  // once, so publishing it there would tie an install to a Stellar account far more
+  // firmly than the bare address this suite already refuses to send.
+  configureTelemetry({ apiKey: 'pk_shared', shared: true, ownership: OWNERSHIP });
+  report(EVENT.swapFailed, { level: 'error', props: { asset: 'XLM' } });
+  await flushTelemetry();
+
+  assert.equal(sent.length, 1);
+  for (const e of sent[0].body.events) {
+    assert.equal(e.props?.[ATTESTATION_PROP], undefined);
+  }
+});
+
+test('the ownership proof travels on the account own key', async () => {
+  configureTelemetry({ apiKey: 'sk_own', shared: false, ownership: OWNERSHIP });
+  report(EVENT.swapFailed, { level: 'error', props: { asset: 'XLM' } });
+  await flushTelemetry();
+
+  const carried = sent[0].body.events.filter((e) => e.props?.[ATTESTATION_PROP] !== undefined);
+  assert.equal(carried.length, 1);
+  assert.deepEqual(carried[0].props?.[ATTESTATION_PROP], OWNERSHIP);
+});
+
+test('exactly one event per batch carries it', async () => {
+  // The claim is "this install belongs to this account", so one verified copy attributes
+  // every row sharing the distinctId. Repeating an ~250-byte signature on a hundred rows
+  // buys nothing and spends each one's props budget.
+  configureTelemetry({ apiKey: 'sk_own', shared: false, ownership: OWNERSHIP });
+  for (let i = 0; i < 5; i += 1) report(EVENT.screenView, { props: { screen: `s${i}` } });
+  await flushTelemetry();
+
+  const carried = sent[0].body.events.filter((e) => e.props?.[ATTESTATION_PROP] !== undefined);
+  assert.equal(carried.length, 1);
+});
+
+test('a stale attestation is not attached', async () => {
+  // Expiry is the only thing bounding a signature produced with no prompt, so an expired
+  // one must be dropped by the sender rather than left for a verifier to catch.
+  configureTelemetry({
+    apiKey: 'sk_own',
+    shared: false,
+    ownership: { ...OWNERSHIP, issuedAt: Date.now() - 48 * 60 * 60 * 1000 },
+  });
+  report(EVENT.appError, { level: 'error' });
+  await flushTelemetry();
+
+  assert.equal(sent[0].body.events.some((e) => e.props?.[ATTESTATION_PROP] !== undefined), false);
+});
+
+test('lock clears it — a locked wallet vouches for nothing', async () => {
+  configureTelemetry({ apiKey: 'sk_own', shared: false, ownership: OWNERSHIP });
+  configureTelemetry({ ownership: null });
+  report(EVENT.lock, {});
+  await flushTelemetry();
+
+  assert.equal(sent[0].body.events.some((e) => e.props?.[ATTESTATION_PROP] !== undefined), false);
+});
+
+test('it is skipped rather than overflowing an event props budget', async () => {
+  // The gateway caps serialized props at 8192 bytes and REPLACES an oversized object with
+  // a marker instead of rejecting the event — so appending to an event already near the
+  // cap would destroy that event's own props and the attestation together, leaving only
+  // `_dropped`. A batch with no room simply goes unvouched.
+  configureTelemetry({ apiKey: 'sk_own', shared: false, ownership: OWNERSHIP });
+  report(EVENT.apiError, { level: 'error', props: { blob: 'x'.repeat(ATTESTATION_PROPS_BUDGET) } });
+  await flushTelemetry();
+
+  const e = sent[0].body.events[0];
+  assert.equal(e.props?.[ATTESTATION_PROP], undefined);
+  // ...and the event's own props survived intact, which is the point of skipping.
+  assert.equal(typeof e.props?.blob, 'string');
+});
+
+test('a trace id is not account-identifying, so it survives anonymization', async () => {
+  // It is the only handle on a failure that reached the gateway, and the anonymous route
+  // is where a failure is hardest to chase — stripping it there would leave the events
+  // that need joining most as the ones that cannot be.
+  configureTelemetry({ apiKey: null, shared: true, ownership: null });
+  report(EVENT.apiError, { level: 'error', props: { [TRACE_PROP]: 'trace-xyz', address: 'GABC' } });
+  await flushTelemetry();
+
+  const props = sent[0].body.events[0].props ?? {};
+  assert.equal(props[TRACE_PROP], 'trace-xyz');
+  // ...while the address beside it still goes, which is what makes this a real assertion.
+  assert.equal(props.address, undefined);
 });

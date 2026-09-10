@@ -77,7 +77,13 @@ export default defineConfig({
         // prefix itself before forwarding upstream), so forward the prefix as-is.
         '/cosmos-api': { target: GATEWAY_TARGET, changeOrigin: true },
       },
-      allowedHosts: [env.ALLOWED_HOSTS],
+      // Comma-separated, and FILTERED: `[env.ALLOWED_HOSTS]` put a literal `undefined`
+      // (or an empty string) in the list whenever the var was unset, which Vite reads as
+      // a host named "" — never matching, and masking the real "Blocked request" cause.
+      allowedHosts: (env.ALLOWED_HOSTS ?? '')
+        .split(',')
+        .map((h) => h.trim())
+        .filter(Boolean),
       // The native projects are generated inside the repo, and `cap sync` copies the
       // whole of dist/web/ into android/app/src/main/assets/public/ — under the project
       // root, so the dev-server watcher treats every copied file as a source edit and

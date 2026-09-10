@@ -159,7 +159,16 @@ import { useSigningGate } from '@/state/useSigningGate';
 import { parseStellarQr } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
 import { cachedPublicKey, warmPublicKey } from '@/lib/publicKey';
-import { configureTelemetry, report, reportError, setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
+import {
+  configureTelemetry,
+  hasFreshOwnership,
+  report,
+  reportError,
+  setTelemetryEnabled,
+  telemetryEnabled,
+  telemetryInstallId,
+} from '@/lib/telemetry';
+import { signOwnership } from '@/lib/attestation';
 import { EVENT } from '@/constants/telemetry';
 
 export type { Theme } from '@/state/usePreferences';
@@ -2233,6 +2242,76 @@ export function useWalletStore() {
    * to either — including `lock()`, which clears `cosmosPay` and must therefore stop
    * attributing anything to the account whose session just ended.
    */
+  /**
+   * Vouch for the reports this wallet sends, in the background, with no prompt.
+   *
+   * The consent is the diagnostics opt-in itself — the user agreed to send reports about
+   * this wallet, and this is what makes such a report checkable rather than merely
+   * claimed. So there is deliberately no signing gate here: `requestSignature` exists to
+   * confirm something that MOVES VALUE, and asking for a password every twelve hours to
+   * label a crash report would train people to approve prompts they did not read.
+   *
+   * What it signs can never move value, and that is structural rather than promised: it
+   * is a domain-separated digest, not a transaction, so no envelope exists for anyone to
+   * submit. `lib/attestation.ts` has the whole argument.
+   *
+   * Five gates, and each one is a way this could otherwise misfire:
+   *
+   *  - **Diagnostics off** → nothing is minted. An attestation for a wallet that reports
+   *    nothing is a signature produced for no reason, and the one thing a privacy setting
+   *    must not do is act anyway.
+   *  - **No session** → nothing to sign with. This also covers the locked wallet: `lock()`
+   *    clears the session, this effect re-runs and passes `ownership: null`, so a locked
+   *    wallet stops vouching for anything.
+   *  - **Pollar wallet** → skipped. Its key is in Pollar's KMS, so `secretOf` has nothing
+   *    to open; proving ownership there would mean spending an access token on a round
+   *    trip, which is a different feature and not this one.
+   *  - **Anonymous route** → skipped. Under the shared public key the attestation would be
+   *    stripped by `anonymize` anyway (it names an account, so it is in ACCOUNT_PROPS), and
+   *    minting one nobody will send is a vault read for nothing.
+   *  - **Still fresh** → skipped, so this costs one signature per twelve hours rather than
+   *    one per network flick or per re-render.
+   *
+   * `guardSession` before the key is used, per the session-epoch rule: the vault read is an
+   * await, and the idle auto-lock can land inside it.
+   */
+  useEffect(() => {
+    const own = cosmosPay?.keys[networkEnv(network)] ?? null;
+    if (!telemetryEnabled() || !session || !own || !meta || isPollar(meta)) {
+      configureTelemetry({ ownership: null });
+      return;
+    }
+    if (hasFreshOwnership()) return;
+
+    let alive = true;
+    const epoch = sessionEpochRef.current;
+    void (async () => {
+      try {
+        const installId = await telemetryInstallId();
+        if (!alive) return;
+        guardSession(epoch);
+        const secret = await secretOf(session);
+        if (!alive) return;
+        guardSession(epoch);
+        const attestation = await signOwnership({
+          secret,
+          address: session.publicKey,
+          installId,
+          networkPassphrase: network.passphrase,
+        });
+        if (!alive) return;
+        configureTelemetry({ ownership: attestation });
+      } catch {
+        // Never surfaced and never retried on a timer: diagnostics that interrupt the
+        // wallet to complain about diagnostics are worse than an unvouched report, and
+        // the next network or wallet change re-runs this anyway.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [session, meta, cosmosPay, network, guardSession]);
+
   useEffect(() => {
     const env = networkEnv(network);
     const own = cosmosPay?.keys[env] ?? null;

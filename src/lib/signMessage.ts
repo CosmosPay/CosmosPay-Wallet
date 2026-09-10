@@ -12,18 +12,28 @@
  * producing one that equals a chosen transaction hash needs a preimage attack.
  *
  * Verifiers must recompute the same payload — the prefix is part of the contract.
+ *
+ * The domain is a PARAMETER for the same reason it exists at all. The wallet signs for
+ * more than one protocol with this key — a dapp's `signMessage`, and the diagnostics
+ * ownership attestation in `lib/attestation.ts` — and two protocols sharing a domain are
+ * one protocol: a dapp could ask a user to sign a string that happens to be a
+ * well-formed attestation and hand back something the reporting pipeline would accept as
+ * proof of ownership. Each protocol brings its own tag; nothing may reuse another's.
  */
 
 /** Domain tag. Changing it invalidates every previously issued signature. */
 export const SIGN_MESSAGE_DOMAIN = 'Cosmos Wallet signed message v1';
 
 /**
- * Build the 32-byte digest to sign for `message`.
- * Payload = domain || 0x00 || uint32be(byteLength) || message
+ * Build the 32-byte digest to sign for `message` under `domainTag`.
+ * Payload = domainTag || 0x00 || uint32be(byteLength) || message
  */
-export async function signMessagePayload(message: string): Promise<Uint8Array> {
+export async function signMessagePayload(
+  message: string,
+  domainTag: string = SIGN_MESSAGE_DOMAIN,
+): Promise<Uint8Array> {
   const enc = new TextEncoder();
-  const domain = enc.encode(SIGN_MESSAGE_DOMAIN);
+  const domain = enc.encode(domainTag);
   const body = enc.encode(message);
 
   const len = new Uint8Array(4);
