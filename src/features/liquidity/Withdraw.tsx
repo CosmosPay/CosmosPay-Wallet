@@ -8,6 +8,7 @@ import { TokenAvatar } from '@/ui/TokenAvatar';
 import { trim } from '@/lib/format';
 import '@/styles/ui/exchange-card.css';
 import '@/styles/features/liquidity/liquidity.css';
+import { gatewayAssetLabel } from '@/lib/asset';
 
 /* -------------------------- LP WITHDRAW -------------------------- */
 /**
@@ -15,7 +16,7 @@ import '@/styles/features/liquidity/liquidity.css';
  * redeemable preview scales with the share fraction; the on-chain minimums are
  * slippage-protected server-side. Built server-side, signed locally, then relayed.
  */
-const label = (r: { asset: string }) => (r.asset === 'native' ? 'XLM' : r.asset);
+const label = (r: { asset: string }) => gatewayAssetLabel(r.asset);
 
 export function Withdraw({ store }: { store: WalletStore }) {
   const t = store.t;

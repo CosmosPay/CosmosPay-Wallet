@@ -9,7 +9,7 @@ import { cx } from '@/lib/cx';
 import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
 import type { SwapQuote } from '@/lib/cosmospay';
 import { AssetSelect } from '@/features/money/AssetSelect';
-import { assetKey, findAsset, isSameAsset, XLM, type AssetRef } from '@/lib/asset';
+import { assetKey, findAsset, gatewayAssetLabel, isSameAsset, XLM, type AssetRef } from '@/lib/asset';
 import { parseDecimalOr0, sanitizeDecimalInput } from '@/lib/amount';
 import { spendableXlm, sendableAssets } from '@/lib/balances';
 import '@/styles/ui/exchange-card.css';
@@ -172,7 +172,7 @@ export function Swap({ store }: { store: WalletStore }) {
         <div className="glass exchange-quote">
           {[
             [t('swap.feeRate'), feePct !== null ? `${trim(feePct, 2)}%` : '—'],
-            [t('swap.fee'), `${trim(parseFloat(quote.fee.amount) || 0, 4)} ${quote.fee.asset}`],
+            [t('swap.fee'), `${trim(parseFloat(quote.fee.amount) || 0, 4)} ${gatewayAssetLabel(quote.fee.asset)}`],
             [t('swap.receiveEst'), `${trim(parseFloat(quote.destination.estimated) || 0, 4)} ${quote.destination.asset}`],
             [t('swap.minReceived'), `${trim(parseFloat(quote.destination.minimum) || 0, 4)} ${quote.destination.asset}`],
           ].map(([label, val]) => (

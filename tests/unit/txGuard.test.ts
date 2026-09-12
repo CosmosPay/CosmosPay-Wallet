@@ -62,13 +62,25 @@ const swapOp = (opts: Record<string, unknown> = {}) =>
     ...opts,
   } as never);
 
-/** The bounds a real swap passes: send ≤ 10 XLM, receive ≥ 9 USDC, settle to self. */
+/**
+ * The bounds a real swap passes: send ≤ 10 XLM, receive ≥ 9 USDC, settle to self.
+ * `commission: null` says this quote charged none, so every destination must be us.
+ */
 const SWAP_OPTS = {
   signer: ME,
   intent: 'swap',
   destinations: 'self',
   maxSend: { amount: '10', asset: { code: 'XLM', issuer: null } },
   minReceive: { amount: '9', asset: { code: 'USDC', issuer: OTHER } },
+  commission: null,
+} as const;
+
+/** The gateway's real shape: a commission paid out to its own wallet alongside the swap. */
+const FEE_WALLET = 'GARMB7W3FCR3GKIM3FLWVJASC2PUZ4VHUJZTNJVWWKNTCJNKO6TBCT76';
+const SWAP_OPTS_FEE = {
+  ...SWAP_OPTS,
+  destinations: [ME, FEE_WALLET],
+  commission: { amount: '0.15', asset: { code: 'XLM', issuer: null }, wallet: FEE_WALLET },
 } as const;
 
 /** The off-ramp's bounds. `maxSend` is not optional here: the intent's type demands
@@ -108,7 +120,12 @@ test('a legitimate swap envelope passes', () => {
 test('a swap that pays a third party is refused — every other check passes', () => {
   // The exact quoted amount, the allowed operation type, our own source account, a
   // normal fee. Only the destination is the attacker's, and that used to be enough.
-  throws(() => assertSafeToSign(CFG, envelope([swapOp({ destination: ATTACKER })]), SWAP_OPTS), 'guard.notSelfDestination');
+  //
+  // The key is `notCommissionWallet` rather than `notSelfDestination` because the swap
+  // intent is checked against the QUOTE before the generic destination policy: since
+  // `payment` became allowed here, "not the address the quote named" is the precise
+  // thing that is wrong, and it holds however the caller wrote `destinations`.
+  throws(() => assertSafeToSign(CFG, envelope([swapOp({ destination: ATTACKER })]), SWAP_OPTS), 'guard.notCommissionWallet');
 });
 
 test('a swap that promises dust in return is refused', () => {
@@ -616,5 +633,113 @@ test('a contract call is unquantifiable, so no internal flow can carry one', () 
     () => assertSafeToSign(CFG, envelope([invoke()]), { signer: ME, intent: 'offramp', destinations: 'counterparty', maxSend: CAP_XLM }),
     'guard.criticalOp',
     { op: 'invokeHostFunction' },
+  );
+});
+
+
+/* ------------------------- the gateway's commission ------------------------- */
+
+/**
+ * The gateway charges its swap fee as a SEPARATE `payment` to its own wallet, beside
+ * the path payment. That envelope was refused outright until `payment` joined
+ * `ALLOWED_OPS.swap` — `guard.unexpectedOp {op: payment}`, which is what "it rejects
+ * my signature on every swap" looked like from the wallet.
+ *
+ * Allowing it is only safe with the second bound these cover: `maxSend` caps the total
+ * leaving, `commission` caps the slice that may leave for a third party.
+ */
+const feeOp = (opts: Record<string, unknown> = {}) =>
+  Operation.payment({
+    destination: FEE_WALLET,
+    asset: Asset.native(),
+    amount: '0.15',
+    ...opts,
+  } as never);
+
+/** The path payment as it looks once the fee has been carved out of the send. */
+const swapAfterFee = (opts: Record<string, unknown> = {}) =>
+  swapOp({ sendAmount: '9.85', ...opts });
+
+test('the real two-op swap envelope is signed', () => {
+  // op[0] pays the commission, op[1] swaps the rest back to us. 0.15 + 9.85 = the 10
+  // the user typed, so `maxSend` is satisfied by the total exactly.
+  const review = assertSafeToSign(
+    CFG,
+    envelope([feeOp(), swapAfterFee()]),
+    SWAP_OPTS_FEE,
+  );
+  assert.equal(review.operations.length, 2);
+});
+
+test('a commission larger than the quote showed is refused', () => {
+  // Without this bound `payment` would let the gateway route the whole typed amount
+  // to itself: `maxSend` is a TOTAL, so 9.99 to the fee wallet and 0.01 through the
+  // swap sums to the same 10 and passes every other check.
+  throws(
+    () => assertSafeToSign(CFG, envelope([feeOp({ amount: '9.99' }), swapOp({ sendAmount: '0.01' })]), SWAP_OPTS_FEE),
+    'guard.overCommission',
+  );
+});
+
+test('a commission in a different asset than the quote is refused', () => {
+  // `guard.wrongAsset`, not `guard.commissionAsset`: `maxSend` runs first and already
+  // refuses ANY send in an asset the flow did not confirm, which covers this whole
+  // shape. `commissionAsset` stays as the narrower backstop for the case maxSend
+  // cannot see — a fee denominated in something other than what is being sent — and
+  // is asserted directly below rather than through an envelope that never reaches it.
+  throws(
+    () => assertSafeToSign(CFG, envelope([feeOp({ asset: USDC, amount: '0.15' }), swapAfterFee()]), SWAP_OPTS_FEE),
+    'guard.wrongAsset',
+  );
+
+  // Same envelope, but the flow's own ceiling is denominated in USDC too, so maxSend
+  // has nothing to object to and the commission check is the only thing left.
+  throws(
+    () =>
+      assertSafeToSign(CFG, envelope([feeOp({ asset: USDC, amount: '0.15' })]), {
+        ...SWAP_OPTS_FEE,
+        maxSend: { amount: '10', asset: { code: 'USDC', issuer: OTHER } },
+        commission: { amount: '0.15', asset: { code: 'XLM', issuer: null }, wallet: FEE_WALLET },
+      }),
+    'guard.commissionAsset',
+  );
+});
+
+test('a payment to anyone but the quoted fee wallet is refused', () => {
+  // The guard derives the permitted destination from the QUOTE, so a `destinations`
+  // list that named an extra address could not widen anything on its own.
+  throws(
+    () => assertSafeToSign(CFG, envelope([feeOp({ destination: ATTACKER }), swapAfterFee()]), SWAP_OPTS_FEE),
+    'guard.notCommissionWallet',
+  );
+  throws(
+    () =>
+      assertSafeToSign(CFG, envelope([feeOp({ destination: ATTACKER }), swapAfterFee()]), {
+        ...SWAP_OPTS_FEE,
+        destinations: [ME, FEE_WALLET, ATTACKER],
+      }),
+    'guard.notCommissionWallet',
+  );
+});
+
+test('a quote that charged nothing still refuses every third-party payment', () => {
+  // `commission: null` is a statement, not an omission — the arm requires the field,
+  // so a caller cannot reach this state by forgetting it.
+  throws(
+    () => assertSafeToSign(CFG, envelope([feeOp(), swapAfterFee()]), SWAP_OPTS),
+    'guard.notCommissionWallet',
+  );
+});
+
+test('the commission is a total, not a per-operation cap', () => {
+  // Stellar allows 100 operations, so a per-op ceiling is a 100x ceiling.
+  throws(
+    () =>
+      assertSafeToSign(
+        CFG,
+        envelope([feeOp(), feeOp(), feeOp(), swapOp({ sendAmount: '9.55' })]),
+        SWAP_OPTS_FEE,
+      ),
+    'guard.overCommission',
   );
 });

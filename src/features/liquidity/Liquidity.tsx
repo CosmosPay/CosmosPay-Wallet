@@ -11,6 +11,7 @@ import { TokenAvatar } from '@/ui/TokenAvatar';
 import { trim } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import '@/styles/features/liquidity/liquidity.css';
+import { assetRefFromGateway, gatewayAssetLabel } from '@/lib/asset';
 
 /* ----------------------------- LIQUIDITY ----------------------------- */
 /**
@@ -20,11 +21,9 @@ import '@/styles/features/liquidity/liquidity.css';
  * account for the current network — otherwise the enable card is shown.
  */
 
-const label = (r: { asset: string }) => (r.asset === 'native' ? 'XLM' : r.asset);
-const toAsset = (r: { asset: string; issuer: string | null }): SwapAsset => ({
-  code: r.asset === 'native' ? 'XLM' : r.asset,
-  issuer: r.issuer,
-});
+const label = (r: { asset: string }) => gatewayAssetLabel(r.asset);
+const toAsset = (r: { asset: string; issuer: string | null }): SwapAsset =>
+  assetRefFromGateway(r.asset, r.issuer);
 const pairLabel = (rs: { asset: string }[]) => rs.map(label).join(' / ');
 /** Reserve/redeemable amounts as the card's asset rows want them. */
 const amountRows = (rs: { asset: string; amount: string }[], decimals: number) =>

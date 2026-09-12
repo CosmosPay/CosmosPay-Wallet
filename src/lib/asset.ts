@@ -20,6 +20,25 @@ export interface AssetRef {
 
 export const XLM: AssetRef = { code: 'XLM', issuer: null };
 
+/**
+ * The gateway names the native asset `"native"`; this wallet names it `"XLM"`.
+ *
+ * One function because the mapping was re-derived at three call sites and MISSED at a
+ * fourth: the swap quote card rendered `quote.fee.asset` raw, so the commission line
+ * read "0.15 native". That was cosmetic right up until the signing guard began
+ * bounding the commission against the asset the card showed — a bound built from
+ * `"native"` matches nothing the decoder produces, so every XLM commission would have
+ * been refused as the wrong asset.
+ */
+export function assetRefFromGateway(asset: string, issuer: string | null = null): AssetRef {
+  return asset === 'native' ? { code: 'XLM', issuer: null } : { code: asset, issuer };
+}
+
+/** How the gateway's asset string should be SHOWN. Same mapping, label only. */
+export function gatewayAssetLabel(asset: string): string {
+  return assetRefFromGateway(asset).code;
+}
+
 /** Stable identity: "XLM" for native, "CODE:ISSUER" otherwise. */
 export function assetKey(a: AssetRef | null | undefined): string {
   if (!a) return '';

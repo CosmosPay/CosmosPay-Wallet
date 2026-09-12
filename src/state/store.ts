@@ -57,7 +57,7 @@ import { VaultKeyMismatchError, WrongPasswordError, deriveVaultKey, newKdfParams
 import { assertSafeToSign, reviewTx } from '@/lib/txGuard';
 import { MIN_APP_PWD_LEN, appPasswordOk, isSafeHorizonUrl } from '@/lib/validate';
 import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
-import { codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
+import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
 import { FIAT_DECIMALS, fromMinorUnits } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
 import { sendableAssets, spendableCeiling } from '@/lib/balances';
@@ -2160,15 +2160,35 @@ export function useWalletStore() {
           // gateway's own numbers checks nothing at all. An earlier version used
           // `swap.sendAmount` and `swap.destEstimated`, so a gateway answering
           // `sendAmount: "1000"` to a 10-unit request simply raised its own ceiling.
+          // The gateway DOES charge its fee as a separate `payment` to
+          // `quote.fee.wallet` — verified against a real envelope: op[0] pays the
+          // commission, op[1] is the path payment back to us. So `payment` is in
+          // ALLOWED_OPS.swap and that address is named here, which is what the note
+          // that used to sit on `destinations: 'self'` asked for before widening it.
+          //
+          // Both halves come from the QUOTE CARD the user just read — `fee.amount`,
+          // `fee.asset`, `fee.wallet` — never from `swap`, which is the same response
+          // that carried the XDR. `commission` is what bounds the slice that may leave
+          // for the gateway; `maxSend` still bounds the total, and the two together are
+          // what make allowing a third-party payment here safe at all.
+          const commission = quote.fee?.wallet
+            ? {
+                amount: quote.fee.amount,
+                // Normalized, because the gateway says `"native"` where the decoder
+                // says `"XLM"` — an unmapped bound matches nothing and would refuse
+                // every XLM commission as the wrong asset.
+                asset: assetRefFromGateway(quote.fee.asset, quote.fee.issuer),
+                wallet: quote.fee.wallet,
+              }
+            : null;
           assertSafeToSign(network, swap.xdr, {
             signer: session.publicKey,
             intent: 'swap',
-            // A swap settles back into the same account: nothing may leave for a third
-            // party. If the gateway ever charges its fee as a separate `payment` to
-            // `quote.fee.wallet`, this refuses it — deliberately. Verify the envelope
-            // shape first, then add `payment` to ALLOWED_OPS.swap and list that address
-            // here; do not widen either one on a guess.
-            destinations: 'self',
+            // Self plus the quoted commission wallet, and nothing else. The guard
+            // independently refuses any non-self destination that is not
+            // `commission.wallet`, so this list cannot widen anything on its own.
+            destinations: commission ? [session.publicKey, commission.wallet] : 'self',
+            commission,
             maxSend: { amount, asset: { code: from.code, issuer: from.issuer } },
             minReceive: { amount: quote.destination.minimum, asset: { code: to.code, issuer: to.issuer } },
           });
