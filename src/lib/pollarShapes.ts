@@ -124,7 +124,7 @@ export const SocialAuthorizationShape = object({
 });
 
 /**
- * `POST /api/wallet/social/claim`.
+ * A finished brokered login: the session and the account that goes with it.
  *
  * `keys` is nullable on purpose: a provider that returns no email yields a working
  * wallet and no CosmosPay account, and the wallet has to be able to tell that apart
@@ -132,14 +132,40 @@ export const SocialAuthorizationShape = object({
  * returns, reused rather than restated — one definition, so the two paths cannot drift
  * into accepting different things.
  */
-export const SocialClaimShape = object({
-  status: str,
+const SocialLoginReadyShape = object({
   session: PollarSessionShape,
   account: str,
   organizationId: nullable(str),
   keys: nullable(object({ dev: nullable(str), prod: nullable(str) })),
   activated: optional(bool),
   activationAmount: optional(nullable(str)),
+});
+
+/**
+ * `POST /api/wallet/social/claim`.
+ *
+ * A variant, not an object with optional parts: when the provider's email already has an
+ * account the platform answers `verify_email` and sends NO session — the code emailed to
+ * that account is what releases it, through `SocialVerifyResultShape` below. A contract
+ * that let a `verify_email` body through as a login would hand the store a session that is
+ * not there.
+ */
+export const SocialClaimShape = variant('status', {
+  ready: SocialLoginReadyShape,
+  verify_email: object({
+    claimToken: id,
+    expiresInSeconds: num,
+    activated: optional(bool),
+    activationAmount: optional(nullable(str)),
+  }),
+});
+
+/** `POST /api/wallet/social/verify` — the emailed code exchanged for the held login. */
+export const SocialVerifyResultShape = variant('status', {
+  ready: SocialLoginReadyShape,
+  invalid: object({ attemptsLeft: num }),
+  expired: object({}),
+  locked: object({}),
 });
 
 /* ------------------------------ Pollar direct ---------------------------- */

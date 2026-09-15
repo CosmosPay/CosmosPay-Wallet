@@ -209,7 +209,7 @@ import { tNow } from '@/lib/i18n';
 import { report, reportError } from '@/lib/telemetry';
 import { EVENT, SLOW_REQUEST_MS, TRACE_HEADER, TRACE_PROP } from '@/constants/telemetry';
 import type { PollarSession, PollarSessionStatus } from '@/lib/pollar';
-import { PollarSessionStatusShape, SocialAuthorizationShape, SocialClaimShape } from '@/lib/pollarShapes';
+import { PollarSessionStatusShape, SocialAuthorizationShape, SocialClaimShape, SocialVerifyResultShape } from '@/lib/pollarShapes';
 
 /* ------------------------------ transport ------------------------------ */
 
@@ -507,8 +507,8 @@ export async function socialStatus(env: 'dev' | 'prod', state: string): Promise<
  * error — the wallet still works, because Pollar signs for it; what is missing is the
  * gateway (swaps, fiat), and the wallet says so rather than pretending.
  */
-export interface SocialClaim {
-  status: string;
+export interface SocialLoginReady {
+  status: 'ready';
   session: PollarSession;
   account: 'created' | 'linked' | 'none';
   organizationId: string | null;
@@ -516,6 +516,29 @@ export interface SocialClaim {
   activated?: boolean;
   activationAmount?: string | null;
 }
+
+/**
+ * What the claim returns instead of a session when the provider's email already has an
+ * account: the platform emailed that account a code, and nothing is handed over until it
+ * is entered. The provider proved who consented, not who opened the login — and an
+ * existing account is what a phished login would take over.
+ */
+export interface SocialLoginProof {
+  status: 'verify_email';
+  /** Presented with the emailed code. Kept in memory only, for as long as the prompt. */
+  claimToken: string;
+  expiresInSeconds: number;
+  activated?: boolean;
+  activationAmount?: string | null;
+}
+
+export type SocialClaim = SocialLoginReady | SocialLoginProof;
+
+export type SocialVerifyResult =
+  | SocialLoginReady
+  | { status: 'invalid'; attemptsLeft: number }
+  | { status: 'expired' }
+  | { status: 'locked' };
 
 /** `POST /api/wallet/social/claim`. Single-use: the code is spent whatever happens. */
 export async function socialClaim(
@@ -528,6 +551,20 @@ export async function socialClaim(
     {},
     true,
     SocialClaimShape,
+  );
+}
+
+/**
+ * `POST /api/wallet/social/verify` — the emailed code for a held login. Wrong codes are
+ * counted server-side, and the login locks after a few.
+ */
+export async function socialVerify(body: { claimToken: string; code: string }): Promise<SocialVerifyResult> {
+  return postJson<SocialVerifyResult>(
+    `${devPlatformUrl()}/api/wallet/social/verify`,
+    body,
+    {},
+    true,
+    SocialVerifyResultShape,
   );
 }
 

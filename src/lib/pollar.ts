@@ -222,6 +222,21 @@ export function isHttpsUrl(url: string): boolean {
   }
 }
 
+/**
+ * The i18n key for a bridge refusal about WHO completed the login, or null for anything else.
+ *
+ * The bridge only returns a session to the key whose account completed the login — every
+ * tenant shares one Pollar application, so otherwise a key could redeem someone else's
+ * wallet. The refusal's `code` is API surface; the sentence beside it is English written for
+ * an integrator, so the user is shown a key instead, chosen by code and never by copy.
+ */
+export function identityRefusalKey(e: unknown): string | null {
+  if (!(e instanceof ApiRequestError)) return null;
+  if (e.code === 'pollar_identity_mismatch') return 'pollar.identityMismatch';
+  if (e.code === 'pollar_identity_required') return 'pollar.identityRequired';
+  return null;
+}
+
 /** Poll a handshake once. `authorized` is the only status that carries a code. */
 export function pollarStatus(apiKey: string, state: string): Promise<PollarSessionStatus> {
   return call<PollarSessionStatus>('GET', `/oauth/sessions/${encodeURIComponent(state)}`, apiKey, PollarSessionStatusShape);
