@@ -2,6 +2,13 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.8.0] - 2026-09-16
+
+### Features
+- Implement commission handling for swaps, including validation and error messages (2957822)
+- Implement social login flow with email verification and access code handling (c9f4933)
+- Update Android setup to include necessary packages for successful builds (ede25aa)
+
 ## [1.7.0] - 2026-09-10
 
 ### Features
