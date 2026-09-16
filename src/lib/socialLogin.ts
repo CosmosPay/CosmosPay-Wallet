@@ -30,8 +30,20 @@
  * it needs for swaps and fiat. From that point the wallet is an ordinary provisioned
  * wallet and everything else — refresh, logout, signing — goes through the normal paths
  * with its own key.
+ *
+ * Except when the provider's email already has an account. Then the claim returns
+ * `verify_email` and no session: the provider proved who consented, not who opened the
+ * login, so the platform emails that account a code and `socialLoginVerify` exchanges it
+ * for both halves. A stranger who sent someone the login link does not read their inbox.
  */
-import { socialAuthorize, socialClaim, socialStatus, type SocialClaim } from '@/lib/cosmospay';
+import {
+  socialAuthorize,
+  socialClaim,
+  socialStatus,
+  socialVerify,
+  type SocialClaim,
+  type SocialVerifyResult,
+} from '@/lib/cosmospay';
 import { ApiRequestError } from '@/lib/apiError';
 import { devPlatformUrl } from '@/lib/endpoints';
 import { tNow } from '@/lib/i18n';
@@ -134,4 +146,13 @@ export function socialLoginClaim(
   name?: string,
 ): Promise<SocialClaim> {
   return socialClaim(env, { code, codeVerifier: handshake.verifier, ...(name ? { name } : {}) });
+}
+
+/**
+ * Finish a login the claim held for the code emailed to an existing account. `invalid`
+ * leaves it open for another try; `expired` and `locked` are over, and the user starts a
+ * new sign-in.
+ */
+export function socialLoginVerify(claimToken: string, code: string): Promise<SocialVerifyResult> {
+  return socialVerify({ claimToken, code });
 }

@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { Spinner } from '@/ui/Spinner';
 import { cx } from '@/lib/cx';
 import { copyText } from '@/lib/clipboard';
+import { isAccessCode, normalizeAccessCode } from '@/lib/validate';
 import { POLLAR_PROVIDERS, type PollarProvider } from '@/constants/pollar';
 import '@/styles/features/onboarding/social-login.css';
 
@@ -39,8 +40,9 @@ const PROVIDER_LABEL: Record<PollarProvider, string> = { google: 'Google', githu
  */
 export function SocialLogin({ store }: { store: WalletStore }) {
   const t = store.t;
-  const { pollarPhase, pollarUrl, resumePollarLogin } = store;
+  const { pollarPhase, pollarUrl, resumePollarLogin, socialProofPending } = store;
   const busy = pollarPhase !== 'idle';
+  const [code, setCode] = useState('');
 
   // Resume a handshake the popup was closed in the middle of. Runs once per mount and
   // no-ops when there is none, so arriving here fresh costs a storage read.
@@ -74,18 +76,52 @@ export function SocialLogin({ store }: { store: WalletStore }) {
           under one name. */}
       <div className="desc">{t('pollar.alsoTestnet')}</div>
 
-      <div className="col g8 social-login-actions">
-        {POLLAR_PROVIDERS.map((p) => (
+      {socialProofPending ? (
+        // An existing account's login waits here for the code emailed to it. It replaces the
+        // provider buttons: a login started now would open a second handshake while this one
+        // is still held.
+        <div className="glass-soft col g8 social-login-proof">
+          <div className="social-login-proof-title">{t('pollar.verifyTitle')}</div>
+          <div className="desc">{t('pollar.verifyDesc')}</div>
+          <input
+            value={code}
+            onChange={(e) => setCode(normalizeAccessCode((e.target as HTMLInputElement).value))}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            placeholder={t('cosmospay.codePlaceholder')}
+            className="input social-login-code"
+          />
           <button
-            key={p}
-            className={cx('btn-primary', `social-login-btn is-${p}`)}
-            disabled={busy}
-            onClick={() => void store.pollarLogin(p)}
+            className="btn-primary"
+            disabled={busy || !isAccessCode(code)}
+            onClick={() => void store.submitSocialCode(code)}
           >
-            {t('pollar.continueWith', { provider: PROVIDER_LABEL[p] })}
+            {t('pollar.verifyCta')}
           </button>
-        ))}
-      </div>
+          <button
+            className="social-login-cancel"
+            onClick={() => {
+              setCode('');
+              store.cancelSocialProof();
+            }}
+          >
+            {t('common.cancel')}
+          </button>
+        </div>
+      ) : (
+        <div className="col g8 social-login-actions">
+          {POLLAR_PROVIDERS.map((p) => (
+            <button
+              key={p}
+              className={cx('btn-primary', `social-login-btn is-${p}`)}
+              disabled={busy}
+              onClick={() => void store.pollarLogin(p)}
+            >
+              {t('pollar.continueWith', { provider: PROVIDER_LABEL[p] })}
+            </button>
+          ))}
+        </div>
+      )}
 
       {busy && (
         <div className="row g8 social-login-phase">

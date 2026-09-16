@@ -96,3 +96,22 @@ export function horizonUrlProblem(raw: string): string | null {
     return tNow('validate.notAUrl');
   }
 }
+
+/* ----------------------------- access codes ----------------------------- */
+
+/**
+ * The emailed one-time code — the wallet link flow's and the social login's alike. The
+ * length is the dev platform's (both of its verify schemas take six digits), written down
+ * once here so no screen re-derives it.
+ */
+export const ACCESS_CODE_LENGTH = 6;
+
+/** Keep only digits, capped at the code length, as the user types or pastes. */
+export function normalizeAccessCode(raw: string): string {
+  return raw.replace(/\D/g, '').slice(0, ACCESS_CODE_LENGTH);
+}
+
+/** Whether a typed code is complete enough to send. */
+export function isAccessCode(code: string): boolean {
+  return code.length === ACCESS_CODE_LENGTH && /^\d+$/.test(code);
+}

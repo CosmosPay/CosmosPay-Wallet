@@ -533,6 +533,25 @@ export interface AssetBound {
 }
 
 /**
+ * The commission line the quote card showed: how much leaves, in what, and to whom.
+ *
+ * It exists because the gateway charges its swap fee as a SEPARATE `payment` to its
+ * own wallet rather than folding it into the path payment. `maxSend` alone cannot
+ * police that: it caps the total leaving, so a gateway could route the user's whole
+ * typed amount to itself, declare a `destMin` it never has to honour, and pass. This
+ * caps the slice that may go to a third party.
+ *
+ * Every field comes from the QUOTE THE USER SAW — `fee.amount`, `fee.asset`,
+ * `fee.wallet` on the rendered card — never from the response that carried the XDR.
+ */
+export interface CommissionBound {
+  amount: string;
+  asset: AssetBound;
+  /** The account the fee may be paid to. The only non-signer destination a swap may have. */
+  wallet: string;
+}
+
+/**
  * Where value is allowed to land.
  *   'self'         every operation with a destination must target the signer. Swaps
  *                  and liquidity settle back into the same account, so this is the
@@ -630,6 +649,17 @@ export type GuardOptions =
       maxSend: AmountBound;
       /** The "minimum received" the quote screen showed. */
       minReceive: AmountBound;
+      /**
+       * The commission the quote declared, or `null` when it declared none.
+       *
+       * REQUIRED, not optional, and `null` is a statement rather than an omission —
+       * the same reason `maxSend` is not optional. `payment` is in `ALLOWED_OPS.swap`
+       * so that the gateway can take its fee; a caller that could simply leave this
+       * off would be a caller that allows a third-party payment with no ceiling on it.
+       * Passing `null` says "this quote charges nothing", and the guard then refuses
+       * every non-self destination.
+       */
+      commission: CommissionBound | null;
     })
   | (GuardBase & {
       intent: 'offramp';
@@ -758,6 +788,7 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
   const allowed = ALLOWED_OPS[opts.intent];
   const maxSend = opts.intent === 'swap' || opts.intent === 'offramp' ? opts.maxSend : null;
   const minReceive = opts.intent === 'swap' ? opts.minReceive : null;
+  const commission = opts.intent === 'swap' ? opts.commission : null;
   // Withdraw names its pool; deposit DERIVES it from the two confirmed assets. Either
   // way `expectedPool` is set for every liquidity intent, which is what makes the
   // "acts on the pool you chose" check below reachable on both of them.
@@ -798,6 +829,15 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
 
     /* where the money lands */
     if (op.destination && op.destination !== opts.signer) {
+      // A swap is checked against the QUOTE first, before the caller's own policy.
+      // Without this the two could disagree: a call site that listed an address in
+      // `destinations` but did not bound it in `commission` would be back to an
+      // unbounded third-party payment, which is exactly what allowing `payment` on
+      // this intent would otherwise reopen. Deriving it from the quote means the
+      // list cannot widen anything on its own.
+      if (opts.intent === 'swap' && op.destination !== commission?.wallet) {
+        fail('guard.notCommissionWallet', { destination: short(op.destination) });
+      }
       if (opts.destinations === 'self') {
         fail('guard.notSelfDestination', { destination: short(op.destination) });
       } else if (opts.destinations === 'counterparty') {
@@ -874,6 +914,50 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
     // Compared as integers, and against the total: `moved > cap * (1 + tolerance)`.
     if (total * 10_000n > cap * (10_000n + BOUND_TOLERANCE_BPS)) {
       fail('guard.overMaxSend', { amount: maxSend.amount, code: maxSend.asset.code });
+    }
+  }
+
+  /**
+   * What may leave for the COMMISSION WALLET, bounded by what the quote card showed.
+   *
+   * `maxSend` is a total and cannot do this job: 0.15 to the fee wallet plus 9.85
+   * through the path payment and 9.85 to the fee wallet plus 0.15 through it sum to
+   * the same 10, so the total alone accepts a gateway that keeps almost everything.
+   * `minReceive` does not save it either — `destMin` is a floor DECLARED in the
+   * envelope, not something the send amount has to support, so an envelope can name a
+   * floor it will simply fail to meet on-chain. The signature would already have been
+   * given by then.
+   *
+   * Summed across operations for the same reason every other bound here is: Stellar
+   * allows 100 operations, so a per-operation cap is a 100x cap.
+   */
+  if (commission) {
+    const cap = stroops(commission.amount);
+    if (cap === null || cap < 0n) {
+      fail('guard.commissionUnreadable');
+    }
+    let paid = 0n;
+    for (const op of review.operations) {
+      if (op.destination !== commission.wallet) continue;
+      for (const v of op.sends) {
+        if (!assetMatches(v.asset, commission.asset)) {
+          fail('guard.commissionAsset', {
+            moved: refLabel(v.asset),
+            expected: commission.asset.code,
+          });
+        }
+        const n = stroops(v.amount);
+        if (n === null) {
+          fail('guard.amountUnreadable');
+        }
+        paid += n;
+      }
+    }
+    if (paid * 10_000n > cap * (10_000n + BOUND_TOLERANCE_BPS)) {
+      fail('guard.overCommission', {
+        amount: commission.amount,
+        code: commission.asset.code,
+      });
     }
   }
 

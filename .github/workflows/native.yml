@@ -288,7 +288,15 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      # `packages` is set because the action's default is `tools platform-tools`, and
+      # `tools` — the obsolete SDK Tools package — was removed from the repository that
+      # cmdline-tools 20 reads. sdkmanager then exits 1 ("Failed to find package
+      # 'tools'") and the whole Android job dies before npm ci, with an error that
+      # names neither this repo nor anything it changed. Everything the build actually
+      # needs is installed later by Gradle and the NDK step below.
       - uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       # Tauri cross-compiles the Rust core for four ABIs; without the targets the build
       # fails deep inside cargo with a message about a missing std, which reads like a

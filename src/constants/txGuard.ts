@@ -65,7 +65,19 @@ export const CRITICAL_OPS: readonly string[] = [
  * offer it gets its own entry with its own bound, not a hole in this one.
  */
 export const ALLOWED_OPS: Record<Exclude<SignIntent, 'dapp'>, readonly string[]> = {
-  swap: ['pathPaymentStrictSend', 'pathPaymentStrictReceive', 'changeTrust'],
+  // `payment` is here for ONE thing: the gateway carves its commission out of the
+  // send as a separate op to the quote's `fee.wallet`, rather than folding it into
+  // the path payment. Verified against a real envelope before it was added —
+  // op[0] `payment` 0.15 XLM to the commission wallet, op[1] the path payment of
+  // 9.85 back to self — which is what the note on `destinations: 'self'` at the
+  // swap call site asked for before widening this.
+  //
+  // Allowing it is only safe because the swap intent now also carries a
+  // `commission` bound: `maxSend` caps the TOTAL leaving, and the commission bound
+  // caps the slice of it that may leave for the fee wallet. Without the second one,
+  // this line would let a gateway route the user's whole `maxSend` to itself and
+  // still pass every other check.
+  swap: ['payment', 'pathPaymentStrictSend', 'pathPaymentStrictReceive', 'changeTrust'],
   'lp-deposit': ['liquidityPoolDeposit', 'changeTrust'],
   'lp-withdraw': ['liquidityPoolWithdraw', 'changeTrust'],
   offramp: ['payment', 'pathPaymentStrictSend', 'pathPaymentStrictReceive'],

@@ -73,3 +73,28 @@
   margin: 14px var(--gutter) 0;
   align-self: flex-start;
 }
+
+/* The emailed-code step an existing account's login waits on. It replaces the provider
+   buttons rather than sitting beside them: a second login started here would open a new
+   handshake while this one is still held for its code. */
+.social-login-proof {
+  margin: 0 var(--gutter);
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.social-login-proof-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.social-login-code {
+  text-align: center;
+  letter-spacing: 0.35em;
+  font-weight: 800;
+}
+
+.social-login-proof .social-login-cancel {
+  align-self: center;
+}

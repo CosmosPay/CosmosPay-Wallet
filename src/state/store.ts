@@ -55,9 +55,9 @@ import { storageGet, storageSet } from '@/lib/storage';
 import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
 import { VaultKeyMismatchError, WrongPasswordError, deriveVaultKey, newKdfParams, wipeVaultKey, type VaultKey } from '@/lib/crypto';
 import { assertSafeToSign, reviewTx } from '@/lib/txGuard';
-import { MIN_APP_PWD_LEN, appPasswordOk, isSafeHorizonUrl } from '@/lib/validate';
+import { MIN_APP_PWD_LEN, appPasswordOk, isAccessCode, isSafeHorizonUrl } from '@/lib/validate';
 import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
-import { codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
+import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
 import { FIAT_DECIMALS, fromMinorUnits } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
 import { sendableAssets, spendableCeiling } from '@/lib/balances';
@@ -69,13 +69,14 @@ import { useDeviceAuth } from '@/state/useDeviceAuth';
 import {
   pollarActivate,
   pollarAuthorize,
+  identityRefusalKey,
   pollarExchange,
   pollarLogout,
   pollarStatus,
   waitForCode,
   type PollarHandshake,
 } from '@/lib/pollar';
-import { SOCIAL_LOGIN_ENV, socialLoginClaim, socialLoginStart, socialPoller } from '@/lib/socialLogin';
+import { SOCIAL_LOGIN_ENV, socialLoginClaim, socialLoginStart, socialLoginVerify, socialPoller } from '@/lib/socialLogin';
 import { ApiRequestError } from '@/lib/apiError';
 import type { PollarProvider } from '@/constants/pollar';
 import { pollarSign } from '@/lib/pollarApi';
@@ -151,6 +152,7 @@ import {
   type PayIntent,
   type PayoutQuote,
   type Receiver,
+  type SocialLoginReady,
   type SwapQuote,
 } from '@/lib/cosmospay';
 import { useToast } from '@/state/useToast';
@@ -2160,15 +2162,35 @@ export function useWalletStore() {
           // gateway's own numbers checks nothing at all. An earlier version used
           // `swap.sendAmount` and `swap.destEstimated`, so a gateway answering
           // `sendAmount: "1000"` to a 10-unit request simply raised its own ceiling.
+          // The gateway DOES charge its fee as a separate `payment` to
+          // `quote.fee.wallet` — verified against a real envelope: op[0] pays the
+          // commission, op[1] is the path payment back to us. So `payment` is in
+          // ALLOWED_OPS.swap and that address is named here, which is what the note
+          // that used to sit on `destinations: 'self'` asked for before widening it.
+          //
+          // Both halves come from the QUOTE CARD the user just read — `fee.amount`,
+          // `fee.asset`, `fee.wallet` — never from `swap`, which is the same response
+          // that carried the XDR. `commission` is what bounds the slice that may leave
+          // for the gateway; `maxSend` still bounds the total, and the two together are
+          // what make allowing a third-party payment here safe at all.
+          const commission = quote.fee?.wallet
+            ? {
+                amount: quote.fee.amount,
+                // Normalized, because the gateway says `"native"` where the decoder
+                // says `"XLM"` — an unmapped bound matches nothing and would refuse
+                // every XLM commission as the wrong asset.
+                asset: assetRefFromGateway(quote.fee.asset, quote.fee.issuer),
+                wallet: quote.fee.wallet,
+              }
+            : null;
           assertSafeToSign(network, swap.xdr, {
             signer: session.publicKey,
             intent: 'swap',
-            // A swap settles back into the same account: nothing may leave for a third
-            // party. If the gateway ever charges its fee as a separate `payment` to
-            // `quote.fee.wallet`, this refuses it — deliberately. Verify the envelope
-            // shape first, then add `payment` to ALLOWED_OPS.swap and list that address
-            // here; do not widen either one on a guess.
-            destinations: 'self',
+            // Self plus the quoted commission wallet, and nothing else. The guard
+            // independently refuses any non-self destination that is not
+            // `commission.wallet`, so this list cannot widen anything on its own.
+            destinations: commission ? [session.publicKey, commission.wallet] : 'self',
+            commission,
             maxSend: { amount, asset: { code: from.code, issuer: from.issuer } },
             minReceive: { amount: quote.destination.minimum, asset: { code: to.code, issuer: to.issuer } },
           });
@@ -2517,6 +2539,12 @@ export function useWalletStore() {
    * browser tab that is asking for their consent.
    */
   const [pollarPhase, setPollarPhase] = useState<'idle' | 'opening' | 'waiting' | 'redeeming'>('idle');
+  /**
+   * A brokered login held for the code emailed to an existing account. In memory only, on
+   * purpose: the claim token is worth nothing without that inbox, and a prompt that outlived
+   * a closed popup would be answering a login nobody is looking at any more.
+   */
+  const [socialProof, setSocialProof] = useState<{ claimToken: string; provider: PollarProvider } | null>(null);
   const [pollarUrl, setPollarUrl] = useState<string | null>(null);
   const pollarAbort = useRef(false);
   /**
@@ -2586,7 +2614,10 @@ export function useWalletStore() {
         return true;
       } catch (e) {
         await clearHandshake();
-        flash((e as Error).message || t('pollar.status.failed'), 'err');
+        // A login another account completed is refused by code; say so in the user's
+        // language rather than with the integrator-facing sentence the bridge sends.
+        const identity = identityRefusalKey(e);
+        flash(identity ? t(identity) : (e as Error).message || t('pollar.status.failed'), 'err');
         return false;
       } finally {
         setPollarPhase('idle');
@@ -2610,16 +2641,15 @@ export function useWalletStore() {
    * still signs through Pollar. What is off is the gateway, and the toast says so
    * instead of leaving the user to discover it at their first swap.
    */
-  const finishSocialLogin = useCallback(
-    async (env: 'dev' | 'prod', hs: PollarHandshake): Promise<boolean> => {
-      try {
-        setPollarPhase('waiting');
-        const code = await waitForCode(socialPoller(env), hs, () => pollarAbort.current);
-
-        setPollarPhase('redeeming');
-        const claimed = await socialLoginClaim(env, hs, code, meta?.name);
-        await clearHandshake();
-
+  /**
+   * Land a finished brokered login: the session, the testnet twin and the account keys.
+   *
+   * Shared by the two ways a brokered login finishes — a claim that returned the session at
+   * once, and the emailed code that released one the claim held — so both put exactly the
+   * same things on the device.
+   */
+  const landSocialLogin = useCallback(
+    async (claimed: SocialLoginReady, provider: PollarProvider): Promise<boolean> => {
         if (!claimed.session.wallet.address) {
           flash(t('pollar.noWallet'), 'err');
           return false;
@@ -2648,7 +2678,7 @@ export function useWalletStore() {
 
         const profile = pollarProfileOf(claimed.session, meta);
         const draft: SocialDraft = {
-          pollar: { stored: toStored(claimed.session, hs.provider), profile },
+          pollar: { stored: toStored(claimed.session, provider), profile },
           local: {
             secret: { secret: own.secret, mnemonic: own.mnemonic },
             // Same person, same name — only the address differs, and it has to.
@@ -2663,7 +2693,7 @@ export function useWalletStore() {
         // returned, which is the one field in `claimed` that names a person.
         report(EVENT.socialLogin, {
           category: 'auth',
-          props: { provider: hs.provider, account: claimed.account, activated: claimed.activated, brokered: true },
+          props: { provider, account: claimed.account, activated: claimed.activated, brokered: true },
         });
 
         if (session) {
@@ -2685,6 +2715,32 @@ export function useWalletStore() {
           setScreen('password');
         }
         return true;
+    },
+    [session, meta, t, flash, landPollarWallet, pollarProfileOf],
+  );
+
+  const finishSocialLogin = useCallback(
+    async (env: 'dev' | 'prod', hs: PollarHandshake): Promise<boolean> => {
+      try {
+        setPollarPhase('waiting');
+        const code = await waitForCode(socialPoller(env), hs, () => pollarAbort.current);
+
+        setPollarPhase('redeeming');
+        const claimed = await socialLoginClaim(env, hs, code, meta?.name);
+        await clearHandshake();
+
+        if (claimed.status === 'verify_email') {
+          // The email already has an account, so nothing came back but a claim token: the
+          // session waits on the code the platform just sent to that inbox.
+          setSocialProof({ claimToken: claimed.claimToken, provider: hs.provider });
+          if (claimed.activated && claimed.activationAmount) {
+            flash(t('pollar.activated', { amount: claimed.activationAmount }), 'ok');
+          }
+          flash(t('pollar.verifySent'), 'info');
+          return true;
+        }
+
+        return await landSocialLogin(claimed, hs.provider);
       } catch (e) {
         reportError(EVENT.socialLoginFailed, e, { provider: hs.provider, brokered: true });
         await clearHandshake();
@@ -2695,8 +2751,40 @@ export function useWalletStore() {
         setPollarUrl(null);
       }
     },
-    [session, meta, t, flash, landPollarWallet, pollarProfileOf],
+    [meta, t, flash, landSocialLogin],
   );
+
+  /**
+   * Send the code emailed for a held login. `invalid` keeps the prompt open for another try;
+   * `expired` and `locked` close it, and the user starts a new sign-in.
+   */
+  const submitSocialCode = useCallback(
+    async (code: string): Promise<void> => {
+      if (!socialProof || !isAccessCode(code)) return;
+      setPollarPhase('redeeming');
+      try {
+        const res = await socialLoginVerify(socialProof.claimToken, code);
+        if (res.status === 'ready') {
+          setSocialProof(null);
+          await landSocialLogin(res, socialProof.provider);
+        } else if (res.status === 'invalid') {
+          flash(t('pollar.verifyInvalid', { n: res.attemptsLeft }), 'err');
+        } else {
+          setSocialProof(null);
+          flash(t(res.status === 'locked' ? 'pollar.verifyLocked' : 'pollar.verifyExpired'), 'err');
+        }
+      } catch (e) {
+        reportError(EVENT.socialLoginFailed, e, { provider: socialProof.provider, brokered: true });
+        flash((e as Error).message || t('pollar.status.failed'), 'err');
+      } finally {
+        setPollarPhase('idle');
+      }
+    },
+    [socialProof, t, flash, landSocialLogin],
+  );
+
+  /** Drop a held login's prompt. The held session expires on the platform by itself. */
+  const cancelSocialProof = useCallback(() => setSocialProof(null), []);
 
   /**
    * The direct login, and whether the brokered one should be tried instead.
@@ -4012,6 +4100,10 @@ export function useWalletStore() {
     pollarLogin,
     resumePollarLogin,
     cancelPollarLogin,
+    /** True while a brokered login waits on the code emailed to an existing account. */
+    socialProofPending: !!socialProof,
+    submitSocialCode,
+    cancelSocialProof,
     pollarSignOut,
     account,
     prices,
