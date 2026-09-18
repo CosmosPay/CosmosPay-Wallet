@@ -6,3 +6,6 @@
   -webkit-user-select: none;
   user-select: none;
 }
+
+/* el lockup de bienvenida es apaisado (3,6:1), asi que se dimensiona por ancho */
+.welcome-lockup { width: min(260px, 70vw); height: auto; }
