@@ -1,6 +1,5 @@
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton, GhostButton } from '@/ui/Buttons';
-import { Logo } from '@/ui/Logo';
 import { LangSelect } from '@/ui/LangSelect';
 import { APP_VERSION } from '@/constants/app';
 import '@/styles/features/onboarding/welcome.css';
@@ -20,10 +19,17 @@ export function Welcome({ store }: { store: WalletStore }) {
         <LangSelect value={store.lang} onChange={store.setLang} />
       </div>
       <div className="col center f1 welcome-hero">
+        {/* El lockup oficial (isotipo + "cosmos pay"), no el nombre tipeado: la
+            marca pide que el nombre vaya siempre dibujado. Es blanco, y la clase
+            logo-img lo invierte a negro en el tema claro, igual que el isotipo. */}
         <div className="welcome-logo">
-          <Logo size={104} />
+          <img
+            src={`${import.meta.env.BASE_URL}brand/lockup-cosmos-pay.svg`}
+            className="brand-logo logo-img welcome-lockup"
+            alt="Cosmos Pay"
+            draggable={false}
+          />
         </div>
-        <div className="welcome-title">Cosmos Pay</div>
         <div className="welcome-sub">{t('welcome.subtitle')}</div>
       </div>
       <div className="col g12">

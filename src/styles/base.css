@@ -1,3 +1,41 @@
+/* Open Sauce One, la tipografia de la marca, servida desde /fonts: sin
+   Google Fonts, asi la extension no depende de un tercero para renderizar. */
+@font-face {
+  font-family: 'Open Sauce One';
+  src: url('/fonts/OpenSauceOne-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Open Sauce One';
+  src: url('/fonts/OpenSauceOne-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Open Sauce One';
+  src: url('/fonts/OpenSauceOne-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Open Sauce One';
+  src: url('/fonts/OpenSauceOne-SemiBold.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Open Sauce One';
+  src: url('/fonts/OpenSauceOne-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* =====================================================================
    Element-level baseline: document chrome, form-control resets and the
    cross-engine fixes that have to apply before any component style.
@@ -15,7 +53,7 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: Poppins, system-ui, -apple-system, sans-serif;
+  font-family: 'Open Sauce One', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.25s ease, color 0.25s ease;
   /* lock the mobile viewport */

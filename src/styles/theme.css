@@ -7,7 +7,10 @@
 
 :root,
 [data-theme='dark'] {
-  --bg: #080808;
+  /* Marca Cosmos: cuatro colores (negro, blanco, Dark Navy #05064F, Cosmic
+     Blue #000877) y grises por opacidad. En oscuro el acento es blanco: el
+     Cosmic Blue sobre negro no llega a contraste legible como texto. */
+  --bg: #000000;
   --text: #ffffff;
   --text-soft: #cfd4d1;
   --muted: #9aa19d;
@@ -43,28 +46,31 @@
 }
 
 [data-theme='light'] {
-  --bg: #eceef1;
-  --text: #0e1311;
+  /* En claro el acento y el boton primario son Cosmic Blue con texto blanco,
+     como en cosmospay.lat. --up/--down/--danger no se tocan: en una wallet el
+     verde y el rojo de subio o bajo son semantica financiera, no marca. */
+  --bg: #ffffff;
+  --text: #000000;
   --text-soft: #2b322f;
   --muted: #5d6762;
   --dim: #8b938e;
   --dimmer: #aab2ad;
-  --accent: #0e1311;
+  --accent: #000877;
   --on-accent: #ffffff;
   --glass-bg: rgba(255, 255, 255, 0.58);
   --glass-border: rgba(255, 255, 255, 0.85);
   --glass-soft-bg: rgba(255, 255, 255, 0.62);
   --glass-soft-border: rgba(0, 0, 0, 0.05);
-  --primary-bg: #14191b;
+  --primary-bg: #000877;
   --primary-border: rgba(0, 0, 0, 0.2);
   --primary-text: #ffffff;
   --surface: rgba(255, 255, 255, 0.5);
   --surface-2: rgba(255, 255, 255, 0.4);
   --hairline: rgba(0, 0, 0, 0.08);
-  --nav-bg: rgba(236, 238, 241, 0.62);
+  --nav-bg: rgba(255, 255, 255, 0.72);
   --avatar-bg: rgba(0, 0, 0, 0.06);
   --avatar-brand: rgba(0, 0, 0, 0.1);
-  --avatar-text: #0e1311;
+  --avatar-text: #000877;
   --up: #16a34a;
   --down: #dc2626;
   --danger: #d92020;
