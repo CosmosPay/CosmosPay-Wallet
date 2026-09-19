@@ -3,6 +3,7 @@ import react from '@astrojs/react';
 import { loadEnv } from 'vite';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { devIconsIntegration, iconFlavor } from './scripts/devIcons.ts';
 
 /**
  * The version the app SHOWS is the version the app IS.
@@ -51,7 +52,10 @@ export default defineConfig({
   // (not dist/) on purpose: `astro build` wipes its own outDir on every run, so keeping
   // the web build in a subfolder lets the extension outputs coexist under dist/ untouched.
   outDir: './dist/web',
-  integrations: [react()],
+  // A build that did not come out of CI wears the amber dev icon — favicon and the
+  // extension's icon set, both tinted in dist/web — so a local tab or unpacked extension
+  // cannot pass for the released one. The rule and its override are in scripts/devIcons.ts.
+  integrations: [react(), ...(iconFlavor() === 'dev' ? [devIconsIntegration()] : [])],
   // Emit bundled JS/CSS into `assets/` instead of the default `_astro/`. MV3
   // browser extensions reject any file/dir whose name starts with `_` (reserved),
   // so the underscore folder made `extension/` fail to load. Renaming it here lets

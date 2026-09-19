@@ -191,6 +191,26 @@ everything:
   `https:`, checked in `src/lib/openExternal.ts` because two of its three callers build
   their URL from network configuration the user can edit.
 
+## A local build wears the dev icon
+
+Every build that did not come out of CI swaps the brand's dark tile for an amber one, glyph
+in black — favicon, extension, desktop, Android, iOS — so `npm run dev` cannot pass for the
+deployed app, an unpacked extension for the store one, or `tauri dev` for the installed
+release. `scripts/devIcons.ts` holds the decision and the transform; its header lists where
+each surface applies it.
+
+- **`CI` decides, `COSMOS_ICONS` overrides.** `COSMOS_ICONS=release` is REQUIRED for a
+  build meant for users that is made on a laptop — a store upload, a hand-built iOS app —
+  or it ships amber. Any value other than `dev` / `release` throws instead of guessing.
+- **Nothing dev is committed, and nothing committed is tinted.** The dev art is derived at
+  build time, into `dist/` or the generated native projects; `public/`, `resources/` and
+  `src-tauri/icons/` stay brand art. Regenerate those as before (`npm run desktop:icons`,
+  `npm run android:icons`) and the dev versions follow with no second step.
+- **The desktop icon is config, not a file swap.** `generate_context!` and tauri-build
+  embed `bundle.icon` at compile time, so `desktop:dev` / `desktop:build` go through
+  `scripts/tauri-desktop.ts`, which adds a `--config` overlay. Plain `tauri dev` skips it
+  and gets the brand icon — use the npm scripts.
+
 ## Never sign what you have not decoded
 
 The wallet signs envelopes it did not build: the CosmosPay gateway returns one for
