@@ -229,10 +229,21 @@ export async function finishSignIn(input: {
   sessionToken: string;
   email: string;
   secret: string;
+  /**
+   * The account to link, when it is not the signing key's own address.
+   *
+   * Only a RECOVERED wallet passes this: SEP-30 recovery puts a new key on an account and
+   * retires the old master, so the address stops being derivable from the key that signs
+   * for it. The platform accepts the signature because that key is one of the account's
+   * current signers — see its own account-signers module, in the dev-platform
+   * repository. Every other caller leaves it
+   * off and gets the key's own address, which is the only safe default.
+   */
+  account?: string;
   backup?: string;
   replaceBackup?: boolean;
 }): Promise<SignInFinish> {
-  const stellarAddress = Keypair.fromSecret(input.secret).publicKey();
+  const stellarAddress = input.account ?? Keypair.fromSecret(input.secret).publicKey();
   const signedAt = new Date().toISOString();
   return signInFinish(input.sessionToken, {
     stellarAddress,
@@ -244,8 +255,9 @@ export async function finishSignIn(input: {
 }
 
 /** Step 3: store a re-sealed box. The signature by the box's own key is the credential. */
-export async function replaceBackup(input: { secret: string; box: string }): Promise<void> {
-  const stellarAddress = Keypair.fromSecret(input.secret).publicKey();
+export async function replaceBackup(input: { secret: string; box: string; account?: string }): Promise<void> {
+  // `account` for a recovered wallet, exactly as in `finishSignIn` above.
+  const stellarAddress = input.account ?? Keypair.fromSecret(input.secret).publicKey();
   const signedAt = new Date().toISOString();
   await putBackup({
     stellarAddress,

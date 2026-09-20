@@ -34,9 +34,19 @@ export class BackupUnreadableError extends Error {
   }
 }
 
-/** Seal a wallet's secret for the platform to keep. Returns the box as the JSON it stores. */
-export async function sealBackup(secret: VaultSecret, password: string): Promise<string> {
-  return JSON.stringify(await sealForBackup(JSON.stringify(secret), password));
+/**
+ * Seal a wallet's secret for the platform to keep. Returns the box as the JSON it stores.
+ *
+ * `account` is only passed by a RECOVERED wallet, whose address is no longer its key's own
+ * — SEP-30 recovery retires the master key and puts a new one on the account. It travels
+ * INSIDE the ciphertext rather than beside it: the platform files a box under an address
+ * it is told, and a box that carried its own address in the clear would be telling the
+ * platform something it already knows while telling anyone who reads the row something
+ * they should not.
+ */
+export async function sealBackup(secret: VaultSecret, password: string, account?: string): Promise<string> {
+  const payload = account ? { ...secret, account } : secret;
+  return JSON.stringify(await sealForBackup(JSON.stringify(payload), password));
 }
 
 /** Parse the stored JSON back into a box, refusing anything that is not one. */
@@ -60,21 +70,33 @@ function parseBox(box: string): SealedBox {
  * failure a caller should count as a guess — and `BackupMismatchError` /
  * `BackupUnreadableError` for everything that is not the person's fault.
  */
-export async function openBackup(box: string, password: string, expectedAddress: string): Promise<VaultSecret> {
+export async function openBackup(
+  box: string,
+  password: string,
+  expectedAddress: string,
+): Promise<VaultSecret & { account?: string }> {
   const plain = await open(parseBox(box), password);
-  let secret: VaultSecret;
+  let secret: VaultSecret & { account?: string };
   try {
-    secret = JSON.parse(plain) as VaultSecret;
+    secret = JSON.parse(plain) as VaultSecret & { account?: string };
   } catch {
     throw new BackupUnreadableError();
   }
   if (typeof secret?.secret !== 'string') throw new BackupUnreadableError();
   let address: string;
   try {
-    address = Keypair.fromSecret(secret.secret).publicKey();
+    // The account a RECOVERED wallet recorded when it sealed this, falling back to the
+    // key's own address — which is what every wallet that has not been recovered is. The
+    // fallback is not a loosening: a box with no `account` is one whose key IS its address,
+    // and a box that names one is checked against that name just as strictly.
+    address = typeof secret.account === 'string' ? secret.account : Keypair.fromSecret(secret.secret).publicKey();
   } catch {
     throw new BackupUnreadableError();
   }
   if (address !== expectedAddress) throw new BackupMismatchError();
-  return { secret: secret.secret, mnemonic: typeof secret.mnemonic === 'string' ? secret.mnemonic : null };
+  return {
+    secret: secret.secret,
+    mnemonic: typeof secret.mnemonic === 'string' ? secret.mnemonic : null,
+    ...(typeof secret.account === 'string' ? { account: secret.account } : {}),
+  };
 }

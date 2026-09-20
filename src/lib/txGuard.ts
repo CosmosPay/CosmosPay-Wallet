@@ -35,6 +35,7 @@ import {
   Address,
   Asset,
   FeeBumpTransaction,
+  Keypair,
   LiquidityPoolAsset,
   LiquidityPoolFeeV18,
   TransactionBuilder,
@@ -56,6 +57,9 @@ import {
   MAX_VALIDITY_S,
   type SignIntent,
 } from '@/constants/txGuard';
+// The recovery weights are the WALLET's, never the servers' claim about themselves. See
+// `assertRecoveryTemplate`, and `src/constants/recovery.ts` for the arithmetic.
+import { DEVICE_WEIGHT, SERVER_WEIGHT } from '@/constants/recovery';
 
 /* Re-exported so the guard stays the one import a signing flow needs; the values
    themselves live in constants/, per the rule in CLAUDE.md. */
@@ -97,6 +101,32 @@ export interface OpValue {
   asset: AssetRef | null;
 }
 
+/**
+ * The decoded account-control fields of one operation — `setOptions` and the sponsorship
+ * pair — kept as typed values rather than only as rendered rows.
+ *
+ * They exist because the `recovery` intent has to check them, and a check may never read
+ * `rows`: those are Spanish labels and formatted strings, one translation away from
+ * silently passing. Null everywhere the envelope sets nothing, which is what lets the
+ * template below say "and nothing else" about an operation.
+ */
+export interface ControlReview {
+  /** What sort of signer, when the op sets one. Only `ed25519` is ever acceptable here. */
+  signerKind: 'ed25519' | 'sha256Hash' | 'preAuthTx' | 'ed25519SignedPayload' | 'unknown' | null;
+  signerKey: string | null;
+  signerWeight: number | null;
+  masterWeight: number | null;
+  lowThreshold: number | null;
+  medThreshold: number | null;
+  highThreshold: number | null;
+  homeDomain: string | null;
+  setFlags: number | null;
+  clearFlags: number | null;
+  inflationDest: string | null;
+  /** `beginSponsoringFutureReserves`: whose reserve someone else is paying for. */
+  sponsoredId: string | null;
+}
+
 /** One operation, flattened for both checking and rendering. */
 export interface OpReview {
   type: string;
@@ -122,6 +152,8 @@ export interface OpReview {
   lineRemoves: boolean;
   /** The pool a liquidity operation acts on, when it names one. */
   poolId: string | null;
+  /** Decoded `setOptions` / sponsorship fields, or null for every other operation. */
+  control: ControlReview | null;
   /** Human rows for the approval UI, already formatted. NEVER read by a check. */
   rows: { label: string; value: string }[];
   /** True when this op belongs to CRITICAL_OPS. */
@@ -141,6 +173,13 @@ export interface TxReview {
   maxTime: string | null;
   operations: OpReview[];
   signatures: number;
+  /**
+   * The last four bytes of each signer's public key, as hex — what a `DecoratedSignature`
+   * carries instead of the key itself. Enough to say WHOSE a signature is: the `recovery`
+   * template allows exactly one, the sponsor's, and a count alone could not tell that from
+   * a stranger's.
+   */
+  signatureHints: string[];
   /** Set when the envelope is a fee-bump wrapper; the ops come from the inner tx. */
   feeBumpSource: string | null;
   /** True when any operation is in CRITICAL_OPS. */
@@ -152,6 +191,31 @@ export interface TxReview {
 /* ------------------------------- formatting ------------------------------- */
 
 const short = (s: string, n = 6) => (s && s.length > n * 2 + 1 ? `${s.slice(0, n)}…${s.slice(-n)}` : s || '—');
+
+/**
+ * The signer hint a `DecoratedSignature` carries, as hex — the last four bytes of the
+ * signing key. It identifies WHOSE a signature is without the key being in the envelope,
+ * which is exactly what the recovery template needs to say "the sponsor's, and no other".
+ */
+function hintOf(sig: unknown): string {
+  const hint = (sig as { hint?: () => unknown } | null)?.hint?.();
+  if (!hint) return '';
+  try {
+    return Array.from(hint as Uint8Array, (b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return '';
+  }
+}
+
+/** The same hint for a public key we hold: its last four bytes, decoded from the strkey. */
+export function signatureHintOf(publicKey: string): string {
+  try {
+    const raw = Keypair.fromPublicKey(publicKey).rawPublicKey();
+    return Array.from(raw.subarray(raw.length - 4), (b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return '';
+  }
+}
 
 /**
  * `Asset` -> `AssetRef`, or null when the value is not a classic asset (a
@@ -370,7 +434,12 @@ function reviewOp(raw: unknown): OpReview {
       if (o.lowThreshold != null) push(tNow('guard.row.lowThreshold'), String(o.lowThreshold));
       if (o.medThreshold != null) push(tNow('guard.row.medThreshold'), String(o.medThreshold));
       if (o.highThreshold != null) push(tNow('guard.row.highThreshold'), String(o.highThreshold));
-      if (o.homeDomain != null) push(tNow('guard.row.homeDomain'), String(o.homeDomain));
+      // `push` drops an empty value, and clearing the home domain is exactly an empty
+      // one — so the operation that wipes an account's stellar.toml, federation and anchor
+      // discovery used to render with no row naming it at all.
+      if (typeof o.homeDomain === 'string') {
+        push(tNow('guard.row.homeDomain'), o.homeDomain === '' ? tNow('guard.val.cleared') : o.homeDomain);
+      }
       break;
     }
     case 'manageSellOffer':
@@ -417,10 +486,80 @@ function reviewOp(raw: unknown): OpReview {
     linePoolShare,
     lineRemoves,
     poolId,
+    control: controlOf(type, o),
     rows,
     critical: CRITICAL_OPS.includes(type),
   };
 }
+
+/** A number the envelope actually set, or null. `0` is a value here, not an absence. */
+function numOr(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * The account-control fields of an operation, decoded.
+ *
+ * `signerKind` names the instrument rather than assuming it: a `sha256Hash` or
+ * `preAuthTx` signer is a standing authorisation that no flow of this wallet's ever
+ * needs, and reading only `ed25519PublicKey` would have left one of those as a signer
+ * with no key and no weight — an operation the template below would have seen as empty.
+ */
+function controlOf(type: string, o: Record<string, unknown>): ControlReview | null {
+  if (type === 'beginSponsoringFutureReserves') {
+    return { ...EMPTY_CONTROL, sponsoredId: str(o.sponsoredId) };
+  }
+  if (type !== 'setOptions') return null;
+
+  const signer = (o.signer ?? null) as Record<string, unknown> | null;
+  let signerKind: ControlReview['signerKind'] = null;
+  let signerKey: string | null = null;
+  if (signer) {
+    if (typeof signer.ed25519PublicKey === 'string') {
+      signerKind = 'ed25519';
+      signerKey = signer.ed25519PublicKey;
+    } else if (signer.sha256Hash != null) signerKind = 'sha256Hash';
+    else if (signer.preAuthTx != null) signerKind = 'preAuthTx';
+    else if (signer.ed25519SignedPayload != null) signerKind = 'ed25519SignedPayload';
+    else signerKind = 'unknown';
+  }
+  return {
+    signerKind,
+    signerKey,
+    signerWeight: signer ? numOr(signer.weight) : null,
+    masterWeight: numOr(o.masterWeight),
+    lowThreshold: numOr(o.lowThreshold),
+    medThreshold: numOr(o.medThreshold),
+    highThreshold: numOr(o.highThreshold),
+    // `typeof`, NOT `str()`: the empty string is a VALUE here — `setOptions` with
+    // `homeDomain: ''` CLEARS the account's home domain, and `str('')` returns null, so the
+    // template's "and nothing else is set" check read a real change as an absent field.
+    // The one option that can be set without being truthy is the one that would have got
+    // through.
+    homeDomain: typeof o.homeDomain === 'string' ? o.homeDomain : null,
+    setFlags: numOr(o.setFlags),
+    clearFlags: numOr(o.clearFlags),
+    inflationDest: str(o.inflationDest),
+    sponsoredId: null,
+  };
+}
+
+const EMPTY_CONTROL: ControlReview = {
+  signerKind: null,
+  signerKey: null,
+  signerWeight: null,
+  masterWeight: null,
+  lowThreshold: null,
+  medThreshold: null,
+  highThreshold: null,
+  homeDomain: null,
+  setFlags: null,
+  clearFlags: null,
+  inflationDest: null,
+  sponsoredId: null,
+};
 
 /** Stellar prices arrive as a string or as an `{n, d}` rational. */
 function priceLabel(v: unknown): string | null {
@@ -510,6 +649,7 @@ export function reviewTx(cfg: NetConfig, xdr: string): TxReview {
     maxTime,
     operations,
     signatures: Array.isArray(tx.signatures) ? tx.signatures.length : 0,
+    signatureHints: Array.isArray(tx.signatures) ? tx.signatures.map(hintOf) : [],
     feeBumpSource,
     hasCritical: operations.some((o) => o.critical),
     networkLabel: cfg.label,
@@ -721,6 +861,35 @@ export type GuardOptions =
        * it off would be a Pollar-signed transfer with no ceiling on it.
        */
       maxMoves: readonly AmountBound[];
+    })
+  | (GuardBase & {
+      intent: 'recovery';
+      /**
+       * The two recovery servers' signers, exactly as each server reported them at
+       * registration and exactly as the screen showed them.
+       *
+       * This arm carries no amounts because nothing here moves value — and that is the
+       * reason it needs a TEMPLATE rather than bounds. `setOptions` is the operation that
+       * hands over an account, so the question is never "how much" but "precisely which
+       * keys, at precisely which weights, and nothing else in the envelope".
+       */
+      signers: readonly [string, string];
+      /**
+       * Whether someone else is paying the signers' reserve.
+       *
+       * A BOOLEAN, and deliberately not the sponsor's address. It was an address, taken
+       * from the same response that carried the envelope — so `begin.source === opts.sponsor`
+       * compared the operator's claim against the operator's claim and could not fail. A
+       * bound that comes from the counterparty is not a bound, and the test that asserted
+       * "a sponsorship from an account the user never saw is refused" was asserting a
+       * property that did not hold.
+       *
+       * What the caller genuinely knows is which PATH the person chose, and that is what
+       * this says. Who the payer is comes out of the envelope, and the guard checks the
+       * two things about them it can check without being told: that the reserve being paid
+       * for is ours, and that the account named as payer is the one that actually signed.
+       */
+      sponsored: boolean;
     });
 
 /** Does a decoded asset satisfy a confirmed bound? Never a prefix match. */
@@ -734,6 +903,154 @@ function assetMatches(ref: AssetRef | null, bound: AssetBound): boolean {
 /** Stroops, or null when the decimal string is not one the wallet will act on. */
 function stroops(amount: string): bigint | null {
   return toMinorUnitsBig(amount, STELLAR_DECIMALS);
+}
+
+/**
+ * The SEP-30 setup transaction, checked as a template: the exact operations, in the exact
+ * order, with the exact keys and weights the screen showed — and nothing else.
+ *
+ * ## Why a template and not bounds
+ *
+ * Every other intent asks "does this stay inside what the user confirmed", because every
+ * other intent moves value and value has a size. This one moves nothing and hands over the
+ * right to move everything. There is no ceiling that makes `setOptions` safe: a signer at
+ * the wrong weight, an extra signer nobody mentioned, a `masterWeight` of 0 — each is a
+ * complete takeover and each would sail past any bound. So the envelope is compared
+ * against the one shape it is allowed to have.
+ *
+ * ## The shape
+ *
+ *     [beginSponsoringFutureReserves]   (only when the operator pays, sourced by IT)
+ *      setOptions  signer A, weight 5
+ *      setOptions  signer B, weight 5
+ *     [endSponsoringFutureReserves]     (only when sponsored, sourced by us)
+ *      setOptions  masterWeight 10, low/med/high 10
+ *
+ * The two signers must be the two the servers reported, each exactly once, and no
+ * operation may carry any other option — no home domain, no flags, no inflation
+ * destination, no second signer riding along with the thresholds.
+ *
+ * The weights are the wallet's own constants, never the servers' claim about themselves:
+ * a server that could name its own weight could name one that makes it sufficient alone,
+ * which is the single thing two servers exist to prevent.
+ */
+function assertRecoveryTemplate(
+  review: TxReview,
+  opts: Extract<GuardOptions, { intent: 'recovery' }>,
+  fail: (key: string, params?: Record<string, string | number>) => never,
+): void {
+  const [first, second] = opts.signers;
+  // Caller mistakes, refused by name so they do not surface as a confusing envelope
+  // complaint. Two identical signers would be one server holding both shares.
+  if (first === second) fail('guard.recoverySameSigner');
+  if (first === opts.signer || second === opts.signer) fail('guard.recoverySelfSigner');
+
+  const ops = review.operations;
+  const expected = opts.sponsored ? 5 : 3;
+  if (ops.length !== expected) {
+    fail('guard.recoveryOps', { count: ops.length, expected });
+  }
+  // Nothing beyond the sponsor's own signature may be on it yet. Ours is what this call
+  // is deciding, and a third signature is a transaction somebody else has been preparing.
+  if (review.signatures > (opts.sponsored ? 1 : 0)) {
+    fail('guard.recoveryPresigned', { count: review.signatures });
+  }
+  // The allowlist first, so `ALLOWED_OPS.recovery` is load-bearing rather than a row
+  // describing a check that happens elsewhere. The positional tests below are stricter and
+  // would catch all of this too — but a list in a security file that nothing reads is the
+  // exact thing the note on `send` in `constants/txGuard.ts` is about.
+  for (const op of ops) {
+    if (!ALLOWED_OPS.recovery.includes(op.type)) fail('guard.unexpectedOp', { op: op.type });
+  }
+
+  /** Every option this operation does NOT set. `null` is "absent", and 0 is a value. */
+  const onlyField = (c: ControlReview, keep: keyof ControlReview): boolean =>
+    (
+      [
+        'masterWeight',
+        'lowThreshold',
+        'medThreshold',
+        'highThreshold',
+        'homeDomain',
+        'setFlags',
+        'clearFlags',
+        'inflationDest',
+      ] as const
+    ).every((k) => k === keep || c[k] === null);
+
+  let i = 0;
+  if (opts.sponsored) {
+    const begin = ops[0];
+    if (begin.type !== 'beginSponsoringFutureReserves') fail('guard.recoveryNoSponsorship');
+    // Someone ELSE must be paying, and they must say who they are. The generic loop would
+    // have refused a foreign op source outright, which is exactly why it does not run here.
+    const payer = begin.source;
+    if (!payer || payer === opts.signer) fail('guard.recoverySponsorSource', { source: short(payer ?? '') });
+    // The reserve being paid for must be OURS — this is the check that is not
+    // self-referential, because the account it compares against is the signing key this
+    // device holds rather than anything the envelope supplied.
+    if (begin.control?.sponsoredId !== opts.signer) {
+      fail('guard.recoverySponsored', { account: short(begin.control?.sponsoredId ?? '') });
+    }
+    // And the payer named in the operation must be the one that actually signed. Two
+    // different accounts there means an envelope built by one party and signed by another:
+    // it cannot be submitted, and it is not the transaction it describes itself as.
+    const hint = signatureHintOf(payer);
+    if (review.signatures !== 1 || !hint || review.signatureHints[0] !== hint) {
+      fail('guard.recoveryNotSponsorSignature', { source: short(payer) });
+    }
+    i = 1;
+  }
+
+  const seen = new Set<string>();
+  for (let n = 0; n < 2; n += 1) {
+    const op = ops[i + n];
+    if (op.type !== 'setOptions') fail('guard.recoveryExpectedSigner', { op: op.type });
+    if (op.source && op.source !== opts.signer) fail('guard.foreignOpSource', { source: short(op.source) });
+    const c = op.control;
+    if (!c) fail('guard.recoveryUndecoded');
+    // A hash or pre-authorized-transaction signer is a standing authorisation of a
+    // different kind entirely, and it carries no key to compare against anything.
+    if (c.signerKind !== 'ed25519' || !c.signerKey) fail('guard.recoverySignerKind', { kind: c.signerKind ?? 'none' });
+    if (c.signerKey !== first && c.signerKey !== second) {
+      fail('guard.recoveryUnknownSigner', { key: short(c.signerKey) });
+    }
+    if (seen.has(c.signerKey)) fail('guard.recoveryDuplicateSigner', { key: short(c.signerKey) });
+    seen.add(c.signerKey);
+    if (c.signerWeight !== SERVER_WEIGHT) {
+      fail('guard.recoverySignerWeight', { key: short(c.signerKey), weight: c.signerWeight ?? 0, expected: SERVER_WEIGHT });
+    }
+    if (!onlyField(c, 'masterWeight') || c.masterWeight !== null) fail('guard.recoveryExtraOption');
+  }
+  i += 2;
+
+  if (opts.sponsored) {
+    const end = ops[i];
+    if (end.type !== 'endSponsoringFutureReserves') fail('guard.recoveryUnclosedSponsorship');
+    // Ours: it is our account that stops accepting sponsored entries. Left open, the
+    // sponsorship would swallow whatever the account creates next.
+    if (end.source && end.source !== opts.signer) fail('guard.foreignOpSource', { source: short(end.source) });
+    i += 1;
+  }
+
+  const last = ops[i];
+  if (last.type !== 'setOptions') fail('guard.recoveryExpectedThresholds', { op: last.type });
+  if (last.source && last.source !== opts.signer) fail('guard.foreignOpSource', { source: short(last.source) });
+  const c = last.control;
+  if (!c) fail('guard.recoveryUndecoded');
+  // A signer smuggled onto the thresholds operation is the whole attack in one line.
+  if (c.signerKind !== null) fail('guard.recoveryThresholdSigner');
+  // The device must still be able to act alone. `masterWeight` below the threshold is how
+  // an account is taken away from its owner without a single key changing hands.
+  if (c.masterWeight !== DEVICE_WEIGHT) {
+    fail('guard.recoveryMasterWeight', { weight: c.masterWeight ?? 0, expected: DEVICE_WEIGHT });
+  }
+  for (const k of ['lowThreshold', 'medThreshold', 'highThreshold'] as const) {
+    if (c[k] !== DEVICE_WEIGHT) fail('guard.recoveryThreshold', { weight: c[k] ?? 0, expected: DEVICE_WEIGHT });
+  }
+  if (c.homeDomain !== null || c.setFlags !== null || c.clearFlags !== null || c.inflationDest !== null) {
+    fail('guard.recoveryExtraOption');
+  }
 }
 
 /**
@@ -795,6 +1112,18 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
   }
   if (maxTime - now > MAX_VALIDITY_S + CLOCK_SKEW_S) {
     fail('guard.validTooLong');
+  }
+
+  /* ------------------------------ recovery setup ------------------------------ */
+  // Checked here, and then this function returns: the recovery template is not a stricter
+  // configuration of the loop below, it is a different question. The loop asks "does every
+  // operation stay inside the amounts the user confirmed"; this asks "is this envelope,
+  // operation for operation, the exact transaction the screen described". Nothing about
+  // destinations or assets applies, and running both would only make the template's
+  // "and nothing else" negotiable.
+  if (opts.intent === 'recovery') {
+    assertRecoveryTemplate(review, opts, fail);
+    return review;
   }
 
   /* --------------------------- per-operation checks --------------------------- */

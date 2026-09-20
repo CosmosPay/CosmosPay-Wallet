@@ -95,7 +95,34 @@ import {
 import { useSignIn } from '@/state/useSignIn';
 import { normalizeRails } from '@/lib/fiatRails';
 import { deviceAuthFailureKey, type DeviceAuthFailure } from '@/lib/deviceAuth';
-import { ACCOUNT_PREFIX, HISTORY_PREFIX, PRICES_KEY, TTL, accountKey, historyKey, opsKey, type OpsDomain } from '@/lib/dataKeys';
+import {
+  ACCOUNT_PREFIX,
+  HISTORY_PREFIX,
+  PRICES_KEY,
+  RECOVERY_PREFIX,
+  TTL,
+  accountKey,
+  historyKey,
+  opsKey,
+  recoveryKey,
+  type OpsDomain,
+} from '@/lib/dataKeys';
+import {
+  buildKeyReplacement,
+  buildRecoveryRemoval,
+  buildRecoverySetup,
+  collectSignatures,
+  identityTokens,
+  loadRecoveryServers,
+  recoverableAccounts,
+  recoveryStateOf,
+  registerForRecovery,
+  sequenceOf,
+  signedRecoverySetup,
+  signersToRemove,
+  type RecoverableAccount,
+  type RecoveryState,
+} from '@/lib/recovery';
 import {
   addTrustline as stellarAddTrustline,
   allNetworks,
@@ -166,6 +193,7 @@ import {
   type SignInReady,
   type SocialLoginReady,
   type SwapQuote,
+  recoverySetupSponsored,
 } from '@/lib/cosmospay';
 import { useToast } from '@/state/useToast';
 import { usePreferences, applySavedThemeEarly, savedRequireConfirm } from '@/state/usePreferences';
@@ -2519,6 +2547,356 @@ export function useWalletStore() {
     return run.ran ? run.value : false;
   }, [cosmosApiKey, session, network, exclusive, guardSession, requestSignature, signEnvelope, t, flash]);
 
+  /* ------------------------ account recovery (SEP-30) ------------------------ */
+
+  /*
+   * Opt-in, and it replaces nothing: a wallet that never turns this on is exactly the
+   * wallet it was. What it adds is two signers, held by two separate servers, each at half
+   * the account's threshold — so the device still signs alone, and if the device is gone
+   * the two servers together can put a new key on the account. `lib/recovery.ts` has the
+   * arithmetic and `txGuard`'s `recovery` template is what checks the transaction.
+   *
+   * The identity that will be able to recover is the wallet's own email. Registering it
+   * needs the ACCOUNT's key (SEP-10), so only the person holding this device decides who
+   * may recover it — an identity that could add itself would be a way in, not a way back.
+   */
+
+  /**
+   * Send a code to the wallet's own email, for the sponsored path.
+   *
+   * The operator pays two accounts' worth of reserve, so it asks for a proven email rather
+   * than a bare request — the same sign-in every other flow uses, spent here for one
+   * narrower thing. It is never asked for on the self-paid path, which needs no identity.
+   */
+  const startRecoveryCode = useCallback(async (): Promise<boolean> => {
+    const email = meta?.email?.trim().toLowerCase();
+    if (!email) {
+      flash(t('recovery.error.noEmail'), 'err');
+      return false;
+    }
+    return signIn.startEmail(email);
+  }, [meta, signIn, flash, t]);
+
+  /** Whether recovery is on for this account, read from the ledger rather than the servers. */
+  const recovery = useQueryValue<RecoveryState>(recoveryKey(scope.net, scope.pub)) ?? null;
+
+  const loadRecovery = useCallback(async () => {
+    if (!meta) return;
+    await run({
+      key: recoveryKey(networkId, meta.publicKey),
+      fetcher: () => recoveryStateOf(network, meta.publicKey),
+      ttl: TTL.recovery,
+      retry: 2, // an idempotent read
+    });
+  }, [meta, network, networkId]);
+
+  /**
+   * Turn recovery on.
+   *
+   * `code` is the one an email sign-in just sent, and passing it chooses the SPONSORED
+   * variant: the operator pays the two signer entries' reserve, which is the only way an
+   * account with no spare lumens gets recovery at all. Without it the account pays its
+   * own, and needs no sign-in at all. Both end at the same guard with the same template —
+   * the sponsorship is a funding arrangement, not a second way of changing an account.
+   *
+   * The token that the sponsored variant spends never leaves this function, which is why
+   * the code is verified HERE rather than by the screen: a screen holding a session token
+   * is a screen holding something that provisions.
+   */
+  const enableRecovery = useCallback(
+    async (opts: { code?: string } = {}): Promise<boolean> => {
+      if (!session || !meta) return false;
+      if (isPollar(meta)) {
+        // A Pollar wallet's key is not on this device and not on the account either;
+        // there is no device key for two servers to replace.
+        flash(t('recovery.error.pollar'), 'err');
+        return false;
+      }
+
+      const outcome = await exclusive.run('recovery', async () => {
+        const epoch = sessionEpochRef.current;
+        try {
+          const address = session.publicKey;
+          const email = meta.email?.trim().toLowerCase() ?? '';
+          if (!email) {
+            flash(t('recovery.error.noEmail'), 'err');
+            return false;
+          }
+
+          // Both servers, before anything is written to either: a pair that cannot
+          // protect the account is a pair to find out about now, not after one of them
+          // has been registered.
+          const servers = await loadRecoveryServers(network);
+          guardSession(epoch);
+
+          const state = await recoveryStateOf(network, address);
+          guardSession(epoch);
+          if (!state.exists) {
+            flash(t('recovery.error.notFunded'), 'err');
+            return false;
+          }
+
+          // Said plainly before anything happens, because this is the bargain: whoever
+          // can prove that inbox — to BOTH servers — can put a new key on this account.
+          const okToStart = await requestSignature({
+            title: t('recovery.confirmTitle'),
+            message: t('recovery.confirmMsg', { email }),
+          });
+          if (!okToStart) return false;
+          guardSession(epoch);
+
+          const secret = await secretOf(session);
+          const signers = await registerForRecovery(network, servers, address, secret, email);
+          guardSession(epoch);
+
+          let xdr: string;
+          if (opts.code) {
+            if (!isAccessCode(opts.code)) {
+              flash(t('recovery.error.badCode'), 'err');
+              return false;
+            }
+            const ready = await signIn.submitCode(opts.code);
+            guardSession(epoch);
+            if (!ready) return false; // the slice already said why
+            const built = await recoverySetupSponsored(ready.sessionToken, {
+              stellarAddress: address,
+              signers,
+              ...signedRecoverySetup(secret, address, signers),
+            });
+            guardSession(epoch);
+            xdr = built.transaction;
+          } else {
+            // Only the self-paid variant needs the sequence here: the sponsored one is
+            // built by the operator, on the sequence it reads for itself.
+            const sequence = await sequenceOf(network, address);
+            guardSession(epoch);
+            xdr = buildRecoverySetup({ account: address, signers, sequence, networkPassphrase: network.passphrase });
+          }
+
+          // The template, on both variants — including the one this wallet built itself.
+          // A builder that checked only the other side's envelope would be trusting its
+          // own code more than the thing that has to be right.
+          assertSafeToSign(network, xdr, {
+            signer: address,
+            intent: 'recovery',
+            // Nothing leaves. Stating the policy is still required, and this is the
+            // honest answer rather than the empty one.
+            destinations: 'self',
+            signers,
+            // The PATH the person chose, not the payer's address: an address here would
+            // have come from the same response as the envelope, and the guard would have
+            // been checking the operator against itself. See the arm's own note.
+            sponsored: !!opts.code,
+          });
+          guardSession(epoch);
+
+          const signed = await signEnvelope(xdr);
+          await stellarSubmitXdr(network, signed);
+          invalidate(ACCOUNT_PREFIX);
+          invalidate(RECOVERY_PREFIX);
+          void loadRecovery();
+          flash(t('recovery.enabled'), 'ok');
+          return true;
+        } catch (e) {
+          flash((e as Error).message || t('recovery.error.generic'), 'err');
+          return false;
+        }
+      });
+      return outcome.ran ? outcome.value : false;
+    },
+    [session, meta, network, exclusive, guardSession, requestSignature, signEnvelope, signIn, loadRecovery, t, flash],
+  );
+
+  /**
+   * Turn it off: both signers back to weight 0, the thresholds back to one signature.
+   *
+   * Built entirely from what the LEDGER says is on the account, with nothing from either
+   * server in it — which is also why it does not go through the guard the way enabling
+   * does. There is no counterparty envelope here: the worst a wrong answer from Horizon
+   * could produce is an operation that removes a signer the account never had.
+   *
+   * The servers are told afterwards, and a failure there is not a failure of this: the
+   * signer is off the account either way, and a server that still thinks it protects an
+   * account it cannot sign for is stale, not dangerous.
+   */
+  const disableRecovery = useCallback(async (): Promise<boolean> => {
+    if (!session || !meta) return false;
+
+    const outcome = await exclusive.run('recovery', async () => {
+      const epoch = sessionEpochRef.current;
+      try {
+        const address = session.publicKey;
+        const state = await recoveryStateOf(network, address);
+        guardSession(epoch);
+        if (!state.enabled || !state.signers.length) {
+          flash(t('recovery.error.notOn'), 'err');
+          return false;
+        }
+
+        const ok = await requestSignature({
+          title: t('recovery.offConfirmTitle'),
+          message: t('recovery.offConfirmMsg'),
+        });
+        if (!ok) return false;
+        guardSession(epoch);
+
+        // Ask the SERVERS which key each of them holds, rather than removing whatever the
+        // ledger carries at their weight: another signer the account happens to have at
+        // that weight — a co-signer, a service — is not ours to zero. This also
+        // deregisters the account, so neither server is left holding an identity record
+        // for an account it can no longer sign for.
+        const servers = await loadRecoveryServers(network);
+        guardSession(epoch);
+        const secret = await secretOf(session);
+        const signers = await signersToRemove(network, servers, address, secret);
+        guardSession(epoch);
+        if (!signers.length) {
+          flash(t('recovery.error.notOn'), 'err');
+          return false;
+        }
+
+        const sequence = await sequenceOf(network, address);
+        guardSession(epoch);
+        const xdr = buildRecoveryRemoval({ account: address, signers, sequence, networkPassphrase: network.passphrase });
+        const signed = await signEnvelope(xdr);
+        await stellarSubmitXdr(network, signed);
+
+        invalidate(ACCOUNT_PREFIX);
+        invalidate(RECOVERY_PREFIX);
+        void loadRecovery();
+        flash(t('recovery.disabled'), 'ok');
+        return true;
+      } catch (e) {
+        flash((e as Error).message || t('recovery.error.generic'), 'err');
+        return false;
+      }
+    });
+    return outcome.ran ? outcome.value : false;
+  }, [session, meta, network, exclusive, guardSession, requestSignature, signEnvelope, loadRecovery, t, flash]);
+
+  /* ---------------------- recovering onto this device ----------------------- */
+
+  /*
+   * The other half of SEP-30: someone whose device is gone, and whose password is gone
+   * with it — the case the encrypted cloud backup cannot answer, because that box only
+   * ever opens with the password.
+   *
+   * What comes back is the ACCOUNT, not the key. The address, its balances, its
+   * trustlines and its history all survive; the key that used to sign for it does not,
+   * and a new one generated here takes its place. That is the whole of what the two
+   * servers co-sign, and `buildKeyReplacement` is where the transaction is built —
+   * HERE, by the device that will use it, and only then handed to them for signatures.
+   */
+
+  /** The accounts the finished sign-in can recover, as both servers agree. */
+  const [recoverable, setRecoverable] = useState<RecoverableAccount[] | null>(null);
+
+  const loadRecoverable = useCallback(async () => {
+    if (!signInDraft) return;
+    try {
+      const servers = await loadRecoveryServers(network);
+      const tokens = await identityTokens(servers, signInDraft.ready.sessionToken);
+      setRecoverable(await recoverableAccounts(servers, tokens));
+    } catch (e) {
+      setRecoverable([]);
+      flash((e as Error).message || t('recovery.error.generic'), 'err');
+    }
+  }, [signInDraft, network, flash, t]);
+
+  /**
+   * Put a new key on a recovered account and land it as a wallet on this device.
+   *
+   * The order matters and is the opposite of the intuitive one: the chain first, the
+   * vault second. A wallet written before the transaction confirms would be a wallet
+   * whose key cannot sign for its own account — indistinguishable, from the inside, from
+   * a wallet that works. If the submit fails nothing local has happened and the person
+   * can try again; if the vault write fails afterwards the account is already recovered
+   * and signing in again finds it.
+   *
+   * `password` is a NEW one. There is no old password in this flow by definition, which
+   * is also why the cloud backup is re-sealed here rather than restored.
+   */
+  const recoverWallet = useCallback(
+    async (address: string, password: string): Promise<boolean> => {
+      // Read here rather than taken as an argument, exactly as `finishOnboarding` does:
+      // this IS an onboarding path (a first wallet on a fresh device), and the screen asks
+      // the same two questions with the same shared component.
+      const consents: ConsentAnswers = { metricsOptIn: draftMetricsOptIn, promoOptIn: draftPromoOptIn };
+      const draft = signInDraft;
+      if (!draft) return false;
+      const row = recoverable?.find((r) => r.address === address);
+      if (!row) return false;
+
+      const outcome = await exclusive.run('recovery', async () => {
+        try {
+          setBusy(true);
+          const servers = await loadRecoveryServers(network);
+          const tokens = await identityTokens(servers, draft.ready.sessionToken);
+
+          // The key that will replace the lost one. A fresh mnemonic, because the old one
+          // is exactly what is missing — and the person is told on the screen that it now
+          // restores a KEY, not this account, which keeps its own address.
+          const { createMnemonic, accountFromMnemonic } = await walletLib();
+          const mnemonic = createMnemonic();
+          const fresh = await accountFromMnemonic(mnemonic);
+
+          const sequence = await sequenceOf(network, address);
+          const xdr = buildKeyReplacement({
+            account: address,
+            newKey: fresh.publicKey,
+            sequence,
+            networkPassphrase: network.passphrase,
+          });
+          const signed = await collectSignatures(network, servers, tokens, row.signers, address, xdr);
+          await stellarSubmitXdr(network, signed);
+
+          // Only now is the key real. Everything below is local bookkeeping over an
+          // account this device can already sign for.
+          const vk = await deriveVaultKey(password, newKdfParams());
+          setTelemetryEnabled(consents.metricsOptIn);
+          const box = await sealBackup({ secret: fresh.secret, mnemonic }, password);
+          const res = await finishSignIn({
+            sessionToken: draft.ready.sessionToken,
+            email: draft.ready.identity.email,
+            secret: fresh.secret,
+            // The ACCOUNT, not the new key's own address: what was recovered is the
+            // account, and the platform accepts the signature because that key is now one
+            // of its signers — see the dev platform's account-signers module, which is in
+            // a separate repository and so is named rather than linked.
+            account: address,
+            backup: box,
+            replaceBackup: true,
+          });
+          if (res.status === 'backup_conflict') {
+            flash(t('backup.conflict'), 'err');
+            return false;
+          }
+
+          await landSignedInWallet({
+            secret: { secret: fresh.secret, mnemonic },
+            publicKey: address,
+            ready: draft.ready,
+            account: { keys: res.keys, organizationId: res.organizationId },
+            vk,
+            consents,
+            activate: true,
+          });
+          setSignInDraft(null);
+          setRecoverable(null);
+          flash(t('recovery.recovered'), 'ok');
+          return true;
+        } catch (e) {
+          flash((e as Error).message || t('recovery.error.generic'), 'err');
+          return false;
+        } finally {
+          setBusy(false);
+        }
+      });
+      return outcome.ran ? outcome.value : false;
+    },
+    [signInDraft, recoverable, network, exclusive, landSignedInWallet, draftMetricsOptIn, draftPromoOptIn, flash, t],
+  );
+
   /* ---------------------------- Pollar ---------------------------- */
 
   /*
@@ -4030,6 +4408,10 @@ export function useWalletStore() {
             sessionToken: draft.ready.sessionToken,
             email: draft.ready.identity.email,
             secret: secret.secret,
+            // The address the box was filed under, which for a RECOVERED wallet is not the
+            // key's own — see `finishSignIn`. For every other wallet the two are equal and
+            // passing it changes nothing.
+            account: backup.stellarAddress,
           });
           if (res.status !== 'ready') throw new Error(t('backup.conflict'));
           // On a first run the backup's password becomes this device's password too, so the
@@ -4037,7 +4419,10 @@ export function useWalletStore() {
           const vk = draft.purpose === 'onboarding' ? await deriveVaultKey(password, newKdfParams()) : live!.vaultKey;
           if (draft.purpose === 'onboarding') setTelemetryEnabled(consents.metricsOptIn);
           entry = await landSignedInWallet({
-            secret,
+            // Only the two fields the vault stores: the box may also carry the account a
+            // recovered wallet recorded, and that belongs on the WalletEntry (as its
+            // `publicKey`, just below), not inside the sealed secret this device writes.
+            secret: { secret: secret.secret, mnemonic: secret.mnemonic },
             publicKey: backup.stellarAddress,
             ready: draft.ready,
             account: { keys: res.keys, organizationId: res.organizationId },
@@ -4249,6 +4634,26 @@ export function useWalletStore() {
       : null,
     completeSignIn,
     startOverSignIn,
+
+    /*
+     * SEP-30 account recovery. `recovery` is what the LEDGER says — whether two server
+     * signers are on this account — not what either server claims, and it is null until a
+     * screen calls `loadRecovery`.
+     */
+    recovery,
+    loadRecovery,
+    startRecoveryCode,
+    enableRecovery,
+    disableRecovery,
+
+    /*
+     * Recovering an account onto this device. `recoverable` is null until a finished
+     * sign-in asks both servers what it may recover, and the identity tokens that answer
+     * stays inside the store — a screen holding one holds the right to re-key an account.
+     */
+    recoverable,
+    loadRecoverable,
+    recoverWallet,
 
     /* Moving an old Pollar wallet onto a key this device holds (`lib/pollarMigration.ts`). */
     migrationPlan,

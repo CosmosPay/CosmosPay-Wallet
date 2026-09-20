@@ -32,6 +32,7 @@ export const SCREEN_IDS = [
   'device-auth',
   'sign-in',
   'sign-in-password',
+  'recover',
   'migrate',
   'unlock',
   'home',
@@ -119,6 +120,9 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // The password a finished sign-in still needs: the backup's to restore it, or this
   // device's to seal a new one. Only ever reached from 'sign-in'.
   'sign-in-password': { back: 'sign-in' },
+  // Getting an account back with no device and no password (SEP-30). Reached from the
+  // password screen, which is where someone discovers they cannot go on without it.
+  recover: { back: 'sign-in-password' },
   // Two flows end here. The seed one arrives from `profile-setup`; a first-run sign-in with
   // nothing to restore arrives straight from `sign-in` with only the password left to
   // collect, and must not be sent back into a profile form it never saw.

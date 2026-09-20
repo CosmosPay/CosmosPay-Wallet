@@ -23,7 +23,7 @@
  * its onramp will pay out in, and the wallet signs it. `stellarAddTrustline` still
  * builds the by-hand case locally and still does not come through here.
  */
-export type SignIntent = 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'trustline' | 'migrate' | 'dapp';
+export type SignIntent = 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'trustline' | 'migrate' | 'recovery' | 'dapp';
 
 /**
  * Operations that can hand over the account itself, or move value in a way this
@@ -86,6 +86,20 @@ export const ALLOWED_OPS: Record<Exclude<SignIntent, 'dapp'>, readonly string[]>
   // `payment` smuggled alongside the trustline, or a `setOptions` (already refused as
   // critical) — neither can appear in a transaction whose only allowed op is changeTrust.
   trustline: ['changeTrust'],
+  /**
+   * SEP-30 recovery setup: putting the two recovery servers' signers on the account
+   * (`lib/recovery.ts`). The ONLY internal flow whose operations are in `CRITICAL_OPS`,
+   * and the reason is exactly what makes them critical — it changes who may sign for the
+   * account. That is the feature.
+   *
+   * Listing them here does not admit them: `assertSafeToSign` refuses a critical op before
+   * it ever reads this row. What this intent gets instead is a TEMPLATE — an exact
+   * operation-by-operation match against the shape the user confirmed, in `txGuard.ts`.
+   * A bound would be the wrong instrument: there is no amount to cap, and "a setOptions
+   * with sensible limits" is still an account takeover if the limits are wrong. The list
+   * below is the template's first filter and nothing more.
+   */
+  recovery: ['setOptions', 'beginSponsoringFutureReserves', 'endSponsoringFutureReserves'],
   // Moving an old Pollar wallet onto a key this device holds (`lib/pollarMigration.ts`).
   // Pollar signs these; the wallet built them. Funding the new account and paying into it
   // are the whole job, so that is all this admits — never the `accountMerge` or the

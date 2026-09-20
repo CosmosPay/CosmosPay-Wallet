@@ -7,6 +7,7 @@ import { SettingsRow } from '@/features/settings/SettingsRow';
 import { ToggleRow } from '@/features/settings/ToggleRow';
 import { ChangePassword } from '@/features/settings/ChangePassword';
 import { ConnectedSites } from '@/features/settings/ConnectedSites';
+import { RecoverySection } from '@/features/settings/RecoverySection';
 import { DevModeSection } from '@/features/settings/DevModeSection';
 import { useCopied } from '@/hooks/useCopied';
 import { shortAddr } from '@/lib/format';
@@ -85,6 +86,8 @@ export function Settings({ store }: { store: WalletStore }) {
           onChange={store.setDiagnostics}
         />
       </SettingsSection>
+
+      <RecoverySection store={store} />
 
       <ConnectedSites store={store} />
 

@@ -1,0 +1,41 @@
+/**
+ * Response contracts for SEP-10 web auth and SEP-30 account recovery. See `lib/apiShape.ts`
+ * for why every response has one.
+ *
+ * What is asserted is what the wallet acts on: the envelopes it is about to decode and
+ * sign, the tokens it presents back, the signer keys it puts on chain as signers, and the
+ * addresses it checks those against. A `signers[].key` that arrived as something other than
+ * a Stellar address would otherwise become a `setOptions` the guard refuses much later,
+ * with a message about transaction shape rather than about the server that sent it.
+ */
+import { account, arrayOf, bool, id, object, optional, str, xdr } from '@/lib/apiShape';
+
+export const RecoveryInfoShape = object({
+  role: str,
+  network: str,
+  network_passphrase: id,
+  home_domain: id,
+  web_auth_domain: id,
+  web_auth_endpoint: id,
+});
+
+export const Sep10ChallengeShape = object({ transaction: xdr, network_passphrase: id });
+
+export const Sep10TokenShape = object({ token: id });
+
+export const RecoveryIdentityTokenShape = object({ token: id });
+
+const RecoveryAccountShape = object({
+  address: account,
+  identities: arrayOf(object({ role: str, authenticated: optional(bool) })),
+  signers: arrayOf(object({ key: account, added_at: str })),
+});
+
+export const RecoveryRegisteredShape = RecoveryAccountShape;
+
+export const RecoveryAccountListShape = object({ accounts: arrayOf(RecoveryAccountShape) });
+
+/** A raw signature, never a signed envelope — the wallet assembles the transaction. */
+export const RecoverySignatureShape = object({ signature: id, network_passphrase: id });
+
+export const RecoverySetupShape = object({ transaction: xdr, sponsor: account, network_passphrase: id });

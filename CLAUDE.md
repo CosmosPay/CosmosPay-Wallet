@@ -446,6 +446,120 @@ reserve**: both stay refused, and the plan tells the person what stays behind in
 legacy Pollar login (`lib/socialLogin.ts`) survives only to reconnect an expired session for
 that move; delete it, and the dev platform's broker, once no Pollar wallet holds a balance.
 
+## Recovery is SEP-30, it is opt-in, and it replaces nothing
+
+There are now two ways to hold a wallet here and they coexist deliberately: a **local
+wallet**, whose seed exists on one device and in the encrypted cloud backup, and a wallet
+whose **account** can also be recovered by two servers. Turning recovery on changes nothing
+about how the wallet signs — the device key still signs alone — and a wallet that never
+turns it on is exactly the wallet it was.
+
+The three numbers are the whole design (`src/constants/recovery.ts`), and they are the
+wallet's own, never a server's claim about itself:
+
+```
+device (10)          ≥ threshold (10)  → normal use needs nobody else
+server a (5) + b (5) ≥ threshold (10)  → recovery needs BOTH servers
+one server alone (5) <  threshold (10) → one server can do nothing
+```
+
+**Two deployments, and the wallet refuses a pair that is one.** Each recovery server is a
+separate deployment of the dev platform with its own keys and its own host
+(`PUBLIC_COSMOS_RECOVERY_A_URL` / `_B_URL`). `recoveryServers()` in `lib/endpoints.ts`
+returns nothing when the two resolve to the same origin, and `loadRecoveryServers` refuses a
+pair on different networks, or one whose `web_auth_domain` is not the host that answered —
+because a signer is an entry on ONE ledger, and a mismatch discovered at recovery time is a
+failure with nothing left to do about it. Both hosts are derived into the extension's
+`host_permissions` alongside the other two; a host the bundle calls and the manifest does not
+name is unreachable from the popup.
+
+**A SEP-10 challenge is decoded before it is signed** (`src/lib/sep10.ts`). A server hands
+the wallet a transaction and asks for a signature: that is the shape of everything
+`txGuard.ts` exists to refuse. What makes it safe is a property the wallet checks for
+itself — **sequence number 0**, which the network can never accept — and `assertSafeChallenge`
+refuses everything else that is not exactly SEP-10's shape: a challenge sourced by our own
+account, an operation that is not `manageData`, a later operation sourced by US (a data entry
+written on the account under cover of a login), a `web_auth_domain` naming the sibling server,
+a nonce that is not 48 bytes, a missing window, a memo. A **muxed** (`M…`) transaction source
+is refused outright rather than compared: it renders as a different string from the `G…`
+account it wraps, and an operation with no source of its own inherits it — so one prefix
+defeated both account checks at once and left sequence 0 carrying the file alone.
+
+The `home_domain` the challenge is checked against is the server's own claim, so on its own it
+catches only a server contradicting itself; what makes it a check is that `loadRecoveryServers`
+requires **both** servers to report the same one, and whoever controls one cannot change what
+the other says.
+
+**The setup transaction is matched against a TEMPLATE, not bounded** (the `recovery` intent
+in `lib/txGuard.ts`). It is the only internal flow whose operations are in `CRITICAL_OPS`,
+because changing who may sign for the account is the feature — so it does not run the generic
+per-operation loop at all. There is no ceiling that makes `setOptions` safe: a signer at the
+wrong weight, an extra signer, a `masterWeight` of 0 are each a complete takeover and each
+would pass any bound. The envelope must be, operation for operation:
+
+```
+[beginSponsoringFutureReserves]   only when the operator pays, sourced by IT
+ setOptions  signer A, weight 5
+ setOptions  signer B, weight 5
+[endSponsoringFutureReserves]     only when sponsored, sourced by us
+ setOptions  masterWeight 10, low/med/high 10
+```
+
+Each signer exactly once, both from the pair the servers reported, nothing else set on any
+operation, and no signature on it but the payer's. Both funding variants exist and both end
+here: the wallet builds the self-paid one and the platform builds the sponsored one, and the
+template checks the wallet's own build too — a builder that checked only the other side's
+envelope would be trusting its own code more than the thing that has to be right.
+
+Three things that bit, each now a test in `tests/unit/recovery.test.ts`:
+
+- **`homeDomain: ''` is a VALUE, not an absent field.** It clears the account's home domain,
+  and `str('')` returns null — so the one option that can be set without being truthy was the
+  one that walked through "and nothing else is set". `controlOf` tests presence with `typeof`,
+  and `reviewOp` renders a cleared domain explicitly instead of letting an empty value drop
+  out of the rows (which had made it invisible on the dapp path too).
+- **`sponsored` is a BOOLEAN, never the payer's address.** It was an address, taken from the
+  same response as the envelope, so `begin.source === opts.sponsor` compared the operator's
+  claim to the operator's claim. What the caller actually knows is which path the person
+  chose. The two checks that survive are the ones an envelope cannot answer for itself: the
+  reserve being paid for must be OUR account, and the payer named in the operation must be the
+  account that actually signed it.
+- **All three thresholds, and the master weight.** `recoveryStateOf` checked only
+  `med_threshold` — while adding a signer and changing thresholds are HIGH-threshold
+  operations, so `high_threshold` was the one number that decides whether one server can
+  re-key the account alone, and the one never read. Its `signers` list is a weight heuristic
+  and is used for display only; `signersToRemove` asks each server which key it holds, so
+  turning recovery off cannot zero an unrelated signer that happens to share the weight.
+
+**Recovering keeps the ACCOUNT and replaces the KEY.** `buildKeyReplacement` puts a new
+device key on at weight 10 and takes the old master to 0, leaving the recovery signers in
+place so the next device can do it again. It is built HERE, by the device that will use it,
+and only then handed to the servers for signatures — a transaction a server built and a
+server signed is one nobody independent read. `collectSignatures` assembles both, and
+`addSignature` is what catches a server that signed something else.
+
+Three consequences of re-keying, each handled in one place and each easy to reintroduce:
+
+- **The address stops being derivable from the key.** `WalletEntry.publicKey` is the ACCOUNT;
+  the key that signs is whatever the vault holds. `finishSignIn` and `replaceBackup` take an
+  optional `account` for exactly this, and the platform accepts the signature because that key
+  is one of the account's current signers (its own account-signers module, in the dev-platform
+  repository, mainnet only and on the operator's Horizon — a caller-chosen network would be a
+  caller-minted signer).
+- **The backup box records the account inside its ciphertext**, not beside it, so a later
+  restore compares against the right address instead of failing as a mismatch. A box without
+  the field is one whose key IS its address; the fallback loosens nothing.
+- **The recovery phrase changes.** The new one restores a key, not the account, and
+  `RecoverAccount.tsx` says so behind an explicit acknowledgement before anything is signed.
+
+**Turning it off is the user's**, and `buildRecoveryRemoval` is built entirely from what the
+ledger says is on the account — no counterparty envelope, so no guard intent. The thresholds
+go last, as they went on.
+
+`tests/unit/recovery.test.ts` is the file to extend: it holds the template refusals (each one
+a way an envelope can look like a recovery setup and be a takeover) and the challenge
+refusals. Add a case there before changing anything in `assertRecoveryTemplate`.
+
 ## An asset is a (code, issuer) pair, and the registry says whose
 
 `src/lib/assetRegistry.ts` answers "which asset is this, and who issues it?" from three

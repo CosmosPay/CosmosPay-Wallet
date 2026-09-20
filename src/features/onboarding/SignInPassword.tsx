@@ -8,6 +8,7 @@ import { CheckRow } from '@/features/onboarding/CheckRow';
 import { Desc } from '@/features/onboarding/Desc';
 import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
 import { shortAddr } from '@/lib/format';
+import { recoveryConfigured } from '@/lib/recovery';
 import '@/styles/features/onboarding/sign-in-password.css';
 
 /**
@@ -39,6 +40,10 @@ export function SignInPassword({ store }: { store: WalletStore }) {
   if (!pending) return null;
 
   const restoring = !!pending.backupAddress && !pending.replace;
+  // Only worth offering where there are two servers to ask. `recoverable` itself is not
+  // loaded here: asking both servers costs two round trips and a token each, and most
+  // people who open this screen simply type their password.
+  const recoverable = recoveryConfigured();
   const firstRun = !store.hasSession;
   const submit = () => {
     if (pwd && !store.busy) void store.completeSignIn(pwd);
@@ -80,6 +85,19 @@ export function SignInPassword({ store }: { store: WalletStore }) {
         </button>
       ) : (
         <div className="glass-soft col g8 sign-in-pwd-startover">
+          {/* Recovery FIRST, because it is the answer that keeps the account. Starting
+              over below it gives up the address and everything on it, and is offered only
+              because a build without recovery servers — or an account that never turned
+              recovery on — has nothing else. */}
+          {recoverable && (
+            <>
+              <div className="sign-in-pwd-startover-text">{t('signin.recoverOffer')}</div>
+              <button className="btn-ghost" disabled={store.busy} onClick={() => store.setScreen('recover')}>
+                {t('signin.recoverCta')}
+              </button>
+              <div className="sign-in-pwd-or">{t('common.or')}</div>
+            </>
+          )}
           <div className="sign-in-pwd-startover-text">
             {t('signin.startOverWarn', { address: shortAddr(pending.backupAddress ?? '') })}
           </div>

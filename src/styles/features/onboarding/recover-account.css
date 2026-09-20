@@ -1,0 +1,66 @@
+/* Recovering an account onto this device — src/features/onboarding/RecoverAccount.tsx.
+   The list is a pick-one, so its rows carry the same tile metrics as the rest of
+   onboarding and differ only by the `.is-on` border. */
+
+.recover-desc {
+  margin-bottom: 14px;
+}
+
+.recover-loading {
+  gap: 10px;
+  align-items: center;
+  padding: 18px 0;
+  font-size: 13.5px;
+  color: var(--text-soft);
+}
+
+.recover-empty {
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--text-soft);
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+}
+
+.recover-list {
+  margin-bottom: 14px;
+}
+
+.recover-item {
+  width: 100%;
+  border-radius: 14px;
+  padding: 14px 16px;
+  align-items: center;
+  text-align: left;
+}
+
+.recover-item.is-on {
+  border-color: var(--accent);
+}
+
+/* The address is the one thing worth reading character by character here: it is what
+   the person is deciding to take back. */
+.recover-item-addr {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.recover-item-mark {
+  color: var(--accent);
+  font-size: 15px;
+}
+
+.recover-warn {
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-top: 14px;
+}
+
+.recover-warn-text {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-soft);
+}

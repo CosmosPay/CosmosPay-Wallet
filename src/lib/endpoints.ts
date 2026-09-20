@@ -11,7 +11,14 @@
  * via Settings -> custom networks.)
  */
 
-import { DEFAULT_DEV_PLATFORM_URL, DEFAULT_GATEWAY_ENTRY, DEFAULT_GATEWAY_URL } from '@/constants/backends';
+import {
+  DEFAULT_DEV_PLATFORM_URL,
+  DEFAULT_GATEWAY_ENTRY,
+  DEFAULT_GATEWAY_URL,
+  DEFAULT_RECOVERY_A_URL,
+  DEFAULT_RECOVERY_B_URL,
+} from '@/constants/backends';
+import type { RecoveryRole } from '@/constants/recovery';
 import { buildKind } from '@/lib/platform';
 
 const ENV = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
@@ -37,6 +44,8 @@ export interface EndpointOverrides {
   devPlatformUrl?: string; // Cosmos Developer Platform base ('' = same-origin /api proxy)
   gatewayUrl?: string; // APISIX gateway base ('' = same-origin proxy)
   gatewayEntry?: string; // gateway entry prefix, e.g. /cosmos-api
+  recoveryAUrl?: string; // SEP-30 recovery server A
+  recoveryBUrl?: string; // SEP-30 recovery server B — a DIFFERENT deployment, always
 }
 
 export function devModeEnabled(): boolean {
@@ -113,6 +122,44 @@ export const gatewayEntry = (): string => resolve('gatewayEntry', ENV.PUBLIC_COS
 /** Full gateway API base, e.g. `/cosmos-api` in dev or `https://gw.x.y/cosmos-api`. */
 export const gatewayApi = (): string => `${gatewayUrl()}${gatewayEntry()}`;
 
+/**
+ * One of the two SEP-30 recovery servers (`lib/recovery.ts`).
+ *
+ * Never same-origin, even on the web dev server: these are two separate deployments by
+ * definition, and a same-origin default would quietly make them the dev platform — which
+ * answers 503 there, at the end of a flow rather than the start of one.
+ */
+export const recoveryUrl = (role: RecoveryRole): string =>
+  role === 'a'
+    ? resolve('recoveryAUrl', ENV.PUBLIC_COSMOS_RECOVERY_A_URL || undefined, DEFAULT_RECOVERY_A_URL)
+    : resolve('recoveryBUrl', ENV.PUBLIC_COSMOS_RECOVERY_B_URL || undefined, DEFAULT_RECOVERY_B_URL);
+
+/**
+ * Both of them, in role order.
+ *
+ * Empty when the two resolve to the same origin: two shares held by one server are one
+ * share, so the wallet treats a build configured that way as having no recovery at all
+ * rather than offering a protection it would not be providing.
+ */
+export const recoveryServers = (): { role: RecoveryRole; url: string }[] => {
+  const a = recoveryUrl('a');
+  const b = recoveryUrl('b');
+  if (!a || !b || safeOrigin(a) === safeOrigin(b)) return [];
+  return [
+    { role: 'a', url: a },
+    { role: 'b', url: b },
+  ];
+};
+
+/** Origin of a base URL, or the string itself when it does not parse — never a throw. */
+function safeOrigin(url: string): string {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return url;
+  }
+}
+
 /** UI metadata for the developer-mode settings form (label keys live in i18n). */
 export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; getDefault: () => string }[] = [
   { key: 'coingeckoBase', labelKey: 'settings.epCoingecko', getDefault: () => 'https://api.coingecko.com' },
@@ -127,4 +174,14 @@ export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; 
     getDefault: () => ENV.PUBLIC_COSMOS_GATEWAY_URL || (sameOriginWorks() ? '' : DEFAULT_GATEWAY_URL),
   },
   { key: 'gatewayEntry', labelKey: 'settings.epGatewayEntry', getDefault: () => ENV.PUBLIC_COSMOS_GATEWAY_ENTRY || DEFAULT_GATEWAY_ENTRY },
+  {
+    key: 'recoveryAUrl',
+    labelKey: 'settings.epRecoveryA',
+    getDefault: () => ENV.PUBLIC_COSMOS_RECOVERY_A_URL || DEFAULT_RECOVERY_A_URL,
+  },
+  {
+    key: 'recoveryBUrl',
+    labelKey: 'settings.epRecoveryB',
+    getDefault: () => ENV.PUBLIC_COSMOS_RECOVERY_B_URL || DEFAULT_RECOVERY_B_URL,
+  },
 ];

@@ -25,3 +25,15 @@ export const DEFAULT_GATEWAY_URL = 'https://api.cosmospay.lat';
 
 /** Gateway entry prefix. APISIX strips it itself before forwarding upstream. */
 export const DEFAULT_GATEWAY_ENTRY = '/cosmos-api';
+
+/**
+ * The two SEP-30 recovery servers (`src/lib/recovery.ts`).
+ *
+ * TWO deployments, deliberately separate: each holds one of the two signers an account is
+ * recovered with, and neither weighs enough alone. Pointing both at the same host — or
+ * leaving one at its default while the other moves — collapses that into one server with
+ * two names, which is the single thing this design is built to avoid. A build that changes
+ * one must change the other.
+ */
+export const DEFAULT_RECOVERY_A_URL = 'https://recovery-a.cosmospay.lat';
+export const DEFAULT_RECOVERY_B_URL = 'https://recovery-b.cosmospay.lat';
