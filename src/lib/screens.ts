@@ -30,7 +30,9 @@ export const SCREEN_IDS = [
   'profile-setup',
   'password',
   'device-auth',
-  'social-login',
+  'sign-in',
+  'sign-in-password',
+  'migrate',
   'unlock',
   'home',
   'earn',
@@ -75,10 +77,10 @@ export interface BackContext {
   addingWallet: boolean;
   /** True when onboarding created a phrase (so `profile-setup` came from `verify`). */
   hasDraftMnemonic: boolean;
-  /** True while a social login is waiting for the password that will seal its session —
-   *  the password screen was then reached from `social-login`, and there is no seed
-   *  draft and no `profile-setup` behind it to go back to. */
-  hasPollarDraft: boolean;
+  /** True while a first-run sign-in is waiting for the password its new wallet will be
+   *  sealed under — the password screen was then reached from `sign-in`, and there is no
+   *  seed draft and no `profile-setup` behind it to go back to. */
+  hasSignInDraft: boolean;
 }
 
 /** `'exit'` leaves the app on native; on the other shells it simply does nothing. */
@@ -110,15 +112,17 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   'device-auth': { back: 'home', terminal: true },
   import: { back: 'welcome' },
   'profile-setup': { back: (c) => (c.hasDraftMnemonic ? 'verify' : 'import') },
-  // Reached from Profile, from 'welcome' on the add-wallet path, and — since the dev
-  // platform started brokering the handshake — from a genuine first run, where it is the
-  // first screen after 'welcome'. Back goes wherever the stack says; 'profile' is only
-  // the fallback, and on a first run the stack is what answers.
-  'social-login': { back: (c) => (c.hasSession ? 'profile' : 'welcome') },
-  // Two flows end here. The seed one arrives from `profile-setup`; a social login arrives
-  // straight from `social-login` with the session already redeemed and nothing but the
-  // password left to collect, and must not be sent back into a profile form it never saw.
-  password: { back: (c) => (c.hasPollarDraft ? 'social-login' : 'profile-setup') },
+  // Reached from 'welcome' — on a first run, and on the add-wallet path, which starts there
+  // too. Back goes wherever the stack says; 'profile' is only the fallback, and on a first
+  // run the stack is what answers.
+  'sign-in': { back: (c) => (c.hasSession ? 'profile' : 'welcome') },
+  // The password a finished sign-in still needs: the backup's to restore it, or this
+  // device's to seal a new one. Only ever reached from 'sign-in'.
+  'sign-in-password': { back: 'sign-in' },
+  // Two flows end here. The seed one arrives from `profile-setup`; a first-run sign-in with
+  // nothing to restore arrives straight from `sign-in` with only the password left to
+  // collect, and must not be sent back into a profile form it never saw.
+  password: { back: (c) => (c.hasSignInDraft ? 'sign-in' : 'profile-setup') },
   unlock: { back: 'exit' },
 
   // tabs
@@ -155,6 +159,9 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   export: { back: profileOrHome },
   about: { back: profileOrHome },
   'edit-profile': { back: 'profile' },
+  // Moving an old Pollar wallet's funds onto a key this device holds. Reached from the
+  // banner on Home and from Profile.
+  migrate: { back: 'home' },
 
   // extras
   operations: { back: 'home' },

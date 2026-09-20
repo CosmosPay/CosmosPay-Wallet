@@ -210,6 +210,17 @@ import { report, reportError } from '@/lib/telemetry';
 import { EVENT, SLOW_REQUEST_MS, TRACE_HEADER, TRACE_PROP } from '@/constants/telemetry';
 import type { PollarSession, PollarSessionStatus } from '@/lib/pollar';
 import { PollarSessionStatusShape, SocialAuthorizationShape, SocialClaimShape, SocialVerifyResultShape } from '@/lib/pollarShapes';
+import {
+  BackupUpdatedShape,
+  SignInAuthorizationShape,
+  SignInClaimShape,
+  SignInCodeResultShape,
+  SignInCodeSentShape,
+  SignInFinishShape,
+  SignInPollShape,
+  SignInProvidersShape,
+} from '@/lib/signInShapes';
+import type { SignInMethod, SignInProvider } from '@/constants/signIn';
 
 /* ------------------------------ transport ------------------------------ */
 
@@ -289,6 +300,7 @@ async function postJson<T>(
   headers: Record<string, string>,
   unwrap: boolean,
   shape: Check<unknown>,
+  method: 'POST' | 'PUT' = 'POST',
 ): Promise<T> {
   const startedAt = Date.now();
   // Minted per CALL, not per operation: a retry is a different request and must not claim
@@ -297,7 +309,7 @@ async function postJson<T>(
   let res: Response;
   try {
     res = await fetch(url, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json', [TRACE_HEADER]: traceId, ...headers },
       body: JSON.stringify(body),
     });
@@ -566,6 +578,117 @@ export async function socialVerify(body: { claimToken: string; code: string }): 
     true,
     SocialVerifyResultShape,
   );
+}
+
+/* ---------------------------- wallet sign-in ----------------------------- */
+
+/**
+ * The wallet's own sign-in — `/api/wallet/auth/*` on the dev platform. The protocol and
+ * why each step exists are in `lib/signIn.ts`; these are only the calls, each with its
+ * contract. No API key on any of them: they exist for a wallet that does not have one yet.
+ */
+
+/** Who a sign-in proved. `email` is always one the provider or the inbox verified. */
+export interface SignInIdentity {
+  email: string;
+  name: string | null;
+  avatar: string | null;
+  method: SignInMethod;
+}
+
+/** A backup the platform keeps for this account: the sealed seed and where it restores to. */
+export interface StoredBackup {
+  stellarAddress: string;
+  box: string;
+  updatedAt: string;
+}
+
+/** A finished sign-in. `sessionToken` is good for `finish` only, and only for a while. */
+export interface SignInReady {
+  status: 'ready';
+  identity: SignInIdentity;
+  account: 'existing' | 'new';
+  backup: StoredBackup | null;
+  sessionToken: string;
+  expiresInSeconds: number;
+}
+
+export type SignInClaim =
+  | SignInReady
+  | { status: 'verify_email'; claimToken: string; expiresInSeconds: number; email: string }
+  | { status: 'pending' }
+  | { status: 'failed'; error: string }
+  | { status: 'expired' };
+
+export type SignInCodeResult =
+  | SignInReady
+  | { status: 'invalid'; attemptsLeft: number }
+  | { status: 'expired' }
+  | { status: 'locked' };
+
+export type SignInFinish =
+  | { status: 'ready'; account: 'created' | 'linked'; organizationId: string; keys: { dev: string | null; prod: string | null } }
+  | { status: 'backup_conflict'; stellarAddress: string };
+
+/** `GET /api/wallet/auth/providers` — what this deployment can offer. */
+export async function signInProviders(): Promise<{ providers: string[]; email: boolean }> {
+  return getPlatformJson(`${devPlatformUrl()}/api/wallet/auth/providers`, SignInProvidersShape);
+}
+
+/** `POST /api/wallet/auth/oauth/authorize`. */
+export async function signInAuthorize(body: {
+  provider: SignInProvider;
+  codeChallenge: string;
+  codeChallengeMethod: string;
+}): Promise<{ state: string; authorizationUrl: string; expiresAt: string }> {
+  return postJson(`${devPlatformUrl()}/api/wallet/auth/oauth/authorize`, body, {}, true, SignInAuthorizationShape);
+}
+
+/** `GET /api/wallet/auth/oauth/session/{state}` — a status, never an identity. */
+export async function signInPoll(state: string): Promise<{ status: string; error?: string }> {
+  return getPlatformJson(
+    `${devPlatformUrl()}/api/wallet/auth/oauth/session/${encodeURIComponent(state)}`,
+    SignInPollShape,
+  );
+}
+
+/** `POST /api/wallet/auth/oauth/claim` — the verifier is the credential. */
+export async function signInClaim(body: { state: string; codeVerifier: string }): Promise<SignInClaim> {
+  return postJson(`${devPlatformUrl()}/api/wallet/auth/oauth/claim`, body, {}, true, SignInClaimShape);
+}
+
+/** `POST /api/wallet/auth/email/start`. */
+export async function signInEmailStart(email: string): Promise<{ claimToken: string; expiresInSeconds: number }> {
+  return postJson(`${devPlatformUrl()}/api/wallet/auth/email/start`, { email }, {}, true, SignInCodeSentShape);
+}
+
+/** `POST /api/wallet/auth/email/verify` — wrong codes are counted server-side. */
+export async function signInEmailVerify(body: { claimToken: string; code: string }): Promise<SignInCodeResult> {
+  return postJson(`${devPlatformUrl()}/api/wallet/auth/email/verify`, body, {}, true, SignInCodeResultShape);
+}
+
+/** `POST /api/wallet/auth/finish` — the session token plus a signature by `stellarAddress`. */
+export async function signInFinish(
+  sessionToken: string,
+  body: { stellarAddress: string; signedAt: string; signature: string; backup?: string; replaceBackup?: boolean },
+): Promise<SignInFinish> {
+  return postJson(
+    `${devPlatformUrl()}/api/wallet/auth/finish`,
+    body,
+    { Authorization: `Bearer ${sessionToken}` },
+    true,
+    SignInFinishShape,
+  );
+}
+
+/** `PUT /api/wallet/backup` — a signature by the backup's own address is the credential. */
+export async function putBackup(body: {
+  stellarAddress: string;
+  box: string;
+  signedAt: string;
+  signature: string;
+}): Promise<{ status: 'updated' }> {
+  return postJson(`${devPlatformUrl()}/api/wallet/backup`, body, {}, true, BackupUpdatedShape, 'PUT');
 }
 
 /**

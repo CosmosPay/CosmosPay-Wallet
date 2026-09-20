@@ -27,6 +27,7 @@
  * be rewritten before it can be read.
  */
 import {
+  BACKUP_PBKDF2_ITERATIONS,
   IV_BYTES,
   LEGACY_PBKDF2_ITERATIONS,
   MAX_PBKDF2_ITERATIONS,
@@ -304,6 +305,20 @@ export async function open(box: SealedBox, password: string): Promise<string> {
   fromBase64(box.iv);
   fromBase64(box.data);
   return openWithKey(box, await deriveVaultKey(password, kdf));
+}
+
+/**
+ * Seal under a human password for a copy that leaves the device: the cloud backup
+ * (`lib/cloudBackup.ts`), opened on the next device with plain `open`.
+ *
+ * Its own function rather than a cost argument on `seal`, for the reason `assertWrapKey`
+ * gives below: an optional cost is only as careful as its laziest caller, and here the cost
+ * is the whole defence of a box whose reader gets unlimited offline guesses. No caller picks
+ * it — `BACKUP_PBKDF2_ITERATIONS` does.
+ */
+export async function sealForBackup(plaintext: string, password: string): Promise<SealedBox> {
+  const kdf: KdfParams = { ...newKdfParams(), iter: BACKUP_PBKDF2_ITERATIONS };
+  return sealWithKey(plaintext, await deriveVaultKey(password, kdf));
 }
 
 /* --------------------------- sealing under a random key --------------------------- */

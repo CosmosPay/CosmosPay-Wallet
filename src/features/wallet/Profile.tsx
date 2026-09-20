@@ -38,15 +38,14 @@ export function Profile({ store }: { store: WalletStore }) {
     ...(store.meta?.email ? [cosmosPayRow] : []),
     // Exporting is a local-key operation. A Pollar wallet's key is in Pollar's KMS, so
     // the row is absent rather than disabled: an export button that can only ever
-    // explain why it cannot export is a worse answer than not offering one.
+    // explain why it cannot export is a worse answer than not offering one. What a Pollar
+    // wallet gets instead is the way out of Pollar — see lib/pollarMigration.ts.
     ...(store.isPollarWallet
-      ? [{ icon: '⎋', label: t('pollar.signOut'), onClick: () => void store.pollarSignOut() }]
-      : [
-          { icon: '⚷', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') },
-          // Only offered from a local wallet, because the bridge needs that wallet's
-          // CosmosPay key to open a handshake at all.
-          { icon: '◎', label: t('pollar.title'), onClick: () => store.setScreen('social-login') },
-        ]),
+      ? [
+          { icon: '⇄', label: t('migrate.title'), onClick: () => store.setScreen('migrate') },
+          { icon: '⎋', label: t('pollar.signOut'), onClick: () => void store.pollarSignOut() },
+        ]
+      : [{ icon: '⚷', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') }]),
     { icon: '⛁', label: t('profile.receiveAddr'), onClick: () => store.setScreen('receive') },
     { icon: '⚙', label: t('profile.settings'), onClick: () => store.setScreen('settings') },
     { icon: '?', label: t('profile.about'), onClick: () => store.setScreen('about') },

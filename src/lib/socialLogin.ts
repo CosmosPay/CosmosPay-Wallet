@@ -48,7 +48,8 @@ import { ApiRequestError } from '@/lib/apiError';
 import { devPlatformUrl } from '@/lib/endpoints';
 import { tNow } from '@/lib/i18n';
 import { newPkce } from '@/lib/pkce';
-import { isHttpsUrl, type PollarHandshake, type PollarSessionStatus } from '@/lib/pollar';
+import type { PollarHandshake, PollarSessionStatus } from '@/lib/pollar';
+import { isHttpsUrl } from '@/lib/validate';
 import type { PollarProvider } from '@/constants/pollar';
 
 /** Which environment's keys and Pollar network a login runs against. */

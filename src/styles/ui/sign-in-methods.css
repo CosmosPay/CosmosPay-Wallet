@@ -1,0 +1,72 @@
+/* SignInMethods — src/ui/SignInMethods.tsx.
+   The provider buttons, the email field, the code prompt and the phase row. The pill
+   metrics come from .btn-primary / .btn-ghost / .input; only what is specific is here. */
+
+.sign-in-methods {
+  margin: 0 var(--gutter);
+}
+
+/* Per-provider surface only, so a new provider is one rule and not a second button. */
+.sign-in-btn.is-google {
+  background: #fff;
+  color: #1f1f1f;
+}
+.sign-in-btn.is-github {
+  background: #1b1f24;
+  color: #fff;
+}
+
+.sign-in-or {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 6px 0 2px;
+}
+
+.sign-in-phase {
+  margin-top: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.sign-in-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 800;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.sign-in-copy {
+  margin-top: 6px;
+  align-self: flex-start;
+}
+
+/* The emailed-code step. It replaces the buttons — see the component. */
+.sign-in-code {
+  margin: 0 var(--gutter);
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.sign-in-code-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text);
+}
+
+.sign-in-code-input {
+  text-align: center;
+  letter-spacing: 0.35em;
+  font-weight: 800;
+}
+
+.sign-in-code .sign-in-link {
+  align-self: center;
+}

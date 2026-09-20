@@ -1,0 +1,59 @@
+/* MigratePollar — src/features/wallet/MigratePollar.tsx.
+   Moving an old Pollar wallet onto a key this device holds: the lead, the plan card, the
+   progress line and the reconnect box. Pills and fields come from the app atoms. */
+
+.migrate-lead {
+  margin: 0 var(--gutter) 16px;
+}
+
+.migrate-step {
+  margin: 0 var(--gutter);
+}
+
+.migrate-loading {
+  padding: 28px 0;
+}
+
+.glass.migrate-card {
+  margin: 0 var(--gutter) 16px;
+}
+
+.migrate-card-title {
+  font-size: 15px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+
+.migrate-note {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.migrate-progress {
+  margin: 0 var(--gutter) 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.migrate-reconnect {
+  margin: 0 var(--gutter) 12px;
+  padding: 14px;
+  border-radius: 16px;
+}
+
+.migrate-code {
+  text-align: center;
+  letter-spacing: 0.35em;
+  font-weight: 800;
+}
+
+.migrate-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 800;
+  color: var(--accent);
+  cursor: pointer;
+}

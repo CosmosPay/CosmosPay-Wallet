@@ -32,6 +32,7 @@
     "ios:res": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ios-res.ts",
     "test:unit": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tests/setup.mjs --test \"tests/unit/**/*.test.ts\"",
     "test:e2e": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/wallet.e2e.ts",
+    "test:e2e:signin": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/signin.e2e.ts",
     "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts"
   },
   "dependencies": {

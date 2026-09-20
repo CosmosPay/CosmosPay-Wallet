@@ -10,6 +10,7 @@ import { GenesisRow } from '@/features/money/GenesisRow';
 import { HomeAction } from '@/features/wallet/HomeAction';
 import { AssetListRow } from '@/features/wallet/AssetListRow';
 import { ActivateCard } from '@/features/wallet/ActivateCard';
+import { MigrateBanner } from '@/features/wallet/MigrateBanner';
 import { computePortfolio } from '@/lib/portfolio';
 import { fmt, splitMoney, pct } from '@/lib/format';
 import { getGreeting, ageFromBirthdate } from '@/lib/greeting';
@@ -139,6 +140,7 @@ export function Home({ store }: { store: WalletStore }) {
         </div>
       )}
 
+      {store.isPollarWallet && <MigrateBanner store={store} />}
       {notActivated && <ActivateCard store={store} />}
       {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
 

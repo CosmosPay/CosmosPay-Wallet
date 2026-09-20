@@ -386,8 +386,9 @@ the wallet's own native plugin. Eight rules, and most of them are holes it shipp
   on one serialised chain, *before* the derivation. Checking first and counting afterwards
   put ~250ms of PBKDF2 between the two, so every attempt launched inside that window saw a
   clean record and the ladder counted rounds instead of guesses. The paths are `unlock`,
-  `checkPassword`, `revealBackup` — which returns the mnemonic on a correct guess — and
-  `ApprovePopup`, which is the one a dapp can raise and was the one left out.
+  `checkPassword`, `revealBackup` — which returns the mnemonic on a correct guess —
+  `ApprovePopup`, which is the one a dapp can raise and was the one left out, and
+  `completeSignIn`, which opens a cloud backup with the password typed on a new device.
 
 `changePassword` opens and re-seals every wallet in memory before committing any, drops each
 device-lock enrolment **before** the commit and re-creates it after, and the caller then
@@ -396,6 +397,54 @@ the old password if anything interrupts the pass, and the user meets "wrong pass
 from their own fingerprint. Do not patch the session's `vaultKey` instead of locking: a
 partially applied change would make the store assert a key true of some wallets and not
 others.
+
+## Signing in keeps the key here; the backup only the password opens
+
+"Continue with Google / GitHub / email" (`src/lib/signIn.ts`) proves WHO someone is. It never
+touches a key: a new wallet's seed is generated on the device, and a returning person gets
+back the box `src/lib/cloudBackup.ts` sealed on their last device — which only their password
+opens, and which the dev platform (its `wallet-auth` module, a separate repository) stores
+without being able to read. It replaced the Pollar login, which handed the key to Pollar's KMS.
+Seven rules:
+
+- **An email that already has an account is only ever reached through its inbox.** A provider
+  proves who consented, not who opened the sign-in, so for an existing account the platform
+  also emails a code — and an existing account is where the backup worth stealing is. A new
+  email gets in on the provider's word; the most a phished link buys there is an empty
+  account.
+- **The backup's cost is not a caller's choice.** `sealForBackup` owns
+  `BACKUP_PBKDF2_ITERATIONS`, higher than the vault's because whoever reads the platform's
+  table gets unlimited offline guesses at every box in it; the platform refuses a box under
+  its own floor. `openBackup` also checks the result against the address the box was filed
+  under — a genuine box for the wrong wallet is refused, not restored.
+- **The platform is told before the wallet is written.** `finishSignIn` goes first, signed by
+  the key just generated or decrypted; the local write follows. The other order could leave
+  a wallet on the device that nothing backs up.
+- **`replaceBackup` is only ever sent after the person saw what it gives up.** It is the
+  "forgot the password" door, and the backup it replaces may be the only copy of a funded
+  wallet. It is set by `startOverSignIn`, behind an explicit acknowledgement, and nowhere else.
+- **The backup follows the app password.** `changeAppPassword` seals every backed-up wallet
+  under the NEW password before the commit and stores them after it, best-effort and signed
+  by each wallet's own key — so a failure leaves the device untouched, and a network one is
+  reported rather than turned into a failed password change.
+- **The two challenges are one contract across two repositories.** `finishMessage` and
+  `backupMessage` are pinned to the same literals in `tests/unit/signIn.test.ts` and in the
+  platform's own test; change one side and both tests must change, or no sign-in can finish.
+- **A finished sign-in lives in memory.** Its session token can create an account; the store
+  keeps it in `signInDraft` for as long as the screen that uses it and exposes a summary to
+  components, never the token or the box.
+
+### Pollar is only a way out now
+
+No new Pollar wallets are created. The ones that exist still sign through `pollarApi`, and
+`src/lib/pollarMigration.ts` moves their funds onto a key this device holds — FUND (Pollar
+signs), TRUST (the new key signs), MOVE (Pollar signs), each planned again from the chain
+right before it is built, so an interrupted move resumes instead of repeating a step. Every
+Pollar-signed step passes the guard's `migrate` intent, bounded per asset by the plan the
+person confirmed. **Do not add `accountMerge` or trustline removals to recover the last
+reserve**: both stay refused, and the plan tells the person what stays behind instead. The
+legacy Pollar login (`lib/socialLogin.ts`) survives only to reconnect an expired session for
+that move; delete it, and the dev platform's broker, once no Pollar wallet holds a balance.
 
 ## An asset is a (code, issuer) pair, and the registry says whose
 
@@ -625,13 +674,14 @@ Four rules, and none of them is style:
 - **It is OFF until the user opts in.** `STORE_LISTING.md` discloses it as optional and
   off by default, so a default of on would make a published statement false. **Both
   onboarding paths have to ask**, and that is the part that was wrong once: the seed path
-  asks on `profile-setup`, and the social path — which skips that screen, because Pollar
-  supplies the name, the email and the avatar — asked nowhere, so a Pollar wallet was
-  created with `metricsOptIn` absent and the user never given the choice. It now has a
-  second step on `PasswordSetup` (shared `OptionalConsents`), placed after the password
-  because a separate screen would have to carry the typed password across a navigation.
-  `finishOnboarding` writes the answer in both branches; Settings → Privacy flips it
-  afterwards.
+  asks on `profile-setup`, and the social path of the time — which skipped that screen,
+  because the provider supplied the name and the email — asked nowhere, so its wallets were
+  created with `metricsOptIn` absent and the user never given the choice. The sign-in path
+  skips that screen for the same reason, so it asks where it collects the password: a
+  second step on `PasswordSetup` for a new wallet, and on `SignInPassword` for a restore
+  (shared `OptionalConsents`) — never on a separate screen, which would have to carry the
+  typed password across a navigation. `finishOnboarding` and `completeSignIn` write the
+  answer; Settings → Privacy flips it afterwards.
 - **The transport is decided by whether the wallet has an account.** With a Cosmos Pay
   key it posts to the gateway with it and the events land in that account's own
   dashboard; without one it posts with the SHARED public key, which the gateway's

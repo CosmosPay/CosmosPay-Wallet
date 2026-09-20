@@ -49,7 +49,8 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   'profile-setup': lazy(() => import('@/features/onboarding/ProfileSetup').then((m) => ({ default: m.ProfileSetup }))),
   password: lazy(() => import('@/features/onboarding/PasswordSetup').then((m) => ({ default: m.PasswordSetup }))),
   'device-auth': lazy(() => import('@/features/onboarding/DeviceAuthSetup').then((m) => ({ default: m.DeviceAuthSetup }))),
-  'social-login': lazy(() => import('@/features/onboarding/SocialLogin').then((m) => ({ default: m.SocialLogin }))),
+  'sign-in': lazy(() => import('@/features/onboarding/SignIn').then((m) => ({ default: m.SignIn }))),
+  'sign-in-password': lazy(() => import('@/features/onboarding/SignInPassword').then((m) => ({ default: m.SignInPassword }))),
   home: Home,
   earn: Earn,
   markets: Markets,
@@ -66,6 +67,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   paylink: lazy(() => import('@/features/money/PayLink').then((m) => ({ default: m.PayLink }))),
   asset: lazy(() => import('@/features/wallet/Asset').then((m) => ({ default: m.Asset }))),
   'edit-profile': lazy(() => import('@/features/wallet/EditProfile').then((m) => ({ default: m.EditProfile }))),
+  migrate: lazy(() => import('@/features/wallet/MigratePollar').then((m) => ({ default: m.MigratePollar }))),
 
   // lazy — liquidity
   liquidity: lazy(() => import('@/features/liquidity/Liquidity').then((m) => ({ default: m.Liquidity }))),

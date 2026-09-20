@@ -708,6 +708,19 @@ export type GuardOptions =
        * hole this union was introduced to close.
        */
       confirmed: readonly AssetBound[];
+    })
+  | (GuardBase & {
+      intent: 'migrate';
+      /**
+       * What the move screen showed, one bound per asset: the TOTAL of each that this
+       * envelope may carry to the new account. An asset with no bound here cannot move at
+       * all — the plan names every asset it moves, so an envelope carrying another one is
+       * not the plan.
+       *
+       * Required for the same reason `maxSend` is on a swap: a migration that could leave
+       * it off would be a Pollar-signed transfer with no ceiling on it.
+       */
+      maxMoves: readonly AmountBound[];
     });
 
 /** Does a decoded asset satisfy a confirmed bound? Never a prefix match. */
@@ -986,6 +999,36 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
     if (total * 10_000n < floor * (10_000n - BOUND_TOLERANCE_BPS)) {
       fail('guard.underMinReceive', { amount: minReceive.amount, code: minReceive.asset.code });
     }
+  }
+
+  /* ------------------------ migration: per asset, totals ---------------------- */
+  // No tolerance, unlike the gateway bounds above: those absorb rounding in someone else's
+  // quote, while every amount here was computed by this wallet from the same plan the
+  // person saw. More than the plan is never rounding.
+  if (opts.intent === 'migrate') {
+    const moved = opts.maxMoves.map(() => 0n);
+    for (const op of review.operations) {
+      for (const v of op.sends) {
+        const i = opts.maxMoves.findIndex((b) => assetMatches(v.asset, b.asset));
+        if (i < 0) {
+          fail('guard.wrongAsset', { moved: refLabel(v.asset), expected: opts.maxMoves.map((b) => b.asset.code).join(', ') });
+        }
+        const n = stroops(v.amount);
+        if (n === null) {
+          fail('guard.amountUnreadable');
+        }
+        moved[i] += n;
+      }
+    }
+    opts.maxMoves.forEach((bound, i) => {
+      const cap = stroops(bound.amount);
+      if (cap === null || cap < 0n) {
+        fail('guard.maxSendUnreadable');
+      }
+      if (moved[i] > cap) {
+        fail('guard.overMaxSend', { amount: bound.amount, code: bound.asset.code });
+      }
+    });
   }
 
   /* ------------------------ liquidity: deposit, per side ---------------------- */

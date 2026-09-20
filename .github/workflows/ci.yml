@@ -131,6 +131,13 @@ jobs:
         env:
           E2E_URL: http://127.0.0.1:4321
 
+      # The wallet's own sign-in against a mocked dev platform: a new wallet and its backup on
+      # one device, the same wallet restored on another. The only test of the full client flow.
+      - name: E2E sign-in and restore
+        run: npm run test:e2e:signin
+        env:
+          E2E_URL: http://127.0.0.1:4321
+
       # Device adaptation: no overflow + fluid scaling across phone/tablet/desktop.
       - name: Responsive layout test
         run: npm run test:responsive

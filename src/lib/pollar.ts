@@ -38,6 +38,7 @@ import { newTraceId } from '@/lib/trace';
 import { TRACE_HEADER } from '@/constants/telemetry';
 import { tNow } from '@/lib/i18n';
 import { newPkce, type Pkce } from '@/lib/pkce';
+import { isHttpsUrl } from '@/lib/validate';
 import {
   POLL_INTERVAL_MS,
   POLL_TIMEOUT_MS,
@@ -206,20 +207,6 @@ export async function pollarAuthorize(
     handshake: { state: authorization.state, provider, verifier: pkce.verifier, startedAt: Date.now() },
     pkce,
   };
-}
-
-/**
- * Exported because the brokered login (`lib/socialLogin.ts`) hands its URL to the same
- * OS opener and so needs the same check. One definition: a second copy is a second
- * chance to forget that `openExternal` refuses everything but https, and a refusal
- * there is a silent no-op rather than an error anyone can read.
- */
-export function isHttpsUrl(url: string): boolean {
-  try {
-    return new URL(url).protocol === 'https:';
-  } catch {
-    return false;
-  }
 }
 
 /**

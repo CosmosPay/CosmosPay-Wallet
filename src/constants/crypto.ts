@@ -34,6 +34,22 @@ export const PBKDF2_ITERATIONS = 600_000;
 export const LEGACY_PBKDF2_ITERATIONS = 210_000;
 
 /**
+ * PBKDF2 rounds for the cloud backup — the copy of the seed that LEAVES the device.
+ *
+ * Higher than `PBKDF2_ITERATIONS` because the threat is different in kind. A vault file has
+ * to be stolen from one phone; a backup sits in a table next to everybody else's, and
+ * whoever reads that table gets unlimited offline guesses at every box in it. The cost is
+ * paid twice in a wallet's life — once when the backup is sealed and once on each restore —
+ * so a second on a slow phone buys a lot for very little.
+ *
+ * The dev platform refuses a box below 600,000 (`BACKUP_MIN_ITERATIONS` in its
+ * wallet-auth-core module), so lowering this under that floor breaks every new backup
+ * rather than weakening it quietly. It must also stay within `MAX_PBKDF2_ITERATIONS`, or
+ * no device could open what this one sealed.
+ */
+export const BACKUP_PBKDF2_ITERATIONS = 1_000_000;
+
+/**
  * The most rounds this build will attempt on behalf of a stored box.
  *
  * KDF parameters sit OUTSIDE the AEAD — like the salt and the IV they must be read before

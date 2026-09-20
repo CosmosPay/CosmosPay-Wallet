@@ -12,6 +12,11 @@ import { tNow } from '@/lib/i18n';
 /** Pragmatic email check: something@something.tld — matches the signup contract. */
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/** The same check as a predicate, for screens: a component imports this, never the regex. */
+export function isEmail(raw: string): boolean {
+  return EMAIL_RE.test(raw.trim());
+}
+
 /* ----------------------------- app password ----------------------------- */
 
 /**
@@ -114,4 +119,19 @@ export function normalizeAccessCode(raw: string): string {
 /** Whether a typed code is complete enough to send. */
 export function isAccessCode(code: string): boolean {
   return code.length === ACCESS_CODE_LENGTH && /^\d+$/.test(code);
+}
+
+/**
+ * Is this an https URL? The check every sign-in URL passes before it reaches the OS
+ * opener — the wallet's own sign-in (`lib/signIn.ts`) and the legacy Pollar login alike.
+ * One definition: a second copy is a second chance to forget that `openExternal` refuses
+ * everything but https, and a refusal there is a silent no-op rather than an error anyone
+ * can read.
+ */
+export function isHttpsUrl(url: string): boolean {
+  try {
+    return new URL(url).protocol === 'https:';
+  } catch {
+    return false;
+  }
 }

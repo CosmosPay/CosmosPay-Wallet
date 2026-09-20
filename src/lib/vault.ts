@@ -119,6 +119,18 @@ export interface WalletEntry {
   cosmosPayOrgId?: string;
   // Default BlindPay fiat receiver (KYC account) used for on/off-ramp.
   cosmosPayReceiverId?: string;
+  /**
+   * The dev platform keeps a backup of this wallet's seed, sealed under the app password
+   * (`lib/cloudBackup.ts`). What `changeAppPassword` reads to know the backup has to be
+   * re-sealed too — otherwise the next device would need the password this one gave up.
+   */
+  cloudBackup?: boolean;
+  /**
+   * Pollar wallets only: the id of the local wallet its funds are being moved to
+   * (`lib/pollarMigration.ts`). Written BEFORE the first transaction, so a move that was
+   * interrupted resumes into the same key instead of generating a second one.
+   */
+  migratedTo?: string;
 }
 
 /**
@@ -249,7 +261,7 @@ export async function migrate(): Promise<void> {
  */
 export async function addWallet(
   secret: VaultSecret,
-  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean; testnetFor?: string },
+  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean; testnetFor?: string; avatar?: string; cloudBackup?: boolean },
   vk: VaultKey,
 ): Promise<WalletEntry> {
   const list = await listWallets();
@@ -272,6 +284,8 @@ export async function addWallet(
     metricsOptIn: info.metricsOptIn,
     promoOptIn: info.promoOptIn,
     testnetFor: info.testnetFor,
+    avatar: info.avatar,
+    cloudBackup: info.cloudBackup,
     createdAt: Date.now(),
   };
   await writeWallets([...list, entry]);
@@ -282,7 +296,7 @@ export async function addWallet(
 /** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'migratedTo'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));
