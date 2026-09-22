@@ -53,6 +53,12 @@ export function Home({ store }: { store: WalletStore }) {
   const firstName = shortName((store.meta?.name || 'astronauta').trim().split(/\s+/)[0]);
   // Fiat on/off-ramp is 18+ only (unknown/missing birthdate counts as not eligible).
   const fiatOk = (ageFromBirthdate(store.meta?.birthdate ?? '') ?? 0) >= 18;
+  const fiatReady = Boolean(store.meta?.cosmosPayReceiverId);
+  const openRamp = (screen: 'deposit' | 'withdraw') => {
+    // First-time users enter the KYC flow; verified users reach the money flow
+    // directly from Home, so BlindPay is no longer hidden behind Settings.
+    store.setScreen(fiatReady ? screen : 'fiat');
+  };
   // Assets list caps at 5 rows; starred favorites always float to the top so they
   // stay visible among those 5. "Ver todo" expands the full list inline.
   const [showAllAssets, setShowAllAssets] = useState(false);
@@ -129,14 +135,28 @@ export function Home({ store }: { store: WalletStore }) {
 
       {/* Fiat entry is age-gated: only shown to 18+ users (see fiatOk above). */}
       {fiatOk && (
-        <div onClick={() => store.setScreen('fiat')} className="tap glass-soft home-fiat">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className="home-fiat-icon"><path d="M3 8h15l-3-3M21 16H6l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-          <div className="f1">
-            <div className="home-fiat-title">{t('fiat.tab')}</div>
-            <div className="home-desc">{t('fiat.entryDesc')}</div>
+        <section className="home-ramp" aria-label={t('fiat.rampTitle')}>
+          <div className="home-ramp-head">
+            <div>
+              <div className="home-ramp-kicker">{t('fiat.rampActive')} · BLINDPAY</div>
+              <div className="home-ramp-title">{t('fiat.rampTitle')}</div>
+            </div>
+            <span className="home-ramp-network">STELLAR</span>
           </div>
-          <span className="home-fiat-chev">›</span>
-        </div>
+          <div className="home-ramp-desc">{t('fiat.entryDesc')}</div>
+          <div className="home-ramp-actions">
+            <button onClick={() => openRamp('deposit')} className="home-ramp-buy">
+              <span>↓</span>{t('fiat.buy')}
+            </button>
+            <button onClick={() => openRamp('withdraw')} className="home-ramp-sell">
+              <span>↑</span>{t('fiat.cashOut')}
+            </button>
+          </div>
+          <button onClick={() => openRamp('deposit')} className="home-ramp-manage">
+            {t('fiat.fundFromBank')} <span>›</span>
+          </button>
+          {!fiatReady && <div className="home-ramp-note">{t('fiat.rampSetup')}</div>}
+        </section>
       )}
 
       {notActivated && <ActivateCard store={store} />}
