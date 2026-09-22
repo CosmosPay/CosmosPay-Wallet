@@ -34,6 +34,7 @@ export const SCREEN_IDS = [
   'unlock',
   'home',
   'earn',
+  'defindex',
   'liquidity',
   'lp-deposit',
   'lp-withdraw',
@@ -124,6 +125,7 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // tabs
   home: { back: 'exit', tab: 'home', nav: true },
   earn: { back: 'home', tab: 'earn', nav: true },
+  defindex: { back: 'earn' },
   markets: { back: 'home', tab: 'markets', nav: true },
   profile: { back: 'home', tab: 'profile', nav: true },
 
