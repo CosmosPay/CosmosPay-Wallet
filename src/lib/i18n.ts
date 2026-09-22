@@ -573,7 +573,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'fiat.buy': { es: 'Comprar cripto', en: 'Buy crypto', pt: 'Comprar cripto', de: 'Krypto kaufen', fr: 'Acheter des cryptos' },
   'fiat.cashOut': { es: 'Retirar a banco', en: 'Cash out', pt: 'Sacar para banco', de: 'Auszahlen', fr: 'Retirer vers banque' },
   'fiat.rampSetup': { es: 'Configurá tu cuenta una vez para usar PIX, SPEI, PSE o ACH.', en: 'Set up your account once to use PIX, SPEI, PSE or ACH.', pt: 'Configure sua conta uma vez para usar PIX, SPEI, PSE ou ACH.', de: 'Richte dein Konto einmal ein, um PIX, SPEI, PSE oder ACH zu nutzen.', fr: 'Configurez votre compte une fois pour utiliser PIX, SPEI, PSE ou ACH.' },
-  'fiat.openRamps': { es: 'Ver rampas', en: 'View ramps', pt: 'Ver rampas', de: 'Rampen ansehen', fr: 'Voir les rampes' },
+  'fiat.fundFromBank': { es: 'Cargar dinero desde banco', en: 'Add money from bank', pt: 'Adicionar dinheiro do banco', de: 'Geld von Bank einzahlen', fr: 'Ajouter de l’argent depuis la banque' },
   'fiat.adultOnly': {
     es: 'El acceso a depósitos y retiros fiat requiere ser mayor de 18 años.',
     en: 'Access to fiat deposits and withdrawals requires being over 18.',
