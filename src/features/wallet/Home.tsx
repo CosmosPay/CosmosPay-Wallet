@@ -152,6 +152,9 @@ export function Home({ store }: { store: WalletStore }) {
               <span>↑</span>{t('fiat.cashOut')}
             </button>
           </div>
+          <button onClick={() => store.setScreen('fiat')} className="home-ramp-manage">
+            {t('fiat.openRamps')} <span>›</span>
+          </button>
           {!fiatReady && <div className="home-ramp-note">{t('fiat.rampSetup')}</div>}
         </section>
       )}

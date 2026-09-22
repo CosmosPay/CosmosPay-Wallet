@@ -43,6 +43,8 @@
 .home-ramp-actions span { margin-right: 7px; font-size: 16px; }
 .home-ramp-buy { color: var(--bg); background: var(--accent); }
 .home-ramp-sell { color: var(--text); background: var(--glass-soft-bg); border: 1px solid var(--glass-border) !important; }
+.home-ramp-manage { position: relative; z-index: 1; display: flex; width: 100%; align-items: center; justify-content: space-between; margin-top: 8px; padding: 5px 1px 0; border: 0; background: transparent; color: var(--accent); cursor: pointer; font-size: 11px; font-weight: 850; }
+.home-ramp-manage span { font-size: 17px; line-height: 10px; }
 .home-ramp-note { position: relative; z-index: 1; margin-top: 11px; color: var(--dim); font-size: 10.5px; line-height: 1.4; font-weight: 650; }
 
 /* assets + history section heads */
