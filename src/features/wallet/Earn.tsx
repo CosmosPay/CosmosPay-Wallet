@@ -4,7 +4,6 @@ import { TokenAvatar } from '@/ui/TokenAvatar';
 import { buildKind } from '@/lib/platform';
 import { computePortfolio } from '@/lib/portfolio';
 import { fmt } from '@/lib/format';
-import { openExternal } from '@/lib/openExternal';
 import { BackCircle } from '@/features/wallet/BackCircle';
 import '@/styles/features/wallet/tab-header.css';
 import '@/styles/features/wallet/earn.css';
@@ -19,7 +18,7 @@ export function Earn({ store }: { store: WalletStore }) {
       mark: 'D',
       kind: t('earn.defindexKind'),
       description: t('earn.defindexDesc'),
-      url: 'https://app.defindex.io/',
+      action: () => store.go('defindex'),
       tone: 'defindex',
     },
     {
@@ -27,7 +26,7 @@ export function Earn({ store }: { store: WalletStore }) {
       mark: 'B',
       kind: t('earn.blendKind'),
       description: t('earn.blendDesc'),
-      url: 'https://mainnet.blend.capital/',
+      action: () => void import('@/lib/openExternal').then(({ openExternal }) => openExternal('https://mainnet.blend.capital/')),
       tone: 'blend',
     },
     {
@@ -35,7 +34,7 @@ export function Earn({ store }: { store: WalletStore }) {
       mark: 'E',
       kind: t('earn.etherfuseKind'),
       description: t('earn.etherfuseDesc'),
-      url: 'https://app.etherfuse.com/',
+      action: () => void import('@/lib/openExternal').then(({ openExternal }) => openExternal('https://app.etherfuse.com/')),
       tone: 'etherfuse',
     },
   ] as const;
@@ -76,7 +75,7 @@ export function Earn({ store }: { store: WalletStore }) {
           <button
             type="button"
             className={`glass card earn-option earn-protocol tap earn-protocol-${protocol.tone}`}
-            onClick={() => void openExternal(protocol.url)}
+            onClick={protocol.action}
             key={protocol.name}
           >
             <div className="earn-protocol-head">

@@ -52,6 +52,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   'social-login': lazy(() => import('@/features/onboarding/SocialLogin').then((m) => ({ default: m.SocialLogin }))),
   home: Home,
   earn: Earn,
+  defindex: lazy(() => import('@/features/wallet/Defindex').then((m) => ({ default: m.Defindex }))),
   markets: Markets,
   profile: Profile,
 
