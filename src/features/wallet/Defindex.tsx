@@ -14,10 +14,18 @@ import {
   type DefindexVault,
 } from "@/lib/defindex";
 import { assertSafeDefindexTransaction } from "@/lib/defindexGuard";
+import { sanitizeDecimalInput, toMinorUnitsBig } from "@/lib/amount";
 import "@/styles/features/wallet/defindex.css";
 
-const UINT = /^(0|[1-9]\d*)$/;
 const short = (value: string) => `${value.slice(0, 7)}…${value.slice(-6)}`;
+const minorUnits = (value: string): string | null => {
+  try {
+    const units = toMinorUnitsBig(value, 7);
+    return units !== null && units > 0n ? units.toString() : null;
+  } catch {
+    return null;
+  }
+};
 
 export function Defindex({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -67,10 +75,12 @@ export function Defindex({ store }: { store: WalletStore }) {
       .catch(() => setBalance(null));
   }, [apiKey, selected, store.publicKey, vault?.totalManagedFunds.length]);
 
+  const approvedAmounts = amounts.map(minorUnits);
+  const approvedShares = minorUnits(shares);
   const validAmounts =
-    amounts.length > 0 &&
-    amounts.every((value) => UINT.test(value) && BigInt(value) > 0n);
-  const validShares = UINT.test(shares) && BigInt(shares || "0") > 0n;
+    approvedAmounts.length > 0 &&
+    approvedAmounts.every((value) => value !== null);
+  const validShares = approvedShares !== null;
 
   const execute = async () => {
     if (!apiKey || !store.publicKey || !vault) return;
@@ -83,13 +93,13 @@ export function Defindex({ store }: { store: WalletStore }) {
               apiKey,
               vault.address,
               store.publicKey,
-              amounts,
+              approvedAmounts as string[],
             )
           : await buildDefindexWithdraw(
               apiKey,
               vault.address,
               store.publicKey,
-              shares,
+              approvedShares as string,
             );
       const unsigned = defindexXdr(built);
       assertSafeDefindexTransaction(
@@ -98,8 +108,12 @@ export function Defindex({ store }: { store: WalletStore }) {
         store.publicKey,
         vault.address,
         mode === "deposit"
-          ? { kind: "deposit", amounts, invest: true }
-          : { kind: "withdraw", shares },
+          ? {
+              kind: "deposit",
+              amounts: approvedAmounts as string[],
+              invest: true,
+            }
+          : { kind: "withdraw", shares: approvedShares as string },
       );
       const signed = await store.signRawXdr(unsigned);
       if (!signed) return;
@@ -196,18 +210,19 @@ export function Defindex({ store }: { store: WalletStore }) {
                   <small>{short(fund.asset)}</small>
                 </span>
                 <input
-                  inputMode="numeric"
+                  inputMode="decimal"
                   value={amounts[index] ?? ""}
                   onChange={(event) =>
                     setAmounts((current) =>
                       current.map((value, position) =>
                         position === index
-                          ? event.target.value.replace(/\D/g, "")
+                          ? (sanitizeDecimalInput(event.target.value, 7) ??
+                            value)
                           : value,
                       ),
                     )
                   }
-                  placeholder="0"
+                  placeholder="0.00"
                 />
               </label>
             ))
@@ -215,12 +230,14 @@ export function Defindex({ store }: { store: WalletStore }) {
             <label className="glass defindex-field">
               <span>{t("defindex.shares")}</span>
               <input
-                inputMode="numeric"
+                inputMode="decimal"
                 value={shares}
                 onChange={(event) =>
-                  setShares(event.target.value.replace(/\D/g, ""))
+                  setShares(
+                    sanitizeDecimalInput(event.target.value, 7) ?? shares,
+                  )
                 }
-                placeholder="0"
+                placeholder="0.00"
               />
             </label>
           )}
