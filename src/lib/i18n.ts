@@ -564,6 +564,15 @@ export const T: Record<string, Record<Lang, string>> = {
   // ---- fiat (BlindPay on/off-ramp) ----
   'fiat.title': { es: 'Fiat', en: 'Fiat', pt: 'Fiat', de: 'Fiat', fr: 'Fiat' },
   'fiat.tab': { es: 'Cuenta fiat', en: 'Fiat account', pt: 'Conta fiat', de: 'Fiat-Konto', fr: 'Compte fiat' },
+  'fiat.rampTitle': { es: 'Rampas', en: 'Ramps', pt: 'Rampas', de: 'Zahlungsrampen', fr: 'Rampes' },
+  'fiat.rampActive': { es: 'ACTIVA', en: 'ACTIVE', pt: 'ATIVA', de: 'AKTIV', fr: 'ACTIVE' },
+  'fiat.rampBank': { es: 'Tu banco', en: 'Your bank', pt: 'Seu banco', de: 'Deine Bank', fr: 'Votre banque' },
+  'fiat.rampWallet': { es: 'Tu wallet', en: 'Your wallet', pt: 'Sua carteira', de: 'Deine Wallet', fr: 'Votre portefeuille' },
+  'fiat.rampAnchor': { es: 'Anchor', en: 'Anchor', pt: 'Anchor', de: 'Anchor', fr: 'Anchor' },
+  'fiat.rampModular': { es: 'Cosmos mantiene esta ruta modular: cada proveedor conecta sus propios anchors y rails.', en: 'Cosmos keeps this route modular: each provider connects its own anchors and rails.', pt: 'A Cosmos mantém esta rota modular: cada fornecedor conecta os seus próprios anchors e rails.', de: 'Cosmos hält diese Route modular: Jeder Anbieter verbindet seine eigenen Anchors und Zahlungswege.', fr: 'Cosmos maintient cette route modulaire : chaque fournisseur connecte ses propres anchors et rails.' },
+  'fiat.buy': { es: 'Comprar cripto', en: 'Buy crypto', pt: 'Comprar cripto', de: 'Krypto kaufen', fr: 'Acheter des cryptos' },
+  'fiat.cashOut': { es: 'Retirar a banco', en: 'Cash out', pt: 'Sacar para banco', de: 'Auszahlen', fr: 'Retirer vers banque' },
+  'fiat.rampSetup': { es: 'Configurá tu cuenta una vez para usar PIX, SPEI, PSE o ACH.', en: 'Set up your account once to use PIX, SPEI, PSE or ACH.', pt: 'Configure sua conta uma vez para usar PIX, SPEI, PSE ou ACH.', de: 'Richte dein Konto einmal ein, um PIX, SPEI, PSE oder ACH zu nutzen.', fr: 'Configurez votre compte une fois pour utiliser PIX, SPEI, PSE ou ACH.' },
   'fiat.adultOnly': {
     es: 'El acceso a depósitos y retiros fiat requiere ser mayor de 18 años.',
     en: 'Access to fiat deposits and withdrawals requires being over 18.',

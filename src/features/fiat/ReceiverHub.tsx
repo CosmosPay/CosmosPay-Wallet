@@ -3,6 +3,7 @@ import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { OpCard } from '@/features/fiat/OpCard';
 import { railLabel } from '@/lib/fiatRails';
+import { RampProviderCard } from '@/features/fiat/RampProviderCard';
 import '@/styles/features/fiat/fiat.css';
 
 /** Map BlindPay's raw KYC status (+ the `disabled` flag) to a friendly label + state key. */
@@ -36,6 +37,7 @@ export function ReceiverHub({ store, receiverId }: { store: WalletStore; receive
   return (
     <>
       <BackBar title={t('fiat.title')} onBack={store.goBack} />
+      <RampProviderCard store={store} />
       <div className="glass card fiat-account-card">
         <div className="fiat-account-label">{t('fiat.account')}</div>
         <div className="row between">
