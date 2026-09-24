@@ -1,6 +1,6 @@
 import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
-import { loadEnv } from 'vite';
+import { loadEnv, type ProxyOptions } from 'vite';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { devIconsIntegration, iconFlavor } from './scripts/devIcons.ts';
@@ -37,6 +37,73 @@ const DEV_PLATFORM_TARGET = env.COSMOS_DEV_PLATFORM_PROXY || 'http://localhost:4
 // behind it, but the wallet must go through the gateway so the API key is validated.
 const GATEWAY_TARGET = env.COSMOS_GATEWAY_PROXY || 'http://localhost:9080';
 
+/**
+ * Connection-class failures: the backend is not answering at all, as opposed to
+ * answering badly. Node's happy-eyeballs connect path (`autoSelectFamily`, on by
+ * default) tries every address a host resolves to and wraps the results in an
+ * `AggregateError` that carries NO `code` of its own — the causes are in `.errors`.
+ * Reading only the outer `code` is why such a failure reads as an unknown error.
+ */
+const OFFLINE_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+]);
+
+function isOffline(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const e = err as { code?: unknown; errors?: unknown };
+  if (typeof e.code === 'string' && OFFLINE_CODES.has(e.code)) return true;
+  return Array.isArray(e.errors) && e.errors.some(isOffline);
+}
+
+/**
+ * Proxy options for one dev backend.
+ *
+ * `configure` is here because of what this failure looks like without it. A backend
+ * that is simply not running produces `AggregateError [ECONNREFUSED]` and a stack
+ * through `internalConnectMultiple` — which names Node's socket internals and not the
+ * three things the reader actually needs: WHICH backend, at WHICH address, set by
+ * WHICH variable. Vite logs that stack before it checks whether anyone handled the
+ * error, so this ADDS the line that explains it; it does not replace it.
+ *
+ * It also answers 503 with a JSON body instead of Vite's bare 502 text/plain, because
+ * the wallet reads one: `apiError` (src/lib/apiError.ts) builds the user-visible line
+ * from `.message`, so a down backend says so in the app during dev rather than
+ * surfacing as a generic "request failed". The one caller that ignores the body —
+ * `warmPublicKey`, which reads nothing but `res.ok` — falls back to the compiled-in
+ * public key exactly as it should when a backend is unreachable.
+ */
+function devProxy(name: string, target: string, envVar: string): ProxyOptions {
+  return {
+    target,
+    changeOrigin: true,
+    configure(proxy) {
+      proxy.on('error', (err: unknown, _req: unknown, res: unknown) => {
+        // The ws path hands a Socket here, which has no response to write.
+        if (!isOffline(err) || !res || typeof res !== 'object' || !('writeHead' in res)) return;
+        console.error(`
+  [dev proxy] ${name} is not answering at ${target}.
+  Start it, or point ${envVar} at a host that is.
+`);
+        const r = res as {
+          headersSent: boolean;
+          writableEnded: boolean;
+          writeHead: (code: number, headers: Record<string, string>) => void;
+          end: (body?: string) => void;
+        };
+        if (r.headersSent || r.writableEnded) return;
+        r.writeHead(503, { 'Content-Type': 'application/json' });
+        r.end(JSON.stringify({ message: `${name} is not reachable at ${target} (Vite dev proxy)` }));
+      });
+    },
+  };
+}
+
 // https://astro.build/config
 export default defineConfig({
   // Static output -> produces dist/web/ that Capacitor wraps into the native app.
@@ -70,16 +137,48 @@ export default defineConfig({
     // Build-time constants. `__APP_VERSION__` is declared ambiently in src/env.d.ts and
     // consumed by src/constants/app.ts — see the comment on APP_VERSION above.
     define: { __APP_VERSION__: JSON.stringify(APP_VERSION) },
+    /**
+     * Pre-bundle the dependencies the dev optimizer would otherwise find LATE.
+     *
+     * Vite's first optimize pass only sees what the entry reaches statically. Everything
+     * below is behind a `lazy()` screen or a dynamic `import()`, so it was discovered the
+     * moment a screen first ran — which re-runs the optimizer, bumps the `?v=` hash on
+     * every pre-bundled dep, and makes the URLs the loaded page is already holding answer
+     * `504 (Outdated Optimize Dep)`. React `lazy()` reports that rejection as "Failed to
+     * fetch dynamically imported module", naming the screen rather than the dep, so the
+     * onboarding screens looked broken while the actual stale imports were
+     * `@tauri-apps/api/core` (lib/nativeBridge.ts) and `@tauri-apps/plugin-store`
+     * (lib/storage.ts) — neither of which those screens mention.
+     *
+     * Listing them puts them in the FIRST pass, so the hash never moves. This is a dev
+     * concern only: the production build bundles from the real module graph and never
+     * consults this list. A dynamic import added over a package NOT listed here brings the
+     * reload back, which is why the list names the reason rather than just the packages.
+     */
+    optimizeDeps: {
+      include: [
+        // Absent outside a Tauri WebView — `lib/platform.ts` gates each of these, so on
+        // web and in the extension they are imported and then never used.
+        '@tauri-apps/api/core',
+        '@tauri-apps/plugin-store',
+        '@tauri-apps/plugin-clipboard-manager',
+        '@tauri-apps/plugin-opener',
+        // Static imports, but only inside a lazily-loaded module: jsqr in the `scan`
+        // screen, bip39 behind `import('@/lib/wallet')` in the store.
+        'jsqr',
+        'bip39',
+      ],
+    },
     // Dev-only reverse proxy: the browser hits same-origin /api and /v1, Vite
     // forwards them to the local backends server-side — so there's no CORS
     // preflight. Production / native builds bypass this (set PUBLIC_COSMOS_*_URL
     // to absolute URLs; the relative paths below only resolve via this proxy).
     server: {
       proxy: {
-        '/api': { target: DEV_PLATFORM_TARGET, changeOrigin: true },
+        '/api': devProxy('cosmos dev-platform', DEV_PLATFORM_TARGET, 'COSMOS_DEV_PLATFORM_PROXY'),
         // The gateway exposes the payments API at /cosmos-api/* (APISIX strips that
         // prefix itself before forwarding upstream), so forward the prefix as-is.
-        '/cosmos-api': { target: GATEWAY_TARGET, changeOrigin: true },
+        '/cosmos-api': devProxy('cosmos gateway (APISIX)', GATEWAY_TARGET, 'COSMOS_GATEWAY_PROXY'),
       },
       // Comma-separated, and FILTERED: `[env.ALLOWED_HOSTS]` put a literal `undefined`
       // (or an empty string) in the list whenever the var was unset, which Vite reads as
