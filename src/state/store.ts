@@ -120,6 +120,7 @@ import {
   sequenceOf,
   signedRecoverySetup,
   signersToRemove,
+  updateRecoveryIdentities,
   type RecoverableAccount,
   type RecoveryState,
 } from '@/lib/recovery';
@@ -669,11 +670,18 @@ export function useWalletStore() {
     if (ok) setRequireConfirm(!savedRequireConfirm());
   }, [requestSignature, setRequireConfirm, t]);
 
-  /** Set the active wallet's profile picture (small data URL). */
-  const setWalletAvatar = useCallback(
-    async (dataUrl: string) => {
+  /**
+   * Write non-sensitive metadata for the active wallet and bring both copies of it —
+   * the list and the active entry — back into step.
+   *
+   * One helper because the two copies must move together: updating the list and leaving
+   * `meta` stale shows the old value everywhere until the next switch, and every caller
+   * that wrote the pair by hand was one line away from doing exactly that.
+   */
+  const patchMeta = useCallback(
+    async (patch: Parameters<typeof updateWalletMeta>[1]) => {
       if (!meta) return;
-      const next = await updateWalletMeta(meta.id, { avatar: dataUrl });
+      const next = await updateWalletMeta(meta.id, patch);
       setWallets(next);
       const entry = next.find((w) => w.id === meta.id);
       if (entry) setMetaState(entry);
@@ -681,35 +689,33 @@ export function useWalletStore() {
     [meta],
   );
 
+  /** Set the active wallet's profile picture (small data URL). */
+  const setWalletAvatar = useCallback(async (dataUrl: string) => patchMeta({ avatar: dataUrl }), [patchMeta]);
+
   /** Change the active wallet's email — Cosmos Pay registration/linking is tied to it. */
   const setWalletEmail = useCallback(
     async (email: string) => {
-      if (!meta) return;
-      const next = await updateWalletMeta(meta.id, { email: email.trim() });
-      setWallets(next);
-      const entry = next.find((w) => w.id === meta.id);
-      if (entry) setMetaState(entry);
+      await patchMeta({ email: email.trim() });
       flash(t('profile.emailUpdated'), 'ok');
     },
-    [meta, flash, t],
+    [patchMeta, flash, t],
   );
 
   /** Update the editable profile fields at once (name, email, gender). The birthdate
    *  is deliberately NOT editable — age gates (13+, 18+ fiat) must stay trustworthy. */
   const saveProfile = useCallback(
     async (fields: { name: string; email: string; gender: Gender }) => {
-      if (!meta) return;
-      const next = await updateWalletMeta(meta.id, {
+      // `recoveryEmail` is deliberately untouched here. It is what two servers were told,
+      // not a profile field, and it only changes when they have been told again —
+      // see `updateRecoveryEmail`, which needs the account's key to say so.
+      await patchMeta({
         name: fields.name.trim() || 'astronauta',
         email: fields.email.trim(),
         gender: fields.gender,
       });
-      setWallets(next);
-      const entry = next.find((w) => w.id === meta.id);
-      if (entry) setMetaState(entry);
       flash(t('profile.saved'), 'ok');
     },
-    [meta, flash, t],
+    [patchMeta, flash, t],
   );
 
   /* ----------------------------- boot ----------------------------- */
@@ -2692,6 +2698,13 @@ export function useWalletStore() {
 
           const signed = await signEnvelope(xdr);
           await stellarSubmitXdr(network, signed);
+
+          // What the servers were actually told, kept because SEP-30 will not tell us
+          // again: an identity is write-only, so this is the only record of which inbox
+          // can recover this account. Written AFTER the submit — before it, a setup that
+          // failed on chain would leave the device claiming a protection it does not have.
+          await patchMeta({ recoveryEmail: email });
+
           invalidate(ACCOUNT_PREFIX);
           invalidate(RECOVERY_PREFIX);
           void loadRecovery();
@@ -2761,6 +2774,10 @@ export function useWalletStore() {
         const signed = await signEnvelope(xdr);
         await stellarSubmitXdr(network, signed);
 
+        // Nothing is registered any more, so a recorded address would be a claim about
+        // servers that have already been told to forget this account.
+        await patchMeta({ recoveryEmail: undefined });
+
         invalidate(ACCOUNT_PREFIX);
         invalidate(RECOVERY_PREFIX);
         void loadRecovery();
@@ -2773,6 +2790,68 @@ export function useWalletStore() {
     });
     return outcome.ran ? outcome.value : false;
   }, [session, meta, network, exclusive, guardSession, requestSignature, signEnvelope, loadRecovery, t, flash]);
+
+  /**
+   * Point the two servers at the wallet's CURRENT email.
+   *
+   * SEP-30's `PUT /accounts/<address>`, and the reason it has a screen of its own is that
+   * nothing else can notice it is needed: the profile email is editable at any time, an
+   * identity cannot be read back, and the two drift apart silently. Until this runs, the
+   * inbox that can recover the account is whichever one was registered — which after an
+   * address change is the one the person no longer uses, and may no longer control.
+   *
+   * It touches no ledger: signers, weights and thresholds are exactly as they were, and
+   * the account is not re-registered. What changes is who the servers will answer to.
+   * Still password-gated, because it needs the account's key for SEP-10 — and because
+   * changing who may recover an account is the same decision as granting it.
+   *
+   * The record is written only after BOTH servers took it. A partial update leaves the
+   * account reachable from either address and the old one still live, which is worth
+   * reporting as a failure rather than recording as a success.
+   */
+  const updateRecoveryEmail = useCallback(async (): Promise<boolean> => {
+    if (!session || !meta) return false;
+
+    const outcome = await exclusive.run('recovery', async () => {
+      const epoch = sessionEpochRef.current;
+      try {
+        const address = session.publicKey;
+        const email = meta.email?.trim().toLowerCase() ?? '';
+        if (!email) {
+          flash(t('recovery.error.noEmail'), 'err');
+          return false;
+        }
+
+        const state = await recoveryStateOf(network, address);
+        guardSession(epoch);
+        if (!state.enabled) {
+          flash(t('recovery.error.notOn'), 'err');
+          return false;
+        }
+
+        const ok = await requestSignature({
+          title: t('recovery.emailConfirmTitle'),
+          message: t('recovery.emailConfirmMsg', { email }),
+        });
+        if (!ok) return false;
+        guardSession(epoch);
+
+        const servers = await loadRecoveryServers(network);
+        guardSession(epoch);
+        const secret = await secretOf(session);
+        await updateRecoveryIdentities(network, servers, address, secret, email);
+        guardSession(epoch);
+
+        await patchMeta({ recoveryEmail: email });
+        flash(t('recovery.emailUpdated'), 'ok');
+        return true;
+      } catch (e) {
+        flash((e as Error).message || t('recovery.error.generic'), 'err');
+        return false;
+      }
+    });
+    return outcome.ran ? outcome.value : false;
+  }, [session, meta, network, exclusive, guardSession, requestSignature, patchMeta, t, flash]);
 
   /* ---------------------- recovering onto this device ----------------------- */
 
@@ -4645,6 +4724,7 @@ export function useWalletStore() {
     startRecoveryCode,
     enableRecovery,
     disableRecovery,
+    updateRecoveryEmail,
 
     /*
      * Recovering an account onto this device. `recoverable` is null until a finished

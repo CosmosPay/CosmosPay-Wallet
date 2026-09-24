@@ -726,6 +726,16 @@ export async function putBackup(body: {
  * "which server" is a parameter here rather than a module-level getter. `lib/recovery.ts`
  * is what decides which; nothing in this file knows there are two.
  *
+ * `base` is the SEP-30 BASE URL — the thing the spec's paths hang off, so `${base}/accounts`
+ * is `GET /accounts`. For our own deployments that is `https://host/api/recovery`, because
+ * the recovery server is one module of a larger API; for somebody else's it is whatever
+ * their TOML says, very often the bare host. Building the `/api/recovery` prefix in here,
+ * as this file used to, was the single thing that made the wallet unable to talk to any
+ * recovery server but ours — the bodies were already the standard's.
+ *
+ * SEP-10 is passed its endpoint whole, for the same reason: `WEB_AUTH_ENDPOINT` is a URL a
+ * server publishes, not a path a client assembles.
+ *
  * The token is the caller's to hold: a SEP-10 one proves the account's key, an identity one
  * proves an email the platform checked. They are not interchangeable and the server decides
  * which each route accepts — see its `recovery-auth` module.
@@ -738,14 +748,18 @@ export async function recoveryInfo(base: string): Promise<RecoveryInfo> {
   return getPlatformJson(`${base}/api/recovery/info`, RecoveryInfoShape);
 }
 
-/** A challenge to prove control of `account`. Never signed before `lib/sep10.ts` reads it. */
-export async function sep10Challenge(base: string, account: string): Promise<{ transaction: string; network_passphrase: string }> {
-  return getPlatformJson(withQuery(`${base}/api/sep10/auth`, { account }), Sep10ChallengeShape);
+/**
+ * A challenge to prove control of `account`. Never signed before `lib/sep10.ts` reads it.
+ *
+ * `endpoint` is the server's published `WEB_AUTH_ENDPOINT`, whole.
+ */
+export async function sep10Challenge(endpoint: string, account: string): Promise<{ transaction: string; network_passphrase: string }> {
+  return getPlatformJson(withQuery(endpoint, { account }), Sep10ChallengeShape);
 }
 
 /** Exchange a signed challenge for this server's token. */
-export async function sep10Token(base: string, transaction: string): Promise<{ token: string }> {
-  return postJson(`${base}/api/sep10/auth`, { transaction }, {}, true, Sep10TokenShape);
+export async function sep10Token(endpoint: string, transaction: string): Promise<{ token: string }> {
+  return postJson(endpoint, { transaction }, {}, true, Sep10TokenShape);
 }
 
 /** The token for someone who lost their device: a sign-in session, scoped to one server. */
@@ -761,7 +775,7 @@ export async function recoveryRegister(
   identities: { role: string; auth_methods: { type: string; value: string }[] }[],
 ): Promise<RecoveryAccount> {
   return postJson(
-    `${base}/api/recovery/accounts/${encodeURIComponent(address)}`,
+    `${base}/accounts/${encodeURIComponent(address)}`,
     { identities },
     bearer(token),
     true,
@@ -769,11 +783,40 @@ export async function recoveryRegister(
   );
 }
 
+/**
+ * Change WHICH identities may recover this account, on a server that already holds it.
+ *
+ * SEP-30's `PUT /accounts/<address>`, and it exists because the alternative does not
+ * work: the registered identity is invisible from outside — a `GET` reports each
+ * identity's role and whether the caller is authenticated as it, never the address it
+ * was registered with — so an email that drifts out of step with the account's own
+ * cannot be detected, only overwritten. Deregistering and registering again would do it
+ * at the cost of the signer, and the signer is on the ledger.
+ *
+ * It replaces the identity list outright, as the spec says: what is sent is the whole of
+ * who may recover, never an addition to it.
+ */
+export async function recoveryUpdateIdentities(
+  base: string,
+  token: string,
+  address: string,
+  identities: { role: string; auth_methods: { type: string; value: string }[] }[],
+): Promise<RecoveryAccount> {
+  return postJson(
+    `${base}/accounts/${encodeURIComponent(address)}`,
+    { identities },
+    bearer(token),
+    true,
+    RecoveryRegisteredShape,
+    'PUT',
+  );
+}
+
 /** One protected account as THIS server describes it, or null when it does not know it. */
 export async function recoveryAccount(base: string, token: string, address: string): Promise<RecoveryAccount | null> {
   try {
     return await getPlatformJson<RecoveryAccount>(
-      `${base}/api/recovery/accounts/${encodeURIComponent(address)}`,
+      `${base}/accounts/${encodeURIComponent(address)}`,
       RecoveryRegisteredShape,
       bearer(token),
     );
@@ -792,7 +835,7 @@ export async function recoveryAccount(base: string, token: string, address: stri
  * because a server that still holds the identity is a fact the caller should know.
  */
 export async function recoveryForget(base: string, token: string, address: string): Promise<void> {
-  const url = `${base}/api/recovery/accounts/${encodeURIComponent(address)}`;
+  const url = `${base}/accounts/${encodeURIComponent(address)}`;
   const res = await fetch(url, { method: 'DELETE', headers: { ...bearer(token), [TRACE_HEADER]: newTraceId() } });
   if (res.ok || res.status === 404) return;
   let json: unknown = null;
@@ -804,9 +847,16 @@ export async function recoveryForget(base: string, token: string, address: strin
   throw apiError(url, res, json, RETRY_AFTER_CAP_S);
 }
 
-/** Every account this caller may recover — the listing someone with no device needs. */
-export async function recoveryAccounts(base: string, token: string): Promise<{ accounts: RecoveryAccount[] }> {
-  return getPlatformJson(`${base}/api/recovery/accounts`, RecoveryAccountListShape, bearer(token));
+/**
+ * One PAGE of the accounts this caller may recover — the listing someone with no device
+ * needs.
+ *
+ * `after` is SEP-30's cursor: the last address of the previous page. The caller walks it
+ * (`recoverableAccounts` in `lib/recovery.ts`) rather than this function, because the
+ * walk has to stop on the same terms for both servers and only the caller holds both.
+ */
+export async function recoveryAccounts(base: string, token: string, after?: string): Promise<{ accounts: RecoveryAccount[] }> {
+  return getPlatformJson(withQuery(`${base}/accounts`, { after }), RecoveryAccountListShape, bearer(token));
 }
 
 /** Ask this server to co-sign. The answer is a SIGNATURE; the wallet assembles the rest. */
@@ -818,7 +868,7 @@ export async function recoverySign(
   transaction: string,
 ): Promise<{ signature: string; network_passphrase: string }> {
   return postJson(
-    `${base}/api/recovery/accounts/${encodeURIComponent(address)}/sign/${encodeURIComponent(signer)}`,
+    `${base}/accounts/${encodeURIComponent(address)}/sign/${encodeURIComponent(signer)}`,
     { transaction },
     bearer(token),
     true,

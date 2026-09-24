@@ -54,6 +54,17 @@ export type RecoveryRole = (typeof RECOVERY_ROLES)[number];
 export const RECOVERY_TIMEOUT_S = 300;
 
 /**
+ * How many pages of `GET /accounts` the wallet will follow before it stops.
+ *
+ * SEP-30 pages that listing with an `after` cursor and sets no page size, so the walk is
+ * open-ended by construction; this bounds it. A server that ignored the cursor would
+ * otherwise page forever, and the two cheaper stops — an empty page, a page that adds
+ * nothing new — are what actually end the walk on a working server. One identity's
+ * recoverable accounts is a handful, so this is a ceiling nobody reaches, not a limit.
+ */
+export const RECOVERY_LIST_MAX_PAGES = 20;
+
+/**
  * XLM an account needs spare to pay for recovery itself: 0.5 per signer entry, plus a
  * little for the fee.
  *

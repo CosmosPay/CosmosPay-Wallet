@@ -531,12 +531,69 @@ Three things that bit, each now a test in `tests/unit/recovery.test.ts`:
   and is used for display only; `signersToRemove` asks each server which key it holds, so
   turning recovery off cannot zero an unrelated signer that happens to share the weight.
 
+**The wallet is a SEP-30 client, not a client of our servers.** Every path hangs off what a
+server says it is, never off a prefix the wallet builds: `RecoveryServer.sep30Base` is the
+SEP-30 base (`${sep30Base}/accounts/...`, which for our deployments is `/api/recovery` and for
+a standalone signer is the bare host) and `webAuthEndpoint` is the URL SEP-10 publishes.
+Hardcoding `/api/recovery` and `/api/sep10/auth` in `lib/cosmospay.ts` was the one thing that
+made the wallet unable to talk to any recovery server but ours — the bodies it sent and parsed
+were already the standard's. `describeServer` reads `/.well-known/stellar.toml` first and falls
+back to our own `/api/recovery/info`, and it invents nothing: a field that is missing stays
+missing and is refused here rather than defaulted.
+
+Two consequences worth keeping:
+
+- **`SIGNING_KEY` is what makes SEP-10 a proof.** `assertSafeChallenge` takes it as an optional
+  expectation and refuses a challenge sourced by anything else. Everything else in that function
+  establishes that a challenge is harmless to sign; this is the only check that establishes who
+  is asking. Optional because a server with no TOML cannot be checked against one — and skipping
+  beats inventing a key, which would pass against whoever answered.
+- **The home domain comes from the server, never from its host.** The two servers are different
+  hosts that name the same wallet, and `loadRecoveryServers` requires them to AGREE on it — that
+  agreement is the entire value of the field, since whoever controls one cannot change what the
+  other says. Deriving it from the host makes every pair disagree by construction and refuse
+  every enrolment; `tests/unit/recovery.test.ts` pins that.
+
+**A 409 on register is an ordinary state, not an error.** SEP-30 makes POST-on-existing a
+conflict and points at PUT, and the state is reachable the moment an enrolment registers with
+both servers and then fails before the transaction reaches the ledger — which is exactly what a
+person retries from. `registerForRecovery` answers a 409 with the PUT the spec asks for, which
+returns the signer the server has always held.
+
 **Recovering keeps the ACCOUNT and replaces the KEY.** `buildKeyReplacement` puts a new
 device key on at weight 10 and takes the old master to 0, leaving the recovery signers in
 place so the next device can do it again. It is built HERE, by the device that will use it,
 and only then handed to the servers for signatures — a transaction a server built and a
 server signed is one nobody independent read. `collectSignatures` assembles both, and
 `addSignature` is what catches a server that signed something else.
+
+**An identity is write-only, so the wallet records what it sent.** SEP-30's
+`GET /accounts/<address>` reports each identity's role and whether the caller is
+authenticated as it — never the address it holds. So nothing can read back which inbox
+recovers an account, and `WalletEntry.recoveryEmail` is the only record of it: written
+after the setup transaction is submitted, cleared when recovery is turned off, and
+deliberately NOT folded into `email`, which is an editable profile field that says
+nothing about what was registered. `RecoverySection` renders the recorded one; rendering
+`email` there names an inbox that may recover nothing. When the two disagree — the
+profile address changed, or recovery was enabled on another device — the screen says so
+and offers `updateRecoveryEmail`, which is SEP-30's `PUT /accounts/<address>` against
+both servers and touches no ledger: signers, weights and thresholds stay exactly as they
+were. It is still password-gated, because it needs the account's key for SEP-10 and
+because changing who may recover an account is the same decision as granting it. One
+server taking the update and the other refusing is a failure, not a partial success —
+the account would be recoverable from either address, the old one included.
+
+**The recoverable listing is paged, and the walk has to finish.** `GET /accounts` carries
+SEP-30's `after` cursor and no page size. Reading one page shows someone SOME of their
+wallets and tells them it is all of them, which from the outside is indistinguishable
+from a wallet that was never protected. `recoverableAccounts` follows the cursor on both
+servers and stops on three terms: an empty page, a page that adds nothing new (a server
+ignoring `after` returns the same one forever), and `RECOVERY_LIST_MAX_PAGES`.
+
+The wallet registers ONE auth method, `email`. The spec also allows `stellar_address`
+and `phone_number`; each additional one is another way into the same account, and an
+attacker needs only one of them — so adding one belongs behind the confirmation turning
+recovery on already has, not in the identity builder.
 
 Three consequences of re-keying, each handled in one place and each easy to reintroduce:
 

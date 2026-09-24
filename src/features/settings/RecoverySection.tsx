@@ -32,7 +32,11 @@ export function RecoverySection({ store }: { store: WalletStore }) {
   const [confirmOff, setConfirmOff] = useState(false);
   const [sent, setSent] = useState(false);
   const [code, setCode] = useState('');
-  const email = store.meta?.email ?? '';
+  const email = (store.meta?.email ?? '').trim().toLowerCase();
+  // What the two servers were actually told, which is NOT `email`: the profile address is
+  // editable at any time and SEP-30 will not report an identity back, so these two drift
+  // apart in silence. Rendering `email` here would name an inbox that recovers nothing.
+  const registered = (store.meta?.recoveryEmail ?? '').trim().toLowerCase();
   const configured = recoveryConfigured();
 
   const { loadRecovery } = store;
@@ -44,6 +48,11 @@ export function RecoverySection({ store }: { store: WalletStore }) {
 
   const state = store.recovery;
   const on = state?.enabled ?? false;
+  // Two ways the recorded address can fail to be the current one, and they read
+  // differently to the person: one is a change they made, the other is a device that was
+  // never told. Both end at the same button, which is the only way to make them agree.
+  const drifted = on && registered !== '' && registered !== email;
+  const unknown = on && registered === '';
   // Whether the account can pay the two signer entries' reserve itself. Below it the
   // operator's sponsored path is the only one that works, and it is what gets offered.
   const affordable = spendableXlm(store.account) >= RECOVERY_RESERVE_XLM;
@@ -58,7 +67,9 @@ export function RecoverySection({ store }: { store: WalletStore }) {
         <>
           <div className="row between recovery-status">
             <span className="recovery-status-on">{t('recovery.statusOn')}</span>
-            <span className="recovery-email">{email}</span>
+            <span className="recovery-email" title={t('recovery.emailRegistered')}>
+              {registered || t('recovery.emailUnknown')}
+            </span>
           </div>
           <div className="recovery-signers">
             {state?.signers.map((key) => (
@@ -67,6 +78,24 @@ export function RecoverySection({ store }: { store: WalletStore }) {
               </div>
             ))}
           </div>
+          {/* Said before the turn-off button, because it is the more likely thing to be
+              wrong and the less likely thing to be noticed: recovery is ON, so nothing
+              looks broken until the day it is used from the wrong inbox. */}
+          {(drifted || unknown) && (
+            <div className="recovery-confirm">
+              <div className="recovery-note recovery-note-warn">
+                {drifted ? t('recovery.emailDrifted', { registered, email }) : t('recovery.emailUnknownNote', { email })}
+              </div>
+              <button
+                disabled={busy || !email}
+                onClick={() => run(() => store.updateRecoveryEmail())}
+                className={cx('btn-primary recovery-btn', busy && 'is-busy')}
+              >
+                {t('recovery.emailUpdate')}
+              </button>
+            </div>
+          )}
+
           {!confirmOff ? (
             <button onClick={() => setConfirmOff(true)} className="glass-soft recovery-btn">
               {t('recovery.turnOff')}

@@ -126,6 +126,18 @@ export interface WalletEntry {
    */
   cloudBackup?: boolean;
   /**
+   * The email registered with the two SEP-30 recovery servers, when recovery is on.
+   *
+   * It is NOT `email` and must not be folded into it. An identity is write-only in
+   * SEP-30 — `GET /accounts/<address>` reports each identity's role and whether the
+   * caller is authenticated as it, never the address it holds — so this is the only
+   * record of who the servers will actually let recover this account. The profile email
+   * is editable at any time and says nothing about what was registered; showing that one
+   * as the recovery address is how a screen promises an inbox that cannot recover
+   * anything. Absent means recovery was never turned on from this device.
+   */
+  recoveryEmail?: string;
+  /**
    * Pollar wallets only: the id of the local wallet its funds are being moved to
    * (`lib/pollarMigration.ts`). Written BEFORE the first transaction, so a move that was
    * interrupted resumes into the same key instead of generating a second one.
@@ -296,7 +308,7 @@ export async function addWallet(
 /** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'migratedTo'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'migratedTo' | 'recoveryEmail'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));

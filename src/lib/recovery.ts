@@ -38,17 +38,21 @@ import {
   recoveryInfo,
   recoveryRegister,
   recoverySign,
+  recoveryUpdateIdentities,
   sep10Challenge,
   sep10Token,
   type RecoveryAccount,
 } from '@/lib/cosmospay';
 import { recoveryServers as configuredServers } from '@/lib/endpoints';
+import { fetchStellarToml } from '@/lib/stellarToml';
+import { ApiRequestError } from '@/lib/apiError';
 import { tNow } from '@/lib/i18n';
 import { signChallenge, webAuthDomainOf } from '@/lib/sep10';
 import { getServer, type NetConfig } from '@/lib/stellar';
 import {
   DEVICE_WEIGHT,
   IDENTITY_ROLE_OWNER,
+  RECOVERY_LIST_MAX_PAGES,
   RECOVERY_SERVER_COUNT,
   RECOVERY_TIMEOUT_S,
   SERVER_WEIGHT,
@@ -70,10 +74,25 @@ export class RecoveryError extends Error {
 /** One recovery server, once it has said what it is. */
 export interface RecoveryServer {
   role: RecoveryRole;
+  /** The host as configured. Only this wallet's own extensions hang off it. */
   url: string;
+  /**
+   * The SEP-30 BASE: what the spec's paths are relative to, so `${sep30Base}/accounts`.
+   *
+   * Separate from `url` because they are only the same thing on a server that is nothing
+   * but a recovery server. Ours is one module of a larger API and lives under
+   * `/api/recovery`; a standalone SEP-30 deployment is usually the bare host. The wallet
+   * used to build that prefix itself, which is precisely what made it unable to talk to
+   * anybody else's server — the bodies were already the standard's.
+   */
+  sep30Base: string;
+  /** The server's published `WEB_AUTH_ENDPOINT`, whole — a URL, never a path to assemble. */
+  webAuthEndpoint: string;
   /** The host its challenges must name — checked, not assumed. */
   webAuthDomain: string;
   homeDomain: string;
+  /** Its published `SIGNING_KEY`, when it has a TOML. What proves who minted a challenge. */
+  signingKey?: string;
 }
 
 /** Is this build configured for recovery at all? */
@@ -94,20 +113,7 @@ export async function loadRecoveryServers(cfg: NetConfig): Promise<RecoveryServe
   const configured = configuredServers();
   if (configured.length !== RECOVERY_SERVER_COUNT) throw new RecoveryError('recovery.error.notConfigured');
 
-  const servers = await Promise.all(
-    configured.map(async ({ role, url }) => {
-      const info = await recoveryInfo(url);
-      if (info.network_passphrase !== cfg.passphrase) {
-        throw new RecoveryError('recovery.error.network', { server: webAuthDomainOf(url) });
-      }
-      // A server naming a host that is not the one answering is either misconfigured or
-      // proxying for someone else; either way its challenges would not be replay-bound to it.
-      if (info.web_auth_domain !== webAuthDomainOf(url)) {
-        throw new RecoveryError('recovery.error.domain', { server: webAuthDomainOf(url) });
-      }
-      return { role, url, webAuthDomain: info.web_auth_domain, homeDomain: info.home_domain } satisfies RecoveryServer;
-    }),
-  );
+  const servers = await Promise.all(configured.map(({ role, url }) => describeServer(cfg, role, url)));
 
   if (servers[0].webAuthDomain === servers[1].webAuthDomain) throw new RecoveryError('recovery.error.sameServer');
   // The home domain is the one expectation a server supplies about itself, and
@@ -117,6 +123,60 @@ export async function loadRecoveryServers(cfg: NetConfig): Promise<RecoveryServe
   // change what the other says.
   if (servers[0].homeDomain !== servers[1].homeDomain) throw new RecoveryError('recovery.error.homeDomain');
   return servers;
+}
+
+/**
+ * Ask one server what it is: its TOML first, its own `/api/recovery/info` second.
+ *
+ * The TOML is the standard answer and the only one a server we did not write will have.
+ * `info` is ours, it predates this, and it stays as the fallback so a deployment that has
+ * not been updated keeps working — but it cannot supply a `SIGNING_KEY`, so a server
+ * discovered that way is one whose challenges the wallet can only check the shape of.
+ * Neither path invents a value; what is missing stays missing and is refused here.
+ */
+export async function describeServer(cfg: NetConfig, role: RecoveryRole, url: string): Promise<RecoveryServer> {
+  const host = webAuthDomainOf(url);
+  const toml = await fetchStellarToml(url);
+
+  if (toml?.webAuthEndpoint) {
+    if (toml.networkPassphrase && toml.networkPassphrase !== cfg.passphrase) {
+      throw new RecoveryError('recovery.error.network', { server: host });
+    }
+    const webAuthDomain = webAuthDomainOf(toml.webAuthEndpoint);
+    // The endpoint a server publishes must be ON that server. A TOML pointing its web-auth
+    // somewhere else is either misconfigured or handing the wallet to a third party, and
+    // the token that comes back would be minted by a host the user never chose.
+    if (webAuthDomain !== host) throw new RecoveryError('recovery.error.domain', { server: host });
+    return {
+      role,
+      url,
+      // Ours nests the recovery module under /api/recovery; a standalone server is its own
+      // root. Asking the TOML would be better, and SEP-30 defines no field for it.
+      sep30Base: `${url.replace(/\/+$/, '')}/api/recovery`,
+      webAuthEndpoint: toml.webAuthEndpoint,
+      webAuthDomain,
+      // The wallet domain the server names, NOT this host: the two servers are different
+      // hosts that name the same wallet, and `loadRecoveryServers` requires them to agree
+      // on it. Deriving it from the host would make every pair disagree by construction.
+      // A standalone server that publishes none is only ever itself, so the host is right.
+      homeDomain: toml.homeDomain || host,
+      signingKey: toml.signingKey,
+    };
+  }
+
+  const info = await recoveryInfo(url);
+  if (info.network_passphrase !== cfg.passphrase) throw new RecoveryError('recovery.error.network', { server: host });
+  // A server naming a host that is not the one answering is either misconfigured or
+  // proxying for someone else; either way its challenges would not be replay-bound to it.
+  if (info.web_auth_domain !== host) throw new RecoveryError('recovery.error.domain', { server: host });
+  return {
+    role,
+    url,
+    sep30Base: `${url.replace(/\/+$/, '')}/api/recovery`,
+    webAuthEndpoint: `${url.replace(/\/+$/, '')}/api/sep10/auth`,
+    webAuthDomain: info.web_auth_domain,
+    homeDomain: info.home_domain,
+  };
 }
 
 /* ------------------------------- proving the key ------------------------------- */
@@ -129,17 +189,64 @@ export async function loadRecoveryServers(cfg: NetConfig): Promise<RecoveryServe
  * from anything the server said about itself.
  */
 export async function authenticate(cfg: NetConfig, server: RecoveryServer, address: string, secret: string): Promise<string> {
-  const challenge = await sep10Challenge(server.url, address);
+  const challenge = await sep10Challenge(server.webAuthEndpoint, address);
   const signed = signChallenge(cfg, challenge.transaction, {
     account: address,
     homeDomain: server.homeDomain,
     webAuthDomain: server.webAuthDomain,
+    signingKey: server.signingKey,
   }, secret);
-  const { token } = await sep10Token(server.url, signed);
+  const { token } = await sep10Token(server.webAuthEndpoint, signed);
   return token;
 }
 
 /* --------------------------------- enabling ---------------------------------- */
+
+/**
+ * Who may recover, in SEP-30's shape.
+ *
+ * One identity, in the `owner` role, reachable at one email. The spec also allows
+ * `stellar_address` and `phone_number` auth methods; this wallet registers neither, and
+ * that is a deliberate ceiling rather than an omission — every additional method is
+ * another way to reach the same account, and the list is what an attacker needs only one
+ * of. Adding one is adding a door, and belongs behind the same explicit confirmation
+ * turning recovery on already has.
+ *
+ * Shared by registration and update precisely so the two cannot describe the identity
+ * differently: an update that normalised the address differently from the registration
+ * would silently point the account at a second inbox.
+ */
+export function identitiesFor(email: string): { role: string; auth_methods: { type: string; value: string }[] }[] {
+  return [{ role: IDENTITY_ROLE_OWNER, auth_methods: [{ type: 'email', value: email.trim().toLowerCase() }] }];
+}
+
+/**
+ * Point an already-registered account at a different email, on BOTH servers.
+ *
+ * This is the one thing a wallet cannot do by reading: an identity is write-only from
+ * outside, so a wallet whose email has changed since enrolment cannot tell whether the
+ * servers agree with it, only assert what they should hold. Which is why the caller
+ * records what it sent — see `WalletEntry.recoveryEmail`.
+ *
+ * Sequential and both-or-nothing-said, for the reason registration is: a first server
+ * updated and a second one failing leaves the account recoverable from EITHER inbox, and
+ * the old one is precisely the one whose owner may no longer be the user. The failure
+ * names the server, and the caller keeps the old address on record — claiming the new one
+ * when only one server took it would be the more dangerous lie.
+ */
+export async function updateRecoveryIdentities(
+  cfg: NetConfig,
+  servers: readonly RecoveryServer[],
+  address: string,
+  secret: string,
+  email: string,
+): Promise<void> {
+  const identities = identitiesFor(email);
+  for (const server of servers) {
+    const token = await authenticate(cfg, server, address, secret);
+    await recoveryUpdateIdentities(server.sep30Base, token, address, identities);
+  }
+}
 
 /**
  * Register the account with both servers and collect the signer each one holds for it.
@@ -156,7 +263,7 @@ export async function registerForRecovery(
   secret: string,
   email: string,
 ): Promise<[string, string]> {
-  const identities = [{ role: IDENTITY_ROLE_OWNER, auth_methods: [{ type: 'email', value: email.trim().toLowerCase() }] }];
+  const identities = identitiesFor(email);
   const signers: string[] = [];
 
   // Sequential, not parallel: registering is a write, and a second server registered while
@@ -164,7 +271,18 @@ export async function registerForRecovery(
   // which half. The first failure stops the flow with the server named.
   for (const server of servers) {
     const token = await authenticate(cfg, server, address, secret);
-    const account = await recoveryRegister(server.url, token, address, identities);
+    // 409 means this server already holds the account — from an enrolment that registered
+    // here and then failed before the transaction reached the ledger, which is exactly the
+    // state someone retries from. SEP-30 answers that with PUT: the identities are stated
+    // again, and the server returns the signer it has always held for this account, which
+    // is the value this loop is actually here to collect. Registering twice is the one
+    // thing the spec asks a server to refuse, so this is the sanctioned way through.
+    const account = await recoveryRegister(server.sep30Base, token, address, identities).catch((e) => {
+      if (e instanceof ApiRequestError && e.status === 409) {
+        return recoveryUpdateIdentities(server.sep30Base, token, address, identities);
+      }
+      throw e;
+    });
     const key = account.signers[0]?.key;
     if (!key) throw new RecoveryError('recovery.error.noSigner', { server: server.webAuthDomain });
     signers.push(key);
@@ -371,14 +489,14 @@ export async function signersToRemove(
   const keys: string[] = [];
   for (const server of servers) {
     const token = await authenticate(cfg, server, address, secret);
-    const account = await recoveryAccount(server.url, token, address);
+    const account = await recoveryAccount(server.sep30Base, token, address);
     // A server that does not know the account has nothing on it to remove, and saying so
     // is not a failure: the other one may still be there, and that is the case worth
     // finishing rather than refusing.
     if (!account) continue;
     const key = account.signers[0]?.key;
     if (key) keys.push(key);
-    await recoveryForget(server.url, token, address);
+    await recoveryForget(server.sep30Base, token, address);
   }
   return keys;
 }
@@ -405,6 +523,33 @@ export interface RecoverableAccount {
 }
 
 /**
+ * Every account one server lists for this identity, following SEP-30's cursor to the end.
+ *
+ * The listing is PAGED (`after` is the last address of the page before), and reading only
+ * the first page is how someone is shown some of their accounts and told that is all of
+ * them — a wallet missing from a recovery list looks exactly like a wallet that was never
+ * protected, and the person has no way to tell which they are looking at.
+ *
+ * A server that ignores the cursor would page forever, so the walk stops on three terms:
+ * an empty page, a page that adds nothing new, and a cap. Addresses are de-duplicated
+ * because overlapping pages are the shape a cursor produces under concurrent writes.
+ */
+async function allAccountsOf(server: RecoveryServer, token: string): Promise<RecoveryAccount[]> {
+  const seen = new Map<string, RecoveryAccount>();
+  let after: string | undefined;
+
+  for (let page = 0; page < RECOVERY_LIST_MAX_PAGES; page++) {
+    const { accounts } = await recoveryAccounts(server.sep30Base, token, after);
+    if (!accounts.length) break;
+    const before = seen.size;
+    for (const a of accounts) if (!seen.has(a.address)) seen.set(a.address, a);
+    if (seen.size === before) break; // the same page again: the cursor is not moving
+    after = accounts[accounts.length - 1].address;
+  }
+  return [...seen.values()];
+}
+
+/**
  * The accounts this identity may recover, as BOTH servers agree they are.
  *
  * The INTERSECTION, not the union: an account only one server knows about cannot be
@@ -417,11 +562,11 @@ export async function recoverableAccounts(
   servers: readonly RecoveryServer[],
   tokens: readonly string[],
 ): Promise<RecoverableAccount[]> {
-  const lists = await Promise.all(servers.map((s, i) => recoveryAccounts(s.url, tokens[i])));
-  const signerIn = (list: { accounts: RecoveryAccount[] }, address: string): string =>
-    list.accounts.find((a) => a.address === address)?.signers[0]?.key ?? '';
+  const lists = await Promise.all(servers.map((s, i) => allAccountsOf(s, tokens[i])));
+  const signerIn = (accounts: RecoveryAccount[], address: string): string =>
+    accounts.find((a) => a.address === address)?.signers[0]?.key ?? '';
 
-  return lists[0].accounts
+  return lists[0]
     .map((a) => ({ address: a.address, signers: lists.map((l) => signerIn(l, a.address)) }))
     .filter((row) => row.signers.every((key) => key !== '') && new Set(row.signers).size === row.signers.length);
 }
@@ -482,7 +627,7 @@ export async function collectSignatures(
   // and one taken from a counterparty is how a signature ends up valid somewhere else.
   const tx = TransactionBuilder.fromXDR(xdr, cfg.passphrase);
   for (const [i, server] of servers.entries()) {
-    const { signature } = await recoverySign(server.url, tokens[i], address, signers[i], xdr);
+    const { signature } = await recoverySign(server.sep30Base, tokens[i], address, signers[i], xdr);
     try {
       tx.addSignature(signers[i], signature);
     } catch {

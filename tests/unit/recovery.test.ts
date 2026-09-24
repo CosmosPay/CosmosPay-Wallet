@@ -28,9 +28,20 @@ import {
 } from '@stellar/stellar-sdk';
 import { assertSafeToSign, reviewTx, TxGuardError } from '@/lib/txGuard';
 import { tNow } from '@/lib/i18n';
-import { buildRecoverySetup, buildKeyReplacement, recoverySetupMessage } from '@/lib/recovery';
+import {
+  buildRecoverySetup,
+  buildKeyReplacement,
+  identitiesFor,
+  recoverableAccounts,
+  describeServer,
+  recoverySetupMessage,
+  registerForRecovery,
+  updateRecoveryIdentities,
+  type RecoveryServer,
+} from '@/lib/recovery';
 import { assertSafeChallenge, Sep10Error, webAuthDomainOf } from '@/lib/sep10';
-import { DEVICE_WEIGHT, SERVER_WEIGHT } from '@/constants/recovery';
+import { parseStellarToml } from '@/lib/stellarToml';
+import { DEVICE_WEIGHT, RECOVERY_LIST_MAX_PAGES, SERVER_WEIGHT } from '@/constants/recovery';
 import type { NetConfig } from '@/lib/stellar';
 
 const CFG: NetConfig = {
@@ -476,4 +487,387 @@ test('the challenge covers the signers, so one signature authorises one arrangem
   const a = recoverySetupMessage(ME, [SIGNER_A, SIGNER_B], '2026-09-19T12:00:00.000Z');
   const b = recoverySetupMessage(ME, [SIGNER_A, ATTACKER], '2026-09-19T12:00:00.000Z');
   assert.notEqual(a, b);
+});
+
+
+/* --------------------------- the SEP-30 wire itself -------------------------- */
+
+/*
+ * The protocol's own surface, as opposed to the envelopes above: which endpoints the
+ * wallet calls, with what, and how it walks a paged listing. Everything here runs against
+ * a stubbed `fetch`, because what is being asserted is the REQUEST — a listing read one
+ * page deep and an identity written to only one server both succeed quietly, and both
+ * leave the user worse off than the failure would have.
+ */
+
+const SERVERS: RecoveryServer[] = ['a', 'b'].map((role) => ({
+  role: role as 'a' | 'b',
+  url: `https://recovery-${role}.cosmospay.lat`,
+  // The SEP-30 base, which is what the spec's paths hang off — ours nests under
+  // /api/recovery, somebody else's would very often be the bare host.
+  sep30Base: `https://recovery-${role}.cosmospay.lat/api/recovery`,
+  webAuthEndpoint: `https://recovery-${role}.cosmospay.lat/api/sep10/auth`,
+  webAuthDomain: `recovery-${role}.cosmospay.lat`,
+  homeDomain: HOME,
+}));
+
+/** A standalone SEP-30 deployment: no /api prefix anywhere, exactly as the spec reads. */
+const THIRD_PARTY: RecoveryServer = {
+  role: 'a',
+  url: 'https://recovery.example.org',
+  sep30Base: 'https://recovery.example.org',
+  webAuthEndpoint: 'https://recovery.example.org/auth',
+  webAuthDomain: 'recovery.example.org',
+  homeDomain: HOME,
+};
+
+/** One account row in the shape SEP-30's listing returns it. */
+const row = (address: string, signer: string) => ({
+  address,
+  identities: [{ role: 'owner', authenticated: true }],
+  signers: [{ key: signer, added_at: '2026-01-01T00:00:00Z' }],
+});
+
+/** A challenge for `host` inside a real time window, so `signChallenge` accepts it. */
+function liveChallenge(host: string): string {
+  const now = Math.floor(Date.now() / 1000);
+  const tx = new TransactionBuilder(new Account(server.publicKey(), '-1'), {
+    fee: BASE_FEE,
+    networkPassphrase: CFG.passphrase,
+    timebounds: { minTime: now - 5, maxTime: now + 300 },
+    memo: Memo.none(),
+  })
+    .addOperation(Operation.manageData({ source: ME, name: `${HOME} auth`, value: Buffer.alloc(48, 7).toString('base64') }))
+    .addOperation(Operation.manageData({ source: server.publicKey(), name: 'web_auth_domain', value: host }))
+    .build();
+  tx.sign(server);
+  return tx.toXDR();
+}
+
+interface Call {
+  method: string;
+  url: string;
+  body: unknown;
+}
+
+/**
+ * Stand in for both servers. `pages` answers each host's listing one page per call;
+ * everything else gets a challenge, a token or an echo. The calls are what the tests
+ * assert on — the request is the behaviour here, not the reply.
+ */
+function stubFetch(pages: Record<string, unknown[][]>): { calls: Call[]; restore: () => void } {
+  const calls: Call[] = [];
+  const real = globalThis.fetch;
+  const cursor: Record<string, number> = {};
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? 'GET';
+    calls.push({ method, url, body: init?.body ? JSON.parse(String(init.body)) : null });
+
+    const host = new URL(url).host;
+    const json = (data: unknown) =>
+      new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    if (url.includes('/auth')) {
+      return method === 'GET'
+        ? json({ transaction: liveChallenge(host), network_passphrase: CFG.passphrase })
+        : json({ token: `token-for-${host}` });
+    }
+    if (url.includes('/accounts')) {
+      if (method === 'GET') {
+        const i = cursor[host] ?? 0;
+        cursor[host] = i + 1;
+        return json({ accounts: pages[host]?.[i] ?? [] });
+      }
+      // The PUT's echo. Per host, because the two servers hold DIFFERENT keys and a stub
+      // that returned one key twice would be exercising `sameSigner` instead of the path
+      // under test.
+      return json(row(ME, host.includes('-b') ? SIGNER_B : SIGNER_A));
+    }
+    return json({});
+  }) as typeof fetch;
+
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = real;
+    },
+  };
+}
+
+test('an identity is normalised once, so registration and update cannot describe it differently', () => {
+  // A capital or a stray space is the same inbox, and must not become a second identity.
+  assert.deepEqual(identitiesFor('  Alice@Example.COM '), [
+    { role: 'owner', auth_methods: [{ type: 'email', value: 'alice@example.com' }] },
+  ]);
+});
+
+test('updating the identity is a PUT to both servers, each proven to separately', async () => {
+  const { calls, restore } = stubFetch({});
+  try {
+    await updateRecoveryIdentities(CFG, SERVERS, ME, me.secret(), 'New@Example.com');
+  } finally {
+    restore();
+  }
+
+  // SEP-30's `PUT /accounts/<address>`, not a second POST: registering again would be
+  // asking for a signer that is already on the ledger.
+  const puts = calls.filter((c) => c.method === 'PUT');
+  assert.equal(puts.length, 2, 'both servers, or the account is recoverable from two inboxes');
+  assert.deepEqual(
+    puts.map((c) => c.url),
+    SERVERS.map((s) => `${s.sep30Base}/accounts/${ME}`),
+  );
+  for (const put of puts) assert.deepEqual(put.body, { identities: identitiesFor('new@example.com') });
+
+  // A token minted by one server is refused by the other, which is the whole reason
+  // there are two of them.
+  assert.equal(calls.filter((c) => c.url.endsWith('/auth') && c.method === 'POST').length, 2);
+});
+
+test('a server that refuses the update fails the whole thing, so no new address is claimed', async () => {
+  const { restore } = stubFetch({});
+  const stubbed = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (String(input).includes('recovery-b') && init?.method === 'PUT') return new Response('{}', { status: 500 });
+    return stubbed(input as never, init);
+  }) as typeof fetch;
+
+  try {
+    // After this the account is still recoverable from the OLD address on at least one
+    // server, and the caller must not record the new one as if it were registered.
+    await assert.rejects(() => updateRecoveryIdentities(CFG, SERVERS, ME, me.secret(), 'new@example.com'));
+  } finally {
+    restore();
+  }
+});
+
+test('the recoverable listing follows SEP-30 cursor to the end', async () => {
+  const [x, y, z] = [Keypair.random().publicKey(), Keypair.random().publicKey(), Keypair.random().publicKey()];
+  const { calls, restore } = stubFetch({
+    'recovery-a.cosmospay.lat': [[row(x, SIGNER_A), row(y, SIGNER_A)], [row(z, SIGNER_A)], []],
+    'recovery-b.cosmospay.lat': [[row(x, SIGNER_B), row(y, SIGNER_B)], [row(z, SIGNER_B)], []],
+  });
+
+  let found: string[];
+  try {
+    found = (await recoverableAccounts(SERVERS, ['ta', 'tb'])).map((r) => r.address);
+  } finally {
+    restore();
+  }
+
+  // The account on page two is the point: reading one page shows someone SOME of their
+  // wallets and tells them it is all of them — which from the outside is
+  // indistinguishable from a wallet that was never protected at all.
+  assert.deepEqual(found, [x, y, z]);
+  assert.ok(
+    calls.some((c) => c.url.includes(`after=${y}`)),
+    'the cursor is the last address of the page before',
+  );
+});
+
+test('a server that ignores the cursor does not page forever', async () => {
+  const a = Keypair.random().publicKey();
+  // The same page every time, which is what a server that drops `after` returns.
+  const forever = Array.from({ length: RECOVERY_LIST_MAX_PAGES + 5 }, () => [row(a, SIGNER_A)]);
+  const { calls, restore } = stubFetch({
+    'recovery-a.cosmospay.lat': forever,
+    'recovery-b.cosmospay.lat': [[row(a, SIGNER_B)], []],
+  });
+
+  let found: string[];
+  try {
+    found = (await recoverableAccounts(SERVERS, ['ta', 'tb'])).map((r) => r.address);
+  } finally {
+    restore();
+  }
+
+  assert.deepEqual(found, [a]);
+  const listings = calls.filter((c) => c.url.includes('/accounts') && c.method === 'GET');
+  assert.ok(listings.length <= RECOVERY_LIST_MAX_PAGES * 2, `walked ${listings.length} pages`);
+});
+
+test('an account only one server knows is not offered, however many pages it took to find', async () => {
+  const mine = Keypair.random().publicKey();
+  const theirs = Keypair.random().publicKey();
+  const { restore } = stubFetch({
+    'recovery-a.cosmospay.lat': [[row(mine, SIGNER_A)], [row(theirs, SIGNER_A)], []],
+    'recovery-b.cosmospay.lat': [[row(mine, SIGNER_B)], []],
+  });
+
+  try {
+    // One signature never reaches the threshold, so offering it would be a button that
+    // fails at the last step — after the person has been told their funds are coming back.
+    const found = (await recoverableAccounts(SERVERS, ['ta', 'tb'])).map((r) => r.address);
+    assert.deepEqual(found, [mine]);
+  } finally {
+    restore();
+  }
+});
+
+
+/* ----------------------- talking to somebody else's server ------------------- */
+
+/*
+ * The wallet used to build `/api/recovery/...` and `/api/sep10/auth` into every request,
+ * which made it a client of exactly one deployment — ours — while the bodies it sent and
+ * parsed were already SEP-30's and SEP-10's. The paths now hang off what the server says
+ * it is, so a standalone recovery signer is reachable and our own is a special case of it.
+ */
+
+test('a standalone SEP-30 server is addressed at the spec\u2019s own paths', async () => {
+  const { calls, restore } = stubFetch({});
+  try {
+    await updateRecoveryIdentities(CFG, [THIRD_PARTY], ME, me.secret(), 'a@b.com');
+  } finally {
+    restore();
+  }
+
+  // No /api anywhere: `${base}/accounts/{address}` is what SEP-30 actually specifies.
+  assert.deepEqual(
+    calls.filter((c) => c.method === 'PUT').map((c) => c.url),
+    [`https://recovery.example.org/accounts/${ME}`],
+  );
+  assert.ok(calls.some((c) => c.url.startsWith('https://recovery.example.org/auth')), 'SEP-10 goes to the published endpoint');
+});
+
+test('the listing cursor works the same against a bare host', async () => {
+  const a = Keypair.random().publicKey();
+  const { calls, restore } = stubFetch({ 'recovery.example.org': [[row(a, SIGNER_A)], []] });
+  try {
+    await recoverableAccounts([THIRD_PARTY], ['token']);
+  } finally {
+    restore();
+  }
+  assert.ok(calls.some((c) => c.url.startsWith('https://recovery.example.org/accounts')));
+});
+
+test('a challenge is refused unless it is signed by the key the server publishes', () => {
+  // SEP-10's proof rests on this and the wallet could not make it before: with no TOML
+  // there was no published key to compare against, so every check established that the
+  // challenge was harmless to sign and none established who was asking.
+  const mine = challenge();
+  assert.equal(challengeRefusal(mine), null, 'unchecked when no key is published');
+
+  const withKey = (key: string) => {
+    try {
+      assertSafeChallenge(CFG, mine, { ...EXPECT, signingKey: key }, NOW);
+      return null;
+    } catch (e) {
+      return (e as Sep10Error).key;
+    }
+  };
+  assert.equal(withKey(server.publicKey()), null, 'the real signer passes');
+  assert.equal(withKey(Keypair.random().publicKey()), 'sep10.error.signingKey');
+});
+
+test('registering an account a server already holds becomes the PUT the spec asks for', async () => {
+  // SEP-30 makes POST-on-existing a 409 and points at PUT. That state is reachable and
+  // ordinary: an enrolment that registered with both servers and then failed before the
+  // transaction reached the ledger is exactly what a person retries from.
+  const { calls, restore } = stubFetch({});
+  const stubbed = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (init?.method === 'POST' && String(input).includes('/accounts/')) {
+      return new Response(JSON.stringify({ error: 'This account is already registered for recovery.' }), { status: 409 });
+    }
+    return stubbed(input as never, init);
+  }) as typeof fetch;
+
+  let signers: [string, string];
+  try {
+    signers = await registerForRecovery(CFG, SERVERS, ME, me.secret(), 'person@example.com');
+  } finally {
+    restore();
+  }
+
+  // The signer still comes back — which is the whole reason the flow calls this — and it
+  // came from the PUT rather than from a second registration.
+  assert.deepEqual(signers, [SIGNER_A, SIGNER_B]);
+  assert.equal(calls.filter((c) => c.method === 'PUT').length, 2);
+});
+
+/* ------------------------------ discovery ---------------------------------- */
+
+/*
+ * SEP-30 defines no discovery at all, so what a wallet knows about a server before it
+ * trusts it comes from SEP-10's stellar.toml. The parser is deliberately small: it is fed
+ * by a host the user can type into a settings field, so everything it does not understand
+ * must come back absent rather than defaulted — absent is refused upstream, a default is
+ * a check that passes against whoever answered.
+ */
+
+test('the two fields that matter are read, and the rest is ignored', () => {
+  const toml = parseStellarToml(
+    [
+      '# a comment',
+      'VERSION = "2.7.0"',
+      'NETWORK_PASSPHRASE = "Public Global Stellar Network ; September 2015"',
+      'WEB_AUTH_ENDPOINT = "https://recovery.example.org/auth"',
+      `SIGNING_KEY = "${SIGNER_A}"`,
+      'UNRELATED = "whatever"',
+    ].join('\n'),
+  );
+  assert.equal(toml.webAuthEndpoint, 'https://recovery.example.org/auth');
+  assert.equal(toml.signingKey, SIGNER_A);
+  // A passphrase contains a semicolon and, in the mainnet one, no '#' — but the quoting
+  // rule is what keeps any of it from being read as a comment.
+  assert.equal(toml.networkPassphrase, 'Public Global Stellar Network ; September 2015');
+});
+
+test('a key inside a table cannot masquerade as the server\u2019s own', () => {
+  // Parsing stops at the first table header. A SIGNING_KEY in a [[CURRENCIES]] block is a
+  // different key with the same name, and reading on would let it overwrite the real one.
+  const toml = parseStellarToml(
+    [`SIGNING_KEY = "${SIGNER_A}"`, '', '[[CURRENCIES]]', `SIGNING_KEY = "${SIGNER_B}"`].join('\n'),
+  );
+  assert.equal(toml.signingKey, SIGNER_A);
+});
+
+test('a malformed or insecure value is absent, never a best guess', () => {
+  const toml = parseStellarToml(
+    ['WEB_AUTH_ENDPOINT = "http://recovery.example.org/auth"', 'SIGNING_KEY = "not-a-stellar-key"'].join('\n'),
+  );
+  // http:// is not a transport to send a token over, and a key that is not a key would be
+  // compared against a challenge source and never match — failing later, and less clearly.
+  assert.equal(toml.webAuthEndpoint, undefined);
+  assert.equal(toml.signingKey, undefined);
+});
+
+test('two servers on different hosts still name ONE wallet domain', async () => {
+  // The check that matters is `loadRecoveryServers` requiring both to report the SAME
+  // home domain — it is what makes a server's claim about itself worth anything, since
+  // whoever controls one cannot change what the other says. Taking the home domain from
+  // the host each TOML was fetched from would make the pair disagree by construction and
+  // refuse every configuration, including the correct one.
+  const toml = (host: string) =>
+    [
+      'NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"',
+      `WEB_AUTH_ENDPOINT = "https://${host}/api/sep10/auth"`,
+      `SIGNING_KEY = "${server.publicKey()}"`,
+      `HOME_DOMAIN = "${HOME}"`,
+    ].join('\n');
+
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    const host = new URL(String(input)).host;
+    return new Response(toml(host), { status: 200, headers: { 'Content-Type': 'text/plain' } });
+  }) as typeof fetch;
+
+  let pair: Awaited<ReturnType<typeof describeServer>>[];
+  try {
+    pair = await Promise.all(
+      (['a', 'b'] as const).map((role) => describeServer(CFG, role, `https://recovery-${role}.cosmospay.lat`)),
+    );
+  } finally {
+    globalThis.fetch = real;
+  }
+
+  assert.equal(pair[0].homeDomain, HOME);
+  assert.equal(pair[0].homeDomain, pair[1].homeDomain, 'the pair must agree, or no wallet can enrol');
+  // They are still distinct servers in every way that matters.
+  assert.notEqual(pair[0].webAuthDomain, pair[1].webAuthDomain);
+  assert.equal(pair[0].signingKey, server.publicKey(), 'the published key is carried through to the challenge check');
+  assert.equal(pair[0].sep30Base, 'https://recovery-a.cosmospay.lat/api/recovery');
 });

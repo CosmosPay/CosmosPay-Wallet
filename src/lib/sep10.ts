@@ -54,6 +54,17 @@ export interface ChallengeExpectation {
   homeDomain: string;
   /** THIS server's host. What stops a challenge minted for its sibling being replayed here. */
   webAuthDomain: string;
+  /**
+   * The server's `SIGNING_KEY`, from its `/.well-known/stellar.toml`.
+   *
+   * SEP-10 makes this the account that sources and signs the challenge, and checking it is
+   * what turns the exchange from a ritual into a proof: without it the wallet knows the
+   * challenge is well formed and unsubmittable, but not that it came from the server it
+   * believes it is authenticating to. Optional only because a deployment that publishes no
+   * TOML cannot be checked against one — and `undefined` skips the check rather than
+   * inventing a key, which would pass against whoever answered.
+   */
+  signingKey?: string;
 }
 
 const utf8 = (v: unknown): string => {
@@ -99,6 +110,11 @@ export function assertSafeChallenge(
   // carrying the whole file on its own.
   if (tx.source.startsWith('M')) throw new Sep10Error('sep10.error.ourSource');
   if (tx.source === expect.account) throw new Sep10Error('sep10.error.ourSource');
+
+  // And when the server publishes which key that is, it must BE that key. Everything else
+  // here establishes that the challenge is harmless to sign; this is the only check that
+  // establishes who is asking. Skipped when no TOML named a key, never defaulted.
+  if (expect.signingKey && tx.source !== expect.signingKey) throw new Sep10Error('sep10.error.signingKey');
 
   if (tx.memo && tx.memo.type !== 'none') throw new Sep10Error('sep10.error.memo');
 
