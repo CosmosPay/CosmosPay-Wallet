@@ -45,7 +45,18 @@ export interface PendingCode {
   via: SignInMethod;
 }
 
-export function useSignIn(t: TFn, flash: (msg: string, kind?: 'ok' | 'err' | 'info') => void) {
+export function useSignIn(
+  t: TFn,
+  flash: (msg: string, kind?: 'ok' | 'err' | 'info') => void,
+  /**
+   * The key to present when the community server serves the sign-in.
+   *
+   * A getter, not a value: it is read at call time, so switching network between
+   * opening a sign-in and finishing it presents the key for the network the
+   * wallet is actually on. On the platform backend nothing reads it.
+   */
+  accessKey: () => string | null = () => null,
+) {
   const [phase, setPhase] = useState<SignInPhase>('idle');
   const [url, setUrl] = useState<string | null>(null);
   const [pendingCode, setPendingCode] = useState<PendingCode | null>(null);
@@ -55,7 +66,7 @@ export function useSignIn(t: TFn, flash: (msg: string, kind?: 'ok' | 'err' | 'in
   /** Ask the platform what it offers. On failure, offer nothing rather than a guess. */
   const loadMethods = useCallback(async () => {
     try {
-      const res = await signInProviders();
+      const res = await signInProviders(accessKey());
       setMethods({
         providers: SIGN_IN_PROVIDERS.filter((p) => res.providers.includes(p)),
         email: res.email,
@@ -94,9 +105,10 @@ export function useSignIn(t: TFn, flash: (msg: string, kind?: 'ok' | 'err' | 'in
     async (hs: SignInHandshake): Promise<SignInReady | null> => {
       try {
         setPhase('waiting');
-        await waitForSignIn(hs, () => abort.current);
+        // The two `undefined`s keep the injectable sleep/poll seams at their defaults.
+        await waitForSignIn(hs, () => abort.current, undefined, undefined, accessKey());
         setPhase('claiming');
-        const claimed = await claimSignIn(hs);
+        const claimed = await claimSignIn(hs, accessKey());
         await clearSignInHandshake();
         if (claimed.status === 'verify_email') {
           setPendingCode({ claimToken: claimed.claimToken, email: claimed.email, via: hs.provider });
@@ -132,7 +144,7 @@ export function useSignIn(t: TFn, flash: (msg: string, kind?: 'ok' | 'err' | 'in
       setPhase('opening');
       let opened: Awaited<ReturnType<typeof openSignIn>>;
       try {
-        opened = await openSignIn(provider);
+        opened = await openSignIn(provider, accessKey());
         await saveSignInHandshake(opened.handshake);
       } catch (e) {
         tab.cancel();
@@ -160,7 +172,7 @@ export function useSignIn(t: TFn, flash: (msg: string, kind?: 'ok' | 'err' | 'in
     async (email: string): Promise<boolean> => {
       setPhase('opening');
       try {
-        const sent = await signInEmailStart(email.trim().toLowerCase());
+        const sent = await signInEmailStart(email.trim().toLowerCase(), accessKey());
         setPendingCode({ claimToken: sent.claimToken, email: email.trim().toLowerCase(), via: 'email' });
         setPhase('code');
         return true;
@@ -179,7 +191,7 @@ export function useSignIn(t: TFn, flash: (msg: string, kind?: 'ok' | 'err' | 'in
       if (!pendingCode) return null;
       setPhase('verifying');
       try {
-        const res = await signInEmailVerify({ claimToken: pendingCode.claimToken, code });
+        const res = await signInEmailVerify({ claimToken: pendingCode.claimToken, code }, accessKey());
         if (res.status === 'ready') {
           setPendingCode(null);
           setPhase('idle');

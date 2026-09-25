@@ -950,7 +950,7 @@ export function useWalletStore() {
   }, []);
 
   /** Where a sign-in is and what this deployment offers — see `state/useSignIn.ts`. */
-  const signIn = useSignIn(t, flash);
+  const signIn = useSignIn(t, flash, () => cachedPublicKey(networkEnv(network)));
 
   /** See {@link SignInDraft}: a finished sign-in waiting for its password. */
   const [signInDraft, setSignInDraft] = useState<SignInDraft | null>(null);
@@ -1065,6 +1065,7 @@ export function useWalletStore() {
         secret: acc.secret,
         backup: box,
         replaceBackup: draft.replace,
+        accessKey: cachedPublicKey(networkEnv(network)),
       });
       if (res.status === 'backup_conflict') {
         flash(t('backup.conflict'), 'err');
@@ -2945,6 +2946,7 @@ export function useWalletStore() {
             account: address,
             backup: box,
             replaceBackup: true,
+            accessKey: cachedPublicKey(networkEnv(network)),
           });
           if (res.status === 'backup_conflict') {
             flash(t('backup.conflict'), 'err');
@@ -4274,7 +4276,11 @@ export function useWalletStore() {
           const stale: string[] = [];
           for (const b of backups) {
             try {
-              await storeBackupBox({ secret: b.secret, box: b.box });
+              await storeBackupBox({
+                secret: b.secret,
+                box: b.box,
+                accessKey: cachedPublicKey(networkEnv(network)),
+              });
             } catch (e) {
               stale.push(b.name);
               reportError(EVENT.backupUpdateFailed, e);
@@ -4491,6 +4497,7 @@ export function useWalletStore() {
             // key's own — see `finishSignIn`. For every other wallet the two are equal and
             // passing it changes nothing.
             account: backup.stellarAddress,
+            accessKey: cachedPublicKey(networkEnv(network)),
           });
           if (res.status !== 'ready') throw new Error(t('backup.conflict'));
           // On a first run the backup's password becomes this device's password too, so the

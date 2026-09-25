@@ -34,7 +34,7 @@
  */
 import { Keypair } from '@stellar/stellar-sdk';
 import { ApiRequestError } from '@/lib/apiError';
-import { devPlatformUrl } from '@/lib/endpoints';
+import { walletApiBase } from '@/lib/endpoints';
 import { tNow } from '@/lib/i18n';
 import { newPkce } from '@/lib/pkce';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
@@ -96,12 +96,18 @@ export function signInErrorKey(reason: SignInError['reason'], detail: string | n
  * URL that is not https before it gets anywhere near the OS opener — this is the boundary
  * where a string from the network becomes a launched program.
  */
-export async function openSignIn(provider: SignInProvider): Promise<{ authorizationUrl: string; handshake: SignInHandshake }> {
+export async function openSignIn(
+  provider: SignInProvider,
+  accessKey: string | null = null,
+): Promise<{ authorizationUrl: string; handshake: SignInHandshake }> {
   const pkce = await newPkce();
-  const opened = await signInAuthorize({ provider, codeChallenge: pkce.challenge, codeChallengeMethod: pkce.method });
+  const opened = await signInAuthorize(
+    { provider, codeChallenge: pkce.challenge, codeChallengeMethod: pkce.method },
+    accessKey,
+  );
   if (!isHttpsUrl(opened.authorizationUrl)) {
     throw new ApiRequestError(
-      `${devPlatformUrl()}/api/wallet/auth/oauth/authorize`,
+      `${walletApiBase()}/auth/oauth/authorize`,
       502,
       'bad_authorization_url',
       tNow('signin.error.badUrl'),
@@ -152,7 +158,11 @@ export async function waitForSignIn(
   handshake: SignInHandshake,
   shouldStop: () => boolean,
   sleep: (ms: number) => Promise<void> = defaultSleep,
-  poll: (state: string) => Promise<{ status: string; error?: string }> = signInPoll,
+  // `accessKey` is the SECOND argument rather than a closed-over one so the
+  // injected poll in tests keeps its position. A stub that ignores it still
+  // matches, which is what keeps this seam cheap.
+  poll: (state: string, accessKey?: string | null) => Promise<{ status: string; error?: string }> = signInPoll,
+  accessKey: string | null = null,
 ): Promise<void> {
   const deadline = handshake.startedAt + SIGN_IN_POLL_TIMEOUT_MS;
   for (;;) {
@@ -161,7 +171,7 @@ export async function waitForSignIn(
 
     let res: { status: string; error?: string };
     try {
-      res = await poll(handshake.state);
+      res = await poll(handshake.state, accessKey);
     } catch (e) {
       if (e instanceof ApiRequestError && e.status === 429) {
         const after = 'retryAfterMs' in e ? (e as { retryAfterMs: number | null }).retryAfterMs : null;
@@ -179,8 +189,11 @@ export async function waitForSignIn(
 }
 
 /** Redeem a handshake the platform reported `authorized`. */
-export async function claimSignIn(handshake: SignInHandshake): Promise<Exclude<SignInClaim, { status: 'pending' | 'failed' | 'expired' }>> {
-  const res = await signInClaim({ state: handshake.state, codeVerifier: handshake.verifier });
+export async function claimSignIn(
+  handshake: SignInHandshake,
+  accessKey: string | null = null,
+): Promise<Exclude<SignInClaim, { status: 'pending' | 'failed' | 'expired' }>> {
+  const res = await signInClaim({ state: handshake.state, codeVerifier: handshake.verifier }, accessKey);
   if (res.status === 'failed') throw new SignInError('failed', res.error);
   if (res.status === 'expired' || res.status === 'pending') throw new SignInError('expired');
   return res;
@@ -242,6 +255,8 @@ export async function finishSignIn(input: {
   account?: string;
   backup?: string;
   replaceBackup?: boolean;
+  /** Presented only when the community server serves the sign-in — see `signInHeaders`. */
+  accessKey?: string | null;
 }): Promise<SignInFinish> {
   const stellarAddress = input.account ?? Keypair.fromSecret(input.secret).publicKey();
   const signedAt = new Date().toISOString();
@@ -251,18 +266,27 @@ export async function finishSignIn(input: {
     signature: signChallenge(input.secret, finishMessage(input.email, stellarAddress, signedAt)),
     ...(input.backup !== undefined ? { backup: input.backup } : {}),
     ...(input.replaceBackup ? { replaceBackup: true } : {}),
-  });
+  },
+  input.accessKey ?? null);
 }
 
 /** Step 3: store a re-sealed box. The signature by the box's own key is the credential. */
-export async function replaceBackup(input: { secret: string; box: string; account?: string }): Promise<void> {
+export async function replaceBackup(input: {
+  secret: string;
+  box: string;
+  account?: string;
+  accessKey?: string | null;
+}): Promise<void> {
   // `account` for a recovered wallet, exactly as in `finishSignIn` above.
   const stellarAddress = input.account ?? Keypair.fromSecret(input.secret).publicKey();
   const signedAt = new Date().toISOString();
-  await putBackup({
-    stellarAddress,
-    box: input.box,
-    signedAt,
-    signature: signChallenge(input.secret, await backupMessage(stellarAddress, input.box, signedAt)),
-  });
+  await putBackup(
+    {
+      stellarAddress,
+      box: input.box,
+      signedAt,
+      signature: signChallenge(input.secret, await backupMessage(stellarAddress, input.box, signedAt)),
+    },
+    input.accessKey ?? null,
+  );
 }

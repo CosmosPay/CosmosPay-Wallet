@@ -46,6 +46,7 @@ export interface EndpointOverrides {
   gatewayEntry?: string; // gateway entry prefix, e.g. /cosmos-api
   recoveryAUrl?: string; // SEP-30 recovery server A
   recoveryBUrl?: string; // SEP-30 recovery server B — a DIFFERENT deployment, always
+  walletAuthBackend?: string; // 'platform' | 'gateway' — who serves the sign-in
 }
 
 export function devModeEnabled(): boolean {
@@ -185,3 +186,39 @@ export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; 
     getDefault: () => ENV.PUBLIC_COSMOS_RECOVERY_B_URL || DEFAULT_RECOVERY_B_URL,
   },
 ];
+
+/* --------------------------- the sign-in backend --------------------------- */
+
+/**
+ * Which backend serves the wallet's own sign-in.
+ *
+ * The sign-in moved from the developer platform to the community server, which
+ * is the piece a developer can self-host — the platform being required made our
+ * console a mandatory dependency of an otherwise standalone stack, and left a
+ * self-hoster unable to register their own Google or GitHub app.
+ *
+ * It is a switch rather than a rewrite because the two are the SAME protocol at
+ * two addresses: `'gateway'` and `'platform'` differ in a URL prefix and in
+ * whether a key is presented, and nothing else. A deployment that finds a
+ * problem flips it back without shipping a build.
+ *
+ * Everything else the platform serves — `/api/assets`, `/api/public-key`,
+ * `/api/telemetry`, the recovery sponsorship, and the legacy Pollar routes —
+ * stays on `devPlatformUrl()` and is unaffected by this.
+ */
+export type WalletAuthBackend = 'platform' | 'gateway';
+
+export const walletAuthBackend = (): WalletAuthBackend =>
+  resolve('walletAuthBackend', ENV.PUBLIC_COSMOS_WALLET_AUTH_BACKEND || undefined, 'platform') === 'gateway'
+    ? 'gateway'
+    : 'platform';
+
+/**
+ * The prefix every wallet sign-in route hangs off.
+ *
+ * The paths after it are identical on both sides (`/auth/oauth/authorize`,
+ * `/backup`, …), which is the whole reason this is one string and not two sets
+ * of call sites.
+ */
+export const walletApiBase = (): string =>
+  walletAuthBackend() === 'gateway' ? `${gatewayApi()}/v1/wallet` : `${devPlatformUrl()}/api/wallet`;

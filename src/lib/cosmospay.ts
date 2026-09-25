@@ -35,7 +35,7 @@ import { Keypair } from '@stellar/stellar-sdk';
 // per request as developer-mode override -> PUBLIC_* env -> same-origin default,
 // so a dev can repoint them live from Settings without rebuilding. The gateway
 // still exposes the payments API behind an entry prefix (default `/cosmos-api`).
-import { devPlatformUrl, gatewayApi } from '@/lib/endpoints';
+import { devPlatformUrl, gatewayApi, walletApiBase, walletAuthBackend } from '@/lib/endpoints';
 import { newTraceId } from '@/lib/trace';
 
 /** Default slippage tolerance for swaps (0.5%). */
@@ -657,65 +657,82 @@ export type SignInFinish =
   | { status: 'ready'; account: 'created' | 'linked'; organizationId: string; keys: { dev: string | null; prod: string | null } }
   | { status: 'backup_conflict'; stellarAddress: string };
 
-/** `GET /api/wallet/auth/providers` — what this deployment can offer. */
-export async function signInProviders(): Promise<{ providers: string[]; email: boolean }> {
-  return getPlatformJson(`${devPlatformUrl()}/api/wallet/auth/providers`, SignInProvidersShape);
+/** `GET {walletApiBase}/auth/providers` — what this deployment can offer. */
+export async function signInProviders(accessKey: string | null = null): Promise<{ providers: string[]; email: boolean }> {
+  return getPlatformJson(`${walletApiBase()}/auth/providers`, SignInProvidersShape, signInHeaders(accessKey));
 }
 
 /** `POST /api/wallet/auth/oauth/authorize`. */
-export async function signInAuthorize(body: {
-  provider: SignInProvider;
-  codeChallenge: string;
-  codeChallengeMethod: string;
-}): Promise<{ state: string; authorizationUrl: string; expiresAt: string }> {
-  return postJson(`${devPlatformUrl()}/api/wallet/auth/oauth/authorize`, body, {}, true, SignInAuthorizationShape);
+export async function signInAuthorize(
+  body: {
+    provider: SignInProvider;
+    codeChallenge: string;
+    codeChallengeMethod: string;
+  },
+  accessKey: string | null = null,
+): Promise<{ state: string; authorizationUrl: string; expiresAt: string }> {
+  return postJson(`${walletApiBase()}/auth/oauth/authorize`, body, signInHeaders(accessKey), true, SignInAuthorizationShape);
 }
 
 /** `GET /api/wallet/auth/oauth/session/{state}` — a status, never an identity. */
-export async function signInPoll(state: string): Promise<{ status: string; error?: string }> {
+export async function signInPoll(state: string, accessKey: string | null = null): Promise<{ status: string; error?: string }> {
   return getPlatformJson(
-    `${devPlatformUrl()}/api/wallet/auth/oauth/session/${encodeURIComponent(state)}`,
+    `${walletApiBase()}/auth/oauth/session/${encodeURIComponent(state)}`,
     SignInPollShape,
+    signInHeaders(accessKey),
   );
 }
 
 /** `POST /api/wallet/auth/oauth/claim` — the verifier is the credential. */
-export async function signInClaim(body: { state: string; codeVerifier: string }): Promise<SignInClaim> {
-  return postJson(`${devPlatformUrl()}/api/wallet/auth/oauth/claim`, body, {}, true, SignInClaimShape);
+export async function signInClaim(
+  body: { state: string; codeVerifier: string },
+  accessKey: string | null = null,
+): Promise<SignInClaim> {
+  return postJson(`${walletApiBase()}/auth/oauth/claim`, body, signInHeaders(accessKey), true, SignInClaimShape);
 }
 
 /** `POST /api/wallet/auth/email/start`. */
-export async function signInEmailStart(email: string): Promise<{ claimToken: string; expiresInSeconds: number }> {
-  return postJson(`${devPlatformUrl()}/api/wallet/auth/email/start`, { email }, {}, true, SignInCodeSentShape);
+export async function signInEmailStart(
+  email: string,
+  accessKey: string | null = null,
+): Promise<{ claimToken: string; expiresInSeconds: number }> {
+  return postJson(`${walletApiBase()}/auth/email/start`, { email }, signInHeaders(accessKey), true, SignInCodeSentShape);
 }
 
 /** `POST /api/wallet/auth/email/verify` — wrong codes are counted server-side. */
-export async function signInEmailVerify(body: { claimToken: string; code: string }): Promise<SignInCodeResult> {
-  return postJson(`${devPlatformUrl()}/api/wallet/auth/email/verify`, body, {}, true, SignInCodeResultShape);
+export async function signInEmailVerify(
+  body: { claimToken: string; code: string },
+  accessKey: string | null = null,
+): Promise<SignInCodeResult> {
+  return postJson(`${walletApiBase()}/auth/email/verify`, body, signInHeaders(accessKey), true, SignInCodeResultShape);
 }
 
-/** `POST /api/wallet/auth/finish` — the session token plus a signature by `stellarAddress`. */
+/** `POST {walletApiBase}/auth/finish` — the session token plus a signature by `stellarAddress`. */
 export async function signInFinish(
   sessionToken: string,
   body: { stellarAddress: string; signedAt: string; signature: string; backup?: string; replaceBackup?: boolean },
+  accessKey: string | null = null,
 ): Promise<SignInFinish> {
   return postJson(
-    `${devPlatformUrl()}/api/wallet/auth/finish`,
+    `${walletApiBase()}/auth/finish`,
     body,
-    { Authorization: `Bearer ${sessionToken}` },
+    { Authorization: `Bearer ${sessionToken}`, ...signInHeaders(accessKey) },
     true,
     SignInFinishShape,
   );
 }
 
-/** `PUT /api/wallet/backup` — a signature by the backup's own address is the credential. */
-export async function putBackup(body: {
-  stellarAddress: string;
-  box: string;
-  signedAt: string;
-  signature: string;
-}): Promise<{ status: 'updated' }> {
-  return postJson(`${devPlatformUrl()}/api/wallet/backup`, body, {}, true, BackupUpdatedShape, 'PUT');
+/** `PUT {walletApiBase}/backup` — a signature by the backup's own address is the credential. */
+export async function putBackup(
+  body: {
+    stellarAddress: string;
+    box: string;
+    signedAt: string;
+    signature: string;
+  },
+  accessKey: string | null = null,
+): Promise<{ status: 'updated' }> {
+  return postJson(`${walletApiBase()}/backup`, body, signInHeaders(accessKey), true, BackupUpdatedShape, 'PUT');
 }
 
 /* ------------------- account recovery (SEP-10 + SEP-30) ------------------ */
@@ -917,6 +934,25 @@ async function getPlatformJson<T>(url: string, shape: Check<unknown>, headers: R
 
 function authHeaders(apiKey: string): Record<string, string> {
   return { Authorization: `Bearer ${apiKey}` };
+}
+
+/**
+ * What a sign-in call presents.
+ *
+ * On the platform these routes take no credential at all. Behind the gateway
+ * they sit past APISIX key-auth, so they need one — and the one a wallet has
+ * before it has an account is the SHARED public key, which is exactly what those
+ * routes are marked to admit.
+ *
+ * It goes in `apikey`, not `Authorization`, because `finish` already spends
+ * `Authorization` on the sign-in's session token and one header cannot carry
+ * both. APISIX accepts either, which is the only reason this works at all.
+ *
+ * Nothing is presented on the platform path: a header it does not read can only
+ * ever confuse a log.
+ */
+function signInHeaders(accessKey: string | null): Record<string, string> {
+  return walletAuthBackend() === 'gateway' && accessKey ? { apikey: accessKey } : {};
 }
 
 /** Quote a swap. The commission is enforced server-side by the org's plan. */
