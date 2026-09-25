@@ -1,13 +1,13 @@
 /**
- * Response contracts for the wallet's own sign-in (`/api/wallet/auth/*` and
- * `PUT /api/wallet/backup`). See `lib/apiShape.ts` for why every response has one.
+ * Response contracts for the wallet's own sign-in (`/v1/wallet/auth/*` and
+ * `PUT /v1/wallet/backup` on the community server). See `lib/apiShape.ts` for why every response has one.
  *
  * What is asserted is what the wallet acts on: the `state` it polls and puts back in a URL,
  * the `sessionToken` it presents, the backup `box` it decrypts and the address it checks the
  * result against, and the keys it stores. `status` is always the discriminant, because every
  * branch in `lib/signIn.ts` and the store is taken on it.
  */
-import { account, arrayOf, bool, id, nullable, num, object, str, variant } from '@/lib/apiShape';
+import { account, arrayOf, bool, id, nullable, num, object, optional, str, variant } from '@/lib/apiShape';
 
 export const SignInProvidersShape = object({ providers: arrayOf(str), email: bool });
 
@@ -39,6 +39,8 @@ const Ready = object({
   backup: nullable(object({ stellarAddress: account, box: id, updatedAt: str })),
   sessionToken: id,
   expiresInSeconds: num,
+  // Asserted when present: the wallet hands it on to the recovery servers.
+  idToken: optional(id),
 });
 
 export const SignInClaimShape = variant('status', {

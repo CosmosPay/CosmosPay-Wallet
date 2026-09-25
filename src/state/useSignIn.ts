@@ -37,7 +37,7 @@ import {
 } from '@/constants/signIn';
 import type { TFn } from '@/lib/i18n';
 
-/** An emailed code the platform is waiting for. In memory only — see the header. */
+/** An emailed code the server is waiting for. In memory only — see the header. */
 export interface PendingCode {
   claimToken: string;
   email: string;
@@ -49,13 +49,15 @@ export function useSignIn(
   t: TFn,
   flash: (msg: string, kind?: 'ok' | 'err' | 'info') => void,
   /**
-   * The key to present when the community server serves the sign-in.
+   * The key every sign-in call presents to APISIX — the shared public key, which is the
+   * only one a wallet has before it has an account.
    *
-   * A getter, not a value: it is read at call time, so switching network between
-   * opening a sign-in and finishing it presents the key for the network the
-   * wallet is actually on. On the platform backend nothing reads it.
+   * A getter, not a value: it is read at call time, so switching network between opening
+   * a sign-in and finishing it presents the key for the network the wallet is actually on.
+   * Async, because on a first run the key may still be on its way from the platform, and a
+   * call sent without one is a 401 from the gateway that never reaches the server.
    */
-  accessKey: () => string | null = () => null,
+  accessKey: () => Promise<string | null> = async () => null,
 ) {
   const [phase, setPhase] = useState<SignInPhase>('idle');
   const [url, setUrl] = useState<string | null>(null);
@@ -63,10 +65,10 @@ export function useSignIn(
   const [methods, setMethods] = useState<SignInOffer | null>(null);
   const abort = useRef(false);
 
-  /** Ask the platform what it offers. On failure, offer nothing rather than a guess. */
+  /** Ask the server what it offers. On failure, offer nothing rather than a guess. */
   const loadMethods = useCallback(async () => {
     try {
-      const res = await signInProviders(accessKey());
+      const res = await signInProviders(await accessKey());
       setMethods({
         providers: SIGN_IN_PROVIDERS.filter((p) => res.providers.includes(p)),
         email: res.email,
@@ -106,9 +108,9 @@ export function useSignIn(
       try {
         setPhase('waiting');
         // The two `undefined`s keep the injectable sleep/poll seams at their defaults.
-        await waitForSignIn(hs, () => abort.current, undefined, undefined, accessKey());
+        await waitForSignIn(hs, () => abort.current, undefined, undefined, await accessKey());
         setPhase('claiming');
-        const claimed = await claimSignIn(hs, accessKey());
+        const claimed = await claimSignIn(hs, await accessKey());
         await clearSignInHandshake();
         if (claimed.status === 'verify_email') {
           setPendingCode({ claimToken: claimed.claimToken, email: claimed.email, via: hs.provider });
@@ -144,7 +146,7 @@ export function useSignIn(
       setPhase('opening');
       let opened: Awaited<ReturnType<typeof openSignIn>>;
       try {
-        opened = await openSignIn(provider, accessKey());
+        opened = await openSignIn(provider, await accessKey());
         await saveSignInHandshake(opened.handshake);
       } catch (e) {
         tab.cancel();
@@ -172,7 +174,7 @@ export function useSignIn(
     async (email: string): Promise<boolean> => {
       setPhase('opening');
       try {
-        const sent = await signInEmailStart(email.trim().toLowerCase(), accessKey());
+        const sent = await signInEmailStart(email.trim().toLowerCase(), await accessKey());
         setPendingCode({ claimToken: sent.claimToken, email: email.trim().toLowerCase(), via: 'email' });
         setPhase('code');
         return true;
@@ -191,7 +193,7 @@ export function useSignIn(
       if (!pendingCode) return null;
       setPhase('verifying');
       try {
-        const res = await signInEmailVerify({ claimToken: pendingCode.claimToken, code }, accessKey());
+        const res = await signInEmailVerify({ claimToken: pendingCode.claimToken, code }, await accessKey());
         if (res.status === 'ready') {
           setPendingCode(null);
           setPhase('idle');

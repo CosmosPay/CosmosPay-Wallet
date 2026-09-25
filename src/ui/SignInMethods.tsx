@@ -7,11 +7,15 @@ import type { SignInMethod, SignInOffer, SignInPhase, SignInProvider } from '@/c
 import { Spinner } from '@/ui/Spinner';
 import '@/styles/ui/sign-in-methods.css';
 
-/** Brand names, so not i18n keys — they read the same in every language. */
-const PROVIDER_LABEL: Record<SignInProvider, string> = { google: 'Google', github: 'GitHub' };
+/**
+ * Brand names, so not i18n keys — they read the same in every language. Authentik is shown
+ * as the account it signs people into, not as the software that runs it.
+ */
+const PROVIDER_LABEL: Record<SignInProvider, string> = { authentik: 'Cosmos Pay', google: 'Google', github: 'GitHub' };
 
 /**
- * The ways in — Google, GitHub, an emailed code — and the code prompt a sign-in can stop at.
+ * The ways in — Authentik, Google, GitHub, an emailed code — and the code prompt a sign-in
+ * can stop at.
  *
  * In `ui/` because two features show it: onboarding (`features/onboarding/SignIn.tsx`) and
  * moving an old Pollar wallet (`features/wallet/MigratePollar.tsx`). Presentational: every

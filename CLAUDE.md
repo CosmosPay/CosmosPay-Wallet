@@ -400,24 +400,46 @@ others.
 
 ## Signing in keeps the key here; the backup only the password opens
 
-"Continue with Google / GitHub / email" (`src/lib/signIn.ts`) proves WHO someone is. It never
-touches a key: a new wallet's seed is generated on the device, and a returning person gets
-back the box `src/lib/cloudBackup.ts` sealed on their last device — which only their password
-opens, and which the dev platform (its `wallet-auth` module, a separate repository) stores
-without being able to read. It replaced the Pollar login, which handed the key to Pollar's KMS.
-Seven rules:
+"Continue with Cosmos Pay / Google / GitHub / email" (`src/lib/signIn.ts`) proves WHO someone
+is. It never touches a key: a new wallet's seed is generated on the device, and a returning
+person gets back the box `src/lib/cloudBackup.ts` sealed on their last device — which only
+their password opens, and which the COMMUNITY SERVER (its wallet-auth module, a separate
+repository) stores without being able to read. It replaced the Pollar login, which handed the
+key to Pollar's KMS.
+
+**Where it lives.** Only on the community server, at `{gateway}{entry}/v1/wallet`
+(`walletApiBase()` in `lib/endpoints.ts`), because that is the piece that runs as replicas
+behind APISIX and that a developer can self-host. The developer platform issues API keys and
+shows metrics; it serves no part of signing in, and there is no switch to send it there — the
+flag that used to exist is gone. Two independent layers stand in front of every call: APISIX
+key-auth (the shared public key in `apikey`, awaited through `warmPublicKey` so a first run
+never sends none) proves a wallet is calling through the gateway, and the sign-in itself
+proves the person.
+
+**Cosmos Pay = Authentik.** The preferred door is the operator's OpenID Connect provider,
+shown as "Cosmos Pay" (`SIGN_IN_PROVIDERS[0]`). The community server runs it as a confidential
+client with its own PKCE and nonce and verifies the ID token against Authentik's published
+keys; Google and GitHub sit behind Authentik as sources. The direct Google/GitHub doors remain
+only for a deployment without Authentik, and `GET /v1/wallet/auth/providers` says which exist.
+
+Eight rules:
 
 - **An email that already has an account is only ever reached through its inbox.** A provider
-  proves who consented, not who opened the sign-in, so for an existing account the platform
+  proves who consented, not who opened the sign-in, so for an existing account the server
   also emails a code — and an existing account is where the backup worth stealing is. A new
   email gets in on the provider's word; the most a phished link buys there is an empty
   account.
+- **Authentik's ID token leaves the server only with an inbox proof.** `SignInReady.idToken` is
+  what the recovery servers accept as the person's identity, so the server hands it over only
+  from `email/verify` (never from a claim on the provider's word alone), and the wallet keeps
+  it in memory with the rest of the draft. A claim with `purpose: 'recovery'` forces the code
+  even for a new email.
 - **The backup's cost is not a caller's choice.** `sealForBackup` owns
-  `BACKUP_PBKDF2_ITERATIONS`, higher than the vault's because whoever reads the platform's
-  table gets unlimited offline guesses at every box in it; the platform refuses a box under
+  `BACKUP_PBKDF2_ITERATIONS`, higher than the vault's because whoever reads the server's
+  table gets unlimited offline guesses at every box in it; the server refuses a box under
   its own floor. `openBackup` also checks the result against the address the box was filed
   under — a genuine box for the wrong wallet is refused, not restored.
-- **The platform is told before the wallet is written.** `finishSignIn` goes first, signed by
+- **The server is told before the wallet is written.** `finishSignIn` goes first, signed by
   the key just generated or decrypted; the local write follows. The other order could leave
   a wallet on the device that nothing backs up.
 - **`replaceBackup` is only ever sent after the person saw what it gives up.** It is the
@@ -429,7 +451,8 @@ Seven rules:
   reported rather than turned into a failed password change.
 - **The two challenges are one contract across two repositories.** `finishMessage` and
   `backupMessage` are pinned to the same literals in `tests/unit/signIn.test.ts` and in the
-  platform's own test; change one side and both tests must change, or no sign-in can finish.
+  community server's own test; change one side and both tests must change, or no sign-in can
+  finish. `recoverySetupMessage` is the third, for the sponsored setup.
 - **A finished sign-in lives in memory.** Its session token can create an account; the store
   keeps it in `signInDraft` for as long as the screen that uses it and exposes a summary to
   components, never the token or the box.
@@ -464,8 +487,11 @@ one server alone (5) <  threshold (10) → one server can do nothing
 ```
 
 **Two deployments, and the wallet refuses a pair that is one.** Each recovery server is a
-separate deployment of the dev platform with its own keys and its own host
-(`PUBLIC_COSMOS_RECOVERY_A_URL` / `_B_URL`). `recoveryServers()` in `lib/endpoints.ts`
+separate deployment of the COMMUNITY SERVER (`RECOVERY_ROLE=a` / `=b`, its `src/recovery/`
+module) with its own keys, JWT secret, database and host (`PUBLIC_COSMOS_RECOVERY_A_URL` /
+`_B_URL`), and as many replicas of each as APISIX load-balances — nothing there is
+per-process state. The developer platform is not a recovery server and never was the right
+place for one. `recoveryServers()` in `lib/endpoints.ts`
 returns nothing when the two resolve to the same origin, and `loadRecoveryServers` refuses a
 pair on different networks, or one whose `web_auth_domain` is not the host that answered —
 because a signer is an entry on ONE ledger, and a mismatch discovered at recovery time is a
@@ -507,7 +533,7 @@ would pass any bound. The envelope must be, operation for operation:
 
 Each signer exactly once, both from the pair the servers reported, nothing else set on any
 operation, and no signature on it but the payer's. Both funding variants exist and both end
-here: the wallet builds the self-paid one and the platform builds the sponsored one, and the
+here: the wallet builds the self-paid one and the main community server builds the sponsored one (`POST /v1/wallet/recovery/setup`, never on a recovery server — its sponsor key is the operator's money), and the
 template checks the wallet's own build too — a builder that checked only the other side's
 envelope would be trusting its own code more than the thing that has to be right.
 
@@ -533,21 +559,32 @@ Three things that bit, each now a test in `tests/unit/recovery.test.ts`:
 
 **The wallet is a SEP-30 client, not a client of our servers.** Every path hangs off what a
 server says it is, never off a prefix the wallet builds: `RecoveryServer.sep30Base` is the
-SEP-30 base (`${sep30Base}/accounts/...`, which for our deployments is `/api/recovery` and for
-a standalone signer is the bare host) and `webAuthEndpoint` is the URL SEP-10 publishes.
-Hardcoding `/api/recovery` and `/api/sep10/auth` in `lib/cosmospay.ts` was the one thing that
-made the wallet unable to talk to any recovery server but ours — the bodies it sent and parsed
-were already the standard's. `describeServer` reads `/.well-known/stellar.toml` first and falls
-back to our own `/api/recovery/info`, and it invents nothing: a field that is missing stays
-missing and is refused here rather than defaulted.
+SEP-30 base (`${sep30Base}/accounts/...`) and `webAuthEndpoint` is the URL SEP-10 publishes,
+both read from `/.well-known/stellar.toml` — the base from its `[[RECOVERY_SERVERS]] ENDPOINT`
+(`src/lib/stellarToml.ts` reads that first entry and nothing else in any table). Hardcoding
+`/api/recovery` and `/api/sep10/auth` was what once made the wallet unable to talk to any
+recovery server but ours. `describeServer` reads the TOML and ONLY the TOML — the old
+`/api/recovery/info` fallback is gone with the platform's recovery module — and it invents
+nothing: `SIGNING_KEY`, `NETWORK_PASSPHRASE`, `HOME_DOMAIN`, the web-auth endpoint and the
+SEP-30 endpoint are all required, and the two URLs must be on the configured host.
 
-Two consequences worth keeping:
+Three consequences worth keeping:
 
-- **`SIGNING_KEY` is what makes SEP-10 a proof.** `assertSafeChallenge` takes it as an optional
-  expectation and refuses a challenge sourced by anything else. Everything else in that function
-  establishes that a challenge is harmless to sign; this is the only check that establishes who
-  is asking. Optional because a server with no TOML cannot be checked against one — and skipping
-  beats inventing a key, which would pass against whoever answered.
+- **`SIGNING_KEY` is what makes SEP-10 a proof.** `assertSafeChallenge` refuses a challenge
+  sourced by anything else. Everything else in that function establishes that a challenge is
+  harmless to sign; this is the only check that establishes who is asking. It used to be
+  optional for servers discovered without a TOML; there are none now, so a server that does
+  not publish one is refused at discovery instead.
+- **The inbox is proven to each server by that server.** Someone who lost their device holds
+  no key, so the recovery credential is an identity token each server mints for itself after
+  checking the inbox on its own: Authentik's ID token, verified against Authentik's published
+  keys and accepted ONCE per server (`identityTokensFromIdToken`), or — with no ID token —
+  that server's own emailed code (`startRecoveryCodes`, two codes on `RecoverAccount.tsx`).
+  What this replaced was an identity minted in exchange for a sign-in session and checked
+  with an HMAC secret that the sign-in server and BOTH recovery servers held: one leaked copy
+  was a recovery identity for every account. Because an ID token is single-use per server,
+  the store keeps the resulting identity tokens for the whole recovery
+  (`recoveryProofRef`, `RECOVERY_PROOF_TTL_MS`) instead of exchanging it again.
 - **The home domain comes from the server, never from its host.** The two servers are different
   hosts that name the same wallet, and `loadRecoveryServers` requires them to AGREE on it — that
   agreement is the entire value of the field, since whoever controls one cannot change what the
@@ -599,10 +636,9 @@ Three consequences of re-keying, each handled in one place and each easy to rein
 
 - **The address stops being derivable from the key.** `WalletEntry.publicKey` is the ACCOUNT;
   the key that signs is whatever the vault holds. `finishSignIn` and `replaceBackup` take an
-  optional `account` for exactly this, and the platform accepts the signature because that key
-  is one of the account's current signers (its own account-signers module, in the dev-platform
-  repository, mainnet only and on the operator's Horizon — a caller-chosen network would be a
-  caller-minted signer).
+  optional `account` for exactly this, and the community server accepts the signature because
+  that key is one of the account's current signers (its account-signers module, on the one
+  Horizon the operator configures — never one the request names).
 - **The backup box records the account inside its ciphertext**, not beside it, so a later
   restore compares against the right address instead of failing as a mismatch. A box without
   the field is one whose key IS its address; the fallback loosens nothing.

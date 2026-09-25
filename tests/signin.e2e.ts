@@ -1,5 +1,5 @@
 /**
- * The wallet's own sign-in, end to end in a real browser, against a mocked dev platform.
+ * The wallet's own sign-in, end to end in a real browser, against a mocked community server.
  *
  *   npm run build && npm run serve:dist     # then, in another shell:
  *   npm run test:e2e:signin
@@ -7,12 +7,12 @@
  * Two devices, one account. The first signs in by email, creates a wallet and uploads its
  * backup; the second signs in as the same person and restores THAT wallet from the box the
  * first one uploaded. Everything the wallet does is real — the SEP-5 seed, the PBKDF2 +
- * AES-GCM backup, the signatures — and only `/api/wallet/auth/*` is answered by this file,
+ * AES-GCM backup, the signatures — and only `/v1/wallet/auth/*` is answered by this file,
  * which is also what lets it inspect exactly what the wallet sent.
  *
  * What it proves that no unit test can: that the screens route a sign-in the way
  * `routeSignIn` says, that a wrong backup password is refused before anything reaches the
- * platform, and that the second device ends up with the SAME address as the first.
+ * server, and that the second device ends up with the SAME address as the first.
  */
 import { chromium, type Page, type Route } from 'playwright';
 
@@ -26,20 +26,21 @@ interface Captured {
   auth: string | null;
 }
 
-/** Answer the platform's sign-in routes. `ready` is what a correct code proves. */
-async function mockPlatform(page: Page, ready: (email: string) => unknown, finishes: Captured[]) {
+/** Answer the community server's sign-in routes. `ready` is what a correct code proves. */
+async function mockServer(page: Page, ready: (email: string) => unknown, finishes: Captured[]) {
   const cors = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': '*',
     'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
     'Content-Type': 'application/json',
   };
+  // Bare bodies, as the community server answers — no `{ data }` envelope.
   const env = (data: unknown, code = 200) => ({
     status: code,
     headers: cors,
-    body: JSON.stringify({ data, code, status: 'success', message: 'OK' }),
+    body: JSON.stringify(data),
   });
-  await page.route('**/api/wallet/auth/**', async (route: Route) => {
+  await page.route('**/v1/wallet/auth/**', async (route: Route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
     const path = new globalThis.URL(req.url()).pathname;
@@ -65,7 +66,7 @@ async function signInWithEmail(page: Page) {
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
   await page.getByText('Entrar con Google, GitHub o email').click();
   await page.getByRole('button', { name: 'Continuar con Google' }).waitFor({ timeout: 10000 });
-  ok(await page.getByRole('button', { name: 'Continuar con GitHub' }).isVisible(), 'the providers the platform offers are shown');
+  ok(await page.getByRole('button', { name: 'Continuar con GitHub' }).isVisible(), 'the providers the server offers are shown');
   await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
   await page.getByRole('button', { name: 'Continuar con email' }).click();
   await page.getByText('Revisá tu correo').waitFor({ timeout: 10000 });
@@ -86,7 +87,7 @@ try {
   const a = await browser.newContext({ viewport: { width: 440, height: 880 }, locale: 'es-ES' }).then((c) => c.newPage());
   a.on('pageerror', (e) => pageErrors.push(e.message));
   const finishesA: Captured[] = [];
-  await mockPlatform(
+  await mockServer(
     a,
     (email) => ({
       status: 'ready',
@@ -129,7 +130,7 @@ try {
   const b = await browser.newContext({ viewport: { width: 440, height: 880 }, locale: 'es-ES' }).then((c) => c.newPage());
   b.on('pageerror', (e) => pageErrors.push(e.message));
   const finishesB: Captured[] = [];
-  await mockPlatform(
+  await mockServer(
     b,
     (email) => ({
       status: 'ready',
@@ -148,7 +149,7 @@ try {
   await pwd.fill('Wrong-pass-999');
   await b.getByRole('button', { name: 'Recuperar' }).click();
   await b.getByText('Esa no es la contraseña de esta wallet.').waitFor({ timeout: 30000 });
-  ok(finishesB.length === 0, 'a wrong backup password is refused before anything reaches the platform');
+  ok(finishesB.length === 0, 'a wrong backup password is refused before anything reaches the server');
   await pwd.fill(PASSWORD);
   await b.getByRole('button', { name: 'Recuperar' }).click();
   await b.getByRole('button', { name: 'Ver mi wallet' }).waitFor({ timeout: 30000 });

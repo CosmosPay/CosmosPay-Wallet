@@ -9,6 +9,8 @@ import { Desc } from '@/features/onboarding/Desc';
 import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
 import { shortAddr } from '@/lib/format';
 import { cx } from '@/lib/cx';
+import { isAccessCode, normalizeAccessCode } from '@/lib/validate';
+import { RECOVERY_SERVER_COUNT } from '@/constants/recovery';
 import '@/styles/features/onboarding/recover-account.css';
 
 /**
@@ -28,6 +30,11 @@ import '@/styles/features/onboarding/recover-account.css';
  * The list is the INTERSECTION of what both servers will act for. An account only one of
  * them knows cannot be recovered — one signature never reaches the threshold — so showing
  * it would be offering a button that fails at the last step.
+ *
+ * Before the list, each server has to be convinced of the inbox ON ITS OWN. A sign-in
+ * through Cosmos Pay's Authentik carries an ID token both can verify, and this screen asks
+ * nothing. Any other sign-in ends here with two codes, one from each server: two prompts
+ * rather than one, because a single code would be one party vouching to the other.
  */
 export function RecoverAccount({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -35,6 +42,10 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
   const [chosen, setChosen] = useState<string | null>(null);
   const [pwd, setPwd] = useState('');
   const [ack, setAck] = useState(false);
+  // One per server, filled with '' rather than left sparse: `every` skips holes, and a
+  // half-typed pair must not read as complete.
+  const [codes, setCodes] = useState<string[]>(() => Array<string>(RECOVERY_SERVER_COUNT).fill(''));
+  const pendingCodes = store.recoveryCodes;
 
   const { loadRecoverable } = store;
   useEffect(() => {
@@ -56,7 +67,29 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
       <BackBar title={t('recover.title')} onBack={store.goBack} />
       <Desc className="recover-desc">{t('recover.desc')}</Desc>
 
-      {accounts === null ? (
+      {pendingCodes ? (
+        <div className="glass-soft col g8 recover-codes">
+          <div className="recover-codes-title">{t('recover.codesTitle')}</div>
+          <div className="desc">{t('recover.codesDesc', { email: pendingCodes.email })}</div>
+          {Array.from({ length: pendingCodes.count }, (_, i) => (
+            <Field
+              key={i}
+              label={t('recover.codeLabel', { role: String.fromCharCode(65 + i) })}
+              value={codes[i] ?? ''}
+              onChange={(v) =>
+                setCodes((cur) => cur.map((c, j) => (j === i ? normalizeAccessCode(v) : c)))
+              }
+              placeholder={t('cosmospay.codePlaceholder')}
+            />
+          ))}
+          <PrimaryButton
+            disabled={store.busy || !codes.every(isAccessCode)}
+            onClick={() => void store.submitRecoveryCodes(codes)}
+          >
+            {store.busy ? <Spinner /> : t('recover.codesCta')}
+          </PrimaryButton>
+        </div>
+      ) : accounts === null ? (
         <div className="row recover-loading">
           <Spinner />
           <span>{t('recover.looking')}</span>
@@ -91,11 +124,13 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
       )}
 
       <div className="spacer" />
-      <div className="kb-dock">
-        <PrimaryButton disabled={!ready} onClick={() => address && void store.recoverWallet(address, pwd)}>
-          {store.busy ? <Spinner /> : t('recover.cta')}
-        </PrimaryButton>
-      </div>
+      {!pendingCodes && (
+        <div className="kb-dock">
+          <PrimaryButton disabled={!ready} onClick={() => address && void store.recoverWallet(address, pwd)}>
+            {store.busy ? <Spinner /> : t('recover.cta')}
+          </PrimaryButton>
+        </div>
+      )}
     </div>
   );
 }

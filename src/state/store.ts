@@ -61,6 +61,7 @@ import { FIAT_DECIMALS, fromMinorUnits } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
 import { sendableAssets, spendableCeiling } from '@/lib/balances';
 import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
+import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
 import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
@@ -112,7 +113,8 @@ import {
   buildRecoveryRemoval,
   buildRecoverySetup,
   collectSignatures,
-  identityTokens,
+  identityRoute,
+  identityTokensFromIdToken,
   loadRecoveryServers,
   recoverableAccounts,
   recoveryStateOf,
@@ -120,7 +122,9 @@ import {
   sequenceOf,
   signedRecoverySetup,
   signersToRemove,
+  startRecoveryCodes,
   updateRecoveryIdentities,
+  verifyRecoveryCode,
   type RecoverableAccount,
   type RecoveryState,
 } from '@/lib/recovery';
@@ -271,13 +275,13 @@ async function secretOf(s: Session): Promise<string> {
 export type SignInPurpose = 'onboarding' | 'add' | 'migrate';
 
 /**
- * A finished sign-in waiting for the one thing the platform cannot supply: a password.
+ * A finished sign-in waiting for the one thing the server cannot supply: a password.
  *
  * With a backup, that is the password it was sealed under, and the wallet is RESTORED. With
  * none — or when the person chose to start over — the wallet is CREATED here and its backup
  * sealed under the device's password (a first run chooses one on the password screen).
  *
- * In memory only, deliberately: `ready.sessionToken` is what lets the platform create an
+ * In memory only, deliberately: `ready.sessionToken` is what lets the server create an
  * account and put a backup under it. Closing the wallet here loses the sign-in, and the
  * person signs in again — nothing is spent by that, unlike the Pollar code it replaced.
  */
@@ -421,6 +425,18 @@ function registerStellarHandler(): void {
   } catch {
     /* not permitted here (insecure origin, etc.) — ignore */
   }
+}
+
+/**
+ * A recovery's identity tokens, when they belong to THIS sign-in and are still fresh — a
+ * little under the servers' own half hour, so a token is never presented stale.
+ */
+function freshProof(
+  proof: { key: string; tokens: string[]; at: number } | null,
+  sessionToken: string,
+): string[] | null {
+  if (!proof || proof.key !== sessionToken) return null;
+  return Date.now() - proof.at < RECOVERY_PROOF_TTL_MS ? proof.tokens : null;
 }
 
 export function useWalletStore() {
@@ -950,7 +966,7 @@ export function useWalletStore() {
   }, []);
 
   /** Where a sign-in is and what this deployment offers — see `state/useSignIn.ts`. */
-  const signIn = useSignIn(t, flash, () => cachedPublicKey(networkEnv(network)));
+  const signIn = useSignIn(t, flash, () => warmPublicKey(networkEnv(network)));
 
   /** See {@link SignInDraft}: a finished sign-in waiting for its password. */
   const [signInDraft, setSignInDraft] = useState<SignInDraft | null>(null);
@@ -1034,10 +1050,10 @@ export function useWalletStore() {
 
   /**
    * A NEW wallet for a sign-in: the seed is generated here, sealed for the backup under
-   * `password`, and only then is the platform told — the signature it needs is made by the
+   * `password`, and only then is the server told — the signature it needs is made by the
    * key that was just generated, which is what binds the account to it.
    *
-   * The platform is told BEFORE the wallet is written locally, on purpose. If the local
+   * The server is told BEFORE the wallet is written locally, on purpose. If the local
    * write then fails the backup is already safe and a restore brings the wallet back; the
    * other order could leave a funded-to-be wallet on the device that nothing backs up.
    *
@@ -1065,7 +1081,7 @@ export function useWalletStore() {
         secret: acc.secret,
         backup: box,
         replaceBackup: draft.replace,
-        accessKey: cachedPublicKey(networkEnv(network)),
+        accessKey: await warmPublicKey(networkEnv(network)),
       });
       if (res.status === 'backup_conflict') {
         flash(t('backup.conflict'), 'err');
@@ -2665,11 +2681,11 @@ export function useWalletStore() {
             const ready = await signIn.submitCode(opts.code);
             guardSession(epoch);
             if (!ready) return false; // the slice already said why
-            const built = await recoverySetupSponsored(ready.sessionToken, {
-              stellarAddress: address,
-              signers,
-              ...signedRecoverySetup(secret, address, signers),
-            });
+            const built = await recoverySetupSponsored(
+              ready.sessionToken,
+              { stellarAddress: address, signers, ...signedRecoverySetup(secret, address, signers) },
+              await warmPublicKey(networkEnv(network)),
+            );
             guardSession(epoch);
             xdr = built.transaction;
           } else {
@@ -2871,17 +2887,115 @@ export function useWalletStore() {
   /** The accounts the finished sign-in can recover, as both servers agree. */
   const [recoverable, setRecoverable] = useState<RecoverableAccount[] | null>(null);
 
-  const loadRecoverable = useCallback(async () => {
-    if (!signInDraft) return;
-    try {
+  /**
+   * Each server's identity token for THIS sign-in, once proven.
+   *
+   * Kept for the whole recovery — the listing and the signatures both spend it — because
+   * getting it again is not free: a server takes a given Authentik ID token once, so a
+   * remounted screen that exchanged it a second time would be refused, and a second round
+   * of emailed codes is a second round of email. Keyed by the sign-in it came from, so a
+   * new sign-in never reuses an old one's proof. In memory only, like the draft itself.
+   */
+  const recoveryProofRef = useRef<{ key: string; tokens: string[]; at: number } | null>(null);
+
+  /** The two emailed codes a recovery is waiting on, when that is the route it took. */
+  const [recoveryCodes, setRecoveryCodes] = useState<{ key: string; email: string; claims: string[] } | null>(null);
+
+  const listRecoverable = useCallback(
+    async (draft: SignInDraft, tokens: string[]) => {
       const servers = await loadRecoveryServers(network);
-      const tokens = await identityTokens(servers, signInDraft.ready.sessionToken);
+      recoveryProofRef.current = { key: draft.ready.sessionToken, tokens, at: Date.now() };
       setRecoverable(await recoverableAccounts(servers, tokens));
+    },
+    [network],
+  );
+
+  /**
+   * Prove the inbox to both servers, and list what they will recover.
+   *
+   * Authentik's ID token when the sign-in carried one — each server verifies it against
+   * Authentik's keys on its own. Otherwise each server emails its OWN code and the screen
+   * asks for both (`submitRecoveryCodes`); neither server ever takes the other's word, or
+   * the sign-in's, for who this is.
+   */
+  const loadRecoverable = useCallback(async () => {
+    const draft = signInDraft;
+    if (!draft) return;
+    try {
+      const cached = freshProof(recoveryProofRef.current, draft.ready.sessionToken);
+      if (cached) {
+        await listRecoverable(draft, cached);
+        return;
+      }
+      if (recoveryCodes?.key === draft.ready.sessionToken) return; // already waiting on codes
+
+      const servers = await loadRecoveryServers(network);
+      const route = identityRoute(servers, draft.ready.idToken);
+      if (!route) {
+        setRecoverable([]);
+        flash(t('recovery.error.noIdentityRoute'), 'err');
+        return;
+      }
+      if (route.kind === 'oidc') {
+        await listRecoverable(draft, await identityTokensFromIdToken(servers, draft.ready.idToken as string));
+        return;
+      }
+      const email = draft.ready.identity.email;
+      const claims = await startRecoveryCodes(servers, email);
+      setRecoveryCodes({ key: draft.ready.sessionToken, email, claims });
     } catch (e) {
       setRecoverable([]);
       flash((e as Error).message || t('recovery.error.generic'), 'err');
     }
-  }, [signInDraft, network, flash, t]);
+  }, [signInDraft, recoveryCodes, network, listRecoverable, flash, t]);
+
+  /**
+   * Answer both servers' codes, in role order.
+   *
+   * Both, or nothing is listed: an identity one server accepted and the other did not is
+   * half a threshold, and the list is the intersection of what both will act for anyway.
+   * A wrong code keeps the prompt; an expired or locked one starts the round again.
+   */
+  const submitRecoveryCodes = useCallback(
+    async (codes: string[]): Promise<boolean> => {
+      const draft = signInDraft;
+      const pending = recoveryCodes;
+      if (!draft || !pending || pending.key !== draft.ready.sessionToken) return false;
+      if (codes.length !== pending.claims.length || !codes.every(isAccessCode)) {
+        flash(t('recovery.error.badCode'), 'err');
+        return false;
+      }
+      try {
+        setBusy(true);
+        const servers = await loadRecoveryServers(network);
+        const tokens: string[] = [];
+        for (const [i, server] of servers.entries()) {
+          const res = await verifyRecoveryCode(server, pending.claims[i], codes[i]);
+          if (res.status === 'ready') {
+            tokens.push(res.token);
+            continue;
+          }
+          const role = server.role.toUpperCase();
+          if (res.status === 'invalid') {
+            flash(t('recover.codeInvalid', { role, n: res.attempts_left }), 'err');
+          } else {
+            setRecoveryCodes(null);
+            flash(t('recover.codeExpired', { role }), 'err');
+          }
+          return false;
+        }
+        setRecoveryCodes(null);
+        await listRecoverable(draft, tokens);
+        return true;
+      } catch (e) {
+        flash((e as Error).message || t('recovery.error.generic'), 'err');
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [signInDraft, recoveryCodes, network, listRecoverable, flash, t],
+  );
 
   /**
    * Put a new key on a recovered account and land it as a wallet on this device.
@@ -2911,7 +3025,14 @@ export function useWalletStore() {
         try {
           setBusy(true);
           const servers = await loadRecoveryServers(network);
-          const tokens = await identityTokens(servers, draft.ready.sessionToken);
+          // The proof the listing was built on. Not re-derived: an ID token is spent, and a
+          // recovery that outlived its identity tokens starts over rather than guessing.
+          const tokens = freshProof(recoveryProofRef.current, draft.ready.sessionToken);
+          if (!tokens) {
+            setRecoverable(null);
+            flash(t('recover.proofExpired'), 'err');
+            return false;
+          }
 
           // The key that will replace the lost one. A fresh mnemonic, because the old one
           // is exactly what is missing — and the person is told on the screen that it now
@@ -2940,13 +3061,13 @@ export function useWalletStore() {
             email: draft.ready.identity.email,
             secret: fresh.secret,
             // The ACCOUNT, not the new key's own address: what was recovered is the
-            // account, and the platform accepts the signature because that key is now one
-            // of its signers — see the dev platform's account-signers module, which is in
-            // a separate repository and so is named rather than linked.
+            // account, and the server accepts the signature because that key is now one
+            // of its signers — see the community server's account-signers module, which is
+            // in a separate repository and so is named rather than linked.
             account: address,
             backup: box,
             replaceBackup: true,
-            accessKey: cachedPublicKey(networkEnv(network)),
+            accessKey: await warmPublicKey(networkEnv(network)),
           });
           if (res.status === 'backup_conflict') {
             flash(t('backup.conflict'), 'err');
@@ -2964,6 +3085,7 @@ export function useWalletStore() {
           });
           setSignInDraft(null);
           setRecoverable(null);
+          recoveryProofRef.current = null;
           flash(t('recovery.recovered'), 'ok');
           return true;
         } catch (e) {
@@ -4279,7 +4401,7 @@ export function useWalletStore() {
               await storeBackupBox({
                 secret: b.secret,
                 box: b.box,
-                accessKey: cachedPublicKey(networkEnv(network)),
+                accessKey: await warmPublicKey(networkEnv(network)),
               });
             } catch (e) {
               stale.push(b.name);
@@ -4497,7 +4619,7 @@ export function useWalletStore() {
             // key's own — see `finishSignIn`. For every other wallet the two are equal and
             // passing it changes nothing.
             account: backup.stellarAddress,
-            accessKey: cachedPublicKey(networkEnv(network)),
+            accessKey: await warmPublicKey(networkEnv(network)),
           });
           if (res.status !== 'ready') throw new Error(t('backup.conflict'));
           // On a first run the backup's password becomes this device's password too, so the
@@ -4740,6 +4862,10 @@ export function useWalletStore() {
      */
     recoverable,
     loadRecoverable,
+    recoveryCodes: recoveryCodes && signInDraft && recoveryCodes.key === signInDraft.ready.sessionToken
+      ? { email: recoveryCodes.email, count: recoveryCodes.claims.length }
+      : null,
+    submitRecoveryCodes,
     recoverWallet,
 
     /* Moving an old Pollar wallet onto a key this device holds (`lib/pollarMigration.ts`). */

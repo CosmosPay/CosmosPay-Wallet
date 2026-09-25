@@ -8,22 +8,23 @@
  * a Stellar address would otherwise become a `setOptions` the guard refuses much later,
  * with a message about transaction shape rather than about the server that sent it.
  */
-import { account, arrayOf, bool, id, object, optional, str, xdr } from '@/lib/apiShape';
-
-export const RecoveryInfoShape = object({
-  role: str,
-  network: str,
-  network_passphrase: id,
-  home_domain: id,
-  web_auth_domain: id,
-  web_auth_endpoint: id,
-});
+import { account, arrayOf, bool, id, num, object, optional, str, variant, xdr } from '@/lib/apiShape';
 
 export const Sep10ChallengeShape = object({ transaction: xdr, network_passphrase: id });
 
 export const Sep10TokenShape = object({ token: id });
 
-export const RecoveryIdentityTokenShape = object({ token: id });
+/** One server's identity token, from an ID token or from its own emailed code. */
+export const RecoveryIdentityShape = object({ token: id, expires_in: num });
+
+export const RecoveryEmailStartedShape = object({ claim_token: id, expires_in: num });
+
+export const RecoveryEmailResultShape = variant('status', {
+  ready: object({ token: id, expires_in: num }),
+  invalid: object({ attempts_left: num }),
+  expired: object({}),
+  locked: object({}),
+});
 
 const RecoveryAccountShape = object({
   address: account,

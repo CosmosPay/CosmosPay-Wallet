@@ -19,7 +19,7 @@ import '@/styles/features/onboarding/sign-in-password.css';
  * that already has a password: that password seals the new backup, so the person keeps
  * one password everywhere.
  *
- * "Forgot the password?" is here and not hidden, because there is no reset: the platform
+ * "Forgot the password?" is here and not hidden, because there is no reset: the server
  * cannot open the backup, so the only way forward without the password is a NEW wallet
  * that replaces it. The screen says what that gives up — the wallet at that address, unless
  * the recovery phrase was written down somewhere — and asks for an explicit acknowledgement

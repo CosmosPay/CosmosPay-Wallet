@@ -1,5 +1,6 @@
 /**
- * The wallet's own sign-in: Google, GitHub or an emailed code — and the key stays here.
+ * The wallet's own sign-in: Authentik, Google, GitHub or an emailed code — and the key
+ * stays here. Served by the community server, through the gateway (`walletApiBase`).
  *
  * ## What replaced what
  *
@@ -19,15 +20,15 @@
  *     is where the backup worth stealing is. Ends in `ready`: the identity, whether an
  *     account exists, its backup, and a short-lived session token.
  *  2. `finishSignIn` — the token plus a signature by the key this device now holds. The
- *     platform creates or links the account, keeps the backup, and returns the API keys.
+ *     server creates or links the account, keeps the backup, and returns the API keys.
  *  3. Later, `replaceBackup` — re-sealed under a new password, signed by the same key.
  *
  * ## The poll flow, and why the handshake is on disk
  *
  * The same shape the Pollar login used, for the same reason: this bundle runs as an MV3
  * popup, a side panel, a Tauri window and a web page, and only some of those can be
- * addressed by a redirect. So the provider sends the person to the platform, and the wallet
- * asks the platform whether they came back. Opening the consent screen closes an MV3 popup
+ * addressed by a redirect. So the provider sends the person to the server, and the wallet
+ * asks the server whether they came back. Opening the consent screen closes an MV3 popup
  * — and every bit of React state with it — so the handshake is persisted before the browser
  * opens and a reopened wallet picks it up. It holds the PKCE verifier, which is what makes a
  * `state` seen in a browser worth nothing to anyone else.
@@ -67,7 +68,7 @@ export interface SignInHandshake {
 
 /**
  * Why a sign-in stopped. `reason` is what the wallet branches on; `detail` is the
- * platform's own code on `failed` (`denied`, `email_unverified`, …) and is only ever used
+ * server's own code on `failed` (`denied`, `email_unverified`, …) and is only ever used
  * to pick a sentence, never compared against copy.
  */
 export class SignInError extends Error {
@@ -92,7 +93,7 @@ export function signInErrorKey(reason: SignInError['reason'], detail: string | n
 /* ------------------------------- handshake ------------------------------- */
 
 /**
- * Open a provider sign-in: mint the PKCE pair, ask the platform for the URL, and refuse a
+ * Open a provider sign-in: mint the PKCE pair, ask the server for the URL, and refuse a
  * URL that is not https before it gets anywhere near the OS opener — this is the boundary
  * where a string from the network becomes a launched program.
  */
@@ -149,10 +150,10 @@ const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 /**
  * Wait for the person to come back from the provider.
  *
- * Returns when the platform says `authorized` — it never returns an identity, which only
+ * Returns when the server says `authorized` — it never returns an identity, which only
  * the claim hands over. Every other status ends the wait with the reason; a 429 is the only
  * failure waited out, for as long as the server asked. Past the deadline the wallet stops
- * on its own rather than meeting the platform's expiry.
+ * on its own rather than meeting the server's expiry.
  */
 export async function waitForSignIn(
   handshake: SignInHandshake,
@@ -188,7 +189,7 @@ export async function waitForSignIn(
   }
 }
 
-/** Redeem a handshake the platform reported `authorized`. */
+/** Redeem a handshake the server reported `authorized`. */
 export async function claimSignIn(
   handshake: SignInHandshake,
   accessKey: string | null = null,
@@ -202,8 +203,8 @@ export async function claimSignIn(
 /* ------------------------------- signatures ------------------------------ */
 
 /**
- * The finish challenge. Must match the platform byte for byte (`finishMessage` in its
- * wallet-auth-core module), and both sides pin the same literal in their tests.
+ * The finish challenge. Must match the community server byte for byte (`finishMessage` in
+ * its wallet-auth-core module), and both sides pin the same literal in their tests.
  */
 export function finishMessage(email: string, stellarAddress: string, signedAt: string): string {
   return (
@@ -235,7 +236,7 @@ function signChallenge(secret: string, message: string): string {
  * Step 2: attach the proven email to the key this device holds.
  *
  * `backup` goes with it when there is one to keep (a new wallet); a restore sends none,
- * since the platform already holds the box it just handed back. `replaceBackup` is only
+ * since the server already holds the box it just handed back. `replaceBackup` is only
  * ever true after the person was shown what they are replacing — see the store.
  */
 export async function finishSignIn(input: {
@@ -247,8 +248,8 @@ export async function finishSignIn(input: {
    *
    * Only a RECOVERED wallet passes this: SEP-30 recovery puts a new key on an account and
    * retires the old master, so the address stops being derivable from the key that signs
-   * for it. The platform accepts the signature because that key is one of the account's
-   * current signers — see its own account-signers module, in the dev-platform
+   * for it. The server accepts the signature because that key is one of the account's
+   * current signers — see the community server's account-signers module, in its own
    * repository. Every other caller leaves it
    * off and gets the key's own address, which is the only safe default.
    */

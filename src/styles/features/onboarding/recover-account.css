@@ -64,3 +64,16 @@
   line-height: 1.45;
   color: var(--text-soft);
 }
+
+/* The two codes, one per recovery server — shown instead of the list until both servers
+   have each been convinced of the inbox on their own. */
+.recover-codes {
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+}
+
+.recover-codes-title {
+  font-size: 15px;
+  font-weight: 700;
+}

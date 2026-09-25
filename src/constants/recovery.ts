@@ -19,8 +19,8 @@
  *     server a (5) + b (5) ≥ threshold (10)  → recovery needs BOTH servers
  *     one server alone (5) <  threshold (10) → one server can do nothing
  *
- * The same three numbers are declared by each recovery server (its own `recovery-setup`
- * module, in the dev-platform repository) and by the wallet here. They are NOT shared
+ * The same three numbers are declared by the operator's sponsored builder (the community
+ * server's wallet-auth constants, a separate repository) and by the wallet here. They are NOT shared
  * through an API on purpose: a server that could tell the wallet what weights to accept
  * could tell it to accept a weight that makes the server sufficient alone. This copy is
  * what the guard checks the server's envelope against, so drift is a refusal.
@@ -73,3 +73,13 @@ export const RECOVERY_LIST_MAX_PAGES = 20;
  * the reason that path exists at all.
  */
 export const RECOVERY_RESERVE_XLM = RECOVERY_SERVER_COUNT * 0.5 + 0.01;
+
+/**
+ * How long the wallet keeps a recovery's identity tokens before asking again.
+ *
+ * Each server issues its identity token for thirty minutes; this stays five under it, so a
+ * token the wallet still holds is never one the server has already stopped accepting — a
+ * refusal on the SIGNING call, after the person has picked an account and typed a new
+ * password, would be the worst moment to find out.
+ */
+export const RECOVERY_PROOF_TTL_MS = 25 * 60 * 1000;

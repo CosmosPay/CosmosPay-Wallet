@@ -33,15 +33,17 @@ import { Account, BASE_FEE, Keypair, Memo, Operation, TransactionBuilder } from 
 import {
   recoveryAccount,
   recoveryAccounts,
+  recoveryEmailStart,
+  recoveryEmailVerify,
   recoveryForget,
-  recoveryIdentityToken,
-  recoveryInfo,
+  recoveryIdentityFromIdToken,
   recoveryRegister,
   recoverySign,
   recoveryUpdateIdentities,
   sep10Challenge,
   sep10Token,
   type RecoveryAccount,
+  type RecoveryEmailResult,
 } from '@/lib/cosmospay';
 import { recoveryServers as configuredServers } from '@/lib/endpoints';
 import { fetchStellarToml } from '@/lib/stellarToml';
@@ -80,10 +82,11 @@ export interface RecoveryServer {
    * The SEP-30 BASE: what the spec's paths are relative to, so `${sep30Base}/accounts`.
    *
    * Separate from `url` because they are only the same thing on a server that is nothing
-   * but a recovery server. Ours is one module of a larger API and lives under
-   * `/api/recovery`; a standalone SEP-30 deployment is usually the bare host. The wallet
-   * used to build that prefix itself, which is precisely what made it unable to talk to
-   * anybody else's server — the bodies were already the standard's.
+   * but a recovery server. Ours is one module of the community server and lives under
+   * `/v1/sep30` behind the gateway entry; a standalone SEP-30 deployment is usually the
+   * bare host. It is always what the server's TOML publishes: the wallet used to build a
+   * prefix itself, which is precisely what made it unable to talk to anybody else's
+   * server — the bodies were already the standard's.
    */
   sep30Base: string;
   /** The server's published `WEB_AUTH_ENDPOINT`, whole — a URL, never a path to assemble. */
@@ -91,8 +94,12 @@ export interface RecoveryServer {
   /** The host its challenges must name — checked, not assumed. */
   webAuthDomain: string;
   homeDomain: string;
-  /** Its published `SIGNING_KEY`, when it has a TOML. What proves who minted a challenge. */
-  signingKey?: string;
+  /** Its published `SIGNING_KEY` — what proves who minted a challenge. Always present. */
+  signingKey: string;
+  /** The OIDC issuer whose ID tokens it exchanges for an identity, when it takes any. */
+  oidcIssuer?: string;
+  /** Whether it can prove an inbox with its own emailed code. */
+  emailCodes: boolean;
 }
 
 /** Is this build configured for recovery at all? */
@@ -126,56 +133,50 @@ export async function loadRecoveryServers(cfg: NetConfig): Promise<RecoveryServe
 }
 
 /**
- * Ask one server what it is: its TOML first, its own `/api/recovery/info` second.
+ * Ask one server what it is — from its `/.well-known/stellar.toml`, and only from there.
  *
- * The TOML is the standard answer and the only one a server we did not write will have.
- * `info` is ours, it predates this, and it stays as the fallback so a deployment that has
- * not been updated keeps working — but it cannot supply a `SIGNING_KEY`, so a server
- * discovered that way is one whose challenges the wallet can only check the shape of.
- * Neither path invents a value; what is missing stays missing and is refused here.
+ * Every field the wallet acts on comes out of that file and is checked against what the
+ * wallet already knows, and anything missing is a refusal rather than a default:
+ *
+ *  - `SIGNING_KEY` is REQUIRED. It is what makes SEP-10 a proof of who minted a challenge;
+ *    a server discovered without it is one whose challenges the wallet could only check the
+ *    shape of. The old fallback (`/api/recovery/info` on the developer platform) could not
+ *    supply one, and it is gone with the platform's recovery module.
+ *  - `NETWORK_PASSPHRASE` is REQUIRED and must be the wallet's own: a signer is an entry on
+ *    ONE ledger, and a mismatch found at recovery time is a failure with nothing left to do.
+ *  - `WEB_AUTH_ENDPOINT` and the `[[RECOVERY_SERVERS]]` `ENDPOINT` must both be on the host
+ *    the wallet was configured with. A TOML that points either somewhere else is handing the
+ *    wallet to a party the user never chose.
+ *  - The home domain is the server's claim about the WALLET, not its own host — see
+ *    `loadRecoveryServers`, which is what turns it into a check.
  */
 export async function describeServer(cfg: NetConfig, role: RecoveryRole, url: string): Promise<RecoveryServer> {
   const host = webAuthDomainOf(url);
   const toml = await fetchStellarToml(url);
+  const endpoint = toml?.recovery?.endpoint;
 
-  if (toml?.webAuthEndpoint) {
-    if (toml.networkPassphrase && toml.networkPassphrase !== cfg.passphrase) {
-      throw new RecoveryError('recovery.error.network', { server: host });
-    }
-    const webAuthDomain = webAuthDomainOf(toml.webAuthEndpoint);
-    // The endpoint a server publishes must be ON that server. A TOML pointing its web-auth
-    // somewhere else is either misconfigured or handing the wallet to a third party, and
-    // the token that comes back would be minted by a host the user never chose.
-    if (webAuthDomain !== host) throw new RecoveryError('recovery.error.domain', { server: host });
-    return {
-      role,
-      url,
-      // Ours nests the recovery module under /api/recovery; a standalone server is its own
-      // root. Asking the TOML would be better, and SEP-30 defines no field for it.
-      sep30Base: `${url.replace(/\/+$/, '')}/api/recovery`,
-      webAuthEndpoint: toml.webAuthEndpoint,
-      webAuthDomain,
-      // The wallet domain the server names, NOT this host: the two servers are different
-      // hosts that name the same wallet, and `loadRecoveryServers` requires them to agree
-      // on it. Deriving it from the host would make every pair disagree by construction.
-      // A standalone server that publishes none is only ever itself, so the host is right.
-      homeDomain: toml.homeDomain || host,
-      signingKey: toml.signingKey,
-    };
+  if (!toml?.webAuthEndpoint || !toml.signingKey || !endpoint) {
+    throw new RecoveryError('recovery.error.discovery', { server: host });
   }
+  if (toml.networkPassphrase !== cfg.passphrase) {
+    throw new RecoveryError('recovery.error.network', { server: host });
+  }
+  const webAuthDomain = webAuthDomainOf(toml.webAuthEndpoint);
+  if (webAuthDomain !== host || webAuthDomainOf(endpoint) !== host) {
+    throw new RecoveryError('recovery.error.domain', { server: host });
+  }
+  if (!toml.homeDomain) throw new RecoveryError('recovery.error.homeDomain');
 
-  const info = await recoveryInfo(url);
-  if (info.network_passphrase !== cfg.passphrase) throw new RecoveryError('recovery.error.network', { server: host });
-  // A server naming a host that is not the one answering is either misconfigured or
-  // proxying for someone else; either way its challenges would not be replay-bound to it.
-  if (info.web_auth_domain !== host) throw new RecoveryError('recovery.error.domain', { server: host });
   return {
     role,
     url,
-    sep30Base: `${url.replace(/\/+$/, '')}/api/recovery`,
-    webAuthEndpoint: `${url.replace(/\/+$/, '')}/api/sep10/auth`,
-    webAuthDomain: info.web_auth_domain,
-    homeDomain: info.home_domain,
+    sep30Base: endpoint.replace(/\/+$/, ''),
+    webAuthEndpoint: toml.webAuthEndpoint,
+    webAuthDomain,
+    homeDomain: toml.homeDomain,
+    signingKey: toml.signingKey,
+    oidcIssuer: toml.recovery?.oidcIssuer,
+    emailCodes: toml.recovery?.emailCodes === true,
   };
 }
 
@@ -338,8 +339,8 @@ export function buildRecoverySetup(input: SetupInput): string {
 }
 
 /**
- * The challenge the operator's sponsored builder asks for. Must match the platform byte
- * for byte (`recoverySetupMessage` in its wallet-auth-core module); both sides pin the
+ * The challenge the operator's sponsored builder asks for. Must match the community server
+ * byte for byte (`recoverySetupMessage` in its wallet-auth-core module); both sides pin the
  * same literal in their tests.
  *
  * It covers the two signers as well as the account, so one signature authorises one
@@ -504,15 +505,52 @@ export async function signersToRemove(
 /* -------------------------------- recovering --------------------------------- */
 
 /**
- * An identity token from each server, for someone who has proven an email and holds no
- * key at all.
+ * How this person can prove their inbox to BOTH servers, or null when they cannot.
+ *
+ * `idToken` is Authentik's, handed over by the sign-in only after an emailed code proved
+ * the inbox (see `SignInReady.idToken`). Each server verifies it against Authentik's keys
+ * on its own, so it only helps with servers that name that same issuer. Without one — a
+ * sign-in by emailed code, or through Google or GitHub directly — each server has to send
+ * its OWN code instead, which is also the only way two servers ever each prove an inbox
+ * without either one taking the other's word for it.
+ */
+export type IdentityRoute = { kind: 'oidc' } | { kind: 'email' };
+
+export function identityRoute(servers: readonly RecoveryServer[], idToken: string | undefined): IdentityRoute | null {
+  if (idToken && servers.every((s) => !!s.oidcIssuer)) return { kind: 'oidc' };
+  if (servers.every((s) => s.emailCodes)) return { kind: 'email' };
+  return null;
+}
+
+/**
+ * An identity token from each server, from one Authentik login.
  *
  * One per server, and neither accepts the other's: that is not redundancy, it is the
- * property that makes two servers worth having. `sessionToken` is what the wallet's own
- * sign-in produced (`lib/signIn.ts`) and is spent here for something narrower.
+ * property that makes two servers worth having. Each server takes a given ID token ONCE,
+ * so the caller keeps what comes back for the whole recovery — listing and signing — and
+ * never exchanges the same login twice.
  */
-export async function identityTokens(servers: readonly RecoveryServer[], sessionToken: string): Promise<string[]> {
-  return Promise.all(servers.map(async (s) => (await recoveryIdentityToken(s.url, sessionToken)).token));
+export async function identityTokensFromIdToken(
+  servers: readonly RecoveryServer[],
+  idToken: string,
+): Promise<string[]> {
+  const tokens: string[] = [];
+  // Sequential, so a server that refuses stops the second exchange from spending the
+  // token on the other one for nothing.
+  for (const server of servers) tokens.push((await recoveryIdentityFromIdToken(server.sep30Base, idToken)).token);
+  return tokens;
+}
+
+/** Ask each server to email its own code. Returns one claim token per server, in role order. */
+export async function startRecoveryCodes(servers: readonly RecoveryServer[], email: string): Promise<string[]> {
+  const claims: string[] = [];
+  for (const server of servers) claims.push((await recoveryEmailStart(server.sep30Base, email.trim().toLowerCase())).claim_token);
+  return claims;
+}
+
+/** Answer one server's code. The caller decides what `invalid` / `locked` mean on screen. */
+export function verifyRecoveryCode(server: RecoveryServer, claimToken: string, code: string): Promise<RecoveryEmailResult> {
+  return recoveryEmailVerify(server.sep30Base, claimToken, code);
 }
 
 /** An account that can actually be recovered, with each server's signer for it. */

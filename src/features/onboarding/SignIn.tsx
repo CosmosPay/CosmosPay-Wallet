@@ -5,12 +5,13 @@ import { SignInMethods } from '@/ui/SignInMethods';
 import '@/styles/features/onboarding/sign-in.css';
 
 /**
- * Sign in with Google, GitHub or an emailed code — and keep the key on this device.
+ * Sign in with Cosmos Pay (Authentik), Google, GitHub or an emailed code — and keep the key
+ * on this device.
  *
  * It replaced a screen whose whole job was a custody warning: the old social login handed
  * the key to Pollar. This one never does, so what it states up front is the opposite
  * promise and the one condition that comes with it — the key is generated here, the backup
- * the platform keeps only opens with the person's password, and nobody can reset that
+ * the server keeps only opens with the person's password, and nobody can reset that
  * password for them. Said before the sign-in rather than after, because after it the next
  * screen asks for exactly that password.
  *

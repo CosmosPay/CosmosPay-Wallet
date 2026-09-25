@@ -34,7 +34,10 @@ import {
   identitiesFor,
   recoverableAccounts,
   describeServer,
+  identityRoute,
+  identityTokensFromIdToken,
   recoverySetupMessage,
+  startRecoveryCodes,
   registerForRecovery,
   updateRecoveryIdentities,
   type RecoveryServer,
@@ -470,7 +473,7 @@ test('the web-auth domain a server must name is derived from the URL the wallet 
 /* ------------------------- the cross-repo challenge ------------------------- */
 
 test('the sponsored-setup challenge is pinned byte for byte', () => {
-  // The platform verifies this signature against its own `recoverySetupMessage`, in a
+  // The community server verifies this signature against its own `recoverySetupMessage`, in a
   // separate repository with no shared code. A rename or a reordering on either side
   // builds cleanly and produces a signature the other one rejects, so the literal is
   // pinned on both sides rather than derived on either.
@@ -503,12 +506,15 @@ test('the challenge covers the signers, so one signature authorises one arrangem
 const SERVERS: RecoveryServer[] = ['a', 'b'].map((role) => ({
   role: role as 'a' | 'b',
   url: `https://recovery-${role}.cosmospay.lat`,
-  // The SEP-30 base, which is what the spec's paths hang off — ours nests under
-  // /api/recovery, somebody else's would very often be the bare host.
-  sep30Base: `https://recovery-${role}.cosmospay.lat/api/recovery`,
-  webAuthEndpoint: `https://recovery-${role}.cosmospay.lat/api/sep10/auth`,
+  // The SEP-30 base, which is what the spec's paths hang off — the community server
+  // publishes it in its TOML; somebody else's would very often be the bare host.
+  sep30Base: `https://recovery-${role}.cosmospay.lat/cosmos-api/v1/sep30`,
+  webAuthEndpoint: `https://recovery-${role}.cosmospay.lat/cosmos-api/v1/sep10/auth`,
   webAuthDomain: `recovery-${role}.cosmospay.lat`,
   homeDomain: HOME,
+  signingKey: server.publicKey(),
+  oidcIssuer: 'https://auth.cosmospay.lat/application/o/wallet/',
+  emailCodes: true,
 }));
 
 /** A standalone SEP-30 deployment: no /api prefix anywhere, exactly as the spec reads. */
@@ -519,6 +525,8 @@ const THIRD_PARTY: RecoveryServer = {
   webAuthEndpoint: 'https://recovery.example.org/auth',
   webAuthDomain: 'recovery.example.org',
   homeDomain: HOME,
+  signingKey: server.publicKey(),
+  emailCodes: false,
 };
 
 /** One account row in the shape SEP-30's listing returns it. */
@@ -844,9 +852,12 @@ test('two servers on different hosts still name ONE wallet domain', async () => 
   const toml = (host: string) =>
     [
       'NETWORK_PASSPHRASE = "Test SDF Network ; September 2015"',
-      `WEB_AUTH_ENDPOINT = "https://${host}/api/sep10/auth"`,
+      `WEB_AUTH_ENDPOINT = "https://${host}/cosmos-api/v1/sep10/auth"`,
       `SIGNING_KEY = "${server.publicKey()}"`,
       `HOME_DOMAIN = "${HOME}"`,
+      '',
+      '[[RECOVERY_SERVERS]]',
+      `ENDPOINT = "https://${host}/cosmos-api/v1/sep30"`,
     ].join('\n');
 
   const real = globalThis.fetch;
@@ -869,5 +880,129 @@ test('two servers on different hosts still name ONE wallet domain', async () => 
   // They are still distinct servers in every way that matters.
   assert.notEqual(pair[0].webAuthDomain, pair[1].webAuthDomain);
   assert.equal(pair[0].signingKey, server.publicKey(), 'the published key is carried through to the challenge check');
-  assert.equal(pair[0].sep30Base, 'https://recovery-a.cosmospay.lat/api/recovery');
+  // The base comes from the server's own TOML — never a prefix the wallet assembles.
+  assert.equal(pair[0].sep30Base, 'https://recovery-a.cosmospay.lat/cosmos-api/v1/sep30');
+});
+
+/* ------------------------ discovery refuses, never guesses ------------------------ */
+
+/** Serve one TOML body for every host, for the length of `run`. */
+async function withToml<T>(body: string, run: () => Promise<T>): Promise<T> {
+  const real = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(body, { status: 200 })) as typeof fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+const goodToml = (over: Record<string, string | null> = {}) => {
+  const fields: Record<string, string | null> = {
+    NETWORK_PASSPHRASE: '"Test SDF Network ; September 2015"',
+    WEB_AUTH_ENDPOINT: '"https://recovery-a.cosmospay.lat/cosmos-api/v1/sep10/auth"',
+    SIGNING_KEY: `"${SIGNER_A}"`,
+    HOME_DOMAIN: `"${HOME}"`,
+    ...over,
+  };
+  const top = Object.entries(fields)
+    .filter(([, v]) => v !== null)
+    .map(([k, v]) => `${k} = ${v}`);
+  const endpoint = over.ENDPOINT === undefined ? '"https://recovery-a.cosmospay.lat/cosmos-api/v1/sep30"' : over.ENDPOINT;
+  return [...top.filter((l) => !l.startsWith('ENDPOINT')), '[[RECOVERY_SERVERS]]', ...(endpoint ? [`ENDPOINT = ${endpoint}`] : [])].join('\n');
+};
+
+const refusesWith = async (body: string, key: string) =>
+  withToml(body, () =>
+    assert.rejects(describeServer(CFG, 'a', 'https://recovery-a.cosmospay.lat'), (e: unknown) => {
+      assert.equal((e as { key?: string }).key, key);
+      return true;
+    }),
+  );
+
+test('a server with no SIGNING_KEY is refused, not trusted on shape alone', () =>
+  refusesWith(goodToml({ SIGNING_KEY: null }), 'recovery.error.discovery'));
+
+test('a server with no SEP-30 endpoint is refused rather than given one', () =>
+  refusesWith(goodToml({ ENDPOINT: null }), 'recovery.error.discovery'));
+
+test('a TOML that names no network is refused — a signer lives on one ledger', () =>
+  refusesWith(goodToml({ NETWORK_PASSPHRASE: null }), 'recovery.error.network'));
+
+test('a SEP-30 endpoint on another host hands the wallet to a stranger', () =>
+  refusesWith(goodToml({ ENDPOINT: '"https://elsewhere.example.com/v1/sep30"' }), 'recovery.error.domain'));
+
+test('the recovery table is read, and a second entry is not a second server', () => {
+  const toml = parseStellarToml(
+    [
+      `SIGNING_KEY = "${SIGNER_A}"`,
+      '[[RECOVERY_SERVERS]]',
+      'ENDPOINT = "https://recovery-a.cosmospay.lat/v1/sep30"',
+      'ROLE = "a"',
+      'OIDC_ISSUER = "https://auth.cosmospay.lat/application/o/wallet/"',
+      'EMAIL_CODES = true',
+      `SIGNING_KEY = "${SIGNER_B}"`,
+      '[[RECOVERY_SERVERS]]',
+      'ENDPOINT = "https://evil.example.com/v1/sep30"',
+    ].join('\n'),
+  );
+  assert.equal(toml.recovery?.endpoint, 'https://recovery-a.cosmospay.lat/v1/sep30');
+  assert.equal(toml.recovery?.oidcIssuer, 'https://auth.cosmospay.lat/application/o/wallet/');
+  assert.equal(toml.recovery?.emailCodes, true);
+  // A key inside the table is not the server's own.
+  assert.equal(toml.signingKey, SIGNER_A);
+});
+
+test('a quoted "true" is a string, not a capability', () => {
+  const toml = parseStellarToml(['[[RECOVERY_SERVERS]]', 'EMAIL_CODES = "true"'].join('\n'));
+  assert.equal(toml.recovery?.emailCodes, undefined);
+});
+
+/* ------------------------------ proving the inbox ------------------------------ */
+
+test('an Authentik ID token is the route only when BOTH servers take one', () => {
+  assert.deepEqual(identityRoute(SERVERS, 'id.token'), { kind: 'oidc' });
+  const noOidc = [SERVERS[0], { ...SERVERS[1], oidcIssuer: undefined }];
+  // One server that cannot verify it means each proves the inbox by its own code.
+  assert.deepEqual(identityRoute(noOidc, 'id.token'), { kind: 'email' });
+  assert.deepEqual(identityRoute(SERVERS, undefined), { kind: 'email' });
+  assert.equal(identityRoute(noOidc.map((s) => ({ ...s, emailCodes: false })), undefined), null);
+});
+
+test('the ID token goes to each server once, as SEP-30 external auth', async () => {
+  const real = globalThis.fetch;
+  const calls: { url: string; body: unknown }[] = [];
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(input), body: JSON.parse(String(init?.body)) });
+    return new Response(JSON.stringify({ token: `tok-${calls.length}`, expires_in: 1800 }), { status: 200 });
+  }) as typeof fetch;
+  let tokens: string[];
+  try {
+    tokens = await identityTokensFromIdToken(SERVERS, 'the.id.token');
+  } finally {
+    globalThis.fetch = real;
+  }
+  assert.deepEqual(tokens, ['tok-1', 'tok-2']);
+  assert.deepEqual(
+    calls.map((c) => c.url),
+    SERVERS.map((s) => `${s.sep30Base}/identity`),
+  );
+  assert.deepEqual(calls[0].body, { id_token: 'the.id.token' });
+});
+
+test('each server is asked for its OWN code', async () => {
+  const real = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    urls.push(String(input));
+    return new Response(JSON.stringify({ claim_token: `c${urls.length}`, expires_in: 900 }), { status: 200 });
+  }) as typeof fetch;
+  let claims: string[];
+  try {
+    claims = await startRecoveryCodes(SERVERS, 'Person@Example.com');
+  } finally {
+    globalThis.fetch = real;
+  }
+  assert.deepEqual(claims, ['c1', 'c2']);
+  assert.deepEqual(urls, SERVERS.map((s) => `${s.sep30Base}/identity/email/start`));
 });

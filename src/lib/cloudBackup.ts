@@ -1,14 +1,14 @@
 /**
  * The cloud backup: this wallet's seed, sealed on the device under the person's password,
- * kept by the dev platform, and handed back after a sign-in on the next device.
+ * kept by the community server, and handed back after a sign-in on the next device.
  *
- * The platform stores the box and cannot open it. What stands between a leaked copy of its
+ * The server stores the box and cannot open it. What stands between a leaked copy of its
  * table and the funds is exactly two things, both decided here: the password, and
  * `BACKUP_PBKDF2_ITERATIONS` — higher than the local vault's cost because the reader of a
  * leaked table gets unlimited offline guesses at every box in it. `sealForBackup` owns that
  * number so no caller can lower it.
  *
- * Opening checks the result against the address the platform filed the box under. The box
+ * Opening checks the result against the address the server filed the box under. The box
  * is authenticated (AES-GCM), so a server cannot forge one — but it can hand back SOMEONE
  * ELSE'S genuine box, and a password that happens to open it would otherwise restore a
  * wallet the person never had. `BackupMismatchError` refuses that instead.
@@ -26,7 +26,7 @@ export class BackupMismatchError extends Error {
   }
 }
 
-/** The platform returned something that is not a box this wallet writes. */
+/** The server returned something that is not a box this wallet writes. */
 export class BackupUnreadableError extends Error {
   constructor() {
     super(tNow('backup.unreadable'));
@@ -35,13 +35,13 @@ export class BackupUnreadableError extends Error {
 }
 
 /**
- * Seal a wallet's secret for the platform to keep. Returns the box as the JSON it stores.
+ * Seal a wallet's secret for the server to keep. Returns the box as the JSON it stores.
  *
  * `account` is only passed by a RECOVERED wallet, whose address is no longer its key's own
  * — SEP-30 recovery retires the master key and puts a new one on the account. It travels
- * INSIDE the ciphertext rather than beside it: the platform files a box under an address
+ * INSIDE the ciphertext rather than beside it: the server files a box under an address
  * it is told, and a box that carried its own address in the clear would be telling the
- * platform something it already knows while telling anyone who reads the row something
+ * server something it already knows while telling anyone who reads the row something
  * they should not.
  */
 export async function sealBackup(secret: VaultSecret, password: string, account?: string): Promise<string> {

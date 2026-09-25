@@ -50,7 +50,7 @@ const CLOCK_SKEW_S = 5 * 60;
 export interface ChallengeExpectation {
   /** The account being authenticated: us. */
   account: string;
-  /** The wallet's domain, as the server reports it in `/api/recovery/info`. */
+  /** The wallet's domain, as the server reports it in its stellar.toml (`HOME_DOMAIN`). */
   homeDomain: string;
   /** THIS server's host. What stops a challenge minted for its sibling being replayed here. */
   webAuthDomain: string;
