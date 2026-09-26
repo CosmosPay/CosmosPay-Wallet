@@ -30,6 +30,8 @@
     "ios:dev": "npm run ios:res && tauri ios dev",
     "ios:build": "npm run ios:res && tauri ios build",
     "ios:res": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/ios-res.ts",
+    "openapi:sync": "node --experimental-strip-types scripts/sync-openapi.ts",
+    "openapi:check": "node --experimental-strip-types scripts/sync-openapi.ts --check",
     "test:unit": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tests/setup.mjs --test \"tests/unit/**/*.test.ts\"",
     "test:e2e": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/wallet.e2e.ts",
     "test:e2e:signin": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/signin.e2e.ts",

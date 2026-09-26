@@ -55,6 +55,14 @@ jobs:
       - name: Unit tests
         run: npm run test:unit
 
+      # openapi/community-server.json is what tests/unit/gatewayContract.test.ts checks every
+      # gateway call against, so it must be the server's CURRENT spec on the matching branch.
+      # Fix with `npm run openapi:sync` and commit.
+      - name: Community server contract is current
+        env:
+          SERVER_BRANCH: ${{ (github.base_ref || github.ref_name) == 'main' && 'main' || 'dev' }}
+        run: OPENAPI_SRC="https://raw.githubusercontent.com/CosmosPay/CosmosPay-Community-Server/${SERVER_BRANCH}/openapi/openapi.json" npm run openapi:check
+
       # Static site -> dist/web/ (this is what Tauri embeds for desktop and mobile, too)
       - name: Build web (dist/web/)
         run: npm run build
