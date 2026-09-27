@@ -1,16 +1,15 @@
 /**
  * PKCE (RFC 7636), S256.
  *
- * What it buys here, concretely: the login flow ends with a single-use `code` that is
- * redeemable for a live Pollar session, and that code travels through a browser the
- * wallet does not control — a system browser tab, a redirect chain, an OS log, a
- * screenshot of the "you can close this window" page. PKCE makes the code useless on
- * its own: redemption also requires the verifier, which never leaves this process.
+ * What it buys here, concretely: a sign-in ends with a single-use handshake the community
+ * server holds, and the `state` that names it travels through a browser the wallet does not
+ * control — a system browser tab, a redirect chain, an OS log, a screenshot of the "you can
+ * close this window" page. PKCE makes that useless on its own: redeeming it also requires
+ * the verifier, which never leaves this process.
  *
- * Its own module rather than a corner of `lib/pollar.ts` because it is pure RFC 7636
- * with nothing Pollar-shaped in it, and because it is the part worth a unit test.
+ * Its own module because it is pure RFC 7636, and because it is the part worth a unit test.
  */
-import { PKCE_METHOD, PKCE_VERIFIER_BYTES } from '@/constants/pollar';
+import { PKCE_METHOD, PKCE_VERIFIER_BYTES } from '@/constants/signIn';
 
 export interface Pkce {
   /** Kept by the wallet, sent only at redemption. */

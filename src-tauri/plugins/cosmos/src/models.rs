@@ -118,6 +118,40 @@ pub struct AuthSecret {
     pub value: String,
 }
 
+/// Whether this phone can run a passkey ceremony at all: Android 9+ (Credential Manager
+/// with a provider), iOS 18+ (the first release whose `ASAuthorization` carries PRF).
+/// Whether the PROVIDER does PRF is only known after a creation, so this never claims it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasskeyStatus {
+    pub available: bool,
+    #[serde(default)]
+    pub reason: Option<Failure>,
+}
+
+impl PasskeyStatus {
+    pub fn unavailable(reason: Failure) -> Self {
+        Self { available: false, reason: Some(reason) }
+    }
+}
+
+/// A WebAuthn ceremony, as the JSON `PublicKeyCredentialCreationOptionsJSON` /
+/// `PublicKeyCredentialRequestOptionsJSON` specify — buffers in base64url. Carried as a
+/// STRING and never parsed here: the platforms are the ones that read it, and a Rust struct
+/// in between would be a third schema to keep in step with the other two.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasskeyRequest {
+    pub request_json: String,
+}
+
+/// The platform's `PublicKeyCredentialJSON` answer, also verbatim.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PasskeyResponse {
+    pub response_json: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ShareRequest {

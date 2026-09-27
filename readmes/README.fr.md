@@ -42,6 +42,9 @@ La dérivation des clés est vérifiée contre le **vecteur de test officiel SEP
 3. Le déverrouillage déchiffre **en mémoire uniquement** ; un mauvais mot de passe échoue au tag GCM.
 4. Les signatures peuvent redemander le mot de passe (réglage). La fenêtre d’approbation dapps
    signe en local — aucun secret n’atteint une page ou un serveur.
+   **Passkey au lieu du mot de passe** (web, extension, bureau et les apps sur Android 9+ / iOS 18+) : le mot de passe de l’app
+   devient 32 octets aléatoires scellés sous la sortie PRF WebAuthn de la passkey, donc
+   l’empreinte ouvre l’appareil et la même passkey ouvre la sauvegarde sur le suivant.
 5. **Verrouillage automatique par inactivité :** une session ouverte détient la clé déchiffrée ;
    après 5 minutes sans interaction elle est jetée et le mot de passe redemandé.
 6. **Rien n’est signé sans avoir été décodé.** Tout ce que le portefeuille signe sans l’avoir

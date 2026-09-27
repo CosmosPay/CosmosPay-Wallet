@@ -27,6 +27,7 @@
  * be rewritten before it can be read.
  */
 import {
+  BACKUP_PBKDF2_ITERATIONS,
   IV_BYTES,
   LEGACY_PBKDF2_ITERATIONS,
   MAX_PBKDF2_ITERATIONS,
@@ -306,6 +307,20 @@ export async function open(box: SealedBox, password: string): Promise<string> {
   return openWithKey(box, await deriveVaultKey(password, kdf));
 }
 
+/**
+ * Seal under a human password for a copy that leaves the device: the cloud backup
+ * (`lib/cloudBackup.ts`), opened on the next device with plain `open`.
+ *
+ * Its own function rather than a cost argument on `seal`, for the reason `assertWrapKey`
+ * gives below: an optional cost is only as careful as its laziest caller, and here the cost
+ * is the whole defence of a box whose reader gets unlimited offline guesses. No caller picks
+ * it — `BACKUP_PBKDF2_ITERATIONS` does.
+ */
+export async function sealForBackup(plaintext: string, password: string): Promise<SealedBox> {
+  const kdf: KdfParams = { ...newKdfParams(), iter: BACKUP_PBKDF2_ITERATIONS };
+  return sealWithKey(plaintext, await deriveVaultKey(password, kdf));
+}
+
 /* --------------------------- sealing under a random key --------------------------- */
 
 /**
@@ -350,6 +365,68 @@ export async function sealUnderWrapKey(plaintext: string, wrapKey: string): Prom
  */
 export async function openUnderWrapKey(box: SealedBox, wrapKey: string): Promise<string> {
   return open(box, assertWrapKey(wrapKey));
+}
+
+/* ------------------------ sealing bytes under a raw key ------------------------ */
+
+/*
+ * The primitives the cloud backup's v3 box is built from (`lib/cloudBackup.ts`): a random
+ * DATA key seals the payload once, and each door — a password, a passkey — seals that data
+ * key. Raw 32-byte keys in and out, no stretching here: a password door stretches its own
+ * key first with `derivePasswordKey`, and a passkey door's key is PRF output, which has
+ * nothing to stretch.
+ */
+
+/** An AES-GCM ciphertext and the IV it was sealed with. */
+export interface SealedBytes {
+  iv: string; // base64
+  data: string; // base64 ciphertext (+ GCM tag)
+}
+
+/** 32 bytes of CSPRNG — a data key. */
+export function newRandomKey(): Uint8Array {
+  return getCrypto().getRandomValues(new Uint8Array(VAULT_KEY_BYTES));
+}
+
+async function aesKey(raw: Uint8Array): Promise<CryptoKey> {
+  if (raw.length !== VAULT_KEY_BYTES) throw new Error('a sealing key is 32 bytes');
+  return getCrypto().subtle.importKey('raw', raw as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+
+export async function sealBytes(plain: Uint8Array, key: Uint8Array): Promise<SealedBytes> {
+  const crypto = getCrypto();
+  const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+  const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: iv as BufferSource }, await aesKey(key), plain as BufferSource);
+  return { iv: toBase64(iv), data: toBase64(new Uint8Array(cipher)) };
+}
+
+/**
+ * Open bytes sealed under `key`. A GCM failure is `WrongPasswordError` — for a password
+ * door that IS a wrong password; a caller opening a passkey door maps it to its own error,
+ * because nobody typed anything there.
+ */
+export async function openBytes(box: SealedBytes, key: Uint8Array): Promise<Uint8Array> {
+  // Decoded before the decrypt, so a damaged box is never reported as a wrong key.
+  const iv = fromBase64(box.iv);
+  const data = fromBase64(box.data);
+  const k = await aesKey(key);
+  try {
+    return new Uint8Array(await getCrypto().subtle.decrypt({ name: 'AES-GCM', iv: iv as BufferSource }, k, data as BufferSource));
+  } catch {
+    throw new WrongPasswordError();
+  }
+}
+
+/**
+ * Stretch a password into a door key, at the cost a box names. The same PBKDF2 the vault
+ * uses; exported for the backup's password door, whose cost is read from the box — and
+ * bounded here for the reason `iterationsOf` bounds it: that number sits outside the AEAD.
+ */
+export async function derivePasswordKey(password: string, kdf: KdfParams): Promise<Uint8Array> {
+  if (!Number.isInteger(kdf.iter) || kdf.iter < 1 || kdf.iter > MAX_PBKDF2_ITERATIONS) {
+    throw new Error('sealed box: unusable iteration count');
+  }
+  return deriveRaw(password, kdf);
 }
 
 /**

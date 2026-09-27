@@ -39,5 +39,11 @@ dependencies {
     // it is the only API that can open a Keystore key through a CryptoObject, which is
     // what makes the read itself the authenticated operation.
     implementation("androidx.biometric:biometric:1.1.0")
+    // Passkeys (Passkey.kt). Credential Manager takes the WebAuthn JSON the web layer builds,
+    // PRF extension included, and hands it to the person's provider. The play-services half
+    // is what reaches Google Password Manager on Android 9-13, where the framework has no
+    // Credential Manager of its own. 1.3.0 is the newest line that builds at compileSdk 34.
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
     implementation(project(":tauri-android"))
 }
