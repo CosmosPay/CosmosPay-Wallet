@@ -713,6 +713,15 @@ export async function signInEmailVerify(
   return postJson(`${walletApiBase()}/auth/email/verify`, body, signInHeaders(accessKey), true, SignInCodeResultShape);
 }
 
+/**
+ * The sign-in session token, in the header the community server reads it from.
+ *
+ * Not `Authorization`: through APISIX that header is the API key's, and the gateway strips
+ * `Authorization` and `apikey` before proxying — a session token sent there never arrives and
+ * `finish` / `recovery/setup` answer 401.
+ */
+const walletSession = (token: string): Record<string, string> => ({ 'X-Wallet-Session': token });
+
 /** `POST {walletApiBase}/auth/finish` — the session token plus a signature by `stellarAddress`. */
 export async function signInFinish(
   sessionToken: string,
@@ -722,7 +731,7 @@ export async function signInFinish(
   return postJson(
     `${walletApiBase()}/auth/finish`,
     body,
-    { Authorization: `Bearer ${sessionToken}`, ...signInHeaders(accessKey) },
+    { ...walletSession(sessionToken), ...signInHeaders(accessKey) },
     true,
     SignInFinishShape,
   );
@@ -949,7 +958,7 @@ export async function recoverySetupSponsored(
   return postJson(
     `${walletApiBase()}/recovery/setup`,
     body,
-    { ...bearer(sessionToken), ...signInHeaders(accessKey) },
+    { ...walletSession(sessionToken), ...signInHeaders(accessKey) },
     true,
     RecoverySetupShape,
   );
