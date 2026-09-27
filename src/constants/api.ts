@@ -16,8 +16,8 @@ export const PAGE_SIZE = 100;
  * The longest `Retry-After` the wallet will honour, in seconds.
  *
  * Not a policy about how patient the user is — a bound on how far a header can park
- * the next attempt. An hour is far past any real budget window (the Pollar ones are
- * ten minutes), so anything above this is a misconfiguration or a hostile proxy, and
+ * the next attempt. An hour is far past any real budget window (the tightest are ten
+ * minutes), so anything above this is a misconfiguration or a hostile proxy, and
  * clamping turns "the wallet stopped talking to the gateway" into "the wallet retried
  * early and was refused again", which at least says so.
  */

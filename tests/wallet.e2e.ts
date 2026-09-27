@@ -50,7 +50,11 @@ try {
   await page.getByRole('button', { name: 'Continuar' }).click();
   ok(true, 'Profile step (name/email/dob/gender) captured');
 
-  // seal vault
+  // seal vault. Where the browser can make a passkey the screen offers one first; this
+  // suite is about the password vault, so it takes the password.
+  const pwdInstead = page.getByRole('button', { name: 'Prefiero una contraseña' });
+  await page.getByText('Crea una contraseña').or(pwdInstead).first().waitFor();
+  if (await pwdInstead.isVisible()) await pwdInstead.click();
   await page.getByText('Crea una contraseña').waitFor();
   await page.getByPlaceholder('Mínimo 6 caracteres').fill('Test-pass-123');
   await page.getByPlaceholder('Repite la contraseña').fill('Test-pass-123');

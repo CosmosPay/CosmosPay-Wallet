@@ -12,6 +12,9 @@ const COMMANDS: &[&str] = &[
     "share_text",
     "app_exit",
     "exclude_from_backup",
+    "passkey_status",
+    "passkey_create",
+    "passkey_get",
 ];
 
 fn main() {

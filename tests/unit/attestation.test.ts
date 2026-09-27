@@ -105,7 +105,7 @@ test('what it signs can never be a transaction signature', async () => {
 
   // And the converse: a transaction signature must not pass as an attestation.
   tx.sign(kp);
-  const txSig = tx.signatures[0].signature();
+  const txSig = tx.signatures[0].signature.value;
   assert.equal(await verifyOwnership({ ...a, sig: Buffer.from(txSig).toString('base64') }), false);
 });
 
