@@ -250,3 +250,16 @@
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
 }
+
+/* "Use the password instead" — the fallback under the passkey note on a passkey
+   device. Literal colours, like the rest of this sheet (see its header). */
+.approve-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: #cfd6d2;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
