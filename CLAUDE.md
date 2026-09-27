@@ -191,6 +191,26 @@ everything:
   `https:`, checked in `src/lib/openExternal.ts` because two of its three callers build
   their URL from network configuration the user can edit.
 
+## A local build wears the dev icon
+
+Every build that did not come out of CI swaps the brand's dark tile for an amber one, glyph
+in black — favicon, extension, desktop, Android, iOS — so `npm run dev` cannot pass for the
+deployed app, an unpacked extension for the store one, or `tauri dev` for the installed
+release. `scripts/devIcons.ts` holds the decision and the transform; its header lists where
+each surface applies it.
+
+- **`CI` decides, `COSMOS_ICONS` overrides.** `COSMOS_ICONS=release` is REQUIRED for a
+  build meant for users that is made on a laptop — a store upload, a hand-built iOS app —
+  or it ships amber. Any value other than `dev` / `release` throws instead of guessing.
+- **Nothing dev is committed, and nothing committed is tinted.** The dev art is derived at
+  build time, into `dist/` or the generated native projects; `public/`, `resources/` and
+  `src-tauri/icons/` stay brand art. Regenerate those as before (`npm run desktop:icons`,
+  `npm run android:icons`) and the dev versions follow with no second step.
+- **The desktop icon is config, not a file swap.** `generate_context!` and tauri-build
+  embed `bundle.icon` at compile time, so `desktop:dev` / `desktop:build` go through
+  `scripts/tauri-desktop.ts`, which adds a `--config` overlay. Plain `tauri dev` skips it
+  and gets the brand icon — use the npm scripts.
+
 ## Never sign what you have not decoded
 
 The wallet signs envelopes it did not build: the CosmosPay gateway returns one for
@@ -366,8 +386,9 @@ the wallet's own native plugin. Eight rules, and most of them are holes it shipp
   on one serialised chain, *before* the derivation. Checking first and counting afterwards
   put ~250ms of PBKDF2 between the two, so every attempt launched inside that window saw a
   clean record and the ladder counted rounds instead of guesses. The paths are `unlock`,
-  `checkPassword`, `revealBackup` — which returns the mnemonic on a correct guess — and
-  `ApprovePopup`, which is the one a dapp can raise and was the one left out.
+  `checkPassword`, `revealBackup` — which returns the mnemonic on a correct guess —
+  `ApprovePopup`, which is the one a dapp can raise and was the one left out, and
+  `completeSignIn`, which opens a cloud backup with the password typed on a new device.
 
 `changePassword` opens and re-seals every wallet in memory before committing any, drops each
 device-lock enrolment **before** the commit and re-creates it after, and the caller then
@@ -376,6 +397,323 @@ the old password if anything interrupts the pass, and the user meets "wrong pass
 from their own fingerprint. Do not patch the session's `vaultKey` instead of locking: a
 partially applied change would make the store assert a key true of some wallets and not
 others.
+
+## Signing in keeps the key here; the backup only the password opens
+
+"Continue with Cosmos Pay / Google / GitHub / email" (`src/lib/signIn.ts`) proves WHO someone
+is. It never touches a key: a new wallet's seed is generated on the device, and a returning
+person gets back the box `src/lib/cloudBackup.ts` sealed on their last device — which only
+their password opens, and which the COMMUNITY SERVER (its wallet-auth module, a separate
+repository) stores without being able to read. The key never leaves the device. The old Pollar
+login (custodial) is gone; `purgeLegacyPollar` in `lib/vault.ts` removes its wallets from a
+device once, at startup, and keeps the seed wallets they were paired with.
+
+**Where it lives.** Only on the community server, at `{gateway}{entry}/v1/wallet`
+(`walletApiBase()` in `lib/endpoints.ts`), because that is the piece that runs as replicas
+behind APISIX and that a developer can self-host. The developer platform issues API keys and
+shows metrics; it serves no part of signing in, and there is no switch to send it there — the
+flag that used to exist is gone. Two independent layers stand in front of every call: APISIX
+key-auth (the shared public key in `apikey`, awaited through `warmPublicKey` so a first run
+never sends none) proves a wallet is calling through the gateway, and the sign-in itself
+proves the person.
+
+**Cosmos Pay = Authentik.** The preferred door is the operator's OpenID Connect provider,
+shown as "Cosmos Pay" (`SIGN_IN_PROVIDERS[0]`). The community server runs it as a confidential
+client with its own PKCE and nonce and verifies the ID token against Authentik's published
+keys; Google and GitHub sit behind Authentik as sources. The direct Google/GitHub doors remain
+only for a deployment without Authentik, and `GET /v1/wallet/auth/providers` says which exist.
+
+Eight rules:
+
+- **An email that already has an account is only ever reached through its inbox.** A provider
+  proves who consented, not who opened the sign-in, so for an existing account the server
+  also emails a code — and an existing account is where the backup worth stealing is. A new
+  email gets in on the provider's word; the most a phished link buys there is an empty
+  account.
+- **Authentik's ID token leaves the server only with an inbox proof.** `SignInReady.idToken` is
+  what the recovery servers accept as the person's identity, so the server hands it over only
+  from `email/verify` (never from a claim on the provider's word alone), and the wallet keeps
+  it in memory with the rest of the draft. A claim with `purpose: 'recovery'` forces the code
+  even for a new email.
+- **The backup's cost is not a caller's choice.** `sealForBackup` owns
+  `BACKUP_PBKDF2_ITERATIONS`, higher than the vault's because whoever reads the server's
+  table gets unlimited offline guesses at every box in it; the server refuses a box under
+  its own floor. `openBackup` also checks the result against the address the box was filed
+  under — a genuine box for the wrong wallet is refused, not restored.
+- **The server is told before the wallet is written.** `finishSignIn` goes first, signed by
+  the key just generated or decrypted; the local write follows. The other order could leave
+  a wallet on the device that nothing backs up.
+- **`replaceBackup` is only ever sent after the person saw what it gives up.** It is the
+  "forgot the password" door, and the backup it replaces may be the only copy of a funded
+  wallet. It is set by `startOverSignIn`, behind an explicit acknowledgement, and nowhere else.
+- **The backup follows the app password.** `changeAppPassword` seals every backed-up wallet
+  under the NEW password before the commit and stores them after it, best-effort and signed
+  by each wallet's own key — so a failure leaves the device untouched, and a network one is
+  reported rather than turned into a failed password change.
+- **The two challenges are one contract across two repositories.** `finishMessage` and
+  `backupMessage` are pinned to the same literals in `tests/unit/signIn.test.ts` and in the
+  community server's own test; change one side and both tests must change, or no sign-in can
+  finish. `recoverySetupMessage` is the third, for the sponsored setup.
+- **A finished sign-in lives in memory.** Its session token can create an account; the store
+  keeps it in `signInDraft` for as long as the screen that uses it and exposes a summary to
+  components, never the token or the box.
+
+### Passkeys: a password nobody types
+
+On web, extension and desktop a device can open with a **passkey** instead of a typed password
+(`src/lib/passkey.ts`, `src/lib/passkeyUnlock.ts`, the `usePasskey` slice) — and so can the
+Android and iOS apps, through the wallet's native plugin, because their WebView has no WebAuthn.
+
+**One relying party: `cosmospay.lat` (`PASSKEY_RP_ID`).** The web build names it whenever it is
+served from that domain or a subdomain (`passkeyRpId`; anywhere else, localhost included, the
+page's host is the RP, because a browser refuses any other). The apps always name it, which is
+what lets ONE synced passkey open the wallet in a browser and in the app. Never change it: a
+passkey is bound to its RP, and a new one strands every passkey-only backup.
+
+**The app's transport is WebAuthn JSON** (`nativeCredentialsApi` in `lib/passkey.ts` →
+`passkey_create` / `passkey_get` → `Passkey.kt` / `Passkey.swift`). Everything above the
+transport — salts, the two secrets, `noPrf`, the classification — is the same code on every
+build; the plugin only carries the ceremony. Android hands the JSON to Credential Manager as is
+(`androidx.credentials`, which reaches Google Password Manager); iOS reads the few fields the
+wallet sends and builds an `ASAuthorization` request, and PRF there needs **iOS 18** — older
+phones answer `unsupported` and keep the password and Face ID. `Passkey.swift` has never been
+compiled on this machine: treat a change to it as untested until it has run on an iPhone.
+
+**The OS must be told the app may use the domain's passkeys**, or every ceremony fails:
+`https://cosmospay.lat/.well-known/assetlinks.json` (package + every signing certificate's
+SHA-256, including Play App Signing's) and `/.well-known/apple-app-site-association`
+(`<TEAM>.lat.cosmospay.wallet` under `webcredentials`) — `npm run passkey:well-known` writes both
+from the same identifiers the app builds with — plus the `webcredentials:cosmospay.lat`
+entitlement, which `scripts/native-permissions.ts` re-applies after every `tauri ios init`.
+
+**The design is one sentence: the app password becomes 32 random bytes the passkey holds.** The
+vault is untouched — one app password, one `VaultKey`, `convergeSeals`, the attempt ladder,
+`changePassword` — except that on a passkey device the password comes out of the passkey door
+instead of the keyboard. That is why every password-shaped path (`unlock`, `checkPassword`,
+`revealBackup`, `ApprovePopup`) gained a passkey button and no key-shaped twin. The rule in
+"Unlocking with the phone" — never store the password — is about a HUMAN password that is reused
+elsewhere; a generated one opens nothing but this device's vault, which is exactly what the
+`VaultKey` the other door keeps would open. Keep it that way: never seal a typed password there.
+
+Seven rules, each one a way this breaks:
+
+- **One sheet, two secrets.** Every ceremony evaluates two PRF salts at once
+  (`PASSKEY_PRF_BACKUP_LABEL`, `PASSKEY_PRF_UNLOCK_LABEL` in `constants/passkey.ts`): one opens
+  the cloud backup, one opens this device. **Never change those labels** — a new label is a new
+  secret, and every door written under the old one stops opening, with no way back.
+- **The door is written BEFORE the vault moves.** A vault sealed under a generated password with
+  no door beside it is a wallet nobody can open. `rekeyDevice` takes `beforeCommit`/`onAbort` for
+  exactly this, onboarding enrols before `finishOnboarding`, and every path drops the door again
+  when nothing landed. Leaving a passkey device is the mirror image: the door is dropped AFTER
+  the commit (`afterCommit`), because until then the vault still needs the password it holds.
+- **The lock screen keeps a "use password" link on a passkey device.** An interrupted switch can
+  leave a device whose password is still a typed one; a screen with no field would strand it.
+  Never auto-drop the door on a failed passkey unlock for the same reason — a half-committed
+  change can leave some wallets on each password.
+- **The backup has doors, and its doors follow the device.** `cloudBackup.ts` writes `v: 2` for a
+  bare password (what an older server accepts) and `v: 3` — a random data key sealed once per
+  door — whenever a passkey is involved. Turning a passkey on keeps the typed password as a second
+  door (it is how the person restores where passkeys do not work); turning it off writes a plain
+  password box again. The community server's `isBackupBox` validates both shapes and holds every
+  password door to the same PBKDF2 floor — change the format on one side and the other refuses it.
+- **A passkey mismatch is never a guess.** `BackupPasskeyError` and `PasskeyUnlockStaleError`
+  are not `WrongPasswordError` and must not walk anyone up the attempt ladder; a dismissed sheet
+  (`PasskeyError` `cancelled`) says nothing at all.
+- **Offers learn.** `passkeyPossible` drops for the session the first time a ceremony comes back
+  `unsupported`/`noPrf` (or the browser says it has no PRF), and the create screen falls through
+  to the password form. An offer the person just watched fail is not one to keep making.
+- **The door is the device's, not a wallet's.** One per device (`cosmos.passkey`), because it
+  holds the password every wallet here shares — and `lib/vault.ts` drops it with the last wallet,
+  so the next onboarding does not inherit a button for a vault it never sealed.
+
+SEP-30 is offered on Home (`features/wallet/ProtectAccountCard.tsx`) as soon as the ledger shows
+the account funded with recovery off — a passkey-only wallet has no password to fall back on, and
+recovery is what stands in for one. "Not now" is remembered per account; Settings keeps the
+controls.
+
+## Recovery is SEP-30, it is opt-in, and it replaces nothing
+
+There are now two ways to hold a wallet here and they coexist deliberately: a **local
+wallet**, whose seed exists on one device and in the encrypted cloud backup, and a wallet
+whose **account** can also be recovered by two servers. Turning recovery on changes nothing
+about how the wallet signs — the device key still signs alone — and a wallet that never
+turns it on is exactly the wallet it was.
+
+The three numbers are the whole design (`src/constants/recovery.ts`), and they are the
+wallet's own, never a server's claim about itself:
+
+```
+device (10)          ≥ threshold (10)  → normal use needs nobody else
+server a (5) + b (5) ≥ threshold (10)  → recovery needs BOTH servers
+one server alone (5) <  threshold (10) → one server can do nothing
+```
+
+**Two deployments, and the wallet refuses a pair that is one.** Each recovery server is a
+separate deployment of the COMMUNITY SERVER (`RECOVERY_ROLE=a` / `=b`, its `src/recovery/`
+module) with its own keys, JWT secret, database and host (`PUBLIC_COSMOS_RECOVERY_A_URL` /
+`_B_URL`), and as many replicas of each as APISIX load-balances — nothing there is
+per-process state. The developer platform is not a recovery server and never was the right
+place for one. `recoveryServers()` in `lib/endpoints.ts`
+returns nothing when the two resolve to the same origin, and `loadRecoveryServers` refuses a
+pair on different networks, or one whose `web_auth_domain` is not the host that answered —
+because a signer is an entry on ONE ledger, and a mismatch discovered at recovery time is a
+failure with nothing left to do about it. Both hosts are derived into the extension's
+`host_permissions` alongside the other two; a host the bundle calls and the manifest does not
+name is unreachable from the popup.
+
+**A SEP-10 challenge is decoded before it is signed** (`src/lib/sep10.ts`). A server hands
+the wallet a transaction and asks for a signature: that is the shape of everything
+`txGuard.ts` exists to refuse. What makes it safe is a property the wallet checks for
+itself — **sequence number 0**, which the network can never accept — and `assertSafeChallenge`
+refuses everything else that is not exactly SEP-10's shape: a challenge sourced by our own
+account, an operation that is not `manageData`, a later operation sourced by US (a data entry
+written on the account under cover of a login), a `web_auth_domain` naming the sibling server,
+a nonce that is not 48 bytes, a missing window, a memo. A **muxed** (`M…`) transaction source
+is refused outright rather than compared: it renders as a different string from the `G…`
+account it wraps, and an operation with no source of its own inherits it — so one prefix
+defeated both account checks at once and left sequence 0 carrying the file alone.
+
+The `home_domain` the challenge is checked against is the server's own claim, so on its own it
+catches only a server contradicting itself; what makes it a check is that `loadRecoveryServers`
+requires **both** servers to report the same one, and whoever controls one cannot change what
+the other says.
+
+**The setup transaction is matched against a TEMPLATE, not bounded** (the `recovery` intent
+in `lib/txGuard.ts`). It is the only internal flow whose operations are in `CRITICAL_OPS`,
+because changing who may sign for the account is the feature — so it does not run the generic
+per-operation loop at all. There is no ceiling that makes `setOptions` safe: a signer at the
+wrong weight, an extra signer, a `masterWeight` of 0 are each a complete takeover and each
+would pass any bound. The envelope must be, operation for operation:
+
+```
+[beginSponsoringFutureReserves]   only when the operator pays, sourced by IT
+ setOptions  signer A, weight 5
+ setOptions  signer B, weight 5
+[endSponsoringFutureReserves]     only when sponsored, sourced by us
+ setOptions  masterWeight 10, low/med/high 10
+```
+
+Each signer exactly once, both from the pair the servers reported, nothing else set on any
+operation, and no signature on it but the payer's. Both funding variants exist and both end
+here: the wallet builds the self-paid one and the main community server builds the sponsored one (`POST /v1/wallet/recovery/setup`, never on a recovery server — its sponsor key is the operator's money), and the
+template checks the wallet's own build too — a builder that checked only the other side's
+envelope would be trusting its own code more than the thing that has to be right.
+
+Three things that bit, each now a test in `tests/unit/recovery.test.ts`:
+
+- **`homeDomain: ''` is a VALUE, not an absent field.** It clears the account's home domain,
+  and `str('')` returns null — so the one option that can be set without being truthy was the
+  one that walked through "and nothing else is set". `controlOf` tests presence with `typeof`,
+  and `reviewOp` renders a cleared domain explicitly instead of letting an empty value drop
+  out of the rows (which had made it invisible on the dapp path too).
+- **`sponsored` is a BOOLEAN, never the payer's address.** It was an address, taken from the
+  same response as the envelope, so `begin.source === opts.sponsor` compared the operator's
+  claim to the operator's claim. What the caller actually knows is which path the person
+  chose. The two checks that survive are the ones an envelope cannot answer for itself: the
+  reserve being paid for must be OUR account, and the payer named in the operation must be the
+  account that actually signed it.
+- **All three thresholds, and the master weight.** `recoveryStateOf` checked only
+  `med_threshold` — while adding a signer and changing thresholds are HIGH-threshold
+  operations, so `high_threshold` was the one number that decides whether one server can
+  re-key the account alone, and the one never read. Its `signers` list is a weight heuristic
+  and is used for display only; `signersToRemove` asks each server which key it holds, so
+  turning recovery off cannot zero an unrelated signer that happens to share the weight.
+
+**The wallet is a SEP-30 client, not a client of our servers.** Every path hangs off what a
+server says it is, never off a prefix the wallet builds: `RecoveryServer.sep30Base` is the
+SEP-30 base (`${sep30Base}/accounts/...`) and `webAuthEndpoint` is the URL SEP-10 publishes,
+both read from `/.well-known/stellar.toml` — the base from its `[[RECOVERY_SERVERS]] ENDPOINT`
+(`src/lib/stellarToml.ts` reads that first entry and nothing else in any table). Hardcoding
+`/api/recovery` and `/api/sep10/auth` was what once made the wallet unable to talk to any
+recovery server but ours. `describeServer` reads the TOML and ONLY the TOML — the old
+`/api/recovery/info` fallback is gone with the platform's recovery module — and it invents
+nothing: `SIGNING_KEY`, `NETWORK_PASSPHRASE`, `HOME_DOMAIN`, the web-auth endpoint and the
+SEP-30 endpoint are all required, and the two URLs must be on the configured host.
+
+Three consequences worth keeping:
+
+- **`SIGNING_KEY` is what makes SEP-10 a proof.** `assertSafeChallenge` refuses a challenge
+  sourced by anything else. Everything else in that function establishes that a challenge is
+  harmless to sign; this is the only check that establishes who is asking. It used to be
+  optional for servers discovered without a TOML; there are none now, so a server that does
+  not publish one is refused at discovery instead.
+- **The inbox is proven to each server by that server.** Someone who lost their device holds
+  no key, so the recovery credential is an identity token each server mints for itself after
+  checking the inbox on its own: Authentik's ID token, verified against Authentik's published
+  keys and accepted ONCE per server (`identityTokensFromIdToken`), or — with no ID token —
+  that server's own emailed code (`startRecoveryCodes`, two codes on `RecoverAccount.tsx`).
+  What this replaced was an identity minted in exchange for a sign-in session and checked
+  with an HMAC secret that the sign-in server and BOTH recovery servers held: one leaked copy
+  was a recovery identity for every account. Because an ID token is single-use per server,
+  the store keeps the resulting identity tokens for the whole recovery
+  (`recoveryProofRef`, `RECOVERY_PROOF_TTL_MS`) instead of exchanging it again.
+- **The home domain comes from the server, never from its host.** The two servers are different
+  hosts that name the same wallet, and `loadRecoveryServers` requires them to AGREE on it — that
+  agreement is the entire value of the field, since whoever controls one cannot change what the
+  other says. Deriving it from the host makes every pair disagree by construction and refuse
+  every enrolment; `tests/unit/recovery.test.ts` pins that.
+
+**A 409 on register is an ordinary state, not an error.** SEP-30 makes POST-on-existing a
+conflict and points at PUT, and the state is reachable the moment an enrolment registers with
+both servers and then fails before the transaction reaches the ledger — which is exactly what a
+person retries from. `registerForRecovery` answers a 409 with the PUT the spec asks for, which
+returns the signer the server has always held.
+
+**Recovering keeps the ACCOUNT and replaces the KEY.** `buildKeyReplacement` puts a new
+device key on at weight 10 and takes the old master to 0, leaving the recovery signers in
+place so the next device can do it again. It is built HERE, by the device that will use it,
+and only then handed to the servers for signatures — a transaction a server built and a
+server signed is one nobody independent read. `collectSignatures` assembles both, and
+`addSignature` is what catches a server that signed something else.
+
+**An identity is write-only, so the wallet records what it sent.** SEP-30's
+`GET /accounts/<address>` reports each identity's role and whether the caller is
+authenticated as it — never the address it holds. So nothing can read back which inbox
+recovers an account, and `WalletEntry.recoveryEmail` is the only record of it: written
+after the setup transaction is submitted, cleared when recovery is turned off, and
+deliberately NOT folded into `email`, which is an editable profile field that says
+nothing about what was registered. `RecoverySection` renders the recorded one; rendering
+`email` there names an inbox that may recover nothing. When the two disagree — the
+profile address changed, or recovery was enabled on another device — the screen says so
+and offers `updateRecoveryEmail`, which is SEP-30's `PUT /accounts/<address>` against
+both servers and touches no ledger: signers, weights and thresholds stay exactly as they
+were. It is still password-gated, because it needs the account's key for SEP-10 and
+because changing who may recover an account is the same decision as granting it. One
+server taking the update and the other refusing is a failure, not a partial success —
+the account would be recoverable from either address, the old one included.
+
+**The recoverable listing is paged, and the walk has to finish.** `GET /accounts` carries
+SEP-30's `after` cursor and no page size. Reading one page shows someone SOME of their
+wallets and tells them it is all of them, which from the outside is indistinguishable
+from a wallet that was never protected. `recoverableAccounts` follows the cursor on both
+servers and stops on three terms: an empty page, a page that adds nothing new (a server
+ignoring `after` returns the same one forever), and `RECOVERY_LIST_MAX_PAGES`.
+
+The wallet registers ONE auth method, `email`. The spec also allows `stellar_address`
+and `phone_number`; each additional one is another way into the same account, and an
+attacker needs only one of them — so adding one belongs behind the confirmation turning
+recovery on already has, not in the identity builder.
+
+Three consequences of re-keying, each handled in one place and each easy to reintroduce:
+
+- **The address stops being derivable from the key.** `WalletEntry.publicKey` is the ACCOUNT;
+  the key that signs is whatever the vault holds. `finishSignIn` and `replaceBackup` take an
+  optional `account` for exactly this, and the community server accepts the signature because
+  that key is one of the account's current signers (its account-signers module, on the one
+  Horizon the operator configures — never one the request names).
+- **The backup box records the account inside its ciphertext**, not beside it, so a later
+  restore compares against the right address instead of failing as a mismatch. A box without
+  the field is one whose key IS its address; the fallback loosens nothing.
+- **The recovery phrase changes.** The new one restores a key, not the account, and
+  `RecoverAccount.tsx` says so behind an explicit acknowledgement before anything is signed.
+
+**Turning it off is the user's**, and `buildRecoveryRemoval` is built entirely from what the
+ledger says is on the account — no counterparty envelope, so no guard intent. The thresholds
+go last, as they went on.
+
+`tests/unit/recovery.test.ts` is the file to extend: it holds the template refusals (each one
+a way an envelope can look like a recovery setup and be a takeover) and the challenge
+refusals. Add a case there before changing anything in `assertRecoveryTemplate`.
 
 ## An asset is a (code, issuer) pair, and the registry says whose
 
@@ -466,7 +804,13 @@ derivation is covered end-to-end, not here — see the Known gap below, and do n
 this list as wider than it is.
 
 Keep logic that decides money **out** of the store hook so it stays reachable from
-here — the two Playwright suites only cover onboarding, unlock and layout.
+here — the Playwright suites only cover onboarding, unlock, layout, the sign-in and passkeys.
+
+`npm run test:e2e:passkey` runs real WebAuthn ceremonies against Chrome's virtual
+authenticator (with PRF) — creating, unlocking, restoring and upgrading. Point it at a
+`localhost` URL (`E2E_URL=http://localhost:<port>`): WebAuthn refuses an IP address as a
+relying party, and on `127.0.0.1` the wallet correctly falls back to a password, so the
+suite would be testing the fallback.
 
 **The Rust side has no tests, and the mobile halves have none that run anywhere.**
 `cargo check` in CI proves the desktop build compiles; the Kotlin is compiled only by the
@@ -605,13 +949,14 @@ Four rules, and none of them is style:
 - **It is OFF until the user opts in.** `STORE_LISTING.md` discloses it as optional and
   off by default, so a default of on would make a published statement false. **Both
   onboarding paths have to ask**, and that is the part that was wrong once: the seed path
-  asks on `profile-setup`, and the social path — which skips that screen, because Pollar
-  supplies the name, the email and the avatar — asked nowhere, so a Pollar wallet was
-  created with `metricsOptIn` absent and the user never given the choice. It now has a
-  second step on `PasswordSetup` (shared `OptionalConsents`), placed after the password
-  because a separate screen would have to carry the typed password across a navigation.
-  `finishOnboarding` writes the answer in both branches; Settings → Privacy flips it
-  afterwards.
+  asks on `profile-setup`, and the social path of the time — which skipped that screen,
+  because the provider supplied the name and the email — asked nowhere, so its wallets were
+  created with `metricsOptIn` absent and the user never given the choice. The sign-in path
+  skips that screen for the same reason, so it asks where it collects the password: a
+  second step on `PasswordSetup` for a new wallet, and on `SignInPassword` for a restore
+  (shared `OptionalConsents`) — never on a separate screen, which would have to carry the
+  typed password across a navigation. `finishOnboarding` and `completeSignIn` write the
+  answer; Settings → Privacy flips it afterwards.
 - **The transport is decided by whether the wallet has an account.** With a Cosmos Pay
   key it posts to the gateway with it and the events land in that account's own
   dashboard; without one it posts with the SHARED public key, which the gateway's

@@ -10,8 +10,8 @@
  *
  * `ui/ExternalLink.tsx` calls this ONLY under Tauri — a browser tab opens its own tabs, and
  * taking that over would lose middle-click and "copy link address". The `window.open` half
- * below therefore serves exactly one caller: the Pollar login in `state/store.ts`, which
- * has no anchor to click because its URL does not exist until a handshake has been opened.
+ * below therefore serves exactly one caller: the provider sign-in (`state/useSignIn.ts`),
+ * which has no anchor to click because its URL does not exist until a handshake is open.
  * That is also why `reserveExternalTab` exists — see its own header.
  *
  * `features/extras/ScanQR.tsx` deliberately does NOT come through here. Its `window.open`
@@ -90,8 +90,8 @@ export interface ExternalTab {
  * Claim a tab NOW, for a URL that is still a network round trip away.
  *
  * A popup blocker asks one question: did THIS `window.open` have a user gesture behind it?
- * The Pollar login cannot answer it at the point where it has a URL — the authorization URL
- * only exists once the bridge has opened a handshake — and the gesture does not wait for
+ * A provider sign-in cannot answer it at the point where it has a URL — the authorization
+ * URL only exists once the server has opened a handshake — and the gesture does not wait for
  * the round trip: Chrome keeps it for about five seconds, WebKit and Gecko spend it on the
  * first `await`. The login therefore worked on one engine and silently opened nothing on
  * the others, leaving the wallet polling for a browser the user was never sent to.

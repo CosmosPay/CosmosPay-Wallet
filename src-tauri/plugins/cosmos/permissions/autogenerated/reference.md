@@ -13,6 +13,9 @@ so a partial grant would present a broken enrolment rather than an absent one.
 - `allow-share-text`
 - `allow-app-exit`
 - `allow-exclude-from-backup`
+- `allow-passkey-status`
+- `allow-passkey-create`
+- `allow-passkey-get`
 
 ## Permission Table
 
@@ -175,6 +178,84 @@ Enables the exclude_from_backup command without any pre-configured scope.
 <td>
 
 Denies the exclude_from_backup command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`cosmos:allow-passkey-create`
+
+</td>
+<td>
+
+Enables the passkey_create command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`cosmos:deny-passkey-create`
+
+</td>
+<td>
+
+Denies the passkey_create command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`cosmos:allow-passkey-get`
+
+</td>
+<td>
+
+Enables the passkey_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`cosmos:deny-passkey-get`
+
+</td>
+<td>
+
+Denies the passkey_get command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`cosmos:allow-passkey-status`
+
+</td>
+<td>
+
+Enables the passkey_status command without any pre-configured scope.
+
+</td>
+</tr>
+
+<tr>
+<td>
+
+`cosmos:deny-passkey-status`
+
+</td>
+<td>
+
+Denies the passkey_status command without any pre-configured scope.
 
 </td>
 </tr>

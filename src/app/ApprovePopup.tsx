@@ -15,6 +15,8 @@ import { grantApprovedOrigin, listApprovedOrigins } from '@/lib/dappOrigins';
 import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type WalletEntry } from '@/lib/vault';
 import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
 import { WrongPasswordError } from '@/lib/crypto';
+import { PasskeyError, wipePasskeySecrets } from '@/lib/passkey';
+import { PasskeyUnlockStaleError, passkeyUnlockCredential, unlockWithPasskey } from '@/lib/passkeyUnlock';
 import { resolveNetwork, signXdr, sendPayment, type NetConfig } from '@/lib/stellar';
 import { parseStellarQr, type ParsedQr } from '@/lib/sep7';
 import { reviewTx, type TxReview } from '@/lib/txGuard';
@@ -34,6 +36,11 @@ declare const chrome: any;
  *  - getAddress (connect): consent only — returns the PUBLIC key, remembers the origin.
  *  - signTransaction / signMessage: password -> unlock -> sign locally.
  *  - requestPayment (SEP-7 web+stellar:pay): password -> unlock -> build, sign & submit.
+ *
+ * On a PASSKEY device (`lib/passkeyUnlock.ts`) there is no password to type: Approve raises
+ * the passkey sheet, which releases the device password, and everything after it — the
+ * attempt ladder, `unlockWallet`, the signature — is the same code path. The field stays
+ * one link away for a device caught halfway through a switch.
  *
  * TWO TRANSPORTS reach it, and the difference is confined to `loadReq` / `respond`:
  *
@@ -156,12 +163,22 @@ export default function ApprovePopup() {
   const [ack, setAck] = useState(false);
   // Set after an address-bar payment succeeds: keeps the window open showing the hash.
   const [doneHash, setDoneHash] = useState('');
+  /** This device opens with a passkey; the field is a fallback behind a link. */
+  const [passkeyDevice, setPasskeyDevice] = useState(false);
+  const [pwdForm, setPwdForm] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const [r, e, netId, custom] = await Promise.all([loadReq(), getActiveEntry(), getNetworkId(), getCustomNetworks()]);
+        const [r, e, netId, custom, pk] = await Promise.all([
+          loadReq(),
+          getActiveEntry(),
+          getNetworkId(),
+          getCustomNetworks(),
+          passkeyUnlockCredential(),
+        ]);
         const c = resolveNetwork(netId, custom);
+        setPasskeyDevice(pk !== null);
         setReq(r);
         setEntry(e);
         setCfg(c);
@@ -234,6 +251,8 @@ export default function ApprovePopup() {
     );
   }
 
+  const usePasskey = passkeyDevice && !pwdForm;
+
   // Arrow (not a hoisted function declaration) so TS carries the null-narrowing of
   // req/entry/cfg from the early returns above into this closure.
   const approve = async () => {
@@ -258,9 +277,18 @@ export default function ApprovePopup() {
       // localStorage, opened on demand by any page calling window.cosmosWallet.* — an
       // unmetered oracle sitting beside the metered ones. `beginAttempt` reserves the
       // guess before the derivation, so concurrent windows cannot all read a clean record.
+      //
+      // On a passkey device the password comes out of the passkey door first. A dismissed
+      // sheet or a stale door is retryable, like a typo — see the catch below.
+      let password = pwd;
+      if (usePasskey) {
+        const opened = await unlockWithPasskey();
+        wipePasskeySecrets(opened.secrets);
+        password = opened.password;
+      }
       const wait = await beginAttempt();
       if (wait > 0) throw new Error(t('pwd.tooManyAttempts', { secs: String(blockSeconds(wait)) }));
-      const { secret } = await unlockWallet(entry.id, pwd).catch(async (e: unknown) => {
+      const { secret } = await unlockWallet(entry.id, password).catch(async (e: unknown) => {
         // Only a failed GCM tag is a guess. A missing or unparseable vault blob must not
         // walk the owner up the ladder while the screen blames their password.
         if (!(e instanceof WrongPasswordError)) await releaseAttempt();
@@ -289,7 +317,7 @@ export default function ApprovePopup() {
         respond(
           req,
           true,
-          { signedMessage: sig.toString('base64'), signerAddress: entry.publicKey, domain: SIGN_MESSAGE_DOMAIN },
+          { signedMessage: Buffer.from(sig).toString('base64'), signerAddress: entry.publicKey, domain: SIGN_MESSAGE_DOMAIN },
           undefined,
           false,
           netInfo(cfg),
@@ -318,8 +346,23 @@ export default function ApprovePopup() {
         return;
       }
     } catch (e) {
-      const wrongPwd = e instanceof WrongPasswordError;
-      const message = wrongPwd ? t('confirmSig.wrongPwd') : e instanceof Error ? e.message : String(e);
+      // A passkey sheet the person closed, or a door that does not open this device, is as
+      // retryable as a mistyped password — the request stays pending. The dismissal says
+      // nothing at all; the other two say what happened.
+      const passkeyRetry = e instanceof PasskeyError || e instanceof PasskeyUnlockStaleError;
+      const wrongPwd = e instanceof WrongPasswordError || passkeyRetry;
+      const message =
+        e instanceof PasskeyError
+          ? e.reason === 'cancelled'
+            ? ''
+            : t('passkey.err.failed')
+          : e instanceof PasskeyUnlockStaleError || (usePasskey && e instanceof WrongPasswordError)
+            ? t('passkey.err.stale')
+            : e instanceof WrongPasswordError
+              ? t('confirmSig.wrongPwd')
+              : e instanceof Error
+                ? e.message
+                : String(e);
       setErr(message);
       setBusy(false);
       // A wrong password is retryable — leave the request pending so the user can just
@@ -356,11 +399,13 @@ export default function ApprovePopup() {
    * can no longer happen on the same reflex as approving anything else.
    */
   const needsAck = !!review && (review.hasCritical || foreignSource);
+  // What proves the person is here: the passkey, or a typed password.
+  const hasProof = usePasskey || !!pwd;
   const canApprove =
     !netMismatch &&
     !reviewErr &&
     (!needsAck || ack) &&
-    (isConnect || (isPay ? !!pay && !!pwd : isSignTx ? !!review && !!pwd : !!pwd));
+    (isConnect || (isPay ? !!pay && hasProof : isSignTx ? !!review && hasProof : hasProof));
 
   return (
     <Frame>
@@ -469,7 +514,15 @@ export default function ApprovePopup() {
             : t('approve.noteSign')}
       </p>
 
-      {!isConnect && (
+      {!isConnect && usePasskey && (
+        <p className="approve-muted">
+          {t('passkey.approveNote')}{' '}
+          <button type="button" className="approve-link" onClick={() => setPwdForm(true)}>
+            {t('passkey.usePassword')}
+          </button>
+        </p>
+      )}
+      {!isConnect && !usePasskey && (
         <input
           type="password"
           value={pwd}

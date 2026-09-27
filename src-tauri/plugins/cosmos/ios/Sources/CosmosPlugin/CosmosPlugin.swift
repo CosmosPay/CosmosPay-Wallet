@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftRs
 import Tauri
 import UIKit
@@ -34,6 +35,11 @@ class ShareArgs: Decodable {
 
 class ExcludeBackupArgs: Decodable {
     let path: String
+}
+
+/// A WebAuthn ceremony as JSON — see `Passkey.swift` for the fields it reads.
+class PasskeyArgs: Decodable {
+    let requestJson: String
 }
 
 /// The bridge. Decodes arguments, forwards, and turns the answer back into an `Invoke`
@@ -110,6 +116,43 @@ class CosmosPlugin: Plugin {
         }
     }
 
+    /// Whether this phone can run a passkey ceremony (iOS 18+). A STATUS, like `authStatus`:
+    /// "no" is a valid answer the wallet shows as "use a password", never an error.
+    @objc public func passkeyStatus(_ invoke: Invoke) throws {
+        if Passkey.available() {
+            invoke.resolve(["available": true])
+        } else {
+            invoke.resolve(["available": false, "reason": Failure.unsupported.rawValue])
+        }
+    }
+
+    @objc public func passkeyCreate(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(PasskeyArgs.self)
+        onMainWithAnchor(invoke) { anchor in
+            Passkey.create(requestJson: args.requestJson, anchor: anchor) { invoke.settlePasskey($0) }
+        }
+    }
+
+    @objc public func passkeyGet(_ invoke: Invoke) throws {
+        let args = try invoke.parseArgs(PasskeyArgs.self)
+        onMainWithAnchor(invoke) { anchor in
+            Passkey.get(requestJson: args.requestJson, anchor: anchor) { invoke.settlePasskey($0) }
+        }
+    }
+
+    /// The window the passkey sheet attaches to. On the MAIN thread, unlike the Keychain
+    /// commands above: `ASAuthorizationController` presents UI, and its delegate answers on
+    /// the main thread too.
+    private func onMainWithAnchor(_ invoke: Invoke, _ body: @escaping (ASPresentationAnchor) -> Void) {
+        DispatchQueue.main.async {
+            guard let window = self.manager.viewController?.view.window else {
+                invoke.reject("no window to present the passkey sheet from", code: Failure.failed.rawValue)
+                return
+            }
+            body(window)
+        }
+    }
+
     @objc public func shareText(_ invoke: Invoke) throws {
         let args = try invoke.parseArgs(ShareArgs.self)
         DispatchQueue.main.async {
@@ -178,6 +221,17 @@ class CosmosPlugin: Plugin {
 
 /// Reject with the classification in `code`, whatever shape the error arrived in.
 extension Invoke {
+    /// The platform's JSON goes back as `responseJson`, unparsed — see `PasskeyResponse` in
+    /// models.rs — and a failure keeps its classification.
+    fileprivate func settlePasskey(_ result: Result<String, DeviceAuthError>) {
+        switch result {
+        case .success(let json):
+            resolve(["responseJson": json])
+        case .failure(let error):
+            reject(error.detail ?? error.failure.rawValue, code: error.failure.rawValue)
+        }
+    }
+
     fileprivate func reject(_ error: Error) {
         guard let classified = error as? DeviceAuthError else {
             // Not one of ours — a decoding fault, a UIKit throw. `failed` is the honest

@@ -10,6 +10,11 @@
 //!   `src/lib/deviceAuth.ts`. Read that module's header first: it is the design, and this
 //!   is only its native half.
 //! - **share** (`share_text`) raises the OS share sheet on Android and iOS.
+//! - **passkeys** (`passkey_*`) run WebAuthn ceremonies for the mobile app, whose WebView
+//!   has none: Credential Manager on Android, `ASAuthorization` on iOS. The frontend sends
+//!   standard WebAuthn JSON and gets the platform's JSON back — see `src/lib/passkey.ts`,
+//!   which is the design; this is only the transport. Desktop answers `unsupported`: its
+//!   WebView has WebAuthn and the frontend uses it directly.
 //! - **backup exclusion** (`exclude_from_backup`) keeps the app-data directory — which is
 //!   where `src/lib/storage.ts` puts the sealed vault — out of iCloud. Android needs no
 //!   command for this: `scripts/native-permissions.ts` closes it in the manifest, which is
@@ -41,7 +46,8 @@ use mobile::Cosmos;
 pub use error::{Error, Result};
 pub use models::{
     AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest, Biometry,
-    ExcludeBackupRequest, Failure, Prompt, ShareRequest,
+    ExcludeBackupRequest, Failure, PasskeyRequest, PasskeyResponse, PasskeyStatus, Prompt,
+    ShareRequest,
 };
 
 /// Reaches the platform implementation from any `Manager` — `app.cosmos()`.
@@ -65,6 +71,9 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             commands::share_text,
             commands::app_exit,
             commands::exclude_from_backup,
+            commands::passkey_status,
+            commands::passkey_create,
+            commands::passkey_get,
         ])
         .setup(|app, api| {
             #[cfg(mobile)]
