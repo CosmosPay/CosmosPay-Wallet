@@ -2,6 +2,11 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.11.1] - 2026-09-27
+
+### Miscellaneous
+- Sync the community server contract (59be7b9)
+
 ## [1.11.0] - 2026-09-27
 
 ### Features
