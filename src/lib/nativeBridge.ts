@@ -27,7 +27,11 @@ export type NativeCommand =
   // hardware back button with an empty stack: see src/app/WalletApp.tsx
   | 'app_exit'
   // keep the app-data directory out of iCloud: see src/lib/storage.ts
-  | 'exclude_from_backup';
+  | 'exclude_from_backup'
+  // passkeys through Credential Manager / ASAuthorization: see src/lib/passkey.ts
+  | 'passkey_status'
+  | 'passkey_create'
+  | 'passkey_get';
 
 /**
  * Events the plugin pushes at the frontend, rather than answering.

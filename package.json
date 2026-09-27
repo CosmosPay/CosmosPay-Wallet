@@ -25,6 +25,7 @@
     "android:icons": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/android-icons.ts",
     "android:res": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/android-res.ts",
     "native:perms": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/native-permissions.ts",
+    "passkey:well-known": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/passkey-well-known.ts",
     "pair:android": "node --disable-warning=ExperimentalWarning --experimental-strip-types scripts/adb-pair.ts",
     "ios:init": "tauri ios init && npm run native:perms && npm run ios:res",
     "ios:dev": "npm run ios:res && tauri ios dev",

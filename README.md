@@ -25,7 +25,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 | Encrypted vault | **AES-256-GCM**, key derived with **PBKDF2** (210k iters); unlock decrypts in memory only |
 | Idle auto-lock | The session is dropped after 5 minutes without interaction; getting back in needs the password |
 | Unlock with the phone | Opt-in on Android/iOS. The vault key is sealed under a key the OS releases only for a live biometric check, and that is destroyed when the biometric set changes; the password keeps working throughout |
-| Passkey | Web, extension and desktop: a passkey replaces the password. One fingerprint opens the device, and the same passkey restores the cloud backup on the next device. A browser without WebAuthn PRF keeps the password |
+| Passkey | Web, extension, desktop, Android 9+ and iOS 18+: a passkey replaces the password. One fingerprint opens the device, and the same passkey restores the cloud backup on the next device. A browser without WebAuthn PRF keeps the password |
 | Account recovery | SEP-30 with two independent servers, offered on Home once the account is funded: whoever proves the email to both can put a new key on the account |
 | Signing guard | `assertSafeToSign` decodes every XDR before the key touches it and refuses what does not fit the flow (see Security model) |
 | Balances, send & receive | Horizon; QR receive; XLM send creates the destination account when needed |
@@ -53,7 +53,7 @@ Key derivation is verified against the official **SEP-5 test vector**.
 3. Unlocking decrypts **in memory only**; a wrong password fails the GCM auth tag and is rejected.
 4. Signing actions can require the password again (toggle in Settings). The dapp approval window
    signs locally — no secret ever reaches a page or server.
-   **Passkey instead of a password** (web, extension, desktop): the app password becomes 32
+   **Passkey instead of a password** (web, extension, desktop, and the apps on Android 9+ / iOS 18+): the app password becomes 32
    random bytes sealed under the passkey's WebAuthn PRF output, so a fingerprint opens the
    device and the same passkey opens the cloud backup on the next one — see
    [src/lib/passkeyUnlock.ts](src/lib/passkeyUnlock.ts).

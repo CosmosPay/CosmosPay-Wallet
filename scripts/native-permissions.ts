@@ -17,6 +17,7 @@
  * and the insertions are checked for before they are made, so running this twice is a no-op.
  */
 import { access, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { PASSKEY_RP_ID } from '../src/constants/passkey.ts';
 
 const ANDROID_MANIFEST = 'src-tauri/gen/android/app/src/main/AndroidManifest.xml';
 const ANDROID_XML_DIR = 'src-tauri/gen/android/app/src/main/res/xml';
@@ -258,6 +259,64 @@ async function patchIos(): Promise<void> {
   log(`${IOS_PLIST} +${missing.length} key(s).`);
 }
 
+/* ------------------------- ios passkey entitlement ------------------------- */
+
+/**
+ * Let the app use passkeys for the wallet's relying party.
+ *
+ * `src-tauri/plugins/cosmos/ios/Sources/CosmosPlugin/Passkey.swift` names `cosmospay.lat`
+ * (`PASSKEY_RP_ID`), and iOS refuses that unless the app carries the associated domain
+ * `webcredentials:cosmospay.lat` — the half of the association the app declares; the domain's
+ * `apple-app-site-association` (`scripts/passkey-well-known.ts`) is the other half. Without
+ * it every ceremony fails with "not associated with domain", on a phone, after release.
+ *
+ * Written into the entitlements file Tauri generates beside the Info.plist, for the reason
+ * the rest of this script exists: `tauri ios init` rewrites it. When there is none to patch,
+ * this says so loudly rather than creating one — an entitlements file the Xcode project does
+ * not reference (`CODE_SIGN_ENTITLEMENTS`) is ignored at signing, silently.
+ */
+async function patchIosAssociatedDomains(): Promise<void> {
+  if (!IOS_APP_DIR || !(await exists(IOS_APP_DIR))) return; // patchIos() already said so
+  const files = (await readdir(IOS_APP_DIR)).filter((f) => f.endsWith('.entitlements'));
+  const domain = `webcredentials:${PASSKEY_RP_ID}`;
+  if (!files.length) {
+    log(`NO ENTITLEMENTS FILE in ${IOS_APP_DIR} — passkeys will fail on iOS.`);
+    log(`  Add the Associated Domains capability in Xcode with "${domain}".`);
+    return;
+  }
+  const file = `${IOS_APP_DIR}/${files[0]}`;
+  const before = await readFile(file, 'utf8');
+  if (before.includes(`<string>${domain}</string>`)) {
+    log(`${file} already declares ${domain}.`);
+    return;
+  }
+  const KEY = '<key>com.apple.developer.associated-domains</key>';
+  let after: string;
+  const at = before.indexOf(KEY);
+  if (at >= 0) {
+    // The key is there with other domains: add ours to its array.
+    const open = before.indexOf('<array>', at);
+    if (open < 0) {
+      log(`${file} has associated-domains without an <array> — leaving it alone.`);
+      return;
+    }
+    const insert = open + '<array>'.length;
+    after = before.slice(0, insert) + `\n\t\t<string>${domain}</string>` + before.slice(insert);
+  } else {
+    const close = before.lastIndexOf('</dict>');
+    if (close < 0) {
+      log(`${file} has no </dict> — leaving it alone.`);
+      return;
+    }
+    after =
+      before.slice(0, close) +
+      `\t${KEY}\n\t<array>\n\t\t<string>${domain}</string>\n\t</array>\n` +
+      before.slice(close);
+  }
+  await writeFile(file, after);
+  log(`${file} + ${domain}.`);
+}
+
 /* ---------------------------- android backup ---------------------------- */
 
 /**
@@ -487,5 +546,6 @@ async function reportIosBackupCheck(): Promise<void> {
 await patchAndroid();
 await patchAndroidBackup();
 await patchIos();
+await patchIosAssociatedDomains();
 await patchIosPrivacyManifest();
 await reportIosBackupCheck();

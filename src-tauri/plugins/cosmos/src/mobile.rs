@@ -14,7 +14,7 @@ use tauri::{
 use crate::error::{Error, Result};
 use crate::models::{
     AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest,
-    ExcludeBackupRequest, Failure, ShareRequest,
+    ExcludeBackupRequest, Failure, PasskeyRequest, PasskeyResponse, PasskeyStatus, ShareRequest,
 };
 
 #[cfg(target_os = "ios")]
@@ -72,5 +72,17 @@ impl<R: Runtime> Cosmos<R> {
             .map_err(|err| Error::with_detail(Failure::Failed, err.to_string()))?;
         let payload = ExcludeBackupRequest { path: dir.to_string_lossy().into_owned() };
         self.0.run_mobile_plugin("excludeFromBackup", payload).map_err(Into::into)
+    }
+
+    pub async fn passkey_status(&self) -> Result<PasskeyStatus> {
+        self.0.run_mobile_plugin("passkeyStatus", ()).map_err(Into::into)
+    }
+
+    pub async fn passkey_create(&self, payload: PasskeyRequest) -> Result<PasskeyResponse> {
+        self.0.run_mobile_plugin("passkeyCreate", payload).map_err(Into::into)
+    }
+
+    pub async fn passkey_get(&self, payload: PasskeyRequest) -> Result<PasskeyResponse> {
+        self.0.run_mobile_plugin("passkeyGet", payload).map_err(Into::into)
     }
 }

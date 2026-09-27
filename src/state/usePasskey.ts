@@ -19,7 +19,7 @@ import { passkeyPossible, passkeyPrfReported } from '@/lib/passkey';
 import { passkeyUnlockCredential } from '@/lib/passkeyUnlock';
 
 export interface PasskeyPublic {
-  /** Worth offering a passkey here? False on the mobile app, and once it has failed. */
+  /** Worth offering a passkey here? False where the platform said no, and once it has failed. */
   passkeyPossible: boolean;
   /** Does THIS device open with a passkey (it has no password anyone typed)? */
   passkeyUnlock: boolean;

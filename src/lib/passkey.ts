@@ -18,8 +18,19 @@
  * WHAT THIS FILE DOES NOT DECIDE. Whether a passkey is worth offering is `passkeyPossible()`
  * plus the result of trying: there is no API that answers "will this authenticator do PRF"
  * before a credential exists on every browser, so a creation that comes back without PRF
- * fails as `noPrf` and the caller falls back to a password. The mobile app is excluded up
- * front — the Tauri WebView on Android and iOS does not expose WebAuthn at all.
+ * fails as `noPrf` and the caller falls back to a password.
+ *
+ * ONE RELYING PARTY: `cosmospay.lat` (`PASSKEY_RP_ID`). The web build uses it whenever it is
+ * served from that domain or a subdomain, and the mobile app always does — so ONE synced
+ * passkey opens the wallet in a browser and in the app alike. Anywhere else (localhost, a
+ * preview host, the extension's own origin) the page's host is the relying party, as
+ * WebAuthn requires; those passkeys are that host's alone.
+ *
+ * THE MOBILE APP HAS NO WEBAUTHN of its own — the Tauri WebView on Android and iOS does not
+ * expose it — so there the same ceremonies go through the wallet's native plugin
+ * (`nativeCredentialsApi` below): standard WebAuthn JSON over the bridge, Android's Credential
+ * Manager and iOS's `ASAuthorization` on the other side. Everything above the transport — the
+ * salts, the two secrets, the classification — is the same code on every build.
  *
  * Every failure is a `PasskeyError` with a `reason`, never a message to match on: a
  * dismissed sheet (`cancelled`) is the person's choice and gets no red line.
@@ -27,12 +38,14 @@
 import {
   PASSKEY_PRF_BACKUP_LABEL,
   PASSKEY_PRF_UNLOCK_LABEL,
+  PASSKEY_RP_ID,
   PASSKEY_RP_NAME,
   PASSKEY_SECRET_BYTES,
   PASSKEY_TIMEOUT_MS,
   PASSKEY_USER_ID_BYTES,
 } from '@/constants/passkey';
-import { isMobileApp } from '@/lib/platform';
+import { nativeInvoke } from '@/lib/nativeBridge';
+import { isMobileApp, isTauri } from '@/lib/platform';
 
 export type PasskeyFailure = 'cancelled' | 'unsupported' | 'noPrf' | 'failed';
 
@@ -89,21 +102,47 @@ export function fromBase64Url(s: string): Uint8Array {
 /* ------------------------------ availability ----------------------------- */
 
 /**
- * Can this build even try? True wherever WebAuthn exists and the wallet is not the mobile
- * app. Not a promise of PRF — see the header — only that asking is not pointless.
+ * Can this build even try? True wherever WebAuthn exists, and in the mobile app, which asks
+ * the native plugin. Not a promise of PRF — see the header — only that asking is not
+ * pointless.
  */
 export function passkeyPossible(): boolean {
-  if (isMobileApp()) return false;
+  if (isMobileApp()) return isTauri();
   const g = globalThis as { PublicKeyCredential?: unknown; navigator?: { credentials?: unknown } };
   return typeof g.PublicKeyCredential === 'function' && !!g.navigator?.credentials;
 }
 
 /**
- * Does the browser say it supports PRF? `true`/`false` where it answers
+ * The relying party a ceremony names, or undefined to let WebAuthn use the page's host.
+ *
+ * Named only where it is TRUE of the page — a browser refuses an `rp.id` that is not the
+ * page's host or a suffix of it (`SecurityError`), so a localhost build that named
+ * `cosmospay.lat` could never make a passkey at all.
+ */
+export function passkeyRpId(): string | undefined {
+  if (isMobileApp()) return PASSKEY_RP_ID;
+  const host = (globalThis as { location?: { hostname?: string } }).location?.hostname ?? '';
+  return host === PASSKEY_RP_ID || host.endsWith('.' + PASSKEY_RP_ID) ? PASSKEY_RP_ID : undefined;
+}
+
+/**
+ * Does the platform say it supports PRF? `true`/`false` where it answers
  * (`PublicKeyCredential.getClientCapabilities`, Chrome 133+, Safari 18.4+), `null` where it
  * cannot — which is not a no: older builds that support PRF simply do not report it.
+ *
+ * In the mobile app the native plugin answers whether the OS can do passkeys at all (Android
+ * 9+ with a credential provider, iOS 18+). Whether the provider does PRF is only known after
+ * a creation, so a yes there is `null`, never `true`.
  */
 export async function passkeyPrfReported(): Promise<boolean | null> {
+  if (isMobileApp()) {
+    try {
+      const status = await nativeInvoke<{ available: boolean }>('passkey_status');
+      return status.available ? null : false;
+    } catch {
+      return false;
+    }
+  }
   const pkc = (globalThis as { PublicKeyCredential?: { getClientCapabilities?: () => Promise<Record<string, boolean>> } })
     .PublicKeyCredential;
   if (!pkc?.getClientCapabilities) return null;
@@ -116,6 +155,10 @@ export async function passkeyPrfReported(): Promise<boolean | null> {
 }
 
 function defaultApi(): CredentialsApi {
+  if (isMobileApp()) {
+    if (!isTauri()) throw new PasskeyError('unsupported', 'The native plugin is not available here.');
+    return nativeCredentialsApi();
+  }
   const creds = (globalThis as { navigator?: { credentials?: CredentialsApi } }).navigator?.credentials;
   if (!creds || !passkeyPossible()) throw new PasskeyError('unsupported', 'WebAuthn is not available here.');
   return creds;
@@ -187,6 +230,7 @@ export async function getPasskeySecrets(
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
         timeout: PASSKEY_TIMEOUT_MS,
+        ...(passkeyRpId() ? { rpId: passkeyRpId() } : {}),
         userVerification: 'required',
         allowCredentials: credentialIds.map((id) => ({ type: 'public-key' as const, id: fromBase64Url(id) as BufferSource })),
         extensions: { prf: { eval: await prfInputs() } } as AuthenticationExtensionsClientInputs,
@@ -224,7 +268,7 @@ export async function createPasskey(
   try {
     cred = await api.create({
       publicKey: {
-        rp: { name: PASSKEY_RP_NAME },
+        rp: { name: PASSKEY_RP_NAME, ...(passkeyRpId() ? { id: passkeyRpId() } : {}) },
         user: {
           id: crypto.getRandomValues(new Uint8Array(PASSKEY_USER_ID_BYTES)),
           name: user.name,
@@ -258,4 +302,109 @@ export async function createPasskey(
 export function wipePasskeySecrets(s: PasskeySecrets): void {
   s.backup.fill(0);
   s.unlock.fill(0);
+}
+
+/* ------------------------------ the native transport ------------------------------ */
+
+/** The one bridge call the adapter needs, injectable so a test can stand in for the phone. */
+export type NativeInvoke = <T>(command: 'passkey_create' | 'passkey_get', args: Record<string, unknown>) => Promise<T>;
+
+/**
+ * WebAuthn options as the JSON the platforms take: every buffer becomes base64url, which is
+ * the encoding `PublicKeyCredentialCreationOptionsJSON` specifies and the one Android's
+ * Credential Manager parses as-is. The Swift half reads the same fields.
+ */
+export function webAuthnJson(value: unknown): unknown {
+  if (value instanceof ArrayBuffer) return toBase64Url(new Uint8Array(value));
+  if (ArrayBuffer.isView(value)) return toBase64Url(new Uint8Array(value.buffer, value.byteOffset, value.byteLength));
+  if (Array.isArray(value)) return value.map(webAuthnJson);
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) if (v !== undefined) out[k] = webAuthnJson(v);
+    return out;
+  }
+  return value;
+}
+
+const bufferOf = (b64url: unknown): ArrayBuffer | undefined => {
+  if (typeof b64url !== 'string' || !b64url) return undefined;
+  const bytes = fromBase64Url(b64url);
+  return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+};
+
+/**
+ * A platform's `PublicKeyCredentialJSON` answer, shaped as the `Credential` this file reads:
+ * `rawId` and the PRF results as buffers. Only the fields the wallet uses are carried — no
+ * attestation, no signature — because nothing here verifies an assertion: the PRF output is
+ * the whole point, and the authenticator only releases it to a verified user.
+ */
+export function credentialFromJson(json: unknown): Credential {
+  const c = (json ?? {}) as {
+    id?: string;
+    rawId?: string;
+    clientExtensionResults?: { prf?: { enabled?: boolean; results?: { first?: string; second?: string } } };
+  };
+  if (typeof c.id !== 'string' || !c.id) throw new PasskeyError('failed', 'the platform answered without a credential id');
+  const prf = c.clientExtensionResults?.prf;
+  const rawId = bufferOf(c.rawId ?? c.id);
+  return {
+    id: c.id,
+    rawId,
+    type: 'public-key',
+    getClientExtensionResults: () => ({
+      prf: prf
+        ? {
+            enabled: prf.enabled,
+            results: prf.results ? { first: bufferOf(prf.results.first), second: bufferOf(prf.results.second) } : undefined,
+          }
+        : undefined,
+    }),
+  } as unknown as Credential;
+}
+
+/**
+ * A native rejection, classified. The plugin rejects with the same `Failure` tokens the
+ * device-unlock commands use (`src-tauri/plugins/cosmos/src/models.rs`); the four that mean
+ * "this phone cannot do passkeys" collapse to `unsupported`, so the screen offers the
+ * password the way it does in a browser without WebAuthn.
+ */
+export function nativeFailure(err: unknown): PasskeyError {
+  const e = (err ?? {}) as { failure?: unknown; detail?: unknown };
+  const detail = typeof e.detail === 'string' ? e.detail : err instanceof Error ? err.message : String(err);
+  switch (e.failure) {
+    case 'cancelled':
+      return new PasskeyError('cancelled', detail);
+    case 'unsupported':
+    case 'noHardware':
+    case 'noPasscode':
+    case 'notEnrolled':
+      return new PasskeyError('unsupported', detail);
+    default:
+      // `stale` (no matching passkey on this phone) included: not a dismissal the person
+      // chose, so it gets a line rather than silence.
+      return new PasskeyError('failed', detail);
+  }
+}
+
+/**
+ * `navigator.credentials`, for the mobile app: the same two calls, carried to the native
+ * plugin as WebAuthn JSON and answered with a credential built from its JSON reply.
+ */
+export function nativeCredentialsApi(invoke: NativeInvoke = nativeInvoke as NativeInvoke): CredentialsApi {
+  const call = async (command: 'passkey_create' | 'passkey_get', publicKey: unknown): Promise<Credential> => {
+    let out: { responseJson?: unknown };
+    try {
+      out = await invoke<{ responseJson?: unknown }>(command, {
+        payload: { requestJson: JSON.stringify(webAuthnJson(publicKey)) },
+      });
+    } catch (err) {
+      throw nativeFailure(err);
+    }
+    if (typeof out?.responseJson !== 'string') throw new PasskeyError('failed', 'the platform returned no credential');
+    return credentialFromJson(JSON.parse(out.responseJson));
+  };
+  return {
+    create: (o) => call('passkey_create', o.publicKey),
+    get: (o) => call('passkey_get', o.publicKey),
+  };
 }

@@ -40,8 +40,8 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
    * which the store reports and this screen answers by showing the password form.
    *
    * Not on a device that already holds wallets: those share one password, and a new wallet
-   * joins it (`finishOnboarding` reuses the session's key). Not on the phone app either:
-   * its WebView has no passkeys, and it has the fingerprint unlock instead.
+   * joins it (`finishOnboarding` reuses the session's key). The phone app asks its native
+   * plugin, and an iPhone before iOS 18 or an Android before 9 answers no.
    */
   const passkeyOffer = store.passkeyPossible && !store.hasSession && store.wallets.length === 0;
   const [step, setStep] = useState<'choose' | 'password' | 'consents'>(passkeyOffer ? 'choose' : 'password');

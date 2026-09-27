@@ -109,7 +109,7 @@ export function SignInPassword({ store }: { store: WalletStore }) {
   // The field, when there is a password door to type into — up front when it is the only
   // way in, behind a link when the passkey leads.
   const fieldShown = doors.password && (!passkeyDoor || showPwd);
-  // A backup only a passkey opens, on a build that cannot ask for one (the phone app).
+  // A backup only a passkey opens, on a build that cannot ask for one (an old phone, a browser without WebAuthn).
   const stuck = !passkeyDoor && !doors.password;
   // The upgrade is a first-run offer: an unlocked device keeps the way it already opens.
   const offerUpgrade = firstRun && store.passkeyPossible && fieldShown;

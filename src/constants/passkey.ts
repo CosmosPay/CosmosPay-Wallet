@@ -15,6 +15,19 @@ import type { PasskeyFailure } from '@/lib/passkey';
 export const PASSKEY_RP_NAME = 'Cosmos Wallet';
 
 /**
+ * The relying party every wallet passkey belongs to: the web build served from this domain
+ * or any subdomain, and the Android and iOS apps.
+ *
+ * NEVER CHANGE THIS. A passkey is bound to its relying party; a new one here strands every
+ * passkey — and so every passkey-only backup — made under the old one. It is also why the
+ * domain has to publish `/.well-known/assetlinks.json` (Android) and
+ * `/.well-known/apple-app-site-association` (iOS) naming the app: without them the OS
+ * refuses to let the app use a passkey for this domain. `npm run passkey:well-known` writes
+ * both.
+ */
+export const PASSKEY_RP_ID = 'cosmospay.lat';
+
+/**
  * The PRF salt labels. Hashed with SHA-256 into the 32-byte salts the extension takes.
  *
  * NEVER CHANGE THESE. A passkey's PRF output is a function of the salt, so a new label is a

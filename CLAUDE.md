@@ -460,8 +460,30 @@ Eight rules:
 ### Passkeys: a password nobody types
 
 On web, extension and desktop a device can open with a **passkey** instead of a typed password
-(`src/lib/passkey.ts`, `src/lib/passkeyUnlock.ts`, the `usePasskey` slice). The mobile app is
-excluded — its WebView has no WebAuthn — and keeps the password plus the fingerprint unlock.
+(`src/lib/passkey.ts`, `src/lib/passkeyUnlock.ts`, the `usePasskey` slice) — and so can the
+Android and iOS apps, through the wallet's native plugin, because their WebView has no WebAuthn.
+
+**One relying party: `cosmospay.lat` (`PASSKEY_RP_ID`).** The web build names it whenever it is
+served from that domain or a subdomain (`passkeyRpId`; anywhere else, localhost included, the
+page's host is the RP, because a browser refuses any other). The apps always name it, which is
+what lets ONE synced passkey open the wallet in a browser and in the app. Never change it: a
+passkey is bound to its RP, and a new one strands every passkey-only backup.
+
+**The app's transport is WebAuthn JSON** (`nativeCredentialsApi` in `lib/passkey.ts` →
+`passkey_create` / `passkey_get` → `Passkey.kt` / `Passkey.swift`). Everything above the
+transport — salts, the two secrets, `noPrf`, the classification — is the same code on every
+build; the plugin only carries the ceremony. Android hands the JSON to Credential Manager as is
+(`androidx.credentials`, which reaches Google Password Manager); iOS reads the few fields the
+wallet sends and builds an `ASAuthorization` request, and PRF there needs **iOS 18** — older
+phones answer `unsupported` and keep the password and Face ID. `Passkey.swift` has never been
+compiled on this machine: treat a change to it as untested until it has run on an iPhone.
+
+**The OS must be told the app may use the domain's passkeys**, or every ceremony fails:
+`https://cosmospay.lat/.well-known/assetlinks.json` (package + every signing certificate's
+SHA-256, including Play App Signing's) and `/.well-known/apple-app-site-association`
+(`<TEAM>.lat.cosmospay.wallet` under `webcredentials`) — `npm run passkey:well-known` writes both
+from the same identifiers the app builds with — plus the `webcredentials:cosmospay.lat`
+entitlement, which `scripts/native-permissions.ts` re-applies after every `tauri ios init`.
 
 **The design is one sentence: the app password becomes 32 random bytes the passkey holds.** The
 vault is untouched — one app password, one `VaultKey`, `convergeSeals`, the attempt ladder,

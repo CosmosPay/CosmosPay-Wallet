@@ -19,8 +19,12 @@ import {
   createPasskey,
   fromBase64Url,
   getPasskeySecrets,
+  nativeCredentialsApi,
+  passkeyRpId,
   toBase64Url,
+  webAuthnJson,
   type CredentialsApi,
+  type NativeInvoke,
 } from '@/lib/passkey';
 import {
   PasskeyUnlockStaleError,
@@ -32,7 +36,7 @@ import {
   passkeyUnlockCredential,
   unlockWithPasskey,
 } from '@/lib/passkeyUnlock';
-import { PASSKEY_PRF_BACKUP_LABEL, PASSKEY_PRF_UNLOCK_LABEL } from '@/constants/passkey';
+import { PASSKEY_PRF_BACKUP_LABEL, PASSKEY_PRF_UNLOCK_LABEL, PASSKEY_RP_ID } from '@/constants/passkey';
 
 // `passkeyPossible()` needs WebAuthn to exist; node has none, so the suite provides the
 // two globals it checks. The fake below is what actually answers.
@@ -192,5 +196,123 @@ test('no envelope means no door, and dropping it closes the door', async () => {
 test('an envelope this build does not write reads as no envelope', () => {
   for (const raw of [null, '', 'nope', '{}', '{"v":2,"id":"x","box":{}}', '{"v":1,"id":"","box":{}}', '{"v":1,"id":"x"}']) {
     assert.equal(parsePasskeyEnvelope(raw), null);
+  }
+});
+
+/* --------------------------- the native transport (the mobile app) --------------------------- */
+
+/**
+ * A phone, as the plugin presents it: WebAuthn JSON in, `PublicKeyCredentialJSON` out, PRF
+ * computed like a provider would. What this pins is the TRANSPORT — that the ceremony the
+ * web layer builds survives the trip as JSON the platforms read (buffers as base64url, the
+ * salts where Credential Manager and `Passkey.swift` look for them), and that the reply is
+ * read back into the same two secrets a browser would have produced.
+ */
+function fakePhone(opts: { reject?: { failure: string; detail?: string } } = {}) {
+  const credentials = new Map<string, Uint8Array>();
+  const requests: { command: string; json: Record<string, any> }[] = [];
+  const b64 = (bytes: Uint8Array) => toBase64Url(bytes);
+  const invoke: NativeInvoke = async <T,>(command: string, args: Record<string, unknown>): Promise<T> => {
+    const json = JSON.parse((args.payload as { requestJson: string }).requestJson) as Record<string, any>;
+    requests.push({ command, json });
+    if (opts.reject) throw opts.reject;
+    let id: Uint8Array;
+    if (command === 'passkey_create') {
+      id = crypto.getRandomValues(new Uint8Array(20));
+      credentials.set(b64(id), id);
+    } else {
+      const allow: string[] = (json.allowCredentials ?? []).map((c: { id: string }) => c.id);
+      const pick = allow.find((a) => credentials.has(a));
+      if (!pick) throw { failure: 'stale', detail: 'no passkey for this site on the phone' };
+      id = credentials.get(pick)!;
+    }
+    const ev = json.extensions?.prf?.eval;
+    const out = (salt: string) => b64(new Uint8Array(prf(id, fromBase64Url(salt) as BufferSource)));
+    return {
+      responseJson: JSON.stringify({
+        id: b64(id),
+        rawId: b64(id),
+        type: 'public-key',
+        clientExtensionResults: { prf: { enabled: true, results: { first: out(ev.first), second: out(ev.second) } } },
+      }),
+    } as T;
+  };
+  return { invoke, requests };
+}
+
+test('buffers travel as base64url, and nothing undefined travels at all', () => {
+  const json = webAuthnJson({ a: new Uint8Array([251, 255]), b: undefined, c: [{ id: new Uint8Array([1]).buffer }], d: 'x' });
+  assert.deepEqual(json, { a: '-_8', c: [{ id: 'AQ' }], d: 'x' });
+});
+
+test('a ceremony over the native transport yields the same two secrets a browser would', async () => {
+  const phone = fakePhone();
+  const api = nativeCredentialsApi(phone.invoke);
+  const created = await createPasskey(USER, api);
+  const got = await getPasskeySecrets([created.credentialId], api);
+  assert.deepEqual(got.backup, created.backup);
+  assert.deepEqual(got.unlock, created.unlock);
+  assert.notDeepEqual(created.backup, created.unlock);
+
+  // The JSON the platforms read: the salts where Credential Manager and Passkey.swift look,
+  // the user handle and challenge as base64url, the allow list naming the credential.
+  const [c, g] = phone.requests;
+  assert.equal(c.command, 'passkey_create');
+  assert.match(c.json.user.id, /^[A-Za-z0-9_-]+$/);
+  assert.match(c.json.challenge, /^[A-Za-z0-9_-]+$/);
+  assert.equal(c.json.user.name, USER.name);
+  assert.equal(c.json.authenticatorSelection.userVerification, 'required');
+  const salt = (label: string) => toBase64Url(new Uint8Array(createHash('sha256').update(label).digest()));
+  assert.equal(c.json.extensions.prf.eval.first, salt(PASSKEY_PRF_BACKUP_LABEL));
+  assert.equal(c.json.extensions.prf.eval.second, salt(PASSKEY_PRF_UNLOCK_LABEL));
+  assert.equal(g.command, 'passkey_get');
+  assert.deepEqual(g.json.allowCredentials, [{ type: 'public-key', id: created.credentialId }]);
+});
+
+test('a native rejection keeps its meaning', async () => {
+  const cases: [string, string][] = [
+    ['cancelled', 'cancelled'],
+    ['unsupported', 'unsupported'],
+    ['noHardware', 'unsupported'],
+    ['noPasscode', 'unsupported'],
+    ['notEnrolled', 'unsupported'],
+    ['stale', 'failed'],
+    ['failed', 'failed'],
+  ];
+  for (const [failure, reason] of cases) {
+    const api = nativeCredentialsApi(fakePhone({ reject: { failure, detail: 'x' } }).invoke);
+    await assert.rejects(createPasskey(USER, api), (e: unknown) => e instanceof PasskeyError && e.reason === reason, failure);
+  }
+});
+
+test('a phone whose provider has no PRF is noPrf, exactly as in a browser', async () => {
+  const invoke: NativeInvoke = async <T,>() =>
+    ({ responseJson: JSON.stringify({ id: 'AQID', rawId: 'AQID', type: 'public-key', clientExtensionResults: {} }) }) as T;
+  await assert.rejects(createPasskey(USER, nativeCredentialsApi(invoke)), (e: unknown) => e instanceof PasskeyError && e.reason === 'noPrf');
+});
+
+test('a reply that is not a credential is a failure, not a crash', async () => {
+  for (const out of [{}, { responseJson: 42 }, { responseJson: '{}' }]) {
+    const invoke: NativeInvoke = async <T,>() => out as T;
+    await assert.rejects(createPasskey(USER, nativeCredentialsApi(invoke)), (e: unknown) => e instanceof PasskeyError && e.reason === 'failed');
+  }
+});
+
+test('the relying party is cosmospay.lat where the page is on it, and the page’s own host elsewhere', () => {
+  const g = globalThis as { location?: unknown };
+  const saved = g.location;
+  try {
+    for (const [host, rp] of [
+      ['cosmospay.lat', PASSKEY_RP_ID],
+      ['wallet.cosmospay.lat', PASSKEY_RP_ID],
+      ['localhost', undefined],
+      ['evilcosmospay.lat', undefined],
+      ['cosmospay.lat.example.com', undefined],
+    ] as const) {
+      g.location = { hostname: host };
+      assert.equal(passkeyRpId(), rp, host);
+    }
+  } finally {
+    g.location = saved;
   }
 });
