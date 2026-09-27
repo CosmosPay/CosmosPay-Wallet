@@ -144,17 +144,11 @@ export const EVENT = {
   lock: 'session.lock',
   walletCreated: 'wallet.created',
   walletImported: 'wallet.imported',
-  socialLogin: 'auth.social_login',
-  socialLoginFailed: 'auth.social_login_failed',
-  // The wallet's own sign-in (`lib/signIn.ts`). Separate names from the Pollar ones above,
-  // which now only ever mean the migration's reconnect — a dashboard that folded both into
-  // one count could not tell the new path working from the old one being retried.
+  // The wallet's own sign-in (`lib/signIn.ts`).
   signIn: 'auth.sign_in',
   signInFailed: 'auth.sign_in_failed',
   backupRestored: 'wallet.backup_restored',
   backupUpdateFailed: 'wallet.backup_update_failed',
-  pollarMigrated: 'wallet.pollar_migrated',
-  pollarMigrationFailed: 'wallet.pollar_migration_failed',
   // money
   paymentSent: 'payment.sent',
   paymentFailed: 'payment.failed',

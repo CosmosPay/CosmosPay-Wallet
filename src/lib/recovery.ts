@@ -55,6 +55,7 @@ import {
   DEVICE_WEIGHT,
   IDENTITY_ROLE_OWNER,
   RECOVERY_LIST_MAX_PAGES,
+  RECOVERY_PROBE_RETRY_MS,
   RECOVERY_SERVER_COUNT,
   RECOVERY_TIMEOUT_S,
   SERVER_WEIGHT,
@@ -105,6 +106,40 @@ export interface RecoveryServer {
 /** Is this build configured for recovery at all? */
 export function recoveryConfigured(): boolean {
   return configuredServers().length === RECOVERY_SERVER_COUNT;
+}
+
+const probes = new Map<string, Promise<boolean>>();
+
+/**
+ * Do both configured servers actually answer, as a pair `loadRecoveryServers` accepts?
+ *
+ * `recoveryConfigured` only says two URLs are set — and they always are, because
+ * `constants/backends.ts` supplies defaults. A build pointed at hosts that were never
+ * deployed used to offer "protect your account" on Home, and the person met "server not
+ * found" at the end of the flow. Every screen that OFFERS recovery asks this first and
+ * stays quiet on a no; the flows themselves still run the full check when they start.
+ *
+ * Cached per network and pair for the session, because it is two TOML fetches. A NO is
+ * forgotten after `RECOVERY_PROBE_RETRY_MS`, so a server that was only briefly down is
+ * offered again without a reload.
+ */
+export function recoveryReachable(cfg: NetConfig): Promise<boolean> {
+  if (!recoveryConfigured()) return Promise.resolve(false);
+  const key = `${cfg.passphrase}|${configuredServers()
+    .map((s) => s.url)
+    .join('|')}`;
+  let probe = probes.get(key);
+  if (!probe) {
+    probe = loadRecoveryServers(cfg).then(
+      () => true,
+      () => false,
+    );
+    probes.set(key, probe);
+    void probe.then((ok) => {
+      if (!ok) setTimeout(() => probes.delete(key), RECOVERY_PROBE_RETRY_MS);
+    });
+  }
+  return probe;
 }
 
 /**

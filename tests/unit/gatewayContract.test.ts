@@ -3,8 +3,7 @@
  * with the same method.
  *
  * The wallet talks to the gateway through hand-written URLs — `${gatewayApi()}/v1/...` in
- * `lib/cosmospay.ts`, the sign-in under `walletApiBase()`, the Pollar bridge and the
- * telemetry feed — and nothing tied them to the server: a renamed route compiled, shipped,
+ * `lib/cosmospay.ts`, the sign-in under `walletApiBase()` and the telemetry feed — and nothing tied them to the server: a renamed route compiled, shipped,
  * and 404'd in every shell at once. This reads those files with the TypeScript compiler and
  * holds each call against `openapi/community-server.json`, which `npm run openapi:check`
  * keeps equal to the server's own spec.
@@ -36,7 +35,6 @@ for (const [p, methods] of Object.entries(spec.paths)) {
 const BASES: Record<string, string> = {
   'gatewayApi()': '',
   'walletApiBase()': '/v1/wallet',
-  'base()': '/v1/pollar', // lib/pollar.ts
 };
 
 /** `${gatewayApi()}/v1/x/${id}` → `/v1/x/{}`, or null when it does not start at a base. */
@@ -94,7 +92,7 @@ interface Call {
   where: string;
 }
 
-const FILES = ['src/lib/cosmospay.ts', 'src/lib/telemetry.ts', 'src/lib/pollar.ts'];
+const FILES = ['src/lib/cosmospay.ts', 'src/lib/telemetry.ts'];
 
 function gatewayCalls(): Call[] {
   const calls: Call[] = [];
@@ -107,19 +105,6 @@ function gatewayCalls(): Call[] {
         const url = urlArg(node);
         const p = method && url ? serverPath(url) : null;
         if (method && p) calls.push({ key: `${method} ${normalize(p)}`, where });
-
-        // lib/pollar.ts goes through its own `call(method, path, …)`.
-        if (rel === 'src/lib/pollar.ts' && node.expression.getText() === 'call') {
-          const [m, pathArg] = node.arguments;
-          if (m && ts.isStringLiteral(m) && pathArg) {
-            const text = ts.isStringLiteral(pathArg) || ts.isNoSubstitutionTemplateLiteral(pathArg)
-              ? pathArg.text
-              : ts.isTemplateExpression(pathArg)
-                ? pathArg.head.text + pathArg.templateSpans.map((s) => `{}${s.literal.text}`).join('')
-                : null;
-            if (text !== null) calls.push({ key: `${m.text} ${normalize(`/v1/pollar${text}`)}`, where });
-          }
-        }
       }
       ts.forEachChild(node, visit);
     };

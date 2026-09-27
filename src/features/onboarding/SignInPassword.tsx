@@ -9,7 +9,7 @@ import { CheckRow } from '@/features/onboarding/CheckRow';
 import { Desc } from '@/features/onboarding/Desc';
 import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
 import { shortAddr } from '@/lib/format';
-import { recoveryConfigured } from '@/lib/recovery';
+import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
 import '@/styles/features/onboarding/sign-in-password.css';
 
 /**
@@ -43,6 +43,8 @@ export function SignInPassword({ store }: { store: WalletStore }) {
   // On by default wherever it can work: the whole point is that the next device asks for
   // nothing, and a default of off is a default nobody changes.
   const [upgrade, setUpgrade] = useState(true);
+  // Before the early return: a hook. The offer below needs both servers to answer.
+  const recoveryUp = useRecoveryReachable(store.network);
 
   // A sign-in lives in memory only; after a reload there is nothing to finish here.
   useEffect(() => {
@@ -55,7 +57,7 @@ export function SignInPassword({ store }: { store: WalletStore }) {
   // Only worth offering where there are two servers to ask. `recoverable` itself is not
   // loaded here: asking both servers costs two round trips and a token each, and most
   // people who open this screen simply type their password.
-  const recoverable = recoveryConfigured();
+  const recoverable = recoveryUp === true;
   const firstRun = !store.hasSession;
   const busy = store.busy || passkeyBusy;
 

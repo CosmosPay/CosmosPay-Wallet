@@ -20,7 +20,7 @@
 /** Cosmos Developer Platform: provisioning, social login, `/api/public-key`. */
 export const DEFAULT_DEV_PLATFORM_URL = 'https://dev.cosmospay.lat';
 
-/** APISIX gateway: the payments API and the Pollar bridge. */
+/** APISIX gateway: the payments API and the wallet's sign-in. */
 export const DEFAULT_GATEWAY_URL = 'https://api.cosmospay.lat';
 
 /** Gateway entry prefix. APISIX strips it itself before forwarding upstream. */

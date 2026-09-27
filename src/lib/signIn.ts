@@ -2,14 +2,12 @@
  * The wallet's own sign-in: Authentik, Google, GitHub or an emailed code — and the key
  * stays here. Served by the community server, through the gateway (`walletApiBase`).
  *
- * ## What replaced what
+ * ## The key never leaves the device
  *
- * The social login before this one handed the Stellar key to Pollar, which kept it in its
- * own KMS; the wallet could ask it to sign and nothing more. This one never lets the key
- * leave the device. A sign-in proves WHO someone is; the wallet then either generates a seed
- * (a new account) or restores the one it backed up last time (`lib/cloudBackup.ts`) — which
- * only the person's password opens. Pollar is still reachable, from one place: moving an old
- * Pollar wallet's funds onto a key this device holds (`lib/pollarMigration.ts`).
+ * A sign-in proves WHO someone is; the wallet then either generates a seed (a new account)
+ * or restores the one it backed up last time (`lib/cloudBackup.ts`) — which only the
+ * person's password or passkey opens. No custodian holds the key, and none ever did for a
+ * wallet made this way.
  *
  * ## The three steps
  *
@@ -25,8 +23,7 @@
  *
  * ## The poll flow, and why the handshake is on disk
  *
- * The same shape the Pollar login used, for the same reason: this bundle runs as an MV3
- * popup, a side panel, a Tauri window and a web page, and only some of those can be
+ * Polling rather than a redirect, because this bundle runs as an MV3 popup, a side panel, a Tauri window and a web page, and only some of those can be
  * addressed by a redirect. So the provider sends the person to the server, and the wallet
  * asks the server whether they came back. Opening the consent screen closes an MV3 popup
  * — and every bit of React state with it — so the handshake is persisted before the browser

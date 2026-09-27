@@ -199,6 +199,6 @@ export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; 
  * signing in, and a build that pointed at it would find nothing there.
  *
  * What the platform still serves is unaffected: `/api/assets`, `/api/public-key`,
- * `/api/telemetry` and the legacy Pollar routes stay on `devPlatformUrl()`.
+ * and `/api/telemetry` stay on `devPlatformUrl()`.
  */
 export const walletApiBase = (): string => `${gatewayApi()}/v1/wallet`;

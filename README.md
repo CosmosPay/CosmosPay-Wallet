@@ -11,11 +11,8 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 
 > **Truly non-custodial:** keys are generated and encrypted on your device. Neither the recovery
 > phrase nor the secret key ever leaves it. Servers only receive locally-signed transactions.
->
-> The one exception is **social login** (Google / GitHub), which is opt-in and **custodial**:
-> that key lives in Pollar's KMS, so there is no recovery phrase to lose and none to hold.
-> The onboarding screen states this above the buttons — before the consent screen, not after.
-> Wallets created or imported from a recovery phrase are unaffected.
+> Signing in with Cosmos Pay, Google, GitHub or an emailed code proves who you are; it never
+> hands the key to anyone.
 
 ## Features
 
@@ -34,7 +31,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 | History | Last operations with color-coded icons (green in / red out / white neutral) + genesis marker |
 | Favorites & markets | Star assets to pin them in the top-5; live prices (CoinGecko) with animated tickers |
 | Multi-wallet | Create / import / switch under one password; per-wallet email, gender-aware greetings |
-| Social login | Sign in with Google or GitHub for a Stellar account without a recovery phrase. **Custodial** (Pollar KMS) — flagged as such before the consent screen. One login also creates an ordinary seed wallet for testnet under the same password |
+| Sign-in | Cosmos Pay (Authentik), Google, GitHub or an emailed code. The key is generated on the device; the server keeps a backup it cannot open |
 | Dapp provider | `window.cosmosWallet` (SEP-43-style): `getAddress`, `getNetwork`, `signTransaction`, `signMessage`, `requestPayment` |
 | SEP-7 links | `web+stellar:pay` via provider, Firefox protocol handler, `pay` omnibox keyword and address-bar detection |
 | Extension surfaces | Popup (400×600) and side panel / sidebar, with a persistent preference toggle |

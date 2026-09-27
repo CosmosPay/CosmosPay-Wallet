@@ -208,8 +208,6 @@ import {
 import { tNow } from '@/lib/i18n';
 import { report, reportError } from '@/lib/telemetry';
 import { EVENT, SLOW_REQUEST_MS, TRACE_HEADER, TRACE_PROP } from '@/constants/telemetry';
-import type { PollarSession, PollarSessionStatus } from '@/lib/pollar';
-import { PollarSessionStatusShape, SocialAuthorizationShape, SocialClaimShape, SocialVerifyResultShape } from '@/lib/pollarShapes';
 import {
   BackupUpdatedShape,
   SignInAuthorizationShape,
@@ -487,114 +485,6 @@ export async function verifyCosmosLink(input: {
     {},
     true,
     LinkVerifyResultShape,
-  );
-}
-
-/* ------------------------- social login (brokered) ----------------------- */
-
-/**
- * The dev platform's half of "Continue with Google".
- *
- * These three are the only calls in this file with no credential on them, and that is
- * the point: they exist for someone who has no CosmosPay account yet, so there is no
- * API key to send. The platform runs the gateway handshake with its own identity and
- * hands back both halves at the end — the Pollar session AND the account keys — which
- * is what makes a seed-free first run possible at all. See `lib/socialLogin.ts` for the
- * flow and `POST /api/wallet/social/*` for the other side.
- *
- * What stands in for a credential is the PKCE verifier: the poll route will show the
- * code to anyone who knows the `state`, and only the holder of the verifier can spend
- * it. It never leaves this device until the redemption request.
- */
-
-/** `POST /api/wallet/social/authorize`. */
-export async function socialAuthorize(
-  env: 'dev' | 'prod',
-  body: { provider: string; codeChallenge: string; codeChallengeMethod: string; deviceLabel?: string },
-): Promise<{ state: string; authorizationUrl: string; provider: string }> {
-  return postJson(
-    withQuery(`${devPlatformUrl()}/api/wallet/social/authorize`, { env }),
-    body,
-    {},
-    true,
-    SocialAuthorizationShape,
-  );
-}
-
-/** `GET /api/wallet/social/session/{state}` — same status contract as the bridge's own. */
-export async function socialStatus(env: 'dev' | 'prod', state: string): Promise<PollarSessionStatus> {
-  return getPlatformJson<PollarSessionStatus>(
-    withQuery(`${devPlatformUrl()}/api/wallet/social/session/${encodeURIComponent(state)}`, { env }),
-    PollarSessionStatusShape,
-  );
-}
-
-/**
- * What a redeemed social login is worth: the Pollar session, and the CosmosPay account
- * that was created or attached for the email the provider verified.
- *
- * `keys` is null when the provider returned no email. That is a real outcome, not an
- * error — the wallet still works, because Pollar signs for it; what is missing is the
- * gateway (swaps, fiat), and the wallet says so rather than pretending.
- */
-export interface SocialLoginReady {
-  status: 'ready';
-  session: PollarSession;
-  account: 'created' | 'linked' | 'none';
-  organizationId: string | null;
-  keys: { dev: string | null; prod: string | null } | null;
-  activated?: boolean;
-  activationAmount?: string | null;
-}
-
-/**
- * What the claim returns instead of a session when the provider's email already has an
- * account: the platform emailed that account a code, and nothing is handed over until it
- * is entered. The provider proved who consented, not who opened the login — and an
- * existing account is what a phished login would take over.
- */
-export interface SocialLoginProof {
-  status: 'verify_email';
-  /** Presented with the emailed code. Kept in memory only, for as long as the prompt. */
-  claimToken: string;
-  expiresInSeconds: number;
-  activated?: boolean;
-  activationAmount?: string | null;
-}
-
-export type SocialClaim = SocialLoginReady | SocialLoginProof;
-
-export type SocialVerifyResult =
-  | SocialLoginReady
-  | { status: 'invalid'; attemptsLeft: number }
-  | { status: 'expired' }
-  | { status: 'locked' };
-
-/** `POST /api/wallet/social/claim`. Single-use: the code is spent whatever happens. */
-export async function socialClaim(
-  env: 'dev' | 'prod',
-  body: { code: string; codeVerifier: string; name?: string },
-): Promise<SocialClaim> {
-  return postJson<SocialClaim>(
-    withQuery(`${devPlatformUrl()}/api/wallet/social/claim`, { env }),
-    body,
-    {},
-    true,
-    SocialClaimShape,
-  );
-}
-
-/**
- * `POST /api/wallet/social/verify` — the emailed code for a held login. Wrong codes are
- * counted server-side, and the login locks after a few.
- */
-export async function socialVerify(body: { claimToken: string; code: string }): Promise<SocialVerifyResult> {
-  return postJson<SocialVerifyResult>(
-    `${devPlatformUrl()}/api/wallet/social/verify`,
-    body,
-    {},
-    true,
-    SocialVerifyResultShape,
   );
 }
 

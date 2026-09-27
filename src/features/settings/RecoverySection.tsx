@@ -6,6 +6,7 @@ import { spendableXlm } from '@/lib/balances';
 import { isAccessCode, normalizeAccessCode } from '@/lib/validate';
 import { RECOVERY_RESERVE_XLM } from '@/constants/recovery';
 import { recoveryConfigured } from '@/lib/recovery';
+import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
 import { shortAddr } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import '@/styles/features/settings/recovery.css';
@@ -19,8 +20,7 @@ import '@/styles/features/settings/recovery.css';
  * point — it is how a lost phone stops being a lost wallet — and it is also the cost, so
  * the confirmation names the email rather than asking for a generic yes.
  *
- * Absent entirely on a build with no recovery servers configured, and on a Pollar wallet,
- * whose key was never on this device for two servers to replace.
+ * Absent entirely on a build with no recovery servers configured.
  *
  * The status comes from `store.recovery`, which is read from the LEDGER. A server saying
  * it protects an account it was never actually put on would otherwise show as protection
@@ -38,13 +38,26 @@ export function RecoverySection({ store }: { store: WalletStore }) {
   // apart in silence. Rendering `email` here would name an inbox that recovers nothing.
   const registered = (store.meta?.recoveryEmail ?? '').trim().toLowerCase();
   const configured = recoveryConfigured();
+  // Configured is not the same as deployed: say so instead of offering a flow that fails.
+  const reachable = useRecoveryReachable(store.network);
 
   const { loadRecovery } = store;
   useEffect(() => {
     if (configured) void loadRecovery();
   }, [configured, loadRecovery]);
 
-  if (!configured || store.isPollarWallet) return null;
+  if (!configured) return null;
+
+  // Configured but not answering: the controls below would each end in "server not found".
+  // Say what is wrong instead; `null` is still asking, and shows the description alone.
+  if (reachable !== true) {
+    return (
+      <SettingsSection title={t('recovery.title')}>
+        <div className="desc recovery-desc">{t('recovery.what')}</div>
+        {reachable === false && <div className="recovery-note recovery-note-warn">{t('recovery.error.unreachable')}</div>}
+      </SettingsSection>
+    );
+  }
 
   const state = store.recovery;
   const on = state?.enabled ?? false;

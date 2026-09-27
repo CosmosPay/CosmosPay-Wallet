@@ -17,9 +17,8 @@ const PROVIDER_LABEL: Record<SignInProvider, string> = { authentik: 'Cosmos Pay'
  * The ways in — Authentik, Google, GitHub, an emailed code — and the code prompt a sign-in
  * can stop at.
  *
- * In `ui/` because two features show it: onboarding (`features/onboarding/SignIn.tsx`) and
- * moving an old Pollar wallet (`features/wallet/MigratePollar.tsx`). Presentational: every
- * action is a prop, and the caller decides what a finished sign-in turns into.
+ * Presentational: every action is a prop, and the caller
+ * (`features/onboarding/SignIn.tsx`) decides what a finished sign-in turns into.
  *
  * The code prompt REPLACES the buttons rather than sitting beside them: a sign-in started
  * while a code is outstanding would be a second one, racing the first for the same account.

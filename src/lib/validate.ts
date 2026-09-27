@@ -123,8 +123,7 @@ export function isAccessCode(code: string): boolean {
 
 /**
  * Is this an https URL? The check every sign-in URL passes before it reaches the OS
- * opener — the wallet's own sign-in (`lib/signIn.ts`) and the legacy Pollar login alike.
- * One definition: a second copy is a second chance to forget that `openExternal` refuses
+ * opener — the wallet's own sign-in (`lib/signIn.ts`). One definition: a second copy is a second chance to forget that `openExternal` refuses
  * everything but https, and a refusal there is a silent no-op rather than an error anyone
  * can read.
  */

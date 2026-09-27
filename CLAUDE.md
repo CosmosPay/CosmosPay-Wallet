@@ -404,8 +404,9 @@ others.
 is. It never touches a key: a new wallet's seed is generated on the device, and a returning
 person gets back the box `src/lib/cloudBackup.ts` sealed on their last device — which only
 their password opens, and which the COMMUNITY SERVER (its wallet-auth module, a separate
-repository) stores without being able to read. It replaced the Pollar login, which handed the
-key to Pollar's KMS.
+repository) stores without being able to read. The key never leaves the device. The old Pollar
+login (custodial) is gone; `purgeLegacyPollar` in `lib/vault.ts` removes its wallets from a
+device once, at startup, and keeps the seed wallets they were paired with.
 
 **Where it lives.** Only on the community server, at `{gateway}{entry}/v1/wallet`
 (`walletApiBase()` in `lib/endpoints.ts`), because that is the piece that runs as replicas
@@ -529,18 +530,6 @@ SEP-30 is offered on Home (`features/wallet/ProtectAccountCard.tsx`) as soon as 
 the account funded with recovery off — a passkey-only wallet has no password to fall back on, and
 recovery is what stands in for one. "Not now" is remembered per account; Settings keeps the
 controls.
-
-### Pollar is only a way out now
-
-No new Pollar wallets are created. The ones that exist still sign through `pollarApi`, and
-`src/lib/pollarMigration.ts` moves their funds onto a key this device holds — FUND (Pollar
-signs), TRUST (the new key signs), MOVE (Pollar signs), each planned again from the chain
-right before it is built, so an interrupted move resumes instead of repeating a step. Every
-Pollar-signed step passes the guard's `migrate` intent, bounded per asset by the plan the
-person confirmed. **Do not add `accountMerge` or trustline removals to recover the last
-reserve**: both stay refused, and the plan tells the person what stays behind instead. The
-legacy Pollar login (`lib/socialLogin.ts`) survives only to reconnect an expired session for
-that move; delete it, and the dev platform's broker, once no Pollar wallet holds a balance.
 
 ## Recovery is SEP-30, it is opt-in, and it replaces nothing
 

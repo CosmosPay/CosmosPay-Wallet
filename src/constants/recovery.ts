@@ -90,3 +90,10 @@ export const RECOVERY_PROOF_TTL_MS = 25 * 60 * 1000;
  * account because the offer is about an account; a preference, so browser storage.
  */
 export const RECOVERY_OFFER_DISMISSED_PREFIX = 'cosmos.recoveryOffer.dismissed.';
+
+/**
+ * How long a "the recovery servers did not answer" is believed (`recoveryReachable` in
+ * `lib/recovery.ts`). A minute: long enough that every screen asking in one visit shares the
+ * answer, short enough that a server that was only restarting is offered again soon.
+ */
+export const RECOVERY_PROBE_RETRY_MS = 60_000;

@@ -68,7 +68,6 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   paylink: lazy(() => import('@/features/money/PayLink').then((m) => ({ default: m.PayLink }))),
   asset: lazy(() => import('@/features/wallet/Asset').then((m) => ({ default: m.Asset }))),
   'edit-profile': lazy(() => import('@/features/wallet/EditProfile').then((m) => ({ default: m.EditProfile }))),
-  migrate: lazy(() => import('@/features/wallet/MigratePollar').then((m) => ({ default: m.MigratePollar }))),
 
   // lazy — liquidity
   liquidity: lazy(() => import('@/features/liquidity/Liquidity').then((m) => ({ default: m.Liquidity }))),

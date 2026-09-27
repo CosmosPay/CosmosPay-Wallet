@@ -23,7 +23,7 @@
  * its onramp will pay out in, and the wallet signs it. `stellarAddTrustline` still
  * builds the by-hand case locally and still does not come through here.
  */
-export type SignIntent = 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'trustline' | 'migrate' | 'recovery' | 'dapp';
+export type SignIntent = 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'trustline' | 'recovery' | 'dapp';
 
 /**
  * Operations that can hand over the account itself, or move value in a way this
@@ -100,13 +100,6 @@ export const ALLOWED_OPS: Record<Exclude<SignIntent, 'dapp'>, readonly string[]>
    * below is the template's first filter and nothing more.
    */
   recovery: ['setOptions', 'beginSponsoringFutureReserves', 'endSponsoringFutureReserves'],
-  // Moving an old Pollar wallet onto a key this device holds (`lib/pollarMigration.ts`).
-  // Pollar signs these; the wallet built them. Funding the new account and paying into it
-  // are the whole job, so that is all this admits — never the `accountMerge` or the
-  // trustline removals that would recover the last reserve: both stay refused, and the
-  // plan tells the person what stays behind instead. Bounded per asset by `maxMoves` and
-  // held to one destination by the call site's `destinations`.
-  migrate: ['createAccount', 'payment'],
 };
 
 /**

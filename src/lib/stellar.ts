@@ -33,10 +33,9 @@ export interface NetConfig {
 }
 
 /**
- * The id of the mainnet entry, named because code has to select it rather than merely
- * offer it: a wallet whose key Pollar custodies exists on mainnet and nowhere else, so
- * adopting one moves the app here. A bare `'public'` at those call sites is a string that
- * has to agree with the table below and cannot be checked against it.
+ * The id of the mainnet entry, named because code selects it rather than merely offering
+ * it. A bare `'public'` at those call sites is a string that has to agree with the table
+ * below and cannot be checked against it.
  */
 export const MAINNET_ID = 'public';
 

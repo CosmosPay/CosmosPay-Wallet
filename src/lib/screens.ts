@@ -33,7 +33,6 @@ export const SCREEN_IDS = [
   'sign-in',
   'sign-in-password',
   'recover',
-  'migrate',
   'unlock',
   'home',
   'earn',
@@ -163,9 +162,6 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   export: { back: profileOrHome },
   about: { back: profileOrHome },
   'edit-profile': { back: 'profile' },
-  // Moving an old Pollar wallet's funds onto a key this device holds. Reached from the
-  // banner on Home and from Profile.
-  migrate: { back: 'home' },
 
   // extras
   operations: { back: 'home' },

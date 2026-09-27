@@ -53,3 +53,14 @@ export const SIGN_IN_POLL_TIMEOUT_MS = 9 * 60 * 1000;
  * It has to be on disk at all because on MV3 opening the consent screen closes the popup.
  */
 export const SIGN_IN_HANDSHAKE_KEY = 'cosmos.signin.handshake';
+
+/**
+ * PKCE (RFC 7636) for the sign-in handshake (`lib/pkce.ts`). S256 only — `plain` protects
+ * nothing across a redirect, and the community server refuses anything else anyway.
+ *
+ * 64 bytes of entropy: the spec allows a 43-128 character verifier, base64url of 64 bytes
+ * lands at 86, and there is no reason to sit at the floor for a value that exists to make a
+ * leaked handshake useless.
+ */
+export const PKCE_METHOD = 'S256';
+export const PKCE_VERIFIER_BYTES = 64;
