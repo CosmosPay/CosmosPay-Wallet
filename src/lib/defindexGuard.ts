@@ -31,6 +31,25 @@ function asBigInt(value: unknown, label: string): bigint {
   }
 }
 
+/** An XDR field: an accessor method up to stellar-sdk 16, a readonly property from 17. */
+function xdrField(host: unknown, key: string): unknown {
+  const value = (host as Record<string, unknown> | null | undefined)?.[key];
+  return typeof value === "function"
+    ? (value as () => unknown).call(host)
+    : value;
+}
+
+/** An XDR string (an `XdrString` with `bytes` in SDK 17, bytes or a string before). */
+function xdrText(value: unknown): string {
+  const bytes =
+    value && typeof value === "object" && "bytes" in value
+      ? (value as { bytes: unknown }).bytes
+      : value;
+  return bytes instanceof Uint8Array
+    ? new TextDecoder().decode(bytes)
+    : String(bytes ?? "");
+}
+
 export function assertSafeDefindexTransaction(
   cfg: NetConfig,
   envelope: string,
@@ -57,27 +76,25 @@ export function assertSafeDefindexTransaction(
   const operation = parsed.operations[0] as unknown as {
     type?: string;
     source?: string;
-    func?: {
-      invokeContract?: () => {
-        contractAddress: () => unknown;
-        functionName: () => unknown;
-        args: () => unknown[];
-      };
-    };
+    func?: unknown;
   };
   if (operation.type !== "invokeHostFunction" || operation.source)
     fail("unexpected operation or operation source");
-  const call = operation.func?.invokeContract?.();
+  const call = xdrField(operation.func, "invokeContract");
   if (!call) fail("the host function is not a contract invocation");
   const contract = Address.fromScAddress(
-    call.contractAddress() as Parameters<typeof Address.fromScAddress>[0],
+    xdrField(call, "contractAddress") as Parameters<
+      typeof Address.fromScAddress
+    >[0],
   ).toString();
   if (contract !== vault)
     fail("the contract does not match the selected vault");
-  const functionName = String(call.functionName());
-  const args = call
-    .args()
-    .map((arg) => scValToNative(arg as Parameters<typeof scValToNative>[0]));
+  const functionName = xdrText(xdrField(call, "functionName"));
+  const rawArgs = xdrField(call, "args");
+  if (!Array.isArray(rawArgs)) fail("the call arguments are unreadable");
+  const args = rawArgs.map((arg) =>
+    scValToNative(arg as Parameters<typeof scValToNative>[0]),
+  );
 
   if (intent.kind === "deposit") {
     if (functionName !== "deposit" || args.length !== 4)
