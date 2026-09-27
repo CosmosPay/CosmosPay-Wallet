@@ -198,7 +198,11 @@ const short = (s: string, n = 6) => (s && s.length > n * 2 + 1 ? `${s.slice(0, n
  * which is exactly what the recovery template needs to say "the sponsor's, and no other".
  */
 function hintOf(sig: unknown): string {
-  const hint = (sig as { hint?: () => unknown } | null)?.hint?.();
+  // stellar-sdk 17 made XDR fields readonly properties holding a BytesValue (`.value` is
+  // the raw bytes); older releases exposed them as accessor methods returning the bytes.
+  const field = (sig as { hint?: unknown } | null)?.hint;
+  const raw = typeof field === 'function' ? (field as () => unknown).call(sig) : field;
+  const hint = raw && typeof raw === 'object' && 'value' in raw ? (raw as { value: unknown }).value : raw;
   if (!hint) return '';
   try {
     return Array.from(hint as Uint8Array, (b) => b.toString(16).padStart(2, '0')).join('');
@@ -287,7 +291,10 @@ function contractIdOf(addr: unknown): string | null {
 /** `hostFunctionTypeInvokeContract` -> `invokeContract`; null when unreadable. */
 function hostFunctionKind(fn: unknown): string | null {
   try {
-    const name = (fn as { switch?: () => { name?: unknown } } | undefined)?.switch?.()?.name;
+    // stellar-sdk 17 carries the discriminant as a plain `type` string; older releases
+    // exposed it through a `switch()` accessor returning the enum member.
+    const f = fn as { type?: unknown; switch?: () => { name?: unknown } } | undefined;
+    const name = typeof f?.type === 'string' ? f.type : f?.switch?.()?.name;
     if (typeof name !== 'string' || !name) return null;
     const bare = name.replace(/^hostFunctionType/, '');
     return bare ? bare.charAt(0).toLowerCase() + bare.slice(1) : null;
@@ -310,12 +317,17 @@ function sorobanRows(o: Record<string, unknown>): { label: string; value: string
   const kind = hostFunctionKind(fn);
   if (kind) rows.push({ label: tNow('guard.row.hostFunction'), value: kind });
   try {
-    const f = fn as { invokeContract?: () => { contractAddress: () => unknown; functionName: () => unknown } } | undefined;
-    const call = typeof f?.invokeContract === 'function' ? f.invokeContract() : null;
+    // Accessor methods up to stellar-sdk 16, readonly properties from 17 on.
+    const read = (host: unknown, key: string): unknown => {
+      const v = (host as Record<string, unknown> | null | undefined)?.[key];
+      return typeof v === 'function' ? (v as () => unknown).call(host) : v;
+    };
+    const call = read(fn, 'invokeContract');
     if (call) {
-      const name = call.functionName?.();
-      const id = contractIdOf(call.contractAddress?.());
-      const fname = name instanceof Uint8Array ? new TextDecoder().decode(name) : String(name ?? '');
+      const name = read(call, 'functionName');
+      const id = contractIdOf(read(call, 'contractAddress'));
+      const bytes = name && typeof name === 'object' && 'bytes' in name ? (name as { bytes: unknown }).bytes : name;
+      const fname = bytes instanceof Uint8Array ? new TextDecoder().decode(bytes) : String(bytes ?? '');
       if (id) rows.push({ label: tNow('guard.row.contract'), value: short(id, 8) });
       if (fname) rows.push({ label: tNow('guard.row.function'), value: fname });
     }
@@ -736,7 +748,7 @@ function poolPlan(sides: readonly [PoolSide, PoolSide]): { id: string; ceilings:
     const inOrder = Asset.compare(first, second) <= 0;
     const [a, b] = inOrder ? [sides[0], sides[1]] : [sides[1], sides[0]];
     const pool = new LiquidityPoolAsset(asset(a.asset), asset(b.asset), LiquidityPoolFeeV18);
-    const id = getLiquidityPoolId('constant_product', pool.getLiquidityPoolParameters()).toString('hex');
+    const id = Buffer.from(getLiquidityPoolId('constant_product', pool.getLiquidityPoolParameters())).toString('hex');
     return { id, ceilings: [a.max, b.max] };
   } catch {
     return null;
