@@ -34,20 +34,15 @@ import {
   unlockSession,
   unlockWallet,
   convergeSeals,
-  openPrimaryBox,
+  openWalletBox,
   openVault,
+  purgeLegacyPollar,
+  takeLegacyPollarNotice,
   verifyPassword,
   verifyVaultKey,
-  createPollarWallet,
-  createSocialLocalWallet,
-  getPollarSession,
-  entryForNetwork,
-  identityOf,
-  isPollar,
   type CosmosPayAccount,
   type CosmosPayPending,
   type Gender,
-  type PollarStoredSession,
   type VaultSecret,
   type WalletEntry,
 } from '@/lib/vault';
@@ -62,29 +57,60 @@ import { FIAT_DECIMALS, fromMinorUnits } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
 import { sendableAssets, spendableCeiling } from '@/lib/balances';
 import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
+import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
 import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
+import { usePasskey } from '@/state/usePasskey';
+import { finishSignIn, replaceBackup as storeBackupBox } from '@/lib/signIn';
+import { BackupPasskeyError, backupDoors, openBackup, sealBackup, type BackupDoors } from '@/lib/cloudBackup';
+import { PasskeyError, createPasskey, getPasskeySecrets, wipePasskeySecrets, type PasskeySecrets } from '@/lib/passkey';
 import {
-  pollarActivate,
-  pollarAuthorize,
-  identityRefusalKey,
-  pollarExchange,
-  pollarLogout,
-  pollarStatus,
-  waitForCode,
-  type PollarHandshake,
-} from '@/lib/pollar';
-import { SOCIAL_LOGIN_ENV, socialLoginClaim, socialLoginStart, socialLoginVerify, socialPoller } from '@/lib/socialLogin';
-import { ApiRequestError } from '@/lib/apiError';
-import type { PollarProvider } from '@/constants/pollar';
-import { pollarSign } from '@/lib/pollarApi';
-import { clearHandshake, freshSession, fromStored, loadHandshake, saveHandshake, toStored } from '@/lib/pollarSession';
-import { reserveExternalTab, type ExternalTab } from '@/lib/openExternal';
+  PasskeyUnlockStaleError,
+  devicePasswordFrom,
+  dropPasskeyUnlock,
+  enrolPasskeyUnlock,
+  newDevicePassword,
+  unlockWithPasskey as openDeviceWithPasskey,
+} from '@/lib/passkeyUnlock';
+import { PASSKEY_FAILURE_KEYS } from '@/constants/passkey';
+import type { SignInProvider } from '@/constants/signIn';
+import { useSignIn } from '@/state/useSignIn';
 import { normalizeRails } from '@/lib/fiatRails';
 import { deviceAuthFailureKey, type DeviceAuthFailure } from '@/lib/deviceAuth';
-import { ACCOUNT_PREFIX, HISTORY_PREFIX, PRICES_KEY, TTL, accountKey, historyKey, opsKey, type OpsDomain } from '@/lib/dataKeys';
+import {
+  ACCOUNT_PREFIX,
+  HISTORY_PREFIX,
+  PRICES_KEY,
+  RECOVERY_PREFIX,
+  TTL,
+  accountKey,
+  historyKey,
+  opsKey,
+  recoveryKey,
+  type OpsDomain,
+} from '@/lib/dataKeys';
+import {
+  buildKeyReplacement,
+  buildRecoveryRemoval,
+  buildRecoverySetup,
+  collectSignatures,
+  identityRoute,
+  identityTokensFromIdToken,
+  loadRecoveryServers,
+  recoverableAccounts,
+  recoveryStateOf,
+  registerForRecovery,
+  sequenceOf,
+  signedRecoverySetup,
+  signersToRemove,
+  startRecoveryCodes,
+  updateRecoveryIdentities,
+  verifyRecoveryCode,
+  type RecoverableAccount,
+  type RecoveryState,
+} from '@/lib/recovery';
 import {
   addTrustline as stellarAddTrustline,
   allNetworks,
@@ -92,7 +118,6 @@ import {
   getAccountState,
   getHistory,
   getPrices,
-  MAINNET_ID,
   networkEnv,
   resolveNetwork,
   sendPayment,
@@ -152,8 +177,9 @@ import {
   type PayIntent,
   type PayoutQuote,
   type Receiver,
-  type SocialLoginReady,
+  type SignInReady,
   type SwapQuote,
+  recoverySetupSponsored,
 } from '@/lib/cosmospay';
 import { useToast } from '@/state/useToast';
 import { usePreferences, applySavedThemeEarly, savedRequireConfirm } from '@/state/usePreferences';
@@ -223,74 +249,32 @@ async function secretOf(s: Session): Promise<string> {
 }
 
 /**
- * A Pollar session, live enough to sign with.
- *
- * Held next to `session` rather than inside it because the two have different
- * lifetimes: `session` ends at the idle auto-lock, while a Pollar access token expires
- * on Pollar's clock and is rotated by `freshSession`. Folding them together would mean
- * either re-deriving the vault key to write a rotated token, or letting a `Session`
- * carry a mutable field — and `Session` is the one object in this file that is
- * deliberately immutable and deliberately not handed to components.
+ * Which screen a sign-in was started from — the only thing that decides what its `ready`
+ * turns into. `onboarding`: a first run, no vault yet. `add`: another wallet on an unlocked
+ * device.
  */
-/**
- * A social login that finished before this device had a vault — see {@link SocialDraft}
- * for the two shapes it can take.
- *
- * On a first run there is no app password yet, so there is no key to seal anything under.
- * The redemption has already happened by then (the code is spent and cannot be replayed),
- * so the redeemed material waits here while the password screen collects the one missing
- * input, and `finishOnboarding` lands it.
- *
- * In memory only, deliberately. Whichever arm it is, it holds something that spends: a
- * refresh token that buys signatures from a funded account, or a seed. The handshake that
- * preceded it is stored in the clear precisely because it is worthless on its own, and
- * this is the opposite of that. The cost is that closing the wallet between the redemption
- * and the password loses the login and the user starts a new one — a fresh handshake, not
- * a retry, since the code is single-use.
- */
-export interface SocialDraftProfile {
-  publicKey: string;
-  name: string;
-  birthdate: string;
-  email: string;
-  avatar?: string;
-}
+export type SignInPurpose = 'onboarding' | 'add';
 
 /**
- * One login, TWO wallets, and both halves are required.
+ * A finished sign-in waiting for the one thing the server cannot supply: a password.
  *
- * A social login always runs against mainnet (see `SOCIAL_LOGIN_ENV`), and what it hands
- * back is the account whose key Pollar custodies. That wallet is useless on testnet: its
- * reserve is funded out of the operator's XLM, which is worth spending on an account
- * somebody will use and not on a network whose lumens come from a faucet. So the same
- * login also makes an ORDINARY seed wallet — generated here, sealed under the same vault
- * key, indistinguishable from one created by hand except that nobody typed anything.
+ * With a backup, that is the password it was sealed under, and the wallet is RESTORED. With
+ * none — or when the person chose to start over — the wallet is CREATED here and its backup
+ * sealed under the device's password (a first run chooses one on the password screen).
  *
- * They are created together rather than the second one appearing when the user first
- * switches network, because the moment to seal something under the vault key is the
- * moment the vault key is in hand. Deferring it would mean either holding a seed in
- * memory until an unrelated network switch, or asking for the password again to create a
- * wallet the user thought they already had.
- *
- * The two have different addresses and that is expected — a custodied wallet and a local
- * seed have nothing to do with each other. What they share is the password, the CosmosPay
- * account behind them, and the login that made them.
- *
- * The generated mnemonic is never shown. This flow has no backup screen and the user did
- * not ask for a seed, but it is not lost either: it is sealed with the wallet and
- * `revealBackup` in Settings hands it over.
- *
- * Both halves are required fields rather than optionals, for the reason `GuardOptions` in
- * `lib/txGuard.ts` is a union: a landing that forgot one would leave the user a login that
- * half worked, and which half depended on the network they happened to be on.
+ * In memory only, deliberately: `ready.sessionToken` is what lets the server create an
+ * account and put a backup under it. Closing the wallet here loses the sign-in, and the
+ * person signs in again — nothing is spent by that.
  */
-export interface SocialDraft {
-  /** Mainnet: the account whose key lives in Pollar's KMS. No secret box. */
-  pollar: { stored: PollarStoredSession; profile: SocialDraftProfile };
-  /** Testnet: a seed this device generated. No session box. */
-  local: { secret: VaultSecret; profile: SocialDraftProfile };
-  /** Null when the provider returned no email: working wallets, no gateway account. */
-  account: CosmosPayAccount | null;
+export interface SignInDraft {
+  ready: SignInReady;
+  purpose: SignInPurpose;
+  /**
+   * The account has a backup and the person asked to REPLACE it with a new wallet instead
+   * of restoring it — after the screen showed them what that gives up. The only way
+   * `finishSignIn` is ever sent `replaceBackup`.
+   */
+  replace: boolean;
 }
 
 /**
@@ -304,11 +288,6 @@ export interface SocialDraft {
 export interface ConsentAnswers {
   metricsOptIn: boolean;
   promoOptIn: boolean;
-}
-
-export interface PollarState {
-  stored: PollarStoredSession;
-  walletId: string;
 }
 
 export interface SuccessInfo {
@@ -429,6 +408,18 @@ function registerStellarHandler(): void {
   }
 }
 
+/**
+ * A recovery's identity tokens, when they belong to THIS sign-in and are still fresh — a
+ * little under the servers' own half hour, so a token is never presented stale.
+ */
+function freshProof(
+  proof: { key: string; tokens: string[]; at: number } | null,
+  sessionToken: string,
+): string[] | null {
+  if (!proof || proof.key !== sessionToken) return null;
+  return Date.now() - proof.at < RECOVERY_PROOF_TTL_MS ? proof.tokens : null;
+}
+
 export function useWalletStore() {
   const [screen, setScreen] = useState<Screen>('boot');
   /** The committed screen, readable from an event handler without a state updater —
@@ -462,24 +453,6 @@ export function useWalletStore() {
   // Provisioned CosmosPay account for the active wallet (null until enabled /
   // before unlock). Loaded from the sealed store whenever a session opens.
   const [cosmosPay, setCosmosPay] = useState<CosmosPayAccount | null>(null);
-  /**
-   * The active wallet's Pollar session, when it has one.
-   *
-   * A REF and not state, which is unusual here and deliberate. `signEnvelope` reads it
-   * inside a flow that may have started several awaits ago, and React state read there
-   * is the value from the render that opened the flow — after a token rotation, that is
-   * a refresh token Pollar has already retired, and Pollar treats a replayed refresh
-   * token as a compromise and revokes the whole family. A ref is always the current one.
-   *
-   * Nothing renders from it, so there is no state copy to keep in step: screens branch
-   * on `isPollarWallet`, which is derived from the WalletEntry. That distinction matters
-   * on its own — a Pollar wallet whose session box failed to open is still a Pollar
-   * wallet, and must not render as a local one with an export button.
-   */
-  const pollarRef = useRef<PollarStoredSession | null>(null);
-  const setPollar = useCallback((next: PollarStoredSession | null) => {
-    pollarRef.current = next;
-  }, []);
   // A registration awaiting email confirmation (set after enableReceiving until
   // claimReceiving succeeds). Plaintext-persisted so it survives a reload.
   const [cosmosPayPending, setCosmosPayPending] = useState<CosmosPayPending | null>(null);
@@ -605,6 +578,20 @@ export function useWalletStore() {
    */
   const { deviceAuthPublic, deviceAuthPrivileged } = useDeviceAuth(meta?.id ?? null, t);
 
+  /**
+   * Whether this DEVICE opens with a passkey. Device-wide, not per wallet: the passkey door
+   * holds the device's app password — see `lib/passkeyUnlock.ts`.
+   */
+  const passkey = usePasskey();
+
+  // The door is dropped by `lib/vault.ts` when the last wallet goes, on every removal path;
+  // re-reading it whenever the count changes is what keeps the lock screen from offering a
+  // passkey for a vault the next onboarding writes under a typed password.
+  const { refreshPasskey } = passkey;
+  useEffect(() => {
+    void refreshPasskey();
+  }, [wallets.length, refreshPasskey]);
+
   /** One-at-a-time execution for the money flows — see lib/exclusive.ts for why. */
   const exclusiveRef = useRef<ExclusiveRunner | null>(null);
   exclusiveRef.current ??= createExclusiveRunner();
@@ -632,42 +619,23 @@ export function useWalletStore() {
   /* --------------------------- signing --------------------------- */
 
   /**
-   * Sign an envelope with whatever holds this wallet's key.
+   * Sign an envelope with this wallet's key, fetched from the vault for this one signature.
    *
-   * The one place the two account kinds differ, and it is deliberately the LAST step of
-   * every money flow rather than a fork near the top. Each flow still reads:
+   * Deliberately the LAST step of every money flow. Each flow still reads:
    *
    *     assertSafeToSign(network, xdr, { intent, signer, ...bounds });
    *     guardSession(epoch);
    *     const signed = await signEnvelope(xdr);
    *
-   * so what the wallet is willing to put its name to is decided in exactly the same
-   * place, by exactly the same guard, for a key in a local vault and a key in Pollar's
-   * KMS. A branch higher up — "if Pollar, call Pollar's build-sign-submit" — would have
-   * given a custodial account its own set of rules, and the rules are the product.
-   *
-   * `pollarRef`, not the `pollar` state: this runs after awaits, and a rotated token
-   * written by a concurrent `freshSession` must not be shadowed by the value this
-   * closure captured. Rotation matters here specifically because Pollar treats a
-   * replayed refresh token as a compromise and revokes the family.
+   * so what the wallet is willing to put its name to is decided in exactly one place.
    */
   const signEnvelope = useCallback(
     async (xdr: string): Promise<string> => {
       if (!session) throw new Error(t('unlock.autoLocked'));
-      const stored = pollarRef.current;
-      if (!stored) return signXdr(network, await secretOf(session), xdr);
-
-      const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
-      // Refreshing is a bridge call, so it needs the CosmosPay key. Without one the
-      // token still works until it expires — refusing here would break a signature that
-      // was about to succeed, so the stale token is used and Pollar decides.
-      const live = apiKey ? await freshSession(session.walletId, stored, apiKey, session.vaultKey) : stored;
-      if (live !== stored) setPollar(live);
-      return pollarSign(network, fromStored(live), xdr);
+      return signXdr(network, await secretOf(session), xdr);
     },
-    [session, network, cosmosPay, t, setPollar],
+    [session, network, t],
   );
-
 
   /** Toggle manual confirmations — always password-gated (prevents an attacker
    *  silently disabling protection on an unlocked wallet). */
@@ -676,11 +644,18 @@ export function useWalletStore() {
     if (ok) setRequireConfirm(!savedRequireConfirm());
   }, [requestSignature, setRequireConfirm, t]);
 
-  /** Set the active wallet's profile picture (small data URL). */
-  const setWalletAvatar = useCallback(
-    async (dataUrl: string) => {
+  /**
+   * Write non-sensitive metadata for the active wallet and bring both copies of it —
+   * the list and the active entry — back into step.
+   *
+   * One helper because the two copies must move together: updating the list and leaving
+   * `meta` stale shows the old value everywhere until the next switch, and every caller
+   * that wrote the pair by hand was one line away from doing exactly that.
+   */
+  const patchMeta = useCallback(
+    async (patch: Parameters<typeof updateWalletMeta>[1]) => {
       if (!meta) return;
-      const next = await updateWalletMeta(meta.id, { avatar: dataUrl });
+      const next = await updateWalletMeta(meta.id, patch);
       setWallets(next);
       const entry = next.find((w) => w.id === meta.id);
       if (entry) setMetaState(entry);
@@ -688,35 +663,33 @@ export function useWalletStore() {
     [meta],
   );
 
+  /** Set the active wallet's profile picture (small data URL). */
+  const setWalletAvatar = useCallback(async (dataUrl: string) => patchMeta({ avatar: dataUrl }), [patchMeta]);
+
   /** Change the active wallet's email — Cosmos Pay registration/linking is tied to it. */
   const setWalletEmail = useCallback(
     async (email: string) => {
-      if (!meta) return;
-      const next = await updateWalletMeta(meta.id, { email: email.trim() });
-      setWallets(next);
-      const entry = next.find((w) => w.id === meta.id);
-      if (entry) setMetaState(entry);
+      await patchMeta({ email: email.trim() });
       flash(t('profile.emailUpdated'), 'ok');
     },
-    [meta, flash, t],
+    [patchMeta, flash, t],
   );
 
   /** Update the editable profile fields at once (name, email, gender). The birthdate
    *  is deliberately NOT editable — age gates (13+, 18+ fiat) must stay trustworthy. */
   const saveProfile = useCallback(
     async (fields: { name: string; email: string; gender: Gender }) => {
-      if (!meta) return;
-      const next = await updateWalletMeta(meta.id, {
+      // `recoveryEmail` is deliberately untouched here. It is what two servers were told,
+      // not a profile field, and it only changes when they have been told again —
+      // see `updateRecoveryEmail`, which needs the account's key to say so.
+      await patchMeta({
         name: fields.name.trim() || 'astronauta',
         email: fields.email.trim(),
         gender: fields.gender,
       });
-      setWallets(next);
-      const entry = next.find((w) => w.id === meta.id);
-      if (entry) setMetaState(entry);
       flash(t('profile.saved'), 'ok');
     },
-    [meta, flash, t],
+    [patchMeta, flash, t],
   );
 
   /* ----------------------------- boot ----------------------------- */
@@ -731,6 +704,11 @@ export function useWalletStore() {
       // before the network answers. Marked stale on load, so they revalidate.
       void hydrate(PRICES_KEY);
       await migrate();
+      // What the old Pollar login left on this device goes before anything reads the list:
+      // a Pollar wallet opens nothing and signs nothing now, and its funds were never here.
+      await purgeLegacyPollar();
+      const removedPollar = await takeLegacyPollarNotice();
+      if (removedPollar) flash(t('pollar.removedNotice', { n: removedPollar }), 'info');
       const [list, active, netId, custom] = await Promise.all([
         listWallets(),
         getActiveEntry(),
@@ -927,144 +905,154 @@ export function useWalletStore() {
     }
   }, [importText, flash]);
 
-  /**
-   * Final onboarding step. When adding a wallet to an unlocked session the app
-   * password is reused (no password screen); for the first wallet `password` is
-   * supplied by the PasswordSetup screen.
-   */
-  /* ------------------------- landing a social wallet -------------------- */
-  /* Declared up here, not down with the rest of the Pollar code, because
-     `finishOnboarding` is the second caller: a first-run social login has no vault to
-     seal its session under, so it waits at the password screen and is landed from there. */
+  /* ----------------------------- signing in ----------------------------- */
+  /* Declared up here, not down with the sign-in actions, because `finishOnboarding` is a
+     caller: a first-run sign-in with no backup ends at the password screen, and the wallet
+     is created from there. */
 
-  /** See {@link SocialDraft}: a redeemed first-run login waiting for a password. */
-  const [pollarDraft, setPollarDraft] = useState<SocialDraft | null>(null);
+  /** Where a sign-in is and what this deployment offers — see `state/useSignIn.ts`. */
+  const signIn = useSignIn(t, flash, () => warmPublicKey(networkEnv(network)));
+
+  /** See {@link SignInDraft}: a finished sign-in waiting for its password. */
+  const [signInDraft, setSignInDraft] = useState<SignInDraft | null>(null);
 
   /**
-   * Move the app to mainnet, because the wallet being adopted only exists there.
+   * Put a wallet a sign-in produced on this device: sealed under `vk`, with the account
+   * keys that came back, as the active wallet of a session on `vk`.
    *
-   * Not a preference and not a convenience: a Pollar wallet's address is a mainnet
-   * account, so every read for it on another network asks Horizon about an address that
-   * was never created there. Horizon answers 404, `getAccountState` reports `exists:
-   * false`, and the screen says the account is not active while Pollar's own SDK shows it
-   * funded — which is exactly the state this exists to prevent.
+   * One function for a first run (a key derived from the password just chosen) and another
+   * wallet on an unlocked device (the session's own key), because the only real difference
+   * is where the key came from. Written twice, one copy is the one that forgets
+   * `saveCosmosPay` and leaves a wallet that can sign but cannot swap.
    *
-   * Written as a bare pair rather than through `switchNetwork` because that one is
-   * declared far below this and does the same two statements; the cache needs no clearing
-   * either way, since its keys carry the network id.
+   * `cosmosPay` moves with the active wallet for the reason it always has: leaving the
+   * previous wallet's key in state would attribute this one's swaps to another account.
    */
-  const goMainnet = useCallback(async () => {
-    setNetworkIdState(MAINNET_ID);
-    await vaultSetNetworkId(MAINNET_ID);
-  }, []);
-
-  /**
-   * Put a redeemed social login on this device: the wallet entry, whatever holds its key,
-   * and the CosmosPay keys that came with it.
-   *
-   * Shared by the two ways of getting here — an unlocked wallet adding a social account,
-   * and a first run finishing at the password screen — because the ONLY difference
-   * between them is where the vault key came from. Written twice, the second copy is the
-   * one that forgets `saveCosmosPay` and leaves a wallet that can sign but cannot swap.
-   *
-   * BOTH wallets are written here, under the one key: the custodied mainnet account and
-   * the local testnet seed. See {@link SocialDraft} for why they are created together
-   * rather than one of them appearing at the first network switch.
-   *
-   * Which of the two ends up active is the only thing the current network decides. It is
-   * a display choice, not a security one — the other wallet is already on the device and
-   * one tap away in the switcher — so there is nothing here that has to be revisited when
-   * the user changes network afterwards.
-   */
-  /**
-   * The two optional consents, as the onboarding screens collect them. Passed EXPLICITLY
-   * into `landPollarWallet` rather than read from the drafts inside it, because the
-   * function has two callers with genuinely different answers: a first run has just asked
-   * the user, while adding a social wallet to an unlocked device has not — and inherits
-   * what that device already agreed to.
-   */
-  const landPollarWallet = useCallback(
-    async (draft: SocialDraft, vk: VaultKey, consents: ConsentAnswers): Promise<WalletEntry> => {
-      // BOTH halves carry the answer. They are one person's one wallet as far as the
-      // consent is concerned, and a device that switches to testnet must not find a
-      // profile that never recorded it — `metricsOptIn` is read back as the record of
-      // what was agreed to, not merely as the thing that flipped a flag at signup.
-      const profileConsents = { metricsOptIn: consents.metricsOptIn, promoOptIn: consents.promoOptIn };
-      const { entry: custodied } = await createPollarWallet(
-        { ...draft.pollar.profile, ...profileConsents },
-        draft.pollar.stored,
-        vk,
+  const landSignedInWallet = useCallback(
+    async (input: {
+      secret: VaultSecret;
+      publicKey: string;
+      ready: SignInReady;
+      account: CosmosPayAccount;
+      vk: VaultKey;
+      consents: ConsentAnswers;
+      /**
+       * The session epoch captured before the first await, when landing on a LIVE session's
+       * key. A sign-in spends seconds in PBKDF2 and on the network, long enough for the idle
+       * auto-lock to fire underneath it — and without this check the `setSession` below would
+       * reopen the session the lock had just closed.
+       */
+      epoch?: number;
+    }): Promise<WalletEntry> => {
+      if (input.epoch !== undefined) guardSession(input.epoch);
+      const { identity } = input.ready;
+      const entry = await vaultAddWallet(
+        input.secret,
+        {
+          publicKey: input.publicKey,
+          // The provider's name when it gave one; the email's local part otherwise, which
+          // the person can change in Edit profile. Never the provider's avatar URL: the
+          // app's CSP loads no remote images, and a URL there would render as a hole.
+          name: identity.name?.trim() || identity.email.split('@')[0] || 'astronauta',
+          birthdate: '',
+          email: identity.email,
+          gender: 'x',
+          metricsOptIn: input.consents.metricsOptIn,
+          promoOptIn: input.consents.promoOptIn,
+          cloudBackup: true,
+        },
+        input.vk,
       );
-      const { entry: seeded } = await createSocialLocalWallet(
-        // Linked to the custodied one, which is what keeps it out of the switcher and
-        // makes the network selector the way back to it — see `entryForNetwork`.
-        { ...draft.local.profile, ...profileConsents, testnetFor: custodied.id },
-        draft.local.secret,
-        vk,
-      );
+      // `addWallet` hands an entry back unchanged when this address was already on the
+      // device — restoring a wallet it knew — so the flag is written either way.
+      if (!entry.cloudBackup) await updateWalletMeta(entry.id, { cloudBackup: true });
+      await saveCosmosPay(entry.id, input.account, input.vk);
 
-      // Both get the account: the keys are per-wallet boxes, and the testnet one needs
-      // `keys.dev` to reach the gateway at all. A CosmosPay key is not bound to a Stellar
-      // address anywhere in the payments API, which is what makes one account serving two
-      // addresses correct rather than a workaround.
-      if (draft.account) {
-        await saveCosmosPay(custodied.id, draft.account, vk);
-        await saveCosmosPay(seeded.id, draft.account, vk);
-      }
-
-      // The custodied one is what the user just asked for by signing in, so it is the one
-      // they land on — and it is a MAINNET account, which is why the network moves with
-      // it. Left on testnet, Horizon would be asked for a mainnet address, answer 404, and
-      // the wallet would report "not active" for an account Pollar had just funded.
-      const entry = custodied;
-      // Last word on which is active: both creators set it as they went, so whichever ran
-      // second would otherwise win by accident.
-      await setActiveId(entry.id);
-      await goMainnet();
       const list = await listWallets();
       const landed = list.find((w) => w.id === entry.id) ?? entry;
-
-      // The new wallet becomes the active one, so everything the session carries about
-      // the previous wallet has to move with it. `cosmosPay` especially: leaving the old
-      // wallet's API key in state would attribute this wallet's swaps and payouts to an
-      // organization it does not belong to.
       setWallets(list);
       setMetaState(landed);
-      setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey: vk });
-      // Follows the ACTIVE wallet, not the draft: `pollar` is what tells every signing
-      // path to send the envelope to Pollar instead of using the seed, so setting it while
-      // the seeded wallet is active would route a wallet this device can sign for to a
-      // custodian that has never heard of its address.
-      setPollar(draft.pollar.stored);
-      setCosmosPay(draft.account);
+      setSession({ publicKey: landed.publicKey, walletId: landed.id, vaultKey: input.vk });
+      setCosmosPay(input.account);
       setCosmosPayPending(null);
       return landed;
     },
-    [goMainnet, setPollar],
+    [meta, guardSession],
   );
 
-  /** The profile a Pollar wallet is created with. The provider's names win; `meta` is
-   *  only consulted on the add-a-wallet path, where there is a wallet to inherit from. */
-  const pollarProfileOf = useCallback(
-    (redeemed: { wallet: { address: string | null }; profile: { first_name?: string; email?: string; avatar?: string } }, fallback?: WalletEntry | null) => ({
-      publicKey: redeemed.wallet.address ?? '',
-      name: redeemed.profile.first_name || fallback?.name || 'astronauta',
-      birthdate: fallback?.birthdate ?? '',
-      email: redeemed.profile.email || fallback?.email || '',
-      avatar: redeemed.profile.avatar,
-    }),
-    [],
+  /**
+   * A NEW wallet for a sign-in: the seed is generated here, sealed for the backup under
+   * `password`, and only then is the server told — the signature it needs is made by the
+   * key that was just generated, which is what binds the account to it.
+   *
+   * The server is told BEFORE the wallet is written locally, on purpose. If the local
+   * write then fails the backup is already safe and a restore brings the wallet back; the
+   * other order could leave a funded-to-be wallet on the device that nothing backs up.
+   *
+   * Returns null on `backup_conflict`: another device backed a wallet up for this account
+   * since the sign-in began. Nothing was created, and the person signs in again to restore it.
+   */
+  const createFromSignIn = useCallback(
+    async (
+      draft: SignInDraft,
+      /** The backup's doors: the password, or a passkey on a passkey device. */
+      doors: string | BackupDoors,
+      vk: VaultKey,
+      consents: ConsentAnswers,
+      epoch?: number,
+    ): Promise<WalletEntry | null> => {
+      // Through `walletLib()` like every other caller: SEP-5 derivation is ~240 KB that an
+      // unlock must never load.
+      const { createMnemonic, accountFromMnemonic } = await walletLib();
+      const mnemonic = createMnemonic();
+      const acc = await accountFromMnemonic(mnemonic);
+      const secret: VaultSecret = { secret: acc.secret, mnemonic };
+      const box = await sealBackup(secret, doors);
+      const res = await finishSignIn({
+        sessionToken: draft.ready.sessionToken,
+        email: draft.ready.identity.email,
+        secret: acc.secret,
+        backup: box,
+        replaceBackup: draft.replace,
+        accessKey: await warmPublicKey(networkEnv(network)),
+      });
+      if (res.status === 'backup_conflict') {
+        flash(t('backup.conflict'), 'err');
+        return null;
+      }
+      return landSignedInWallet({
+        secret,
+        publicKey: acc.publicKey,
+        ready: draft.ready,
+        account: { keys: res.keys, organizationId: res.organizationId },
+        vk,
+        consents,
+        epoch,
+      });
+    },
+    [landSignedInWallet, flash, t],
   );
 
+  /**
+   * Final onboarding step. When adding a wallet to an unlocked session the app
+   * password is reused (no password screen); for the first wallet `password` is
+   * supplied by the PasswordSetup screen — or, on a passkey device, generated by
+   * `finishOnboardingWithPasskey`, which passes the passkey that holds it as
+   * `passkeyDoor` so the cloud backup gets that door instead of a password nobody knows.
+   *
+   * Returns whether a wallet was created, so a caller that prepared something for it (a
+   * passkey door) can take it back out when it was not.
+   */
   const finishOnboarding = useCallback(
-    async (password?: string) => {
-      // A social login redeemed before this device had a vault. Checked FIRST and on its
-      // own terms: this flow never fills `draftAccount` — the onboarding screens that do
-      // were skipped — so the guard below would drop it on the floor, with the code
-      // already spent and no way back. That holds on both networks: the testnet arm has a
-      // seed, but it made its own rather than collecting one through those screens.
-      if (pollarDraft) {
-        if (!password) return;
+    async (password?: string, passkeyDoor?: PasskeySecrets): Promise<boolean> => {
+      // A first-run sign-in with nothing to restore, or one that chose to replace its
+      // backup. Checked FIRST and on its own terms: this flow never fills `draftAccount` —
+      // the onboarding screens that do were skipped — so the guard below would drop it on
+      // the floor. The same password seals the vault and the cloud backup, so the person
+      // has one password to remember on every device.
+      if (signInDraft?.purpose === 'onboarding') {
+        // A generated device password is not held to the human rule — it is 32 random bytes.
+        if (!password || (!passkeyDoor && !appPasswordOk(password))) return false;
         setBusy(true);
         try {
           const vk = await deriveVaultKey(password, newKdfParams());
@@ -1074,9 +1062,17 @@ export function useWalletStore() {
           // first event this wallet could report is already covered by it.
           const consents = { metricsOptIn: draftMetricsOptIn, promoOptIn: draftPromoOptIn };
           setTelemetryEnabled(consents.metricsOptIn);
-          const entry = await landPollarWallet(pollarDraft, vk, consents);
-          setPollarDraft(null);
-          report(EVENT.walletCreated, { category: 'lifecycle', props: { added: false, social: true } });
+          const doors: string | BackupDoors = passkeyDoor
+            ? { passkey: { id: passkeyDoor.credentialId, secret: passkeyDoor.backup } }
+            : password;
+          const entry = await createFromSignIn(signInDraft, doors, vk, consents);
+          setSignInDraft(null);
+          if (!entry) {
+            // Backed up from another device meanwhile: signing in again restores that one.
+            setScreen('sign-in');
+            return false;
+          }
+          report(EVENT.walletCreated, { category: 'lifecycle', props: { added: false, signIn: true } });
           setSuccessInfo({
             title: t('success.welcome', { name: entry.name }),
             msg: t('success.protected'),
@@ -1087,21 +1083,22 @@ export function useWalletStore() {
           });
           setDeviceAuthOffer(deviceAuthPublic.deviceAuthPossible && deviceAuthPublic.deviceAuthAvailable);
           setScreen('success');
+          return true;
         } catch (e) {
           flash((e as Error).message, 'err');
+          return false;
         } finally {
           setBusy(false);
         }
-        return;
       }
 
-      if (!draftAccount) return;
+      if (!draftAccount) return false;
       // Adding a wallet to an unlocked session reuses that session's key — which is what
       // "no password screen" means now. The first wallet on a device derives one from the
       // password the setup screen just collected, and that derivation is what makes its
       // parameters the ones every later box converges onto.
       const reuse = addingWallet ? session?.vaultKey : null;
-      if (addingWallet ? !reuse : !password) return;
+      if (addingWallet ? !reuse : !password) return false;
       setBusy(true);
       try {
         const vk = reuse ?? (await deriveVaultKey(password as string, newKdfParams()));
@@ -1134,7 +1131,7 @@ export function useWalletStore() {
         // The signup consent is what decides whether this wallet reports anything at
         // all — `setup.metricsOptIn`, unchecked by default. Applied BEFORE the first
         // report below, so the event that announces the wallet is itself covered by
-        // the answer the user just gave. The social branch above does the same with
+        // the answer the user just gave. The sign-in branch above does the same with
         // the same drafts; both paths ask, neither assumes. See lib/telemetry.ts.
         setTelemetryEnabled(!!draftMetricsOptIn);
         // That a wallet now exists, and nothing about it: no address, no name, no email.
@@ -1142,7 +1139,7 @@ export function useWalletStore() {
         // different completion rates and only one of them is onboarding.
         report(EVENT.walletCreated, {
           category: 'lifecycle',
-          props: { added: addingWallet, social: !!pollarDraft },
+          props: { added: addingWallet, signIn: false },
         });
         setAddingWallet(false);
         // Offered after the success card, not instead of it. Only when the device can
@@ -1153,13 +1150,15 @@ export function useWalletStore() {
         // wipe drafts from memory
         setDraftMnemonic('');
         setImportText('');
+        return true;
       } catch (e) {
         flash((e as Error).message, 'err');
+        return false;
       } finally {
         setBusy(false);
       }
     },
-    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, draftEmail, draftGender, draftMetricsOptIn, draftPromoOptIn, addingWallet, session, deviceAuthPublic, pollarDraft, landPollarWallet, t, flash],
+    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, draftEmail, draftGender, draftMetricsOptIn, draftPromoOptIn, addingWallet, session, deviceAuthPublic, signInDraft, createFromSignIn, t, flash],
   );
 
   /* ----------------------------- unlock --------------------------- */
@@ -1240,55 +1239,25 @@ export function useWalletStore() {
     setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey });
     setCosmosPay(await getCosmosPay(entry.id, vaultKey));
     setCosmosPayPending(await getPendingCosmosPay(entry.id));
-    // Only a Pollar wallet has one, and for that wallet this box is also what the
-    // password was just proven against — so a null here on a Pollar entry means the
-    // session opened on a key that cannot read it, which `convergeSeals` treats as the
-    // broken state it is. Reading it eagerly keeps that from first surfacing mid-payment.
-    setPollar(isPollar(entry) ? await getPollarSession(entry.id, vaultKey) : null);
-    // Every unlock funnels through here — the password screen, the device prompt, the
-    // boot path restoring a saved session — and each of them restores the network id that
-    // was saved, which for an install predating this rule can be testnet with a custodied
-    // wallet active. That combination has no address to read, so correct it on the way in
-    // rather than leave the user looking at a funded account reported as empty.
-    if (isPollar(entry)) await goMainnet();
     setTab('home');
     setScreen('home');
-  }, [goMainnet, setPollar]);
+  }, []);
 
   /**
-   * Prove the live session's key opens `entry`, and return the Pollar session it holds.
-   *
-   * The proof has to open the box that wallet ACTUALLY HAS, and the two kinds do not have
-   * the same one. A local wallet has a secret box. A Pollar wallet has none — its sealed
-   * session is both its credential and the box the app password is proven against, which
-   * is what `createPollarWallet` means by "the session box IS this wallet's box". Asking
-   * `openVault` for a secret box that was never written is how switching to a social
-   * wallet failed: it threw, the caller showed the error, and the wallet never changed.
-   *
-   * Returning the session rather than only proving it is the other half. `signEnvelope`
-   * decides where an envelope goes by whether `pollarRef` holds one, so a switch that
-   * left it alone would either strand a Pollar wallet with no token, or — switching the
-   * other way — hand a LOCAL wallet's envelope to a custodian that has never heard of its
-   * address. Every caller sets it from this return value, including the null.
-   *
-   * A Pollar entry whose box will not open is a hard failure, never a null: the key that
-   * is meant to open it is the one this session is already running on.
+   * Prove the live session's key opens `entry` before a session adopts it — switching to
+   * it, falling onto it after a removal. A key that does not open it is a hard failure.
    */
-  const adoptWallet = useCallback(
-    async (entry: WalletEntry, vaultKey: VaultKey): Promise<PollarStoredSession | null> => {
-      await openPrimaryBox(entry, vaultKey);
-      if (!isPollar(entry)) return null;
-      // The proof above already opened this box, so a null here is not a wrong key — it
-      // is a session box holding something that is no longer a session.
-      const stored = await getPollarSession(entry.id, vaultKey);
-      if (!stored) throw new Error(t('pollar.sessionExpired'));
-      return stored;
-    },
-    [t],
-  );
+  const adoptWallet = useCallback(async (entry: WalletEntry, vaultKey: VaultKey): Promise<void> => {
+    await openWalletBox(entry, vaultKey);
+  }, []);
 
   const unlock = useCallback(
-    async (password: string): Promise<UnlockResult> => {
+    /**
+     * `via` says where the password came from. A passkey device's password comes out of the
+     * passkey door (`unlockWithPasskey`), and one that does not open the vault is a stale
+     * door, not a typo — the line shown has to say which.
+     */
+    async (password: string, via: 'password' | 'passkey' = 'password'): Promise<UnlockResult> => {
       if (unlockInFlight.current) return { ok: false, reason: 'busy' };
       unlockInFlight.current = true;
       setBusy(true);
@@ -1313,14 +1282,14 @@ export function useWalletStore() {
         // converged pays one read per box and no crypto at all.
         const vaultKey = await convergeSeals(password, opened.vaultKey);
         await openSession(opened.entry, vaultKey);
-        report(EVENT.unlockOk, { category: 'auth', props: { method: 'password' } });
+        report(EVENT.unlockOk, { category: 'auth', props: { method: via } });
         return { ok: true };
       } catch (e) {
         // By CLASS, never by the rendered line: `errLine` is translated copy, so a feed
         // grouped on it would split one failure across five languages. `reportError`
         // keeps the class name and the gateway's code, which is what groups.
-        reportError(EVENT.unlockFailed, e, { method: 'password', wrong: e instanceof WrongPasswordError });
-        flash(errLine(e), 'err');
+        reportError(EVENT.unlockFailed, e, { method: via, wrong: e instanceof WrongPasswordError });
+        flash(via === 'passkey' && e instanceof WrongPasswordError ? t('passkey.err.stale') : errLine(e), 'err');
         // The reason is classified rather than folded into a boolean because the unlock
         // screen says different things about a typo, a throttled attempt and a vault it
         // could not read at all. `unlockWithKey` below makes the same distinction for the
@@ -1331,7 +1300,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [flash, claimAttempt, forgetAttempt, openSession, errLine],
+    [flash, claimAttempt, forgetAttempt, openSession, errLine, t],
   );
 
   /**
@@ -1368,10 +1337,7 @@ export function useWalletStore() {
           await releaseAttempt(); // nothing was guessed — see forgetAttempt
           throw new Error(t('vault.notFound'));
         }
-        // The proving box, not the secret one — a Pollar wallet has no secret box, and
-        // asking for it turned a good enrolment into a failed unlock the user could only
-        // escape by typing their password.
-        await openPrimaryBox(entry, vaultKey).catch(async (err: unknown) => {
+        await openWalletBox(entry, vaultKey).catch(async (err: unknown) => {
           await forgetAttempt(err);
           throw err;
         });
@@ -1535,67 +1501,34 @@ export function useWalletStore() {
   }, []);
 
   /**
-   * Make `entry` the active wallet under the live session's key.
-   *
-   * The shared half of switching WALLET and switching NETWORK, because for a social login
-   * those are the same operation seen from two angles: one identity, two addresses, and
-   * either control can be the one that moves between them. Written twice, the second copy
-   * is the one that forgets `setPollar` and routes a seed wallet's envelope to a
-   * custodian — which is exactly what the third copy of this used to do.
+   * Make `entry` the active wallet under the live session's key — proven to open it first,
+   * so a switch never lands on a wallet this session cannot sign for.
    */
   const activateWallet = useCallback(
     async (entry: WalletEntry, vaultKey: VaultKey) => {
-      const stored = await adoptWallet(entry, vaultKey);
+      await adoptWallet(entry, vaultKey);
       await setActiveId(entry.id);
       setMetaState(entry);
       setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey });
-      setPollar(stored);
       setCosmosPay(await getCosmosPay(entry.id, vaultKey));
       setCosmosPayPending(await getPendingCosmosPay(entry.id));
     },
-    [adoptWallet, setPollar],
+    [adoptWallet],
   );
 
-  /**
-   * The wallets a PICKER may show, and which of them is current.
-   *
-   * A social login writes two entries and the user has one account, so the seeded testnet
-   * half never appears as a row of its own — it is reached by changing network, and
-   * `entryForNetwork` is what does that. Both pickers read these instead of the raw list:
-   * `wallets` still holds every entry, because switching, deleting and resolving all need
-   * the hidden one, and filtering the list they work from would have quietly broken them.
-   *
-   * `activeWalletId` is the IDENTITY's id, never the seeded half's. Standing on testnet
-   * with a social wallet, the row to highlight is still the account the user knows about.
-   */
-  const visibleWallets = useMemo(() => wallets.filter((w) => !w.testnetFor), [wallets]);
-  const activeWalletId = useMemo(
-    () => (meta ? identityOf(meta, wallets).id : null),
-    [meta, wallets],
-  );
+  const activeWalletId = meta?.id ?? null;
 
   const switchWallet = useCallback(
     async (id: string) => {
       if (!session || id === meta?.id) return;
       setBusy(true);
       try {
-        const picked = wallets.find((w) => w.id === id);
-        if (!picked) return;
-        // The row the user tapped names an IDENTITY; which of its addresses they get is
-        // the network's business, not theirs. On testnet a social login resolves to its
-        // seeded half, which is why nothing here has to force the network any more.
-        const entry = entryForNetwork(picked, wallets, networkEnv(network) === 'prod');
-        if (entry.id === meta?.id) return;
+        const entry = wallets.find((w) => w.id === id);
+        if (!entry) return;
         // `activateWallet` proves the session's key opens the target BEFORE anything
-        // switches — the check the old code got for free by decrypting to build the new
-        // session. It costs a GCM decrypt now rather than a full PBKDF2 derivation, which
-        // is the difference between switching wallets in microseconds and in about a
-        // second.
+        // switches. It costs a GCM decrypt rather than a full PBKDF2 derivation, which is
+        // the difference between switching wallets in microseconds and in about a second.
         await activateWallet(entry, session.vaultKey);
-        // Only when the resolution above had nowhere else to go: a custodied wallet with
-        // no seeded half is a mainnet-only account, and reading it anywhere else asks
-        // Horizon about an address that was never created there.
-        if (isPollar(entry)) await goMainnet();
         // No clearing needed: the cache key includes the account, so the new wallet
         // simply reads a different (empty) key while the old one stays warm.
         setTab('home');
@@ -1607,7 +1540,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [session, meta, wallets, network, t, flash, errLine, activateWallet, goMainnet],
+    [session, meta, wallets, t, flash, errLine, activateWallet],
   );
 
   /** Remove the active wallet; switch to another, or fall back to onboarding. */
@@ -1623,18 +1556,15 @@ export function useWalletStore() {
         invalidate(HISTORY_PREFIX);
         setCosmosPay(null);
         setCosmosPayPending(null);
-        setPollar(null);
         setMetaState(null);
         setScreen('welcome');
         return;
       }
       const entry = remaining.find((w) => w.id === newActive)!;
-      // Same rule as `switchWallet`: the wallet being adopted decides which box proves
-      // the key, and the session it hands back is what routes the next signature.
-      const stored = await adoptWallet(entry, session.vaultKey);
+      // Same rule as `switchWallet`: prove the key opens it before the session adopts it.
+      await adoptWallet(entry, session.vaultKey);
       setMetaState(entry);
       setSession({ publicKey: entry.publicKey, walletId: newActive, vaultKey: session.vaultKey });
-      setPollar(stored);
       setCosmosPay(await getCosmosPay(newActive, session.vaultKey));
       setCosmosPayPending(await getPendingCosmosPay(newActive));
       setTab('home');
@@ -1645,45 +1575,17 @@ export function useWalletStore() {
     } finally {
       setBusy(false);
     }
-  }, [meta, session, t, flash, adoptWallet, setPollar]);
+  }, [meta, session, t, flash, adoptWallet]);
 
   /* -------------------------- network switch ---------------------- */
-  const switchNetwork = useCallback(
-    async (id: string) => {
-      // For a social login the network selector is ALSO the wallet selector: one identity
-      // with an address per network, and this is the control that moves between them. The
-      // seeded half is not a row anybody can pick, so if this did not swap it, it would be
-      // a wallet the user owns and has no way to reach.
-      if (meta && session) {
-        const next = entryForNetwork(meta, wallets, networkEnv(resolveNetwork(id, customNetworks)) === 'prod');
-        if (next.id !== meta.id) {
-          try {
-            await activateWallet(next, session.vaultKey);
-          } catch (e) {
-            // The network does NOT move when its wallet could not be opened — leaving it
-            // on a network whose key never loaded is the state that reads as "my funded
-            // account is empty".
-            flash(errLine(e), 'err');
-            return;
-          }
-        } else if (isPollar(meta) && id !== MAINNET_ID) {
-          // A custodied wallet whose seeded half is gone. Not a view the user could have
-          // wanted — a funded account reported as not active, every balance zero, nothing
-          // on screen able to say why — so it is refused with the sentence that makes it
-          // actionable rather than entered.
-          flash(t('net.pollarMainnetOnly'), 'info');
-          return;
-        }
-      }
-      // No toast on a real switch — the network label already updates in the dropdown.
-      setNetworkIdState(id);
-      await vaultSetNetworkId(id);
-      // Nothing to clear: the cache key carries the network id, so the new network
-      // reads its own key. This is what kills the stale-write race — a request still
-      // in flight for the previous network resolves into the key nobody is reading.
-    },
-    [meta, session, wallets, customNetworks, t, flash, errLine, activateWallet],
-  );
+  const switchNetwork = useCallback(async (id: string) => {
+    // No toast on a real switch — the network label already updates in the dropdown.
+    setNetworkIdState(id);
+    await vaultSetNetworkId(id);
+    // Nothing to clear: the cache key carries the network id, so the new network reads its
+    // own key. This is what kills the stale-write race — a request still in flight for the
+    // previous network resolves into the key nobody is reading.
+  }, []);
 
   const addNetwork = useCallback(
     async (cfg: Omit<NetConfig, 'id' | 'custom'>) => {
@@ -2285,9 +2187,6 @@ export function useWalletStore() {
    *  - **No session** → nothing to sign with. This also covers the locked wallet: `lock()`
    *    clears the session, this effect re-runs and passes `ownership: null`, so a locked
    *    wallet stops vouching for anything.
-   *  - **Pollar wallet** → skipped. Its key is in Pollar's KMS, so `secretOf` has nothing
-   *    to open; proving ownership there would mean spending an access token on a round
-   *    trip, which is a different feature and not this one.
    *  - **Anonymous route** → skipped. Under the shared public key the attestation would be
    *    stripped by `anonymize` anyway (it names an account, so it is in ACCOUNT_PROPS), and
    *    minting one nobody will send is a vault read for nothing.
@@ -2299,7 +2198,7 @@ export function useWalletStore() {
    */
   useEffect(() => {
     const own = cosmosPay?.keys[networkEnv(network)] ?? null;
-    if (!telemetryEnabled() || !session || !own || !meta || isPollar(meta)) {
+    if (!telemetryEnabled() || !session || !own || !meta) {
       configureTelemetry({ ownership: null });
       return;
     }
@@ -2515,454 +2414,528 @@ export function useWalletStore() {
     return run.ran ? run.value : false;
   }, [cosmosApiKey, session, network, exclusive, guardSession, requestSignature, signEnvelope, t, flash]);
 
-  /* ---------------------------- Pollar ---------------------------- */
+  /* ------------------------ account recovery (SEP-30) ------------------------ */
 
-  /**
-   * There used to be a `canUsePollar()` here, and it answered false for exactly the
-   * people social login is for.
+  /*
+   * Opt-in, and it replaces nothing: a wallet that never turns this on is exactly the
+   * wallet it was. What it adds is two signers, held by two separate servers, each at half
+   * the account's threshold — so the device still signs alone, and if the device is gone
+   * the two servers together can put a new key on the account. `lib/recovery.ts` has the
+   * arithmetic and `txGuard`'s `recovery` template is what checks the transaction.
    *
-   * The bridge's routes are scoped `pollar:read` / `pollar:write`, so driving them needs
-   * a CosmosPay key — which a first-run user does not have and could not get, because a
-   * key belongs to an account and an account was created by signing a nonce with a
-   * Stellar secret this kind of wallet never holds. The screen's only honest move was to
-   * hide the button.
-   *
-   * The dev platform now brokers the handshake with its own identity
-   * (`lib/socialLogin.ts`), so the login works with no credential at all and hands back
-   * the account keys at the end. Which path runs is decided per login by whether a key
-   * is already in hand — never by hiding the entry point.
+   * The identity that will be able to recover is the wallet's own email. Registering it
+   * needs the ACCOUNT's key (SEP-10), so only the person holding this device decides who
+   * may recover it — an identity that could add itself would be a way in, not a way back.
    */
 
   /**
-   * Where a login has got to. Three states rather than a boolean, because each needs
-   * different copy and only `waiting` is one the user can act on — by going back to the
-   * browser tab that is asking for their consent.
-   */
-  const [pollarPhase, setPollarPhase] = useState<'idle' | 'opening' | 'waiting' | 'redeeming'>('idle');
-  /**
-   * A brokered login held for the code emailed to an existing account. In memory only, on
-   * purpose: the claim token is worth nothing without that inbox, and a prompt that outlived
-   * a closed popup would be answering a login nobody is looking at any more.
-   */
-  const [socialProof, setSocialProof] = useState<{ claimToken: string; provider: PollarProvider } | null>(null);
-  const [pollarUrl, setPollarUrl] = useState<string | null>(null);
-  const pollarAbort = useRef(false);
-  /**
-   * Finish a handshake: poll for the code, redeem it, land the wallet.
+   * Send a code to the wallet's own email, for the sponsored path.
    *
-   * Shared by starting a login and resuming one, because on MV3 those are the same
-   * thing — opening the consent screen dismisses the popup, so the process that starts a
-   * login is usually not the process that finishes it.
+   * The operator pays two accounts' worth of reserve, so it asks for a proven email rather
+   * than a bare request — the same sign-in every other flow uses, spent here for one
+   * narrower thing. It is never asked for on the self-paid path, which needs no identity.
    */
-  const finishPollarLogin = useCallback(
-    async (apiKey: string, hs: PollarHandshake): Promise<boolean> => {
-      if (!session) return false;
-      try {
-        setPollarPhase('waiting');
-        const code = await waitForCode((state) => pollarStatus(apiKey, state), hs, () => pollarAbort.current);
-
-        setPollarPhase('redeeming');
-        const redeemed = await pollarExchange(apiKey, code, hs.verifier);
-        await clearHandshake();
-
-        if (!redeemed.wallet.address) {
-          flash(t('pollar.noWallet'), 'err');
-          return false;
-        }
-
-        // Pollar provisions the account during redemption, but its DEFERRED funding mode
-        // hands back an address with no reserve — a keypair that does not exist on-chain.
-        // Activating here rather than at the first payment means the user never meets a
-        // "destination does not exist" on an account the wallet has just shown them.
-        //
-        // Non-fatal on failure: the address can still receive, the operator can fund it
-        // later, and failing the whole login over the reserve would throw away a session
-        // the user has already consented to.
-        if (redeemed.wallet.exists_on_stellar === false) {
-          try {
-            const act = await pollarActivate(apiKey, redeemed.wallet.address);
-            if (act.activated) flash(t('pollar.activated', { amount: act.amount }), 'ok');
-          } catch {
-            /* see above */
-          }
-        }
-
-        const stored = toStored(redeemed, hs.provider);
-        const { entry, wallets: next } = await createPollarWallet(
-          {
-            publicKey: redeemed.wallet.address,
-            name: redeemed.profile.first_name || meta?.name || 'astronauta',
-            birthdate: meta?.birthdate ?? '',
-            email: redeemed.profile.email || meta?.email || '',
-            avatar: redeemed.profile.avatar,
-          },
-          stored,
-          session.vaultKey,
-        );
-
-        // The new wallet becomes the active one, so everything the session carries about
-        // the previous wallet has to move with it. `cosmosPay` especially: leaving the
-        // old wallet's API key in state would attribute this wallet's swaps and payouts
-        // to an organization it does not belong to.
-        setWallets(next);
-        setMetaState(entry);
-        setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey: session.vaultKey });
-        setPollar(stored);
-        setCosmosPay(null);
-        setCosmosPayPending(null);
-        setScreen('home');
-        return true;
-      } catch (e) {
-        await clearHandshake();
-        // A login another account completed is refused by code; say so in the user's
-        // language rather than with the integrator-facing sentence the bridge sends.
-        const identity = identityRefusalKey(e);
-        flash(identity ? t(identity) : (e as Error).message || t('pollar.status.failed'), 'err');
-        return false;
-      } finally {
-        setPollarPhase('idle');
-        setPollarUrl(null);
-      }
-    },
-    [session, meta, t, flash, setPollar],
-  );
-
-  /**
-   * The same three steps, run through the dev platform because this device has no key.
-   *
-   * Two things happen here that the direct path does not do, and both are the platform's
-   * because they need a credential the wallet cannot hold: the XLM reserve is funded
-   * (a deferred Pollar wallet is an address with no on-chain account, which the user
-   * would otherwise meet as a receive QR nobody can pay), and a CosmosPay account is
-   * created — or attached to the one the provider's email already has — and its keys
-   * come back in the same response.
-   *
-   * `account: 'none'` is not a failure: some providers return no email, and the wallet
-   * still signs through Pollar. What is off is the gateway, and the toast says so
-   * instead of leaving the user to discover it at their first swap.
-   */
-  /**
-   * Land a finished brokered login: the session, the testnet twin and the account keys.
-   *
-   * Shared by the two ways a brokered login finishes — a claim that returned the session at
-   * once, and the emailed code that released one the claim held — so both put exactly the
-   * same things on the device.
-   */
-  const landSocialLogin = useCallback(
-    async (claimed: SocialLoginReady, provider: PollarProvider): Promise<boolean> => {
-        if (!claimed.session.wallet.address) {
-          flash(t('pollar.noWallet'), 'err');
-          return false;
-        }
-
-        // The testnet half of the same login — see SocialDraft. Generated after the claim
-        // rather than before, because a claim that fails leaves nothing behind and there
-        // is no reason to have derived a key for it.
-        //
-        // Through `walletLib()` like every other caller: SEP-5 derivation is ~240 KB that
-        // an unlock must never load, and a static import here would put it on that path.
-        const { createMnemonic, accountFromMnemonic } = await walletLib();
-        const mnemonic = createMnemonic();
-        const own: DerivedAccount & { mnemonic: string } = {
-          ...(await accountFromMnemonic(mnemonic)),
-          mnemonic,
-        };
-
-        if (claimed.activated && claimed.activationAmount) {
-          flash(t('pollar.activated', { amount: claimed.activationAmount }), 'ok');
-        }
-        flash(
-          t(claimed.account === 'linked' ? 'pollar.accountLinked' : claimed.account === 'created' ? 'pollar.accountCreated' : 'pollar.noAccount'),
-          claimed.account === 'none' ? 'info' : 'ok',
-        );
-
-        const profile = pollarProfileOf(claimed.session, meta);
-        const draft: SocialDraft = {
-          pollar: { stored: toStored(claimed.session, provider), profile },
-          local: {
-            secret: { secret: own.secret, mnemonic: own.mnemonic },
-            // Same person, same name — only the address differs, and it has to.
-            profile: { ...profile, publicKey: own.publicKey },
-          },
-          account: claimed.keys
-            ? { keys: claimed.keys, organizationId: claimed.organizationId ?? '' }
-            : null,
-        };
-
-        // The provider and whether an account came back — never the email the provider
-        // returned, which is the one field in `claimed` that names a person.
-        report(EVENT.socialLogin, {
-          category: 'auth',
-          props: { provider, account: claimed.account, activated: claimed.activated, brokered: true },
-        });
-
-        if (session) {
-          // Adding a social wallet to a device that already has one: nobody is asked
-          // again, so the answers already on this device carry over — the diagnostics
-          // preference as it stands now, and the promotional one from the wallet the
-          // user is adding this beside. Asking a second time would be asking the same
-          // person the same question about the same device.
-          await landPollarWallet(draft, session.vaultKey, {
-            metricsOptIn: telemetryEnabled(),
-            promoOptIn: meta?.promoOptIn ?? false,
-          });
-          setScreen('home');
-        } else {
-          // A true first run: no vault on this device, so no key to seal anything under
-          // yet. The password screen collects it and `finishOnboarding` lands the draft —
-          // see SocialDraft for why this waits in memory and nowhere else.
-          setPollarDraft(draft);
-          setScreen('password');
-        }
-        return true;
-    },
-    [session, meta, t, flash, landPollarWallet, pollarProfileOf],
-  );
-
-  const finishSocialLogin = useCallback(
-    async (env: 'dev' | 'prod', hs: PollarHandshake): Promise<boolean> => {
-      try {
-        setPollarPhase('waiting');
-        const code = await waitForCode(socialPoller(env), hs, () => pollarAbort.current);
-
-        setPollarPhase('redeeming');
-        const claimed = await socialLoginClaim(env, hs, code, meta?.name);
-        await clearHandshake();
-
-        if (claimed.status === 'verify_email') {
-          // The email already has an account, so nothing came back but a claim token: the
-          // session waits on the code the platform just sent to that inbox.
-          setSocialProof({ claimToken: claimed.claimToken, provider: hs.provider });
-          if (claimed.activated && claimed.activationAmount) {
-            flash(t('pollar.activated', { amount: claimed.activationAmount }), 'ok');
-          }
-          flash(t('pollar.verifySent'), 'info');
-          return true;
-        }
-
-        return await landSocialLogin(claimed, hs.provider);
-      } catch (e) {
-        reportError(EVENT.socialLoginFailed, e, { provider: hs.provider, brokered: true });
-        await clearHandshake();
-        flash((e as Error).message || t('pollar.status.failed'), 'err');
-        return false;
-      } finally {
-        setPollarPhase('idle');
-        setPollarUrl(null);
-      }
-    },
-    [meta, t, flash, landSocialLogin],
-  );
-
-  /**
-   * Send the code emailed for a held login. `invalid` keeps the prompt open for another try;
-   * `expired` and `locked` close it, and the user starts a new sign-in.
-   */
-  const submitSocialCode = useCallback(
-    async (code: string): Promise<void> => {
-      if (!socialProof || !isAccessCode(code)) return;
-      setPollarPhase('redeeming');
-      try {
-        const res = await socialLoginVerify(socialProof.claimToken, code);
-        if (res.status === 'ready') {
-          setSocialProof(null);
-          await landSocialLogin(res, socialProof.provider);
-        } else if (res.status === 'invalid') {
-          flash(t('pollar.verifyInvalid', { n: res.attemptsLeft }), 'err');
-        } else {
-          setSocialProof(null);
-          flash(t(res.status === 'locked' ? 'pollar.verifyLocked' : 'pollar.verifyExpired'), 'err');
-        }
-      } catch (e) {
-        reportError(EVENT.socialLoginFailed, e, { provider: socialProof.provider, brokered: true });
-        flash((e as Error).message || t('pollar.status.failed'), 'err');
-      } finally {
-        setPollarPhase('idle');
-      }
-    },
-    [socialProof, t, flash, landSocialLogin],
-  );
-
-  /** Drop a held login's prompt. The held session expires on the platform by itself. */
-  const cancelSocialProof = useCallback(() => setSocialProof(null), []);
-
-  /**
-   * The direct login, and whether the brokered one should be tried instead.
-   *
-   * Returns false when the login ran (well or badly) and true when the key turned out
-   * not to carry the `pollar:*` scopes — which is not hypothetical: every key minted
-   * before the dev platform started granting them is in exactly that state, and their
-   * holders are the users most likely to have a wallet old enough to want a second,
-   * social one. Left alone, they meet a 403 that reads like a broken install, on a
-   * button that has no other way to work for them.
-   *
-   * The branch is on the gateway's own `code`, never on the message: `insufficient_scope`
-   * is API surface and the sentence beside it is copy that may be reworded tomorrow.
-   *
-   * Falling back is safe because the brokered path provisions the account for the NEW
-   * wallet only — the existing one keeps its own key and its own organization.
-   */
-  const tryDirectPollarLogin = useCallback(
-    async (apiKey: string, provider: PollarProvider, tab: ExternalTab): Promise<boolean> => {
-      let handshake: PollarHandshake;
-      let authorizationUrl: string;
-      try {
-        const opened = await pollarAuthorize(apiKey, provider);
-        handshake = opened.handshake;
-        authorizationUrl = opened.authorization.authorization_url;
-      } catch (e) {
-        const denied = e instanceof ApiRequestError && (e.code === 'insufficient_scope' || e.status === 403);
-        // The reserved tab is deliberately NOT given back here: the brokered attempt that
-        // follows needs it, and it cannot claim one of its own from this far past the click.
-        if (denied) return true;
-        throw e;
-      }
-
-      await saveHandshake(handshake);
-      setPollarUrl(authorizationUrl);
-      if (!(await tab.open(authorizationUrl))) flash(t('pollar.openFailed'), 'info');
-      await finishPollarLogin(apiKey, handshake);
+  const startRecoveryCode = useCallback(async (): Promise<boolean> => {
+    const email = meta?.email?.trim().toLowerCase();
+    if (!email) {
+      flash(t('recovery.error.noEmail'), 'err');
       return false;
+    }
+    return signIn.startEmail(email);
+  }, [meta, signIn, flash, t]);
+
+  /** Whether recovery is on for this account, read from the ledger rather than the servers. */
+  const recovery = useQueryValue<RecoveryState>(recoveryKey(scope.net, scope.pub)) ?? null;
+
+  const loadRecovery = useCallback(async () => {
+    if (!meta) return;
+    await run({
+      key: recoveryKey(networkId, meta.publicKey),
+      fetcher: () => recoveryStateOf(network, meta.publicKey),
+      ttl: TTL.recovery,
+      retry: 2, // an idempotent read
+    });
+  }, [meta, network, networkId]);
+
+  /**
+   * Turn recovery on.
+   *
+   * `code` is the one an email sign-in just sent, and passing it chooses the SPONSORED
+   * variant: the operator pays the two signer entries' reserve, which is the only way an
+   * account with no spare lumens gets recovery at all. Without it the account pays its
+   * own, and needs no sign-in at all. Both end at the same guard with the same template —
+   * the sponsorship is a funding arrangement, not a second way of changing an account.
+   *
+   * The token that the sponsored variant spends never leaves this function, which is why
+   * the code is verified HERE rather than by the screen: a screen holding a session token
+   * is a screen holding something that provisions.
+   */
+  const enableRecovery = useCallback(
+    async (opts: { code?: string } = {}): Promise<boolean> => {
+      if (!session || !meta) return false;
+
+      const outcome = await exclusive.run('recovery', async () => {
+        const epoch = sessionEpochRef.current;
+        try {
+          const address = session.publicKey;
+          const email = meta.email?.trim().toLowerCase() ?? '';
+          if (!email) {
+            flash(t('recovery.error.noEmail'), 'err');
+            return false;
+          }
+
+          // Both servers, before anything is written to either: a pair that cannot
+          // protect the account is a pair to find out about now, not after one of them
+          // has been registered.
+          const servers = await loadRecoveryServers(network);
+          guardSession(epoch);
+
+          const state = await recoveryStateOf(network, address);
+          guardSession(epoch);
+          if (!state.exists) {
+            flash(t('recovery.error.notFunded'), 'err');
+            return false;
+          }
+
+          // Said plainly before anything happens, because this is the bargain: whoever
+          // can prove that inbox — to BOTH servers — can put a new key on this account.
+          const okToStart = await requestSignature({
+            title: t('recovery.confirmTitle'),
+            message: t('recovery.confirmMsg', { email }),
+          });
+          if (!okToStart) return false;
+          guardSession(epoch);
+
+          const secret = await secretOf(session);
+          const signers = await registerForRecovery(network, servers, address, secret, email);
+          guardSession(epoch);
+
+          let xdr: string;
+          if (opts.code) {
+            if (!isAccessCode(opts.code)) {
+              flash(t('recovery.error.badCode'), 'err');
+              return false;
+            }
+            const ready = await signIn.submitCode(opts.code);
+            guardSession(epoch);
+            if (!ready) return false; // the slice already said why
+            const built = await recoverySetupSponsored(
+              ready.sessionToken,
+              { stellarAddress: address, signers, ...signedRecoverySetup(secret, address, signers) },
+              await warmPublicKey(networkEnv(network)),
+            );
+            guardSession(epoch);
+            xdr = built.transaction;
+          } else {
+            // Only the self-paid variant needs the sequence here: the sponsored one is
+            // built by the operator, on the sequence it reads for itself.
+            const sequence = await sequenceOf(network, address);
+            guardSession(epoch);
+            xdr = buildRecoverySetup({ account: address, signers, sequence, networkPassphrase: network.passphrase });
+          }
+
+          // The template, on both variants — including the one this wallet built itself.
+          // A builder that checked only the other side's envelope would be trusting its
+          // own code more than the thing that has to be right.
+          assertSafeToSign(network, xdr, {
+            signer: address,
+            intent: 'recovery',
+            // Nothing leaves. Stating the policy is still required, and this is the
+            // honest answer rather than the empty one.
+            destinations: 'self',
+            signers,
+            // The PATH the person chose, not the payer's address: an address here would
+            // have come from the same response as the envelope, and the guard would have
+            // been checking the operator against itself. See the arm's own note.
+            sponsored: !!opts.code,
+          });
+          guardSession(epoch);
+
+          const signed = await signEnvelope(xdr);
+          await stellarSubmitXdr(network, signed);
+
+          // What the servers were actually told, kept because SEP-30 will not tell us
+          // again: an identity is write-only, so this is the only record of which inbox
+          // can recover this account. Written AFTER the submit — before it, a setup that
+          // failed on chain would leave the device claiming a protection it does not have.
+          await patchMeta({ recoveryEmail: email });
+
+          invalidate(ACCOUNT_PREFIX);
+          invalidate(RECOVERY_PREFIX);
+          void loadRecovery();
+          flash(t('recovery.enabled'), 'ok');
+          return true;
+        } catch (e) {
+          flash((e as Error).message || t('recovery.error.generic'), 'err');
+          return false;
+        }
+      });
+      return outcome.ran ? outcome.value : false;
     },
-    [t, flash, finishPollarLogin],
+    [session, meta, network, exclusive, guardSession, requestSignature, signEnvelope, signIn, loadRecovery, t, flash],
   );
 
   /**
-   * Start a login with `provider`.
+   * Turn it off: both signers back to weight 0, the thresholds back to one signature.
    *
-   * Which path runs is decided by one question — is there a CosmosPay key in hand that
-   * the bridge accepts? With one, the wallet talks to the gateway itself and this is an
-   * ADDITIONAL account on a provisioned device. Without one — no key, or a key minted
-   * before `pollar:*` was granted — the dev platform brokers it and the login also
-   * creates the account. The user is shown the same screen either way; the difference is
-   * whose credential opens the handshake.
+   * Built entirely from what the LEDGER says is on the account, with nothing from either
+   * server in it — which is also why it does not go through the guard the way enabling
+   * does. There is no counterparty envelope here: the worst a wrong answer from Horizon
+   * could produce is an operation that removes a signer the account never had.
    *
-   * The handshake is persisted BEFORE the browser opens, never after. On MV3 sending the
-   * tab somewhere is itself what dismisses the popup, so anything written afterwards is
-   * written by a process that may already be gone — and that state is the only handle on
-   * a login the user is at that moment completing.
-   *
-   * The tab it opens is claimed in the first statement, before any `await`: a popup
-   * blocker grants it on the strength of the click that is still on the stack, and by the
-   * time the authorization URL comes back from the bridge that click is spent.
+   * The servers are told afterwards, and a failure there is not a failure of this: the
+   * signer is off the account either way, and a server that still thinks it protects an
+   * account it cannot sign for is stale, not dangerous.
    */
-  const pollarLogin = useCallback(
-    async (provider: PollarProvider): Promise<void> => {
-      // Always prod: an account with Google is the same account on either network, and a
-      // fresh install opens on testnet. See SOCIAL_LOGIN_ENV.
-      const env = SOCIAL_LOGIN_ENV;
-      const apiKey = cosmosPay?.keys[env] ?? null;
-      // Before the first `await`, so the tab is claimed while the click is still on the
-      // stack. Everything above is synchronous for that reason — see reserveExternalTab.
-      const tab = reserveExternalTab();
-      pollarAbort.current = false;
-      setPollarPhase('opening');
-      try {
-        if (apiKey && !(await tryDirectPollarLogin(apiKey, provider, tab))) return;
+  const disableRecovery = useCallback(async (): Promise<boolean> => {
+    if (!session || !meta) return false;
 
-        const { authorizationUrl, handshake } = await socialLoginStart(env, provider);
-        await saveHandshake(handshake);
-        setPollarUrl(authorizationUrl);
-        if (!(await tab.open(authorizationUrl))) flash(t('pollar.openFailed'), 'info');
-        await finishSocialLogin(env, handshake);
+    const outcome = await exclusive.run('recovery', async () => {
+      const epoch = sessionEpochRef.current;
+      try {
+        const address = session.publicKey;
+        const state = await recoveryStateOf(network, address);
+        guardSession(epoch);
+        if (!state.enabled || !state.signers.length) {
+          flash(t('recovery.error.notOn'), 'err');
+          return false;
+        }
+
+        const ok = await requestSignature({
+          title: t('recovery.offConfirmTitle'),
+          message: t('recovery.offConfirmMsg'),
+        });
+        if (!ok) return false;
+        guardSession(epoch);
+
+        // Ask the SERVERS which key each of them holds, rather than removing whatever the
+        // ledger carries at their weight: another signer the account happens to have at
+        // that weight — a co-signer, a service — is not ours to zero. This also
+        // deregisters the account, so neither server is left holding an identity record
+        // for an account it can no longer sign for.
+        const servers = await loadRecoveryServers(network);
+        guardSession(epoch);
+        const secret = await secretOf(session);
+        const signers = await signersToRemove(network, servers, address, secret);
+        guardSession(epoch);
+        if (!signers.length) {
+          flash(t('recovery.error.notOn'), 'err');
+          return false;
+        }
+
+        const sequence = await sequenceOf(network, address);
+        guardSession(epoch);
+        const xdr = buildRecoveryRemoval({ account: address, signers, sequence, networkPassphrase: network.passphrase });
+        const signed = await signEnvelope(xdr);
+        await stellarSubmitXdr(network, signed);
+
+        // Nothing is registered any more, so a recorded address would be a claim about
+        // servers that have already been told to forget this account.
+        await patchMeta({ recoveryEmail: undefined });
+
+        invalidate(ACCOUNT_PREFIX);
+        invalidate(RECOVERY_PREFIX);
+        void loadRecovery();
+        flash(t('recovery.disabled'), 'ok');
+        return true;
       } catch (e) {
-        // A blank tab with nowhere to go is the user's to close otherwise, and they would
-        // be closing it while reading the error that explains why it is empty.
-        tab.cancel();
-        setPollarPhase('idle');
-        flash((e as Error).message || t('pollar.status.failed'), 'err');
+        flash((e as Error).message || t('recovery.error.generic'), 'err');
+        return false;
       }
+    });
+    return outcome.ran ? outcome.value : false;
+  }, [session, meta, network, exclusive, guardSession, requestSignature, signEnvelope, loadRecovery, t, flash]);
+
+  /**
+   * Point the two servers at the wallet's CURRENT email.
+   *
+   * SEP-30's `PUT /accounts/<address>`, and the reason it has a screen of its own is that
+   * nothing else can notice it is needed: the profile email is editable at any time, an
+   * identity cannot be read back, and the two drift apart silently. Until this runs, the
+   * inbox that can recover the account is whichever one was registered — which after an
+   * address change is the one the person no longer uses, and may no longer control.
+   *
+   * It touches no ledger: signers, weights and thresholds are exactly as they were, and
+   * the account is not re-registered. What changes is who the servers will answer to.
+   * Still password-gated, because it needs the account's key for SEP-10 — and because
+   * changing who may recover an account is the same decision as granting it.
+   *
+   * The record is written only after BOTH servers took it. A partial update leaves the
+   * account reachable from either address and the old one still live, which is worth
+   * reporting as a failure rather than recording as a success.
+   */
+  const updateRecoveryEmail = useCallback(async (): Promise<boolean> => {
+    if (!session || !meta) return false;
+
+    const outcome = await exclusive.run('recovery', async () => {
+      const epoch = sessionEpochRef.current;
+      try {
+        const address = session.publicKey;
+        const email = meta.email?.trim().toLowerCase() ?? '';
+        if (!email) {
+          flash(t('recovery.error.noEmail'), 'err');
+          return false;
+        }
+
+        const state = await recoveryStateOf(network, address);
+        guardSession(epoch);
+        if (!state.enabled) {
+          flash(t('recovery.error.notOn'), 'err');
+          return false;
+        }
+
+        const ok = await requestSignature({
+          title: t('recovery.emailConfirmTitle'),
+          message: t('recovery.emailConfirmMsg', { email }),
+        });
+        if (!ok) return false;
+        guardSession(epoch);
+
+        const servers = await loadRecoveryServers(network);
+        guardSession(epoch);
+        const secret = await secretOf(session);
+        await updateRecoveryIdentities(network, servers, address, secret, email);
+        guardSession(epoch);
+
+        await patchMeta({ recoveryEmail: email });
+        flash(t('recovery.emailUpdated'), 'ok');
+        return true;
+      } catch (e) {
+        flash((e as Error).message || t('recovery.error.generic'), 'err');
+        return false;
+      }
+    });
+    return outcome.ran ? outcome.value : false;
+  }, [session, meta, network, exclusive, guardSession, requestSignature, patchMeta, t, flash]);
+
+  /* ---------------------- recovering onto this device ----------------------- */
+
+  /*
+   * The other half of SEP-30: someone whose device is gone, and whose password is gone
+   * with it — the case the encrypted cloud backup cannot answer, because that box only
+   * ever opens with the password.
+   *
+   * What comes back is the ACCOUNT, not the key. The address, its balances, its
+   * trustlines and its history all survive; the key that used to sign for it does not,
+   * and a new one generated here takes its place. That is the whole of what the two
+   * servers co-sign, and `buildKeyReplacement` is where the transaction is built —
+   * HERE, by the device that will use it, and only then handed to them for signatures.
+   */
+
+  /** The accounts the finished sign-in can recover, as both servers agree. */
+  const [recoverable, setRecoverable] = useState<RecoverableAccount[] | null>(null);
+
+  /**
+   * Each server's identity token for THIS sign-in, once proven.
+   *
+   * Kept for the whole recovery — the listing and the signatures both spend it — because
+   * getting it again is not free: a server takes a given Authentik ID token once, so a
+   * remounted screen that exchanged it a second time would be refused, and a second round
+   * of emailed codes is a second round of email. Keyed by the sign-in it came from, so a
+   * new sign-in never reuses an old one's proof. In memory only, like the draft itself.
+   */
+  const recoveryProofRef = useRef<{ key: string; tokens: string[]; at: number } | null>(null);
+
+  /** The two emailed codes a recovery is waiting on, when that is the route it took. */
+  const [recoveryCodes, setRecoveryCodes] = useState<{ key: string; email: string; claims: string[] } | null>(null);
+
+  const listRecoverable = useCallback(
+    async (draft: SignInDraft, tokens: string[]) => {
+      const servers = await loadRecoveryServers(network);
+      recoveryProofRef.current = { key: draft.ready.sessionToken, tokens, at: Date.now() };
+      setRecoverable(await recoverableAccounts(servers, tokens));
     },
-    [cosmosPay, t, flash, tryDirectPollarLogin, finishSocialLogin],
+    [network],
   );
 
   /**
-   * Pick up a login the popup was closed in the middle of. No-op when there is none.
+   * Prove the inbox to both servers, and list what they will recover.
    *
-   * `brokered` travels in the stored handshake rather than being re-derived from whether
-   * a key is present: the key can appear DURING a login (the brokered flow's own claim
-   * step is what provisions it), and a resume that guessed from the current state would
-   * poll the gateway with a key whose consumer never opened that handshake — a 400 that
-   * reads like an expired login.
+   * Authentik's ID token when the sign-in carried one — each server verifies it against
+   * Authentik's keys on its own. Otherwise each server emails its OWN code and the screen
+   * asks for both (`submitRecoveryCodes`); neither server ever takes the other's word, or
+   * the sign-in's, for who this is.
    */
-  const resumePollarLogin = useCallback(async (): Promise<void> => {
-    const hs = await loadHandshake();
-    if (!hs) return;
-    // The same env the handshake was opened under, and it has to be: the bridge scopes a
-    // handshake to the consumer and network that opened it, so resuming under another one
-    // is an unknown authorization at the end of a login that went perfectly well.
-    const env = SOCIAL_LOGIN_ENV;
-    const apiKey = cosmosPay?.keys[env] ?? null;
-    pollarAbort.current = false;
-    setPollarUrl(null);
-    if (hs.brokered) {
-      await finishSocialLogin(env, hs);
-      return;
-    }
-    if (!apiKey) return;
-    await finishPollarLogin(apiKey, hs);
-  }, [cosmosPay, finishPollarLogin, finishSocialLogin]);
+  const loadRecoverable = useCallback(async () => {
+    const draft = signInDraft;
+    if (!draft) return;
+    try {
+      const cached = freshProof(recoveryProofRef.current, draft.ready.sessionToken);
+      if (cached) {
+        await listRecoverable(draft, cached);
+        return;
+      }
+      if (recoveryCodes?.key === draft.ready.sessionToken) return; // already waiting on codes
 
-  /** Stop waiting. The handshake stays valid server-side until it expires on its own. */
-  const cancelPollarLogin = useCallback(() => {
-    pollarAbort.current = true;
-  }, []);
+      const servers = await loadRecoveryServers(network);
+      const route = identityRoute(servers, draft.ready.idToken);
+      if (!route) {
+        setRecoverable([]);
+        flash(t('recovery.error.noIdentityRoute'), 'err');
+        return;
+      }
+      if (route.kind === 'oidc') {
+        await listRecoverable(draft, await identityTokensFromIdToken(servers, draft.ready.idToken as string));
+        return;
+      }
+      const email = draft.ready.identity.email;
+      const claims = await startRecoveryCodes(servers, email);
+      setRecoveryCodes({ key: draft.ready.sessionToken, email, claims });
+    } catch (e) {
+      setRecoverable([]);
+      flash((e as Error).message || t('recovery.error.generic'), 'err');
+    }
+  }, [signInDraft, recoveryCodes, network, listRecoverable, flash, t]);
 
   /**
-   * Revoke the Pollar session for the active wallet.
+   * Answer both servers' codes, in role order.
    *
-   * Pollar is told first and the device drops it second, never the other way round: a
-   * local drop that ran first would leave a live refresh token on Pollar's side with
-   * nothing left here able to revoke it. A failed revoke is still followed by the local
-   * drop — the user asked to be signed out, and a token they can no longer reach is
-   * strictly better than one they can.
-   *
-   * Then `lock()`, because for a Pollar wallet the session box IS the box the app
-   * password was proven against: with the credential gone there is nothing left for this
-   * session to act with, and leaving the wallet on screen would be showing an account it
-   * can no longer sign for.
+   * Both, or nothing is listed: an identity one server accepted and the other did not is
+   * half a threshold, and the list is the intersection of what both will act for anyway.
+   * A wrong code keeps the prompt; an expired or locked one starts the round again.
    */
-  const pollarSignOut = useCallback(async (): Promise<boolean> => {
-    if (!session || !meta || !isPollar(meta)) return false;
-
-    // Force-gated, like everything that changes how the wallet opens (CLAUDE.md:
-    // `toggleDeviceAuth`, `changeAppPassword`, `signRawXdr`). This one removes the
-    // wallet from the device, so it is squarely in that set — and unlike the others it
-    // cannot be undone from Settings, only by logging in again.
-    const confirmed = await requestSignature(
-      { title: t('pollar.signOut'), message: t('pollar.signOutMsg') },
-      true,
-    );
-    if (!confirmed) return false;
-
-    const stored = pollarRef.current;
-    const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
-    if (stored && apiKey) {
-      try {
-        await pollarLogout(apiKey, stored.access_token);
-      } catch {
-        /* revoked already, or unreachable — the local removal below is the user's intent */
+  const submitRecoveryCodes = useCallback(
+    async (codes: string[]): Promise<boolean> => {
+      const draft = signInDraft;
+      const pending = recoveryCodes;
+      if (!draft || !pending || pending.key !== draft.ready.sessionToken) return false;
+      if (codes.length !== pending.claims.length || !codes.every(isAccessCode)) {
+        flash(t('recovery.error.badCode'), 'err');
+        return false;
       }
-    }
+      try {
+        setBusy(true);
+        const servers = await loadRecoveryServers(network);
+        const tokens: string[] = [];
+        for (const [i, server] of servers.entries()) {
+          const res = await verifyRecoveryCode(server, pending.claims[i], codes[i]);
+          if (res.status === 'ready') {
+            tokens.push(res.token);
+            continue;
+          }
+          const role = server.role.toUpperCase();
+          if (res.status === 'invalid') {
+            flash(t('recover.codeInvalid', { role, n: res.attempts_left }), 'err');
+          } else {
+            setRecoveryCodes(null);
+            flash(t('recover.codeExpired', { role }), 'err');
+          }
+          return false;
+        }
+        setRecoveryCodes(null);
+        await listRecoverable(draft, tokens);
+        return true;
+      } catch (e) {
+        flash((e as Error).message || t('recovery.error.generic'), 'err');
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [signInDraft, recoveryCodes, network, listRecoverable, flash, t],
+  );
 
-    // The WHOLE ENTRY, not just the session box.
-    //
-    // Dropping only the box would brick the wallet: for a Pollar entry that box is also
-    // what `unlockSession` opens to prove the app password (`primaryBoxKey`), so the
-    // entry would survive in the list as something that can never be unlocked again —
-    // and nothing on screen would say why.
-    //
-    // Removing it is also what sign-out MEANS for a custodial account. The device holds
-    // no key and no seed for it; without the session there is nothing left here at all.
-    // Nothing is lost: logging in with the same provider account resolves the same
-    // Stellar wallet, funds included.
-    setPollar(null);
-    const { remaining, newActive } = await vaultRemoveWallet(session.walletId);
-    setWallets(remaining);
-    lock();
-    if (!newActive) setScreen('welcome');
-    return true;
-  }, [cosmosPay, network, session, meta, requestSignature, setPollar, lock, t]);
+  /**
+   * Put a new key on a recovered account and land it as a wallet on this device.
+   *
+   * The order matters and is the opposite of the intuitive one: the chain first, the
+   * vault second. A wallet written before the transaction confirms would be a wallet
+   * whose key cannot sign for its own account — indistinguishable, from the inside, from
+   * a wallet that works. If the submit fails nothing local has happened and the person
+   * can try again; if the vault write fails afterwards the account is already recovered
+   * and signing in again finds it.
+   *
+   * `password` is a NEW one. There is no old password in this flow by definition, which
+   * is also why the cloud backup is re-sealed here rather than restored.
+   */
+  const recoverWallet = useCallback(
+    async (address: string, password: string): Promise<boolean> => {
+      // Read here rather than taken as an argument, exactly as `finishOnboarding` does:
+      // this IS an onboarding path (a first wallet on a fresh device), and the screen asks
+      // the same two questions with the same shared component.
+      const consents: ConsentAnswers = { metricsOptIn: draftMetricsOptIn, promoOptIn: draftPromoOptIn };
+      const draft = signInDraft;
+      if (!draft) return false;
+      const row = recoverable?.find((r) => r.address === address);
+      if (!row) return false;
+
+      const outcome = await exclusive.run('recovery', async () => {
+        try {
+          setBusy(true);
+          const servers = await loadRecoveryServers(network);
+          // The proof the listing was built on. Not re-derived: an ID token is spent, and a
+          // recovery that outlived its identity tokens starts over rather than guessing.
+          const tokens = freshProof(recoveryProofRef.current, draft.ready.sessionToken);
+          if (!tokens) {
+            setRecoverable(null);
+            flash(t('recover.proofExpired'), 'err');
+            return false;
+          }
+
+          // The key that will replace the lost one. A fresh mnemonic, because the old one
+          // is exactly what is missing — and the person is told on the screen that it now
+          // restores a KEY, not this account, which keeps its own address.
+          const { createMnemonic, accountFromMnemonic } = await walletLib();
+          const mnemonic = createMnemonic();
+          const fresh = await accountFromMnemonic(mnemonic);
+
+          const sequence = await sequenceOf(network, address);
+          const xdr = buildKeyReplacement({
+            account: address,
+            newKey: fresh.publicKey,
+            sequence,
+            networkPassphrase: network.passphrase,
+          });
+          const signed = await collectSignatures(network, servers, tokens, row.signers, address, xdr);
+          await stellarSubmitXdr(network, signed);
+
+          // Only now is the key real. Everything below is local bookkeeping over an
+          // account this device can already sign for.
+          const vk = await deriveVaultKey(password, newKdfParams());
+          setTelemetryEnabled(consents.metricsOptIn);
+          const box = await sealBackup({ secret: fresh.secret, mnemonic }, password);
+          const res = await finishSignIn({
+            sessionToken: draft.ready.sessionToken,
+            email: draft.ready.identity.email,
+            secret: fresh.secret,
+            // The ACCOUNT, not the new key's own address: what was recovered is the
+            // account, and the server accepts the signature because that key is now one
+            // of its signers — see the community server's account-signers module, which is
+            // in a separate repository and so is named rather than linked.
+            account: address,
+            backup: box,
+            replaceBackup: true,
+            accessKey: await warmPublicKey(networkEnv(network)),
+          });
+          if (res.status === 'backup_conflict') {
+            flash(t('backup.conflict'), 'err');
+            return false;
+          }
+
+          await landSignedInWallet({
+            secret: { secret: fresh.secret, mnemonic },
+            publicKey: address,
+            ready: draft.ready,
+            account: { keys: res.keys, organizationId: res.organizationId },
+            vk,
+            consents,
+          });
+          setSignInDraft(null);
+          setRecoverable(null);
+          recoveryProofRef.current = null;
+          flash(t('recovery.recovered'), 'ok');
+          return true;
+        } catch (e) {
+          flash((e as Error).message || t('recovery.error.generic'), 'err');
+          return false;
+        } finally {
+          setBusy(false);
+        }
+      });
+      return outcome.ran ? outcome.value : false;
+    },
+    [signInDraft, recoverable, network, exclusive, landSignedInWallet, draftMetricsOptIn, draftPromoOptIn, flash, t],
+  );
 
   /** Browse on-chain liquidity pools (Horizon proxy). Returns [] on error / not enabled. */
   const listPools = useCallback(
@@ -3685,6 +3658,83 @@ export function useWalletStore() {
     [deviceAuthPrivileged, flashDeviceAuth, checkKey, resolveConfirm, flash, t],
   );
 
+  /* ------------------------- opening with a passkey ------------------------- */
+
+  /**
+   * Show a passkey failure — except a dismissal, for the reason `flashDeviceAuth` gives:
+   * closing the sheet to type a password instead is a choice, not a fault.
+   */
+  const flashPasskey = useCallback(
+    (e: unknown) => {
+      if (e instanceof PasskeyError) {
+        if (e.reason === 'cancelled') return;
+        // The browser cannot do it: say so once, and stop offering it this session.
+        if (e.reason === 'unsupported' || e.reason === 'noPrf') passkey.markPasskeyUnavailable();
+        flash(t(PASSKEY_FAILURE_KEYS[e.reason]), 'err');
+        return;
+      }
+      if (e instanceof PasskeyUnlockStaleError) flash(t('passkey.err.stale'), 'err');
+      else if (e instanceof BackupPasskeyError) flash(t('backup.passkeyMismatch'), 'err');
+      else flash(errLine(e), 'err');
+    },
+    [passkey, flash, errLine, t],
+  );
+
+  /**
+   * Lock screen: open a passkey device.
+   *
+   * The passkey produces the device password and `unlock` does the rest — the SAME path a
+   * typed password takes, ladder, `convergeSeals` and all. That is the point of keeping a
+   * password behind the passkey rather than a key: nothing past this line knows which door
+   * was used. Only the line shown on a failure does.
+   */
+  const unlockWithPasskey = useCallback(async (): Promise<boolean> => {
+    let opened: { password: string; secrets: PasskeySecrets };
+    try {
+      opened = await openDeviceWithPasskey();
+    } catch (e) {
+      flashPasskey(e);
+      return false;
+    }
+    wipePasskeySecrets(opened.secrets);
+    return (await unlock(opened.password, 'passkey')).ok;
+  }, [unlock, flashPasskey]);
+
+  /**
+   * Signing gate: answer the prompt with the passkey.
+   *
+   * Through `checkPassword`, on the same ladder a typed answer is on, and with the same two
+   * guards `confirmWithDevice` carries: the epoch, because the sheet can outlast the
+   * auto-lock, and the prompt id, because a late answer must not grant whatever request is
+   * at the head of the queue by then.
+   */
+  const confirmWithPasskey = useCallback(
+    async (reqId: number) => {
+      const epoch = sessionEpochRef.current;
+      let opened: { password: string; secrets: PasskeySecrets };
+      try {
+        opened = await openDeviceWithPasskey();
+      } catch (e) {
+        flashPasskey(e);
+        return false;
+      }
+      wipePasskeySecrets(opened.secrets);
+      const check = await checkPassword(opened.password);
+      if (!check.ok) {
+        // A password out of the door that does not open the vault is a stale door, not a
+        // typo. Throttling is reported as itself.
+        flash(check.reason === 'throttled' ? check.message : t('passkey.err.stale'), 'err');
+        return false;
+      }
+      if (epoch !== sessionEpochRef.current) {
+        flash(t('unlock.autoLocked'), 'err');
+        return false;
+      }
+      return resolveConfirm(true, reqId);
+    },
+    [flashPasskey, checkPassword, resolveConfirm, flash, t],
+  );
+
   /**
    * Settings: turn the device unlock on or off.
    *
@@ -3841,26 +3891,131 @@ export function useWalletStore() {
   }, [go]);
 
   /**
-   * Change the app password.
+   * Move this device onto a new app password — the one engine behind changing it, turning a
+   * passkey on and turning it off. Each of those is "re-seal everything under a new
+   * password", and they differ only in where the new password comes from and which doors
+   * the cloud backups get; written three times, one copy is the one that forgets the
+   * backups, or the device locks.
+   *
+   * WHY IT ENDS THE SESSION. `changePassword` re-seals every wallet under a new key, so a
+   * patched session field would assert something true of all of them or none, and the
+   * honest answer after a successful change is that this session is over: `lock()` bumps
+   * the epoch, so every closure still holding the old session fails closed with
+   * "auto-locked" instead of signing under a key that no longer opens anything. The person
+   * opens the wallet again the new way, which also proves it works.
+   *
+   * THE BACKUPS FOLLOW THE PASSWORD, or the next device would need the one given up here.
+   * Sealed behind the new doors BEFORE anything commits — a failure then leaves the device
+   * untouched — and stored only after the commit, best-effort. Each box records its
+   * wallet's ACCOUNT: for a wallet SEP-30 recovered, that is not the key's own address, and
+   * a box sealed without it would be refused as a mismatch on the next device.
+   *
+   * `beforeCommit` / `onAbort` are for the passkey door, whose order matters: it must hold
+   * the NEW password before the vault moves, or an interruption between the commit and the
+   * door would leave a device sealed under a password nobody knows. `onAbort` runs only
+   * when nothing was written, and takes the door back out.
+   *
+   * Inside `exclusive.run`, so it cannot interleave with a money flow that is mid-await
+   * holding the old key. The caller has already gated it.
+   */
+  const rekeyDevice = useCallback(
+    async (input: {
+      current: string;
+      next: string;
+      /** The doors each backed-up wallet's new box gets. A bare string is a v2 password box. */
+      doors: string | BackupDoors;
+      beforeCommit?: () => Promise<void>;
+      onAbort?: () => Promise<void>;
+      afterCommit?: () => Promise<void>;
+      /** The line shown when it worked. */
+      done: string;
+    }): Promise<boolean> => {
+      // `ran: false` means a change is already in flight — a double tap on "save". Not an
+      // error to report; the first one is still going.
+      const res = await exclusive.run('password', async () => {
+        let committed = false;
+        try {
+          const live = sessionRef.current;
+          const backups: { name: string; secret: string; account: string; box: string }[] = [];
+          if (live) {
+            for (const w of wallets) {
+              if (!w.cloudBackup) continue;
+              const secret = await openVault(w.id, live.vaultKey);
+              backups.push({
+                name: w.name,
+                secret: secret.secret,
+                account: w.publicKey,
+                box: await sealBackup(secret, input.doors, w.publicKey),
+              });
+            }
+          }
+          await input.beforeCommit?.();
+          // The re-wrap closure is injected rather than imported by lib/vault.ts: it needs
+          // an OS prompt and the copy that goes on it, neither of which belongs in a vault
+          // function. Every enrolled wallet raises its own prompt — they are separate
+          // Keystore entries, and there is no batch form.
+          const { deviceAuthDropped } = await changePassword(input.current, input.next, {
+            reenrolDeviceAuth: deviceAuthPrivileged.reenrolForPasswordChange,
+          });
+          committed = true;
+          await input.afterCommit?.();
+          if (deviceAuthDropped.length) {
+            flash(t('devAuth.droppedOnPwdChange', { names: deviceAuthDropped.map((w) => w.name).join(', ') }), 'info');
+          } else {
+            flash(input.done, 'ok');
+          }
+          // Past the commit, and best-effort: the local change is done and must not be
+          // reported as failed because the network was. The toast says which backup still
+          // opens the old way — last, so it is the one left on screen.
+          const stale: string[] = [];
+          for (const b of backups) {
+            try {
+              await storeBackupBox({
+                secret: b.secret,
+                box: b.box,
+                account: b.account,
+                accessKey: await warmPublicKey(networkEnv(network)),
+              });
+            } catch (e) {
+              stale.push(b.name);
+              reportError(EVENT.backupUpdateFailed, e);
+            }
+          }
+          if (stale.length) flash(t('backup.staleAfterPwd', { names: stale.join(', ') }), 'err');
+          // Last, and only on success: everything above must have committed before the
+          // session it belonged to is torn down.
+          lock();
+          return true;
+        } catch (e) {
+          flash(errLine(e), 'err');
+          // A failure PAST the commit is not recoverable and not survivable by this
+          // session: some wallets are on the new password and the session's key is true of
+          // neither set. Carrying on would let `switchWallet` open a wallet with the wrong
+          // key, `saveCosmosPay` re-seal a bearer credential under it, and a device
+          // enrolment capture it. `lock()` bumps the epoch, so every closure still holding
+          // this session fails closed; the person opens it again whichever way works.
+          // A failure BEFORE the commit left the device untouched, so the session stands —
+          // and whatever `beforeCommit` wrote comes back out.
+          if (e instanceof PasswordChangeCommitError || committed) lock();
+          else await input.onAbort?.().catch(() => undefined);
+          return false;
+        }
+      });
+      await passkey.refreshPasskey();
+      return res.ran && res.value;
+    },
+    [exclusive, deviceAuthPrivileged, wallets, network, passkey, flash, errLine, lock, t],
+  );
+
+  /**
+   * Change the app password — a password device only; a passkey device has none to change.
    *
    * A store action, not a direct `lib/vault.changePassword` call from the settings form.
    * That call was the one mutation a `.tsx` made that invalidated store state, and nothing
-   * put the state back: the session kept the superseded secret — the app password then, the
-   * vault key now — which `switchWallet` used to open another wallet, `saveCosmosPay` used
-   * to re-seal a bearer API key, and, once device auth shipped, `toggleDeviceAuth` sealed
-   * into the device envelope. The last one is the sharpest: it wrote something superseded
-   * into the Keychain, so the user's own fingerprint would answer "wrong password", which
-   * is precisely the failure the re-wrap exists to prevent, arriving through another door.
+   * put the state back: the session kept the superseded secret, which `switchWallet`,
+   * `saveCosmosPay` and `toggleDeviceAuth` all went on using. See `rekeyDevice`.
    *
-   * The fix is not to patch the field. `changePassword` re-seals every wallet under a new
-   * key, so a patched field would assert something true of all of them or none, and the
-   * honest answer after a successful change is that this session is over: `lock()` bumps
-   * the epoch, so every closure still holding the old session fails closed with
-   * "auto-locked" instead of signing under a key that no longer opens anything. The user
-   * signs back in with the password they just chose, which also proves it works.
-   *
-   * `force`-gated (it changes how the wallet opens) and inside `exclusive.run`, so it
-   * cannot interleave with a money flow that is mid-await holding the old password.
+   * `force`-gated: it changes how the wallet opens.
    */
   const changeAppPassword = useCallback(
     async (current: string, next: string): Promise<boolean> => {
@@ -3877,42 +4032,90 @@ export function useWalletStore() {
         true,
       );
       if (!ok) return false;
-      // `ran: false` means a change is already in flight — a double tap on "save". Not an
-      // error to report; the first one is still going.
-      const res = await exclusive.run('password', async () => {
-        try {
-          // The re-wrap closure is injected rather than imported by lib/vault.ts: it needs
-          // an OS prompt and the copy that goes on it, neither of which belongs in a vault
-          // function. Every enrolled wallet raises its own prompt — they are separate
-          // Keystore entries, and there is no batch form.
-          const { deviceAuthDropped } = await changePassword(current, next, {
-            reenrolDeviceAuth: deviceAuthPrivileged.reenrolForPasswordChange,
-          });
-          if (deviceAuthDropped.length) {
-            flash(t('devAuth.droppedOnPwdChange', { names: deviceAuthDropped.map((w) => w.name).join(', ') }), 'info');
-          } else {
-            flash(t('settings.pwdUpdated'), 'ok');
-          }
-          // Last, and only on success: everything above must have committed before the
-          // session it belonged to is torn down.
-          lock();
-          return true;
-        } catch (e) {
-          flash((e as Error).message, 'err');
-          // A failure PAST the commit is not recoverable and not survivable by this
-          // session: some wallets are on the new password and the session's key is true of
-          // neither set. Carrying on would let `switchWallet` open a wallet with the wrong
-          // key, `saveCosmosPay` re-seal a bearer credential under it, and a device
-          // enrolment capture it. `lock()` bumps the epoch, so every closure still holding
-          // this session fails closed; the user signs back in with whichever password works.
-          // A failure BEFORE the commit left the device untouched, so the session stands.
-          if (e instanceof PasswordChangeCommitError) lock();
-          return false;
-        }
-      });
-      return res.ran && res.value;
+      return rekeyDevice({ current, next, doors: next, done: t('settings.pwdUpdated') });
     },
-    [requestSignature, exclusive, deviceAuthPrivileged, flash, lock, t],
+    [requestSignature, rekeyDevice, flash, t],
+  );
+
+  /**
+   * Open this device with a passkey from now on, instead of the password.
+   *
+   * What changes is the app password: it becomes a generated one nobody types, sealed under
+   * the new passkey (see `lib/passkeyUnlock.ts`). ONE sheet — creating the passkey — yields
+   * both of its secrets, so the cloud backups get a passkey door in the same pass, and keep
+   * a door for the password typed here: the person still knows it, and it is how they
+   * restore on a device that cannot use passkeys.
+   *
+   * The typed password is checked FIRST, on the attempt ladder, before any sheet: a
+   * passkey must not be minted for someone who cannot open the wallet. That check is also
+   * the gate — a second confirmation here would ask for the same password twice.
+   */
+  const switchToPasskey = useCallback(
+    async (current: string): Promise<boolean> => {
+      if (!session || !meta) return false;
+      const check = await checkPassword(current);
+      if (!check.ok) {
+        flash(check.message, 'err');
+        return false;
+      }
+      let secrets: PasskeySecrets;
+      try {
+        secrets = await createPasskey({ name: meta.email || meta.name, displayName: meta.name });
+      } catch (e) {
+        flashPasskey(e);
+        return false;
+      }
+      const next = newDevicePassword();
+      try {
+        return await rekeyDevice({
+          current,
+          next,
+          doors: { password: current, passkey: { id: secrets.credentialId, secret: secrets.backup } },
+          beforeCommit: () => enrolPasskeyUnlock(secrets, next),
+          onAbort: dropPasskeyUnlock,
+          done: t('passkey.enabled'),
+        });
+      } finally {
+        wipePasskeySecrets(secrets);
+      }
+    },
+    [session, meta, checkPassword, rekeyDevice, flashPasskey, flash, t],
+  );
+
+  /**
+   * Go back to a typed password on this device.
+   *
+   * The passkey sheet that produces the device password IS the gate: it is the same proof
+   * of presence the signing gate would ask for, and a second one on top would be two sheets
+   * for one decision. The backups become plain password boxes again — the passkey door goes
+   * with the passkey device, so a box never names a door the person has walked away from.
+   */
+  const switchToPassword = useCallback(
+    async (next: string): Promise<boolean> => {
+      if (!session) return false;
+      if (!appPasswordOk(next)) {
+        flash(t('pwd.weak', { n: MIN_APP_PWD_LEN }), 'err');
+        return false;
+      }
+      let opened: { password: string; secrets: PasskeySecrets };
+      try {
+        opened = await openDeviceWithPasskey();
+      } catch (e) {
+        flashPasskey(e);
+        return false;
+      }
+      wipePasskeySecrets(opened.secrets);
+      return rekeyDevice({
+        current: opened.password,
+        next,
+        doors: next,
+        // After the commit: until then the vault is still sealed under the password the
+        // door holds, and dropping it first would strand a device that failed mid-change.
+        afterCommit: dropPasskeyUnlock,
+        done: t('passkey.disabled'),
+      });
+    },
+    [session, rekeyDevice, flashPasskey, flash, t],
   );
 
   /** Open the liquidity deposit form, optionally preset with a pair (e.g. from the explorer). */
@@ -4003,6 +4206,442 @@ export function useWalletStore() {
     [meta, claimAttempt, forgetAttempt, flash],
   );
 
+  /* ----------------------------- sign-in ----------------------------- */
+  /* Down here rather than beside `landSignedInWallet` because these navigate, and
+     `navigate` and `checkPassword` are declared above this and below that. */
+
+  /**
+   * Turn a finished sign-in into the next screen.
+   *
+   * With a backup, its password restores it. Without one, a first run chooses a password on
+   * the password screen (which also seals the new backup), and an unlocked device confirms
+   * the one it already has.
+   */
+  const routeSignIn = useCallback(
+    (ready: SignInReady | null, purpose: SignInPurpose): void => {
+      if (!ready) return;
+      setSignInDraft({ ready, purpose, replace: false });
+      navigate(ready.backup || purpose === 'add' ? 'sign-in-password' : 'password');
+    },
+    [navigate],
+  );
+
+  const { startProvider, submitCode, resumeSignIn: resumeSignInRaw, startEmail, cancelSignIn: cancelSignInRaw } = signIn;
+
+  const signInWith = useCallback(
+    async (provider: SignInProvider, purpose: SignInPurpose) => routeSignIn(await startProvider(provider), purpose),
+    [startProvider, routeSignIn],
+  );
+
+  const submitSignInCode = useCallback(
+    async (code: string, purpose: SignInPurpose) => {
+      if (!isAccessCode(code)) return;
+      routeSignIn(await submitCode(code), purpose);
+    },
+    [submitCode, routeSignIn],
+  );
+
+  const resumeSignIn = useCallback(
+    async (purpose: SignInPurpose) => routeSignIn(await resumeSignInRaw(), purpose),
+    [resumeSignInRaw, routeSignIn],
+  );
+
+  /** Drop a finished sign-in and anything still in flight. */
+  const cancelSignIn = useCallback(() => {
+    cancelSignInRaw();
+    setSignInDraft(null);
+  }, [cancelSignInRaw]);
+
+  /**
+   * What happens once a sign-in has put a wallet on the device, whichever door opened it.
+   *
+   * One copy for the password and the passkey paths: the screen a finished sign-in lands
+   * on is a routing decision about WHY it was started, and has nothing to do with how the
+   * backup was opened.
+   */
+  const settleSignIn = useCallback(
+    async (draft: SignInDraft, entry: WalletEntry): Promise<void> => {
+      setSignInDraft(null);
+      if (draft.purpose === 'onboarding') {
+        report(EVENT.walletCreated, { category: 'lifecycle', props: { added: false, signIn: true, restored: true } });
+        setSuccessInfo({
+          title: t('success.welcome', { name: entry.name }),
+          msg: t('success.protected'),
+          rows: [
+            { label: t('success.user'), val: entry.name },
+            { label: t('success.status'), val: t('success.encrypted') },
+          ],
+        });
+        setDeviceAuthOffer(deviceAuthPublic.deviceAuthPossible && deviceAuthPublic.deviceAuthAvailable);
+        setScreen('success');
+      } else if (draft.purpose === 'add') {
+        setAddingWallet(false);
+        setTab('home');
+        setScreen('home');
+        flash(t('toast.walletActive', { name: entry.name }), 'ok');
+      }
+    },
+    [deviceAuthPublic, flash, t],
+  );
+
+  /** The consents a sign-in lands with: asked on a first run, already answered otherwise. */
+  const signInConsents = useCallback(
+    (draft: SignInDraft): ConsentAnswers =>
+      draft.purpose === 'onboarding'
+        ? { metricsOptIn: draftMetricsOptIn, promoOptIn: draftPromoOptIn }
+        : { metricsOptIn: telemetryEnabled(), promoOptIn: meta?.promoOptIn ?? false },
+    [draftMetricsOptIn, draftPromoOptIn, meta],
+  );
+
+  /**
+   * Finish a sign-in with a password: restore its backup, or create a new wallet for it on
+   * a device that already has one.
+   *
+   * `usePasskey` is the one-step upgrade a first-run restore offers: the password opens the
+   * backup as always, and then — in the same flow, one more sheet — a new passkey takes the
+   * device password's place and the backup gains a passkey door beside the password one.
+   * The next device restores with a fingerprint. A dismissed sheet is not a failure: the
+   * restore simply finishes the password way.
+   *
+   * A first run with nothing to restore does not come through here — it chooses its
+   * password on the password screen and ends in `finishOnboarding`.
+   */
+  const completeSignIn = useCallback(
+    async (password: string, opts: { usePasskey?: boolean } = {}): Promise<boolean> => {
+      const draft = signInDraft;
+      if (!draft) return false;
+      const restoring = !!draft.ready.backup && !draft.replace;
+      if (!restoring && draft.purpose === 'onboarding') return false;
+      const live = sessionRef.current;
+      if (draft.purpose !== 'onboarding' && !live) return false;
+      // Landing on the live session's key: captured now, checked right before the landing.
+      const epoch = draft.purpose === 'onboarding' ? undefined : sessionEpochRef.current;
+      const consents = signInConsents(draft);
+
+      setBusy(true);
+      let door: { secrets: PasskeySecrets; devicePassword: string } | null = null;
+      let landed = false;
+      try {
+        let entry: WalletEntry | null;
+        if (restoring) {
+          const backup = draft.ready.backup!;
+          // On the ladder: this turns a typed string into a seed, like every path that does.
+          const blocked = await claimAttempt();
+          if (blocked) {
+            flash(blocked, 'err');
+            return false;
+          }
+          let secret: VaultSecret;
+          try {
+            secret = await openBackup(backup.box, password, backup.stellarAddress);
+          } catch (e) {
+            // Only a wrong password is a guess; a box that will not parse, or opens to a
+            // different wallet than it was filed as, is nobody's typo.
+            await forgetAttempt(e);
+            flash(e instanceof WrongPasswordError ? t('backup.wrongPassword') : (e as Error).message, 'err');
+            return false;
+          }
+          await noteAttemptSuccess();
+
+          // The upgrade, AFTER the password proved itself and BEFORE the server is told:
+          // the new box goes up with `finishSignIn`, in the same request.
+          let upgradedBox: string | undefined;
+          if (opts.usePasskey && draft.purpose === 'onboarding') {
+            try {
+              const secrets = await createPasskey({
+                name: draft.ready.identity.email,
+                displayName: draft.ready.identity.name?.trim() || draft.ready.identity.email,
+              });
+              door = { secrets, devicePassword: newDevicePassword() };
+              upgradedBox = await sealBackup(
+                secret,
+                { password, passkey: { id: secrets.credentialId, secret: secrets.backup } },
+                backup.stellarAddress,
+              );
+            } catch (e) {
+              // Dismissed or unsupported: finish with the password. Only a real failure says so.
+              flashPasskey(e);
+              if (door) wipePasskeySecrets(door.secrets);
+              door = null;
+            }
+          }
+
+          const res = await finishSignIn({
+            sessionToken: draft.ready.sessionToken,
+            email: draft.ready.identity.email,
+            secret: secret.secret,
+            // The address the box was filed under, which for a RECOVERED wallet is not the
+            // key's own — see `finishSignIn`. For every other wallet the two are equal and
+            // passing it changes nothing.
+            account: backup.stellarAddress,
+            ...(upgradedBox ? { backup: upgradedBox } : {}),
+            accessKey: await warmPublicKey(networkEnv(network)),
+          });
+          if (res.status !== 'ready') throw new Error(t('backup.conflict'));
+          // On a first run the backup's password becomes this device's password too, so the
+          // person still has one password — unless they took the passkey, in which case the
+          // device runs on a generated one the passkey holds. An unlocked device keeps its own.
+          let vk: VaultKey;
+          if (draft.purpose !== 'onboarding') vk = live!.vaultKey;
+          else if (door) {
+            await enrolPasskeyUnlock(door.secrets, door.devicePassword);
+            vk = await deriveVaultKey(door.devicePassword, newKdfParams());
+          } else vk = await deriveVaultKey(password, newKdfParams());
+          if (draft.purpose === 'onboarding') setTelemetryEnabled(consents.metricsOptIn);
+          entry = await landSignedInWallet({
+            // Only the two fields the vault stores: the box may also carry the account a
+            // recovered wallet recorded, and that belongs on the WalletEntry (as its
+            // `publicKey`, just below), not inside the sealed secret this device writes.
+            secret: { secret: secret.secret, mnemonic: secret.mnemonic },
+            publicKey: backup.stellarAddress,
+            ready: draft.ready,
+            account: { keys: res.keys, organizationId: res.organizationId },
+            vk,
+            consents,
+            epoch,
+          });
+          report(EVENT.backupRestored, { category: 'lifecycle', props: { purpose: draft.purpose, passkey: !!door } });
+        } else {
+          // A NEW wallet on a device that already has a password: that password seals the
+          // backup too, so the person keeps one. Proven first — a typo here would lock them
+          // out of their own backup on the next device, with nothing to say why.
+          const check = await checkPassword(password);
+          if (!check.ok) {
+            flash(check.message, 'err');
+            return false;
+          }
+          entry = await createFromSignIn(draft, password, live!.vaultKey, consents, epoch);
+          if (!entry) {
+            setSignInDraft(null);
+            return false;
+          }
+        }
+        landed = true;
+        await settleSignIn(draft, entry);
+        return true;
+      } catch (e) {
+        reportError(EVENT.signInFailed, e, { purpose: draft.purpose, step: 'finish' });
+        flash(errLine(e), 'err');
+        return false;
+      } finally {
+        if (door) {
+          wipePasskeySecrets(door.secrets);
+          // A door written for a wallet that never landed opens nothing; take it back out.
+          if (!landed) await dropPasskeyUnlock().catch(() => undefined);
+        }
+        await passkey.refreshPasskey();
+        setBusy(false);
+      }
+    },
+    [
+      signInDraft,
+      network,
+      signInConsents,
+      claimAttempt,
+      forgetAttempt,
+      checkPassword,
+      landSignedInWallet,
+      createFromSignIn,
+      settleSignIn,
+      flashPasskey,
+      passkey,
+      errLine,
+      flash,
+      t,
+    ],
+  );
+
+  /**
+   * Finish a sign-in with a passkey instead of a password.
+   *
+   * RESTORE — the backup has a passkey door: ONE sheet, restricted to the credentials the
+   * box names, yields the backup secret and this device's unlock secret together. On a
+   * first run the device then runs on a generated password that same passkey holds, so the
+   * person never typed anything. On an unlocked device the wallet lands on the session's
+   * key, whatever kind of device it is.
+   *
+   * PROTECT — a new wallet on an unlocked PASSKEY device: the device's own passkey opens
+   * the device (proving the person is here, as the typed password does on a password
+   * device) and gives the new backup its passkey door.
+   *
+   * No attempt ladder on either: nothing is typed, and a passkey that does not match is a
+   * `BackupPasskeyError` or a stale door, never a guess.
+   */
+  const completeSignInWithPasskey = useCallback(async (): Promise<boolean> => {
+    const draft = signInDraft;
+    if (!draft) return false;
+    const restoring = !!draft.ready.backup && !draft.replace;
+    if (!restoring && draft.purpose === 'onboarding') return false;
+    const live = sessionRef.current;
+    if (draft.purpose !== 'onboarding' && !live) return false;
+    const epoch = draft.purpose === 'onboarding' ? undefined : sessionEpochRef.current;
+    const consents = signInConsents(draft);
+
+    setBusy(true);
+    let secrets: PasskeySecrets | null = null;
+    let enrolled = false;
+    try {
+      let entry: WalletEntry | null;
+      if (restoring) {
+        const backup = draft.ready.backup!;
+        const ids = backupDoors(backup.box).passkeys;
+        if (!ids.length) {
+          flash(t('backup.passkeyMismatch'), 'err');
+          return false;
+        }
+        try {
+          secrets = await getPasskeySecrets(ids);
+        } catch (e) {
+          flashPasskey(e);
+          return false;
+        }
+        const secret = await openBackup(
+          backup.box,
+          { passkey: { id: secrets.credentialId, secret: secrets.backup } },
+          backup.stellarAddress,
+        );
+        const res = await finishSignIn({
+          sessionToken: draft.ready.sessionToken,
+          email: draft.ready.identity.email,
+          secret: secret.secret,
+          account: backup.stellarAddress,
+          accessKey: await warmPublicKey(networkEnv(network)),
+        });
+        if (res.status !== 'ready') throw new Error(t('backup.conflict'));
+        let vk: VaultKey;
+        if (draft.purpose === 'onboarding') {
+          // The door BEFORE the vault: a wallet sealed under a generated password with no
+          // door beside it is a wallet nobody can open.
+          const devicePassword = newDevicePassword();
+          await enrolPasskeyUnlock(secrets, devicePassword);
+          enrolled = true;
+          vk = await deriveVaultKey(devicePassword, newKdfParams());
+          setTelemetryEnabled(consents.metricsOptIn);
+        } else vk = live!.vaultKey;
+        entry = await landSignedInWallet({
+          secret: { secret: secret.secret, mnemonic: secret.mnemonic },
+          publicKey: backup.stellarAddress,
+          ready: draft.ready,
+          account: { keys: res.keys, organizationId: res.organizationId },
+          vk,
+          consents,
+          epoch,
+        });
+        report(EVENT.backupRestored, { category: 'lifecycle', props: { purpose: draft.purpose, passkey: true } });
+      } else {
+        let opened: { password: string; secrets: PasskeySecrets };
+        try {
+          opened = await openDeviceWithPasskey();
+        } catch (e) {
+          flashPasskey(e);
+          return false;
+        }
+        secrets = opened.secrets;
+        const check = await checkPassword(opened.password);
+        if (!check.ok) {
+          flash(check.reason === 'throttled' ? check.message : t('passkey.err.stale'), 'err');
+          return false;
+        }
+        entry = await createFromSignIn(
+          draft,
+          { passkey: { id: secrets.credentialId, secret: secrets.backup } },
+          live!.vaultKey,
+          consents,
+          epoch,
+        );
+        if (!entry) {
+          setSignInDraft(null);
+          return false;
+        }
+      }
+      enrolled = false; // landed: the door stays
+      await settleSignIn(draft, entry);
+      return true;
+    } catch (e) {
+      reportError(EVENT.signInFailed, e, { purpose: draft.purpose, step: 'finish', passkey: true });
+      flashPasskey(e);
+      return false;
+    } finally {
+      if (secrets) wipePasskeySecrets(secrets);
+      if (enrolled) await dropPasskeyUnlock().catch(() => undefined);
+      await passkey.refreshPasskey();
+      setBusy(false);
+    }
+  }, [
+    signInDraft,
+    network,
+    signInConsents,
+    checkPassword,
+    landSignedInWallet,
+    createFromSignIn,
+    settleSignIn,
+    flashPasskey,
+    passkey,
+    flash,
+    t,
+  ]);
+
+  /**
+   * A first wallet protected by a passkey instead of a password. One sheet.
+   *
+   * The passkey is created first, because it is the step the person can decline — nothing
+   * exists yet, so declining costs nothing. Then the door (the generated device password
+   * under the passkey's unlock secret) BEFORE the vault, for the reason
+   * `completeSignInWithPasskey` gives; and `finishOnboarding` does the rest exactly as it
+   * would for a typed password, except that the cloud backup gets the passkey's door.
+   *
+   * First run only: on a device that already holds wallets, a new password would split the
+   * device between two passwords, and adding a wallet reuses the session's key instead.
+   */
+  const finishOnboardingWithPasskey = useCallback(async (): Promise<boolean> => {
+    if (session || wallets.length > 0) return false;
+    const email = signInDraft?.ready.identity.email ?? draftEmail.trim();
+    const name = signInDraft?.ready.identity.name?.trim() || draftName.trim() || email.split('@')[0] || 'Cosmos';
+    let secrets: PasskeySecrets;
+    try {
+      secrets = await createPasskey({ name: email || name, displayName: name });
+    } catch (e) {
+      flashPasskey(e);
+      return false;
+    }
+    const devicePassword = newDevicePassword();
+    let ok = false;
+    try {
+      await enrolPasskeyUnlock(secrets, devicePassword);
+      ok = await finishOnboarding(devicePassword, secrets);
+      return ok;
+    } finally {
+      wipePasskeySecrets(secrets);
+      if (!ok) await dropPasskeyUnlock().catch(() => undefined);
+      await passkey.refreshPasskey();
+    }
+  }, [session, wallets, signInDraft, draftEmail, draftName, finishOnboarding, flashPasskey, passkey]);
+
+  /** `revealBackup`, answered by the passkey on a passkey device. One sheet. */
+  const revealBackupWithPasskey = useCallback(async () => {
+    let opened: { password: string; secrets: PasskeySecrets };
+    try {
+      opened = await openDeviceWithPasskey();
+    } catch (e) {
+      flashPasskey(e);
+      return null;
+    }
+    wipePasskeySecrets(opened.secrets);
+    return revealBackup(opened.password);
+  }, [revealBackup, flashPasskey]);
+
+  /**
+   * Give up the backup and make a new wallet instead — the person forgot the password that
+   * opens it. The screen has already shown them what that costs; this only records the
+   * choice. A first run chooses the new password on the password screen; an unlocked device
+   * confirms its own where it is.
+   */
+  const startOverSignIn = useCallback(() => {
+    if (!signInDraft) return;
+    setSignInDraft({ ...signInDraft, replace: true });
+    if (signInDraft.purpose === 'onboarding') navigate('password');
+  }, [signInDraft, navigate]);
+
   /** What a dynamic `back` entry in the screen table may depend on. */
   const backContext = useCallback(
     (): BackContext => ({
@@ -4010,9 +4649,9 @@ export function useWalletStore() {
       tab,
       addingWallet,
       hasDraftMnemonic: draftHasMnemonic && !!draftMnemonic,
-      hasPollarDraft: !!pollarDraft,
+      hasSignInDraft: !!signInDraft,
     }),
-    [session, tab, addingWallet, draftHasMnemonic, draftMnemonic, pollarDraft],
+    [session, tab, addingWallet, draftHasMnemonic, draftMnemonic, signInDraft],
   );
 
   /**
@@ -4052,7 +4691,7 @@ export function useWalletStore() {
     networkId,
     networks,
     meta,
-    wallets: visibleWallets,
+    wallets,
     activeWalletId,
     addingWallet,
     /**
@@ -4076,35 +4715,74 @@ export function useWalletStore() {
     gatewayAccess,
     cosmosLink,
 
-    /*
-     * Pollar (social login, Pollar-custodied key).
-     *
-     * `isPollarWallet` is derived from the WalletEntry, never from the session being
-     * loaded — see the note on `pollarRef`.
-     *
-     * The session itself is not exposed, for the same reason `session` is not: it holds
-     * a refresh token, which is spending authority. Screens get the phase and the
-     * actions; the credential stays in here.
-     */
-    isPollarWallet: isPollar(meta ?? {}),
-    pollarProvider: meta?.pollarProvider ?? null,
     loadOps,
     opsKeyFor,
     serverRails,
     loadRails,
     openOnrampTrustline,
-    pollarPhase,
-    pollarUrl,
-    /** True while the password screen is finishing a social login rather than a seed. */
-    hasPollarDraft: !!pollarDraft,
-    pollarLogin,
-    resumePollarLogin,
-    cancelPollarLogin,
-    /** True while a brokered login waits on the code emailed to an existing account. */
-    socialProofPending: !!socialProof,
-    submitSocialCode,
-    cancelSocialProof,
-    pollarSignOut,
+
+    /*
+     * The wallet's own sign-in (`lib/signIn.ts`). What a finished sign-in carries that
+     * spends — its session token, its backup box — stays in here; screens get a summary.
+     */
+    signInPhase: signIn.signInPhase,
+    signInUrl: signIn.signInUrl,
+    /** The email an outstanding code went to, and how the sign-in began. Never the token. */
+    signInCode: signIn.signInPendingCode
+      ? { email: signIn.signInPendingCode.email, via: signIn.signInPendingCode.via }
+      : null,
+    signInMethods: signIn.signInMethods,
+    loadSignInMethods: signIn.loadSignInMethods,
+    signInWith,
+    signInWithEmail: startEmail,
+    submitSignInCode,
+    resumeSignIn,
+    cancelSignIn,
+    /** True while the password screen is finishing a first-run sign-in rather than a seed. */
+    hasSignInDraft: signInDraft?.purpose === 'onboarding',
+    signInPending: signInDraft
+      ? {
+          purpose: signInDraft.purpose,
+          email: signInDraft.ready.identity.email,
+          name: signInDraft.ready.identity.name,
+          account: signInDraft.ready.account,
+          backupAddress: signInDraft.ready.backup?.stellarAddress ?? null,
+          // Which doors the backup has — never the box. Decides whether the restore screen
+          // leads with a passkey button, a password field, or both.
+          backupDoors: backupDoorsOf(signInDraft.ready.backup?.box ?? null),
+          replace: signInDraft.replace,
+        }
+      : null,
+    completeSignIn,
+    completeSignInWithPasskey,
+    finishOnboardingWithPasskey,
+    startOverSignIn,
+
+    /*
+     * SEP-30 account recovery. `recovery` is what the LEDGER says — whether two server
+     * signers are on this account — not what either server claims, and it is null until a
+     * screen calls `loadRecovery`.
+     */
+    recovery,
+    loadRecovery,
+    startRecoveryCode,
+    enableRecovery,
+    disableRecovery,
+    updateRecoveryEmail,
+
+    /*
+     * Recovering an account onto this device. `recoverable` is null until a finished
+     * sign-in asks both servers what it may recover, and the identity tokens that answer
+     * stays inside the store — a screen holding one holds the right to re-key an account.
+     */
+    recoverable,
+    loadRecoverable,
+    recoveryCodes: recoveryCodes && signInDraft && recoveryCodes.key === signInDraft.ready.sessionToken
+      ? { email: recoveryCodes.email, count: recoveryCodes.claims.length }
+      : null,
+    submitRecoveryCodes,
+    recoverWallet,
+
     account,
     prices,
     loading,
@@ -4243,7 +4921,30 @@ export function useWalletStore() {
     confirmWithDevice,
     toggleDeviceAuth,
     changeAppPassword,
+
+    /*
+     * Passkeys: this device opens with one instead of a typed password when
+     * `passkeyUnlock` is true. Every action here raises its own sheet and composes it with a
+     * vault operation; none of them hands a secret back to a screen.
+     */
+    ...passkey,
+    unlockWithPasskey,
+    confirmWithPasskey,
+    revealBackupWithPasskey,
+    switchToPasskey,
+    switchToPassword,
   };
+}
+
+/** A backup's doors, for a screen — null when there is no backup or it will not parse. */
+function backupDoorsOf(box: string | null): { password: boolean; passkeys: number } | null {
+  if (!box) return null;
+  try {
+    const d = backupDoors(box);
+    return { password: d.password, passkeys: d.passkeys.length };
+  } catch {
+    return null;
+  }
 }
 
 export type WalletStore = ReturnType<typeof useWalletStore>;

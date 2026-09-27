@@ -1,0 +1,89 @@
+.defindex-intro,
+.defindex-note {
+  margin: 4px 0 16px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.defindex-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0;
+}
+.defindex-select {
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--hairline);
+  color: var(--text);
+  background: var(--surface);
+  border-radius: 14px;
+}
+.defindex-summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.defindex-summary strong {
+  font-size: 18px;
+  color: var(--accent);
+}
+.defindex-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 18px 0 12px;
+  padding: 4px;
+  background: var(--surface);
+  border-radius: 14px;
+}
+.defindex-tabs button {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 10px;
+  border-radius: 10px;
+}
+.defindex-tabs button.is-active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.defindex-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  margin-bottom: 9px;
+}
+.defindex-field span {
+  font-size: 12px;
+  color: var(--muted);
+}
+.defindex-field input {
+  min-width: 0;
+  width: 42%;
+  text-align: right;
+  font-size: 20px;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  outline: 0;
+}
+.defindex-balance {
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+  margin-top: 12px;
+}
+.defindex-balance code {
+  font-size: 10px;
+  word-break: break-all;
+  color: var(--muted);
+}
+.defindex-empty {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+  padding: 20px;
+}

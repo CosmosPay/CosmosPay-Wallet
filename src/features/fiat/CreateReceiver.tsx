@@ -6,6 +6,7 @@ import { Spinner } from '@/ui/Spinner';
 import { Select } from '@/features/fiat/Select';
 import { Field } from '@/ui/Field';
 import { PhotoStep } from '@/features/fiat/PhotoStep';
+import { RampProviderCard } from '@/features/fiat/RampProviderCard';
 import { COUNTRIES, DOC_TYPES } from '@/constants/fiat';
 import '@/styles/features/fiat/fiat.css';
 import { cx } from '@/lib/cx';
@@ -65,6 +66,7 @@ export function CreateReceiver({ store }: { store: WalletStore }) {
 
       {step === 0 && (
         <>
+          <RampProviderCard store={store} />
           <div className="desc fiat-kyc-desc">{t('fiat.createDesc')}</div>
           <div className="flexr g10">
             <div className="f1"><Field tone="soft" label={t('fiat.firstName')} value={firstName} onChange={setFirstName} /></div>

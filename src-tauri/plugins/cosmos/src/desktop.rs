@@ -17,7 +17,8 @@ use tauri::{plugin::PluginApi, AppHandle, Runtime};
 
 use crate::error::{Error, Result};
 use crate::models::{
-    AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest, Failure, ShareRequest,
+    AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest, Failure, PasskeyRequest,
+    PasskeyResponse, PasskeyStatus, ShareRequest,
 };
 
 pub fn init<R: Runtime, C: serde::de::DeserializeOwned>(
@@ -67,6 +68,21 @@ impl<R: Runtime> Cosmos<R> {
     /// rather than pretending — `lib/storage.ts` only asks on iOS, and a silent success
     /// here would make a future caller believe something happened.
     pub async fn exclude_from_backup(&self) -> Result<()> {
+        Err(Error::unsupported())
+    }
+
+    /// Unsupported, and never asked: the desktop WebView (WebView2, WKWebView, WebKitGTK)
+    /// exposes WebAuthn itself, and `src/lib/passkey.ts` uses it directly there. A second
+    /// path through here would be a second implementation of the same ceremony.
+    pub async fn passkey_status(&self) -> Result<PasskeyStatus> {
+        Ok(PasskeyStatus::unavailable(Failure::Unsupported))
+    }
+
+    pub async fn passkey_create(&self, _payload: PasskeyRequest) -> Result<PasskeyResponse> {
+        Err(Error::unsupported())
+    }
+
+    pub async fn passkey_get(&self, _payload: PasskeyRequest) -> Result<PasskeyResponse> {
         Err(Error::unsupported())
     }
 }

@@ -35,7 +35,7 @@ import { Keypair } from '@stellar/stellar-sdk';
 // per request as developer-mode override -> PUBLIC_* env -> same-origin default,
 // so a dev can repoint them live from Settings without rebuilding. The gateway
 // still exposes the payments API behind an entry prefix (default `/cosmos-api`).
-import { devPlatformUrl, gatewayApi } from '@/lib/endpoints';
+import { devPlatformUrl, gatewayApi, walletApiBase } from '@/lib/endpoints';
 import { newTraceId } from '@/lib/trace';
 
 /** Default slippage tolerance for swaps (0.5%). */
@@ -167,7 +167,7 @@ export interface CreateSwapInput extends QuoteSwapInput {
 }
 
 import { parseShape, type Check } from '@/lib/apiShape';
-import { apiError } from '@/lib/apiError';
+import { ApiRequestError, apiError } from '@/lib/apiError';
 import { PAGE_SIZE, RETRY_AFTER_CAP_S } from '@/constants/api';
 import {
   AuthorizePayoutShape,
@@ -208,8 +208,35 @@ import {
 import { tNow } from '@/lib/i18n';
 import { report, reportError } from '@/lib/telemetry';
 import { EVENT, SLOW_REQUEST_MS, TRACE_HEADER, TRACE_PROP } from '@/constants/telemetry';
-import type { PollarSession, PollarSessionStatus } from '@/lib/pollar';
-import { PollarSessionStatusShape, SocialAuthorizationShape, SocialClaimShape, SocialVerifyResultShape } from '@/lib/pollarShapes';
+import {
+  BackupUpdatedShape,
+  SignInAuthorizationShape,
+  SignInClaimShape,
+  SignInCodeResultShape,
+  SignInCodeSentShape,
+  SignInFinishShape,
+  SignInPollShape,
+  SignInProvidersShape,
+} from '@/lib/signInShapes';
+import {
+  RecoveryAccountListShape,
+  RecoveryEmailResultShape,
+  RecoveryEmailStartedShape,
+  RecoveryIdentityShape,
+  RecoveryRegisteredShape,
+  RecoverySetupShape,
+  RecoverySignatureShape,
+  Sep10ChallengeShape,
+  Sep10TokenShape,
+} from '@/lib/recoveryShapes';
+import type { SignInMethod, SignInProvider } from '@/constants/signIn';
+
+/** SEP-30's view of a protected account, as either server reports it. */
+export interface RecoveryAccount {
+  address: string;
+  identities: { role: string; authenticated?: boolean }[];
+  signers: { key: string; added_at: string }[];
+}
 
 /* ------------------------------ transport ------------------------------ */
 
@@ -289,6 +316,7 @@ async function postJson<T>(
   headers: Record<string, string>,
   unwrap: boolean,
   shape: Check<unknown>,
+  method: 'POST' | 'PUT' = 'POST',
 ): Promise<T> {
   const startedAt = Date.now();
   // Minted per CALL, not per operation: a retry is a different request and must not claim
@@ -297,7 +325,7 @@ async function postJson<T>(
   let res: Response;
   try {
     res = await fetch(url, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json', [TRACE_HEADER]: traceId, ...headers },
       body: JSON.stringify(body),
     });
@@ -350,7 +378,7 @@ export function signRegistrationMessage(
   nonce: string,
 ): string {
   const message = `Cosmos Pay Wallet account registration\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8')).toString('base64');
+  return Buffer.from(Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'))).toString('base64');
 }
 
 /**
@@ -411,7 +439,7 @@ export function signLinkMessage(
   nonce: string,
 ): string {
   const message = `Cosmos Pay Wallet account link\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8')).toString('base64');
+  return Buffer.from(Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'))).toString('base64');
 }
 
 /**
@@ -460,111 +488,371 @@ export async function verifyCosmosLink(input: {
   );
 }
 
-/* ------------------------- social login (brokered) ----------------------- */
+/* ---------------------------- wallet sign-in ----------------------------- */
 
 /**
- * The dev platform's half of "Continue with Google".
- *
- * These three are the only calls in this file with no credential on them, and that is
- * the point: they exist for someone who has no CosmosPay account yet, so there is no
- * API key to send. The platform runs the gateway handshake with its own identity and
- * hands back both halves at the end — the Pollar session AND the account keys — which
- * is what makes a seed-free first run possible at all. See `lib/socialLogin.ts` for the
- * flow and `POST /api/wallet/social/*` for the other side.
- *
- * What stands in for a credential is the PKCE verifier: the poll route will show the
- * code to anyone who knows the `state`, and only the holder of the verifier can spend
- * it. It never leaves this device until the redemption request.
+ * The wallet's own sign-in — `/v1/wallet/*` on the community server, through the gateway.
+ * The protocol and why each step exists are in `lib/signIn.ts`; these are only the calls,
+ * each with its contract. Each presents the SHARED public key (`signInHeaders`): these
+ * routes exist for a wallet that has no key of its own yet, and APISIX admits nothing
+ * without one.
  */
 
-/** `POST /api/wallet/social/authorize`. */
-export async function socialAuthorize(
-  env: 'dev' | 'prod',
-  body: { provider: string; codeChallenge: string; codeChallengeMethod: string; deviceLabel?: string },
-): Promise<{ state: string; authorizationUrl: string; provider: string }> {
-  return postJson(
-    withQuery(`${devPlatformUrl()}/api/wallet/social/authorize`, { env }),
-    body,
-    {},
-    true,
-    SocialAuthorizationShape,
-  );
+/** Who a sign-in proved. `email` is always one the provider or the inbox verified. */
+export interface SignInIdentity {
+  email: string;
+  name: string | null;
+  avatar: string | null;
+  method: SignInMethod;
 }
 
-/** `GET /api/wallet/social/session/{state}` — same status contract as the bridge's own. */
-export async function socialStatus(env: 'dev' | 'prod', state: string): Promise<PollarSessionStatus> {
-  return getPlatformJson<PollarSessionStatus>(
-    withQuery(`${devPlatformUrl()}/api/wallet/social/session/${encodeURIComponent(state)}`, { env }),
-    PollarSessionStatusShape,
-  );
+/** A backup the platform keeps for this account: the sealed seed and where it restores to. */
+export interface StoredBackup {
+  stellarAddress: string;
+  box: string;
+  updatedAt: string;
 }
 
-/**
- * What a redeemed social login is worth: the Pollar session, and the CosmosPay account
- * that was created or attached for the email the provider verified.
- *
- * `keys` is null when the provider returned no email. That is a real outcome, not an
- * error — the wallet still works, because Pollar signs for it; what is missing is the
- * gateway (swaps, fiat), and the wallet says so rather than pretending.
- */
-export interface SocialLoginReady {
+/** A finished sign-in. `sessionToken` is good for `finish` only, and only for a while. */
+export interface SignInReady {
   status: 'ready';
-  session: PollarSession;
-  account: 'created' | 'linked' | 'none';
-  organizationId: string | null;
-  keys: { dev: string | null; prod: string | null } | null;
-  activated?: boolean;
-  activationAmount?: string | null;
-}
-
-/**
- * What the claim returns instead of a session when the provider's email already has an
- * account: the platform emailed that account a code, and nothing is handed over until it
- * is entered. The provider proved who consented, not who opened the login — and an
- * existing account is what a phished login would take over.
- */
-export interface SocialLoginProof {
-  status: 'verify_email';
-  /** Presented with the emailed code. Kept in memory only, for as long as the prompt. */
-  claimToken: string;
+  identity: SignInIdentity;
+  account: 'existing' | 'new';
+  backup: StoredBackup | null;
+  sessionToken: string;
   expiresInSeconds: number;
-  activated?: boolean;
-  activationAmount?: string | null;
+  /**
+   * Authentik's ID token — present only when the sign-in went through Authentik AND the
+   * inbox was proven with a code after it. It is what the two recovery servers accept as
+   * this person's identity, each checking it against Authentik's keys itself; see
+   * `identityTokens` in `lib/recovery.ts`. Never written anywhere.
+   */
+  idToken?: string;
 }
 
-export type SocialClaim = SocialLoginReady | SocialLoginProof;
+export type SignInClaim =
+  | SignInReady
+  | { status: 'verify_email'; claimToken: string; expiresInSeconds: number; email: string }
+  | { status: 'pending' }
+  | { status: 'failed'; error: string }
+  | { status: 'expired' };
 
-export type SocialVerifyResult =
-  | SocialLoginReady
+export type SignInCodeResult =
+  | SignInReady
   | { status: 'invalid'; attemptsLeft: number }
   | { status: 'expired' }
   | { status: 'locked' };
 
-/** `POST /api/wallet/social/claim`. Single-use: the code is spent whatever happens. */
-export async function socialClaim(
-  env: 'dev' | 'prod',
-  body: { code: string; codeVerifier: string; name?: string },
-): Promise<SocialClaim> {
-  return postJson<SocialClaim>(
-    withQuery(`${devPlatformUrl()}/api/wallet/social/claim`, { env }),
-    body,
-    {},
-    true,
-    SocialClaimShape,
+export type SignInFinish =
+  | { status: 'ready'; account: 'created' | 'linked'; organizationId: string; keys: { dev: string | null; prod: string | null } }
+  | { status: 'backup_conflict'; stellarAddress: string };
+
+/** `GET {walletApiBase}/auth/providers` — what this deployment can offer. */
+export async function signInProviders(
+  accessKey: string | null = null,
+): Promise<{ providers: string[]; email: boolean; mfaSettingsUrl?: string | null }> {
+  return getPlatformJson(`${walletApiBase()}/auth/providers`, SignInProvidersShape, signInHeaders(accessKey));
+}
+
+/** `POST {walletApiBase}/auth/oauth/authorize`. */
+export async function signInAuthorize(
+  body: {
+    provider: SignInProvider;
+    codeChallenge: string;
+    codeChallengeMethod: string;
+  },
+  accessKey: string | null = null,
+): Promise<{ state: string; authorizationUrl: string; expiresAt: string }> {
+  return postJson(`${walletApiBase()}/auth/oauth/authorize`, body, signInHeaders(accessKey), true, SignInAuthorizationShape);
+}
+
+/** `GET {walletApiBase}/auth/oauth/session/{state}` — a status, never an identity. */
+export async function signInPoll(state: string, accessKey: string | null = null): Promise<{ status: string; error?: string }> {
+  return getPlatformJson(
+    `${walletApiBase()}/auth/oauth/session/${encodeURIComponent(state)}`,
+    SignInPollShape,
+    signInHeaders(accessKey),
   );
 }
 
 /**
- * `POST /api/wallet/social/verify` — the emailed code for a held login. Wrong codes are
- * counted server-side, and the login locks after a few.
+ * `POST {walletApiBase}/auth/oauth/claim` — the verifier is the credential.
+ *
+ * `purpose: 'recovery'` routes the claim through an emailed code even for an email with no
+ * account, and only then does the answer carry the ID token: a provider proves who
+ * consented, not who opened the sign-in, and a recovery identity is worth a wallet.
  */
-export async function socialVerify(body: { claimToken: string; code: string }): Promise<SocialVerifyResult> {
-  return postJson<SocialVerifyResult>(
-    `${devPlatformUrl()}/api/wallet/social/verify`,
+export async function signInClaim(
+  body: { state: string; codeVerifier: string; purpose?: 'sign-in' | 'recovery' },
+  accessKey: string | null = null,
+): Promise<SignInClaim> {
+  return postJson(`${walletApiBase()}/auth/oauth/claim`, body, signInHeaders(accessKey), true, SignInClaimShape);
+}
+
+/** `POST {walletApiBase}/auth/email/start`. */
+export async function signInEmailStart(
+  email: string,
+  accessKey: string | null = null,
+): Promise<{ claimToken: string; expiresInSeconds: number }> {
+  return postJson(`${walletApiBase()}/auth/email/start`, { email }, signInHeaders(accessKey), true, SignInCodeSentShape);
+}
+
+/** `POST {walletApiBase}/auth/email/verify` — wrong codes are counted server-side. */
+export async function signInEmailVerify(
+  body: { claimToken: string; code: string },
+  accessKey: string | null = null,
+): Promise<SignInCodeResult> {
+  return postJson(`${walletApiBase()}/auth/email/verify`, body, signInHeaders(accessKey), true, SignInCodeResultShape);
+}
+
+/**
+ * The sign-in session token, in the header the community server reads it from.
+ *
+ * Not `Authorization`: through APISIX that header is the API key's, and the gateway strips
+ * `Authorization` and `apikey` before proxying — a session token sent there never arrives and
+ * `finish` / `recovery/setup` answer 401.
+ */
+const walletSession = (token: string): Record<string, string> => ({ 'X-Wallet-Session': token });
+
+/** `POST {walletApiBase}/auth/finish` — the session token plus a signature by `stellarAddress`. */
+export async function signInFinish(
+  sessionToken: string,
+  body: { stellarAddress: string; signedAt: string; signature: string; backup?: string; replaceBackup?: boolean },
+  accessKey: string | null = null,
+): Promise<SignInFinish> {
+  return postJson(
+    `${walletApiBase()}/auth/finish`,
     body,
-    {},
+    { ...walletSession(sessionToken), ...signInHeaders(accessKey) },
     true,
-    SocialVerifyResultShape,
+    SignInFinishShape,
+  );
+}
+
+/** `PUT {walletApiBase}/backup` — a signature by the backup's own address is the credential. */
+export async function putBackup(
+  body: {
+    stellarAddress: string;
+    box: string;
+    signedAt: string;
+    signature: string;
+  },
+  accessKey: string | null = null,
+): Promise<{ status: 'updated' }> {
+  return postJson(`${walletApiBase()}/backup`, body, signInHeaders(accessKey), true, BackupUpdatedShape, 'PUT');
+}
+
+/* ------------------- account recovery (SEP-10 + SEP-30) ------------------ */
+
+/*
+ * These take their base URL as an argument, unlike every call above it: there are two
+ * recovery servers and the whole design rests on them being separate deployments, so
+ * "which server" is a parameter here rather than a module-level getter. `lib/recovery.ts`
+ * is what decides which; nothing in this file knows there are two.
+ *
+ * `base` is the SEP-30 BASE URL — the thing the spec's paths hang off, so `${base}/accounts`
+ * is `GET /accounts` — and it is always the one the server's own stellar.toml publishes
+ * (`[[RECOVERY_SERVERS]] ENDPOINT`). Building a prefix in here, as this file used to, was
+ * the single thing that made the wallet unable to talk to any recovery server but ours.
+ *
+ * SEP-10 is passed its endpoint whole, for the same reason: `WEB_AUTH_ENDPOINT` is a URL a
+ * server publishes, not a path a client assembles.
+ *
+ * The token is the caller's to hold: a SEP-10 one proves the account's key, an identity one
+ * proves an inbox THAT server checked. They are not interchangeable and the server decides
+ * which each route accepts — see the community server's recovery-core module (a separate
+ * repository, so named rather than linked).
+ */
+
+const bearer = (token: string): Record<string, string> => ({ Authorization: `Bearer ${token}` });
+
+/**
+ * A challenge to prove control of `account`. Never signed before `lib/sep10.ts` reads it.
+ *
+ * `endpoint` is the server's published `WEB_AUTH_ENDPOINT`, whole.
+ */
+export async function sep10Challenge(endpoint: string, account: string): Promise<{ transaction: string; network_passphrase: string }> {
+  return getPlatformJson(withQuery(endpoint, { account }), Sep10ChallengeShape);
+}
+
+/** Exchange a signed challenge for this server's token. */
+export async function sep10Token(endpoint: string, transaction: string): Promise<{ token: string }> {
+  return postJson(endpoint, { transaction }, {}, true, Sep10TokenShape);
+}
+
+/**
+ * Trade Authentik's ID token for THIS server's identity token.
+ *
+ * The server verifies the ID token against Authentik's published keys itself, and takes
+ * each one once — so the same login proves the inbox to both servers independently, and a
+ * token copied out of a log afterwards buys nothing. Neither server shares a secret with
+ * the sign-in or with each other.
+ */
+export async function recoveryIdentityFromIdToken(
+  base: string,
+  idToken: string,
+): Promise<{ token: string; expires_in: number }> {
+  return postJson(`${base}/identity`, { id_token: idToken }, {}, false, RecoveryIdentityShape);
+}
+
+/**
+ * Ask ONE server to email its own code. The answer is the same whether or not the inbox
+ * recovers anything there — so it says nothing about which accounts exist.
+ */
+export async function recoveryEmailStart(
+  base: string,
+  email: string,
+): Promise<{ claim_token: string; expires_in: number }> {
+  return postJson(`${base}/identity/email/start`, { email }, {}, false, RecoveryEmailStartedShape);
+}
+
+export type RecoveryEmailResult =
+  | { status: 'ready'; token: string; expires_in: number }
+  | { status: 'invalid'; attempts_left: number }
+  | { status: 'expired' }
+  | { status: 'locked' };
+
+/** Answer that server's code. Wrong answers are counted on its side. */
+export async function recoveryEmailVerify(base: string, claimToken: string, code: string): Promise<RecoveryEmailResult> {
+  return postJson(
+    `${base}/identity/email/verify`,
+    { claim_token: claimToken, code },
+    {},
+    false,
+    RecoveryEmailResultShape,
+  );
+}
+
+/** Register (or re-register) an account, and learn the signer this server holds for it. */
+export async function recoveryRegister(
+  base: string,
+  token: string,
+  address: string,
+  identities: { role: string; auth_methods: { type: string; value: string }[] }[],
+): Promise<RecoveryAccount> {
+  return postJson(
+    `${base}/accounts/${encodeURIComponent(address)}`,
+    { identities },
+    bearer(token),
+    true,
+    RecoveryRegisteredShape,
+  );
+}
+
+/**
+ * Change WHICH identities may recover this account, on a server that already holds it.
+ *
+ * SEP-30's `PUT /accounts/<address>`, and it exists because the alternative does not
+ * work: the registered identity is invisible from outside — a `GET` reports each
+ * identity's role and whether the caller is authenticated as it, never the address it
+ * was registered with — so an email that drifts out of step with the account's own
+ * cannot be detected, only overwritten. Deregistering and registering again would do it
+ * at the cost of the signer, and the signer is on the ledger.
+ *
+ * It replaces the identity list outright, as the spec says: what is sent is the whole of
+ * who may recover, never an addition to it.
+ */
+export async function recoveryUpdateIdentities(
+  base: string,
+  token: string,
+  address: string,
+  identities: { role: string; auth_methods: { type: string; value: string }[] }[],
+): Promise<RecoveryAccount> {
+  return postJson(
+    `${base}/accounts/${encodeURIComponent(address)}`,
+    { identities },
+    bearer(token),
+    true,
+    RecoveryRegisteredShape,
+    'PUT',
+  );
+}
+
+/** One protected account as THIS server describes it, or null when it does not know it. */
+export async function recoveryAccount(base: string, token: string, address: string): Promise<RecoveryAccount | null> {
+  try {
+    return await getPlatformJson<RecoveryAccount>(
+      `${base}/accounts/${encodeURIComponent(address)}`,
+      RecoveryRegisteredShape,
+      bearer(token),
+    );
+  } catch (e) {
+    // 404 is an answer, not a failure: this server does not act for that account.
+    if (e instanceof ApiRequestError && e.status === 404) return null;
+    throw e;
+  }
+}
+
+/**
+ * Tell this server to stop answering for the account. The signer stays on chain until the
+ * account removes it, which only the account can do.
+ *
+ * A 404 is success: nothing to forget is the state this asks for. Any other failure throws,
+ * because a server that still holds the identity is a fact the caller should know.
+ */
+export async function recoveryForget(base: string, token: string, address: string): Promise<void> {
+  const url = `${base}/accounts/${encodeURIComponent(address)}`;
+  const res = await fetch(url, { method: 'DELETE', headers: { ...bearer(token), [TRACE_HEADER]: newTraceId() } });
+  if (res.ok || res.status === 404) return;
+  let json: unknown = null;
+  try {
+    json = await res.json();
+  } catch {
+    /* empty / non-JSON body */
+  }
+  throw apiError(url, res, json, RETRY_AFTER_CAP_S);
+}
+
+/**
+ * One PAGE of the accounts this caller may recover — the listing someone with no device
+ * needs.
+ *
+ * `after` is SEP-30's cursor: the last address of the previous page. The caller walks it
+ * (`recoverableAccounts` in `lib/recovery.ts`) rather than this function, because the
+ * walk has to stop on the same terms for both servers and only the caller holds both.
+ */
+export async function recoveryAccounts(base: string, token: string, after?: string): Promise<{ accounts: RecoveryAccount[] }> {
+  return getPlatformJson(withQuery(`${base}/accounts`, { after }), RecoveryAccountListShape, bearer(token));
+}
+
+/** Ask this server to co-sign. The answer is a SIGNATURE; the wallet assembles the rest. */
+export async function recoverySign(
+  base: string,
+  token: string,
+  address: string,
+  signer: string,
+  transaction: string,
+): Promise<{ signature: string; network_passphrase: string }> {
+  return postJson(
+    `${base}/accounts/${encodeURIComponent(address)}/sign/${encodeURIComponent(signer)}`,
+    { transaction },
+    bearer(token),
+    true,
+    RecoverySignatureShape,
+  );
+}
+
+/**
+ * Ask the operator to build the setup transaction and pay the signers' reserve.
+ *
+ * This one goes to the MAIN community server (the sign-in's), not to a recovery server:
+ * sponsoring is the operator's money, and the two recovery servers are the hosts that must
+ * not also be able to spend it. The envelope comes back signed by the sponsor and unsigned
+ * by the account — the wallet's guard reads it before the key goes anywhere near it.
+ */
+export async function recoverySetupSponsored(
+  sessionToken: string,
+  // `stellarAddress`, not `account`: the field name is the server's, and the two repos
+  // only find a rename like that at runtime.
+  body: { stellarAddress: string; signers: [string, string]; signedAt: string; signature: string },
+  accessKey: string | null,
+): Promise<{ transaction: string; sponsor: string; network_passphrase: string }> {
+  return postJson(
+    `${walletApiBase()}/recovery/setup`,
+    body,
+    { ...walletSession(sessionToken), ...signInHeaders(accessKey) },
+    true,
+    RecoverySetupShape,
   );
 }
 
@@ -574,8 +862,8 @@ export async function socialVerify(body: { claimToken: string; code: string }): 
  * Separate from `getJson` because that one takes an API key and this whole flow exists
  * for a wallet that does not have one; separate from `postJson` only in method.
  */
-async function getPlatformJson<T>(url: string, shape: Check<unknown>): Promise<T> {
-  const res = await fetch(url, { headers: { [TRACE_HEADER]: newTraceId() } });
+async function getPlatformJson<T>(url: string, shape: Check<unknown>, headers: Record<string, string> = {}): Promise<T> {
+  const res = await fetch(url, { headers: { [TRACE_HEADER]: newTraceId(), ...headers } });
 
   let json: unknown = null;
   try {
@@ -593,6 +881,25 @@ async function getPlatformJson<T>(url: string, shape: Check<unknown>): Promise<T
 
 function authHeaders(apiKey: string): Record<string, string> {
   return { Authorization: `Bearer ${apiKey}` };
+}
+
+/**
+ * What a sign-in call presents.
+ *
+ * On the platform these routes take no credential at all. Behind the gateway
+ * they sit past APISIX key-auth, so they need one — and the one a wallet has
+ * before it has an account is the SHARED public key, which is exactly what those
+ * routes are marked to admit.
+ *
+ * It goes in `apikey`, not `Authorization`, because `finish` already spends
+ * `Authorization` on the sign-in's session token and one header cannot carry
+ * both. APISIX accepts either, which is the only reason this works at all.
+ *
+ * Nothing is presented on the platform path: a header it does not read can only
+ * ever confuse a log.
+ */
+function signInHeaders(accessKey: string | null): Record<string, string> {
+  return accessKey ? { apikey: accessKey } : {};
 }
 
 /** Quote a swap. The commission is enforced server-side by the org's plan. */

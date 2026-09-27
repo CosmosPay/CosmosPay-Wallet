@@ -41,6 +41,9 @@ Die Schlüsselableitung ist gegen den offiziellen **SEP-5-Testvektor** verifizie
 3. Entsperren entschlüsselt **nur im Speicher**; ein falsches Passwort scheitert am GCM-Tag.
 4. Signaturen können erneut das Passwort verlangen (Einstellung). Das Dapp-Freigabefenster
    signiert lokal — kein Geheimnis erreicht je eine Seite oder einen Server.
+   **Passkey statt Passwort** (Web, Erweiterung, Desktop und die Apps ab Android 9 / iOS 18): Das App-Passwort wird zu 32
+   Zufallsbytes, versiegelt unter der WebAuthn-PRF-Ausgabe des Passkeys — der Fingerabdruck
+   öffnet das Gerät, und derselbe Passkey öffnet die Cloud-Sicherung auf dem nächsten.
 5. **Automatische Sperre bei Inaktivität:** eine offene Sitzung hält den entschlüsselten Schlüssel,
    deshalb wird sie nach 5 Minuten ohne Interaktion verworfen und das Passwort erneut verlangt.
 6. **Nichts wird signiert, was nicht vorher dekodiert wurde.** Alles, was die Wallet signiert und

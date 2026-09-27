@@ -4,6 +4,7 @@ import { PrimaryButton } from '@/ui/Buttons';
 import { Logo } from '@/ui/Logo';
 import { Spinner } from '@/ui/Spinner';
 import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
+import { PasskeyButton } from '@/ui/PasskeyButton';
 import { EyeIcon } from '@/ui/EyeIcon';
 import { LangSelect } from '@/ui/LangSelect';
 import { getGreeting } from '@/lib/greeting';
@@ -56,6 +57,25 @@ export function Unlock({ store }: { store: WalletStore }) {
    * the sensor before reading the signing sheet.
    */
   const [deviceBusy, setDeviceBusy] = useState(false);
+
+  /**
+   * A passkey device has no password anyone typed, so the passkey is the unlock button and
+   * the field is hidden behind a link. The link stays, rather than disappearing: a device
+   * interrupted halfway into or out of passkey mode can still hold a password that opens
+   * it, and a screen with no field would leave that person nowhere to type it.
+   */
+  const passkeyFirst = store.passkeyUnlock;
+  const [showPwdForm, setShowPwdForm] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const passkeySubmit = async () => {
+    setPasskeyBusy(true);
+    try {
+      await store.unlockWithPasskey();
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
   const deviceSubmit = async () => {
     setDeviceBusy(true);
     try {
@@ -88,29 +108,45 @@ export function Unlock({ store }: { store: WalletStore }) {
             `data-kb-group` is what tells src/lib/viewport.ts to bring the WHOLE group back
             above the keyboard, not just the field it happens to be scrolling to. */}
         <div className="col g12 unlock-controls" data-kb-group>
-          <div className="unlock-pwd-wrap">
-            <input
-              type={showPwd ? 'text' : 'password'}
-              value={pwd}
-              autoFocus
-              placeholder={t('pwd.label')}
-              onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
-              onKeyDown={(e) => e.key === 'Enter' && submit()}
-              className="input unlock-pwd-input"
+          {passkeyFirst && (
+            <PasskeyButton
+              label={t('passkey.unlock')}
+              busy={passkeyBusy || store.busy}
+              onClick={passkeySubmit}
             />
-            {/* per-field eye toggle, same pattern as the password-setup screen */}
-            <button
-              type="button"
-              onClick={() => setShowPwd((v) => !v)}
-              aria-label={showPwd ? 'Ocultar' : 'Mostrar'}
-              className={cx('unlock-eye', showPwd && 'is-shown')}
-            >
-              <EyeIcon off={showPwd} />
-            </button>
-          </div>
-          <PrimaryButton disabled={!pwd || store.busy} onClick={submit}>
-            {store.busy ? <Spinner /> : t('unlock.unlock')}
-          </PrimaryButton>
+          )}
+          {passkeyFirst && !showPwdForm && (
+            <div onClick={() => setShowPwdForm(true)} className="tap unlock-forgot">
+              {t('passkey.usePassword')}
+            </div>
+          )}
+          {(!passkeyFirst || showPwdForm) && (
+            <>
+              <div className="unlock-pwd-wrap">
+                <input
+                  type={showPwd ? 'text' : 'password'}
+                  value={pwd}
+                  autoFocus
+                  placeholder={t('pwd.label')}
+                  onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
+                  onKeyDown={(e) => e.key === 'Enter' && submit()}
+                  className="input unlock-pwd-input"
+                />
+                {/* per-field eye toggle, same pattern as the password-setup screen */}
+                <button
+                  type="button"
+                  onClick={() => setShowPwd((v) => !v)}
+                  aria-label={showPwd ? 'Ocultar' : 'Mostrar'}
+                  className={cx('unlock-eye', showPwd && 'is-shown')}
+                >
+                  <EyeIcon off={showPwd} />
+                </button>
+              </div>
+              <PrimaryButton disabled={!pwd || store.busy} onClick={submit}>
+                {store.busy ? <Spinner /> : t('unlock.unlock')}
+              </PrimaryButton>
+            </>
+          )}
           {/* Only when this wallet actually enrolled AND the device can still answer —
               a button that can only fail is worse than no button. */}
           {store.deviceAuthReady && (
