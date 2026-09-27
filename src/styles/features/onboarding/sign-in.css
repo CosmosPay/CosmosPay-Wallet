@@ -1,0 +1,22 @@
+/* SignIn — src/features/onboarding/SignIn.tsx.
+   The screen's own copy: the lead line and the note about where the key lives. The ways in
+   themselves are ui/SignInMethods and its sheet. */
+
+.sign-in-desc {
+  font-size: 13px;
+  color: var(--muted);
+  font-weight: 600;
+  line-height: 1.5;
+  margin: 0 var(--gutter) 14px;
+}
+
+/* Above the buttons on purpose: it is the condition the next screen will hold them to. */
+.sign-in-note {
+  margin: 0 var(--gutter) 18px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.55;
+  color: var(--text);
+}

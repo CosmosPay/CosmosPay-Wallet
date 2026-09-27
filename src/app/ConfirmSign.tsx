@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { Spinner } from '@/ui/Spinner';
 import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
+import { PasskeyButton } from '@/ui/PasskeyButton';
 import { cx } from '@/lib/cx';
 import '@/styles/app/confirm-sign.css';
 
@@ -13,6 +14,14 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [deviceBusy, setDeviceBusy] = useState(false);
+  /**
+   * A passkey device answers with the passkey; the field is a fallback behind a link, for
+   * the same reason the unlock screen keeps one (see `Unlock.tsx`).
+   */
+  const passkeyFirst = store.passkeyUnlock;
+  const [pwdForm, setPwdForm] = useState(false);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const showField = !passkeyFirst || pwdForm;
   /** Synchronous re-entry guard — see `submit`. */
   const inFlight = useRef(false);
 
@@ -21,6 +30,8 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
     setErr('');
     setBusy(false);
     setDeviceBusy(false);
+    setPasskeyBusy(false);
+    setPwdForm(false);
     inFlight.current = false;
   }, [req]);
 
@@ -58,15 +69,40 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
         </div>
         <div className="confirm-sign-title">{req.title}</div>
         {req.message && <div className="confirm-sign-msg">{req.message}</div>}
-        <input
-          type="password"
-          value={pwd}
-          autoFocus
-          placeholder={t('pwd.label')}
-          onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
-          onKeyDown={(e) => e.key === 'Enter' && submit()}
-          className={cx('input confirm-sign-input', err && 'has-err')}
-        />
+        {/* Never raised on its own, like the device button below: this gate can be raised
+            by a dapp, and it is the tap that says the person read the request. */}
+        {passkeyFirst && (
+          <PasskeyButton
+            label={t('passkey.confirm')}
+            busy={passkeyBusy || busy}
+            onClick={async () => {
+              setPasskeyBusy(true);
+              setErr('');
+              try {
+                await store.confirmWithPasskey(req.id);
+              } finally {
+                setPasskeyBusy(false);
+              }
+            }}
+            className="confirm-sign-passkey"
+          />
+        )}
+        {passkeyFirst && !pwdForm && (
+          <button type="button" onClick={() => setPwdForm(true)} className="confirm-sign-alt">
+            {t('passkey.usePassword')}
+          </button>
+        )}
+        {showField && (
+          <input
+            type="password"
+            value={pwd}
+            autoFocus
+            placeholder={t('pwd.label')}
+            onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            className={cx('input confirm-sign-input', err && 'has-err')}
+          />
+        )}
         {err && <div className="confirm-sign-err">{err}</div>}
         {/* No auto-prompt here, unlike the unlock screen: this gate can be raised by
             a dapp, and a signing sheet that appears without a tap is how a user
@@ -92,9 +128,11 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
           <button onClick={() => store.resolveConfirm(false, req.id)} className="glass-soft confirm-sign-cancel">
             {t('common.cancel')}
           </button>
-          <button onClick={submit} disabled={!pwd || busy} className="glass-bright confirm-sign-submit">
-            {busy ? <Spinner /> : t('confirmSig.sign')}
-          </button>
+          {showField && (
+            <button onClick={submit} disabled={!pwd || busy} className="glass-bright confirm-sign-submit">
+              {busy ? <Spinner /> : t('confirmSig.sign')}
+            </button>
+          )}
         </div>
       </div>
     </div>

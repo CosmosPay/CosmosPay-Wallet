@@ -99,6 +99,8 @@
 
 /* expandable sub-forms (change password, dev-mode endpoint fields) */
 .settings-subform { margin-top: 12px; }
+/* What switching how the device opens gives and costs, above the PasskeySwitch form. */
+.settings-subform-desc { margin: 0 2px 12px; }
 .settings-dev-desc {
   font-size: 12.5px;
   color: var(--muted);

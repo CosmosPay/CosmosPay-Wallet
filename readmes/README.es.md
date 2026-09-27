@@ -44,6 +44,9 @@ La derivación de claves está verificada contra el **vector de prueba oficial S
 3. Desbloquear descifra **solo en memoria**; una contraseña incorrecta falla el tag GCM y se rechaza.
 4. Las firmas pueden exigir la contraseña de nuevo (toggle en Ajustes). La ventana de aprobación
    de dapps firma en local — ningún secreto llega a una página o servidor.
+   **Passkey en vez de contraseña** (web, extensión, escritorio y las apps en Android 9+ / iOS 18+): la contraseña de la app pasa a
+   ser 32 bytes aleatorios sellados bajo la salida PRF de WebAuthn de la passkey, así que la
+   huella abre el dispositivo y la misma passkey abre la copia en la nube en el siguiente.
 5. **Auto-bloqueo por inactividad:** una sesión abierta guarda la clave descifrada, así que tras
    5 minutos sin interacción se descarta y se vuelve a pedir la contraseña.
 6. **Nada se firma sin decodificarlo antes.** Todo sobre lo que la wallet firma y que no construyó

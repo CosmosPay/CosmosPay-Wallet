@@ -144,8 +144,11 @@ export const EVENT = {
   lock: 'session.lock',
   walletCreated: 'wallet.created',
   walletImported: 'wallet.imported',
-  socialLogin: 'auth.social_login',
-  socialLoginFailed: 'auth.social_login_failed',
+  // The wallet's own sign-in (`lib/signIn.ts`).
+  signIn: 'auth.sign_in',
+  signInFailed: 'auth.sign_in_failed',
+  backupRestored: 'wallet.backup_restored',
+  backupUpdateFailed: 'wallet.backup_update_failed',
   // money
   paymentSent: 'payment.sent',
   paymentFailed: 'payment.failed',

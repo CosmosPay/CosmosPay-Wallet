@@ -1,0 +1,21 @@
+/* PasskeyButton — raises the browser's passkey sheet (src/ui/PasskeyButton.tsx). */
+.passkey-btn {
+  width: 100%;
+}
+.passkey-btn:disabled {
+  opacity: 0.6;
+}
+/* The shortcut form, one step quieter than .btn-primary — the same weight as
+   .device-auth-btn, for the screens where a password is still the main path. */
+.passkey-btn--quiet {
+  height: 50px;
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-size: 15px;
+  font-weight: 600;
+}
+.passkey-btn-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
