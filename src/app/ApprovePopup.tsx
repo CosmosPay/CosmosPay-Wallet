@@ -317,7 +317,7 @@ export default function ApprovePopup() {
         respond(
           req,
           true,
-          { signedMessage: sig.toString('base64'), signerAddress: entry.publicKey, domain: SIGN_MESSAGE_DOMAIN },
+          { signedMessage: Buffer.from(sig).toString('base64'), signerAddress: entry.publicKey, domain: SIGN_MESSAGE_DOMAIN },
           undefined,
           false,
           netInfo(cfg),

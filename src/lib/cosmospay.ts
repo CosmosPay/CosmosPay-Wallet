@@ -378,7 +378,7 @@ export function signRegistrationMessage(
   nonce: string,
 ): string {
   const message = `Cosmos Pay Wallet account registration\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8')).toString('base64');
+  return Buffer.from(Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'))).toString('base64');
 }
 
 /**
@@ -439,7 +439,7 @@ export function signLinkMessage(
   nonce: string,
 ): string {
   const message = `Cosmos Pay Wallet account link\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8')).toString('base64');
+  return Buffer.from(Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'))).toString('base64');
 }
 
 /**
