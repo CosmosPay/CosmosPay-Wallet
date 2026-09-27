@@ -54,6 +54,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   recover: lazy(() => import('@/features/onboarding/RecoverAccount').then((m) => ({ default: m.RecoverAccount }))),
   home: Home,
   earn: Earn,
+  defindex: lazy(() => import('@/features/wallet/Defindex').then((m) => ({ default: m.Defindex }))),
   markets: Markets,
   profile: Profile,
 
