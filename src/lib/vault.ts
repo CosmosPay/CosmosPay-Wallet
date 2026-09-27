@@ -33,6 +33,7 @@ import {
 // `ChangePasswordDeps`. That is what keeps this module's own logic reachable from
 // node:test, and what stops a vault function owning UI strings.
 import { deviceAuthEnabled, disableDeviceAuth } from '@/lib/deviceAuth';
+import { dropPasskeyUnlock } from '@/lib/passkeyUnlock';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
 import { tNow } from '@/lib/i18n';
@@ -912,6 +913,11 @@ export async function removeWallet(
   const dropped = new Set([id, ...paired]);
   const remaining = (await listWallets()).filter((w) => !dropped.has(w.id));
   await writeWallets(remaining);
+  // The passkey door is the DEVICE's, not a wallet's — it holds the one app password all of
+  // them share — so it goes only with the last of them. Left behind, it would offer a
+  // passkey unlock for whatever vault the next onboarding writes, under a password it
+  // never held.
+  if (!remaining.length) await dropPasskeyUnlock();
   let active = await getActiveId();
   if (active !== null && dropped.has(active)) {
     active = remaining[0]?.id ?? null;
@@ -1096,4 +1102,5 @@ export async function destroyAll(): Promise<void> {
   }
   await storageRemove(WALLETS_KEY);
   await storageRemove(ACTIVE_KEY);
+  await dropPasskeyUnlock();
 }

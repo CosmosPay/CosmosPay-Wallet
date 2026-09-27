@@ -6,6 +6,7 @@ import { SettingsSection } from '@/features/settings/SettingsSection';
 import { SettingsRow } from '@/features/settings/SettingsRow';
 import { ToggleRow } from '@/features/settings/ToggleRow';
 import { ChangePassword } from '@/features/settings/ChangePassword';
+import { PasskeySwitch } from '@/features/settings/PasskeySwitch';
 import { ConnectedSites } from '@/features/settings/ConnectedSites';
 import { RecoverySection } from '@/features/settings/RecoverySection';
 import { DevModeSection } from '@/features/settings/DevModeSection';
@@ -23,6 +24,7 @@ export function Settings({ store }: { store: WalletStore }) {
   const [copied, copy] = useCopied();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
+  const [pkOpen, setPkOpen] = useState(false);
 
   return (
     <div className="scr screen pb-40">
@@ -74,8 +76,25 @@ export function Settings({ store }: { store: WalletStore }) {
           />
         )}
         <SettingsRow label={t('settings.exportPhrase')} onClick={() => store.setScreen('export')} />
-        <SettingsRow label={pwOpen ? t('settings.cancelChangePwd') : t('settings.changePwd')} onClick={() => setPwOpen((o) => !o)} last={!pwOpen} />
-        {pwOpen && <ChangePassword store={store} onDone={() => setPwOpen(false)} />}
+        {/* How this device opens. A passkey device has no password to change, so the row
+            that changes one is not offered there — the passkey row is how it gets one back. */}
+        {store.passkeyPossible && (
+          <>
+            {store.passkeyUnlock && <div className="desc settings-subform-desc">{t('passkey.statusOn')}</div>}
+            <SettingsRow
+              label={pkOpen ? t('common.cancel') : t(store.passkeyUnlock ? 'passkey.switchOff' : 'passkey.switchOn')}
+              onClick={() => setPkOpen((o) => !o)}
+              last={store.passkeyUnlock && !pkOpen}
+            />
+            {pkOpen && <PasskeySwitch store={store} onDone={() => setPkOpen(false)} />}
+          </>
+        )}
+        {!store.passkeyUnlock && (
+          <>
+            <SettingsRow label={pwOpen ? t('settings.cancelChangePwd') : t('settings.changePwd')} onClick={() => setPwOpen((o) => !o)} last={!pwOpen} />
+            {pwOpen && <ChangePassword store={store} onDone={() => setPwOpen(false)} />}
+          </>
+        )}
       </SettingsSection>
 
       <SettingsSection title={t('settings.privacy')}>

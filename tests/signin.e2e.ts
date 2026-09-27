@@ -54,7 +54,9 @@ async function mockServer(page: Page, ready: (email: string) => unknown, finishe
       return route.fulfill(env(ready('ada@example.com')));
     }
     if (path.endsWith('/finish')) {
-      finishes.push({ body: JSON.parse(req.postData() || '{}'), auth: req.headers()['authorization'] ?? null });
+      // X-Wallet-Session, not Authorization: through APISIX that header is the API key's and
+      // the gateway strips it, so a session token sent there never reaches the server.
+      finishes.push({ body: JSON.parse(req.postData() || '{}'), auth: req.headers()['x-wallet-session'] ?? null });
       return route.fulfill(env({ status: 'ready', account: 'created', organizationId: 'org_1', keys: { dev: 'k_dev', prod: null } }));
     }
     return route.fulfill({ status: 404, headers: cors, body: '{}' });
@@ -100,7 +102,13 @@ try {
     finishesA,
   );
   await signInWithEmail(a);
-  await a.getByText('Esta contraseña protege tu wallet en este dispositivo', { exact: false }).waitFor({ timeout: 10000 });
+  // A browser that can make a passkey is offered one first; this suite is about the
+  // password path, so it takes the password.
+  const pwdInsteadA = a.getByRole('button', { name: 'Prefiero una contraseña' });
+  const pwdDescA = a.getByText('Esta contraseña protege tu wallet en este dispositivo', { exact: false });
+  await pwdDescA.or(pwdInsteadA).first().waitFor({ timeout: 10000 });
+  if (await pwdInsteadA.isVisible()) await pwdInsteadA.click();
+  await pwdDescA.waitFor({ timeout: 10000 });
   ok(true, 'a first-run sign-in with no backup asks for a new password');
   const pwds = a.locator('input[type="password"]');
   await pwds.nth(0).fill(PASSWORD);
@@ -117,7 +125,7 @@ try {
     'one wallet, with the proven email, marked as backed up',
   );
   const fa = finishesA[0];
-  ok(finishesA.length === 1 && fa.auth === 'Bearer tok-A', 'finish carries the session token');
+  ok(finishesA.length === 1 && fa.auth === 'tok-A', 'finish carries the session token');
   ok(fa?.body.stellarAddress === addr && typeof fa?.body.signature === 'string', 'finish is signed by the new address');
   const rawBox = typeof fa?.body.backup === 'string' ? fa.body.backup : '';
   const box = rawBox ? (JSON.parse(rawBox) as Record<string, unknown>) : null;
@@ -145,6 +153,10 @@ try {
   await signInWithEmail(b);
   await b.getByText('Recuperar tu wallet').waitFor({ timeout: 10000 });
   ok(true, 'an account with a backup is sent to restore it');
+  // The first-run upgrade to a passkey is on by default where passkeys work; this suite
+  // pins the password restore, which sends no new box.
+  const upgrade = b.getByText('Usar una passkey en vez de la contraseña a partir de ahora');
+  if (await upgrade.isVisible()) await upgrade.click();
   const pwd = b.locator('input[type="password"]');
   await pwd.fill('Wrong-pass-999');
   await b.getByRole('button', { name: 'Recuperar' }).click();
@@ -159,7 +171,7 @@ try {
     finishesB.length === 1 && finishesB[0].body.backup === undefined && finishesB[0].body.stellarAddress === addr,
     'a restore finishes without uploading the backup again',
   );
-  ok(finishesB[0]?.auth === 'Bearer tok-B', 'the restore uses its own session token');
+  ok(finishesB[0]?.auth === 'tok-B', 'the restore uses its own session token');
 } catch (e) {
   fails.push('threw: ' + (e as Error).message);
   console.log('✗ threw: ' + (e as Error).message);

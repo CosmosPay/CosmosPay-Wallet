@@ -65,3 +65,7 @@
 .home-activate-title { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
 .home-activate-desc { font-size: 13px; color: var(--muted); font-weight: 600; line-height: 1.5; margin-bottom: 14px; }
 .home-activate-btn { width: 100%; height: 54px; background: var(--accent); color: var(--on-accent); border: none; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; cursor: pointer; }
+/* ProtectAccountCard — the SEP-30 offer. Same card as .home-activate; its own spacing. */
+.home-protect { margin-bottom: 22px; } /* on .glass.card */
+.home-protect-code { margin-bottom: 12px; letter-spacing: 0.25em; text-align: center; }
+.home-protect-later { display: block; width: 100%; margin-top: 10px; background: none; border: 0; color: var(--muted); font-size: 13px; font-weight: 700; cursor: pointer; }

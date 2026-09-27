@@ -11,6 +11,8 @@ import { HomeAction } from '@/features/wallet/HomeAction';
 import { AssetListRow } from '@/features/wallet/AssetListRow';
 import { ActivateCard } from '@/features/wallet/ActivateCard';
 import { MigrateBanner } from '@/features/wallet/MigrateBanner';
+import { ProtectAccountCard } from '@/features/wallet/ProtectAccountCard';
+import { recoveryConfigured } from '@/lib/recovery';
 import { computePortfolio } from '@/lib/portfolio';
 import { fmt, splitMoney, pct } from '@/lib/format';
 import { getGreeting, ageFromBirthdate } from '@/lib/greeting';
@@ -142,6 +144,9 @@ export function Home({ store }: { store: WalletStore }) {
 
       {store.isPollarWallet && <MigrateBanner store={store} />}
       {notActivated && <ActivateCard store={store} />}
+      {/* Recovery can only go on a funded account, and on a wallet whose key is on this
+          device — not a Pollar one. The card itself decides from the ledger. */}
+      {!notActivated && !store.isPollarWallet && recoveryConfigured() && <ProtectAccountCard store={store} />}
       {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
 
       <div className="home-assets">

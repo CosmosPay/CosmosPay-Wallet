@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
-import { PrimaryButton } from '@/ui/Buttons';
+import { GhostButton, PrimaryButton } from '@/ui/Buttons';
+import { PasskeyButton } from '@/ui/PasskeyButton';
 import { Spinner } from '@/ui/Spinner';
 import { Criterion } from '@/features/onboarding/Criterion';
 import { Desc } from '@/features/onboarding/Desc';
@@ -30,8 +31,26 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
    * a field" in CLAUDE.md). Here it stays in this component's state, exactly as it
    * already did, and leaves it only as an argument to `finishOnboarding`.
    */
-  const [step, setStep] = useState<'password' | 'consents'>('password');
   const signIn = store.hasSignInDraft;
+  /**
+   * A passkey is offered FIRST wherever it can be: a first wallet, on a build that can run
+   * a passkey ceremony. It is one tap and nothing to remember, and on the sign-in path it
+   * also opens the backup on the next device. The password stays one tap away for anyone
+   * who prefers it — or whose authenticator turns out not to support what the wallet needs,
+   * which the store reports and this screen answers by showing the password form.
+   *
+   * Not on a device that already holds wallets: those share one password, and a new wallet
+   * joins it (`finishOnboarding` reuses the session's key). Not on the phone app either:
+   * its WebView has no passkeys, and it has the fingerprint unlock instead.
+   */
+  const passkeyOffer = store.passkeyPossible && !store.hasSession && store.wallets.length === 0;
+  const [step, setStep] = useState<'choose' | 'password' | 'consents'>(passkeyOffer ? 'choose' : 'password');
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  // A browser that turns out not to support what the wallet needs (the store learns it
+  // from the first ceremony, or the browser says so up front) goes straight to the form.
+  useEffect(() => {
+    if (step === 'choose' && !store.passkeyPossible) setStep('password');
+  }, [step, store.passkeyPossible]);
 
   // Live criteria — each row below flips to green as it's satisfied. The rules come from
   // `lib/validate`, not from literals here: this screen and the change-password form used
@@ -50,7 +69,41 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
   // fallback covers the case where there is no stack (see SCREENS.password).
   // From the consent step, back is the password step: leaving the screen there would
   // discard a password the user has already typed and confirmed.
-  const back = step === 'consents' ? () => setStep('password') : store.goBack;
+  const back =
+    step === 'consents'
+      ? () => setStep('password')
+      : step === 'password' && passkeyOffer
+        ? () => setStep('choose')
+        : store.goBack;
+
+  if (step === 'choose') {
+    const createWithPasskey = async () => {
+      setPasskeyBusy(true);
+      try {
+        await store.finishOnboardingWithPasskey();
+      } finally {
+        setPasskeyBusy(false);
+      }
+    };
+    return (
+      <div className="scr screen col">
+        <BackBar title={t('passkey.protectTitle')} onBack={back} />
+        <Desc className="pwd-setup-desc">{t(signIn ? 'passkey.protectDescSignIn' : 'passkey.protectDesc')}</Desc>
+        <div className="glass-soft pwd-setup-note">{t('passkey.protectNote')}</div>
+
+        {/* The sign-in path asks its two consents where it collects the password; the
+            passkey path collects none, so it asks here, before the wallet exists. The seed
+            path already asked on `profile-setup`. */}
+        {signIn && <OptionalConsents store={store} />}
+
+        <div className="spacer" />
+        <div className="kb-dock col g10">
+          <PasskeyButton label={t('passkey.create')} busy={passkeyBusy || store.busy} onClick={createWithPasskey} />
+          <GhostButton onClick={() => setStep('password')}>{t('passkey.usePasswordInstead')}</GhostButton>
+        </div>
+      </div>
+    );
+  }
 
   if (step === 'consents') {
     return (

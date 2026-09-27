@@ -83,3 +83,10 @@ export const RECOVERY_RESERVE_XLM = RECOVERY_SERVER_COUNT * 0.5 + 0.01;
  * password, would be the worst moment to find out.
  */
 export const RECOVERY_PROOF_TTL_MS = 25 * 60 * 1000;
+
+/**
+ * localStorage prefix for "not now" on the Home card that offers recovery
+ * (`features/wallet/ProtectAccountCard.tsx`), suffixed with the account address. Per
+ * account because the offer is about an account; a preference, so browser storage.
+ */
+export const RECOVERY_OFFER_DISMISSED_PREFIX = 'cosmos.recoveryOffer.dismissed.';

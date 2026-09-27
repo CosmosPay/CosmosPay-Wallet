@@ -457,6 +457,57 @@ Eight rules:
   keeps it in `signInDraft` for as long as the screen that uses it and exposes a summary to
   components, never the token or the box.
 
+### Passkeys: a password nobody types
+
+On web, extension and desktop a device can open with a **passkey** instead of a typed password
+(`src/lib/passkey.ts`, `src/lib/passkeyUnlock.ts`, the `usePasskey` slice). The mobile app is
+excluded — its WebView has no WebAuthn — and keeps the password plus the fingerprint unlock.
+
+**The design is one sentence: the app password becomes 32 random bytes the passkey holds.** The
+vault is untouched — one app password, one `VaultKey`, `convergeSeals`, the attempt ladder,
+`changePassword` — except that on a passkey device the password comes out of the passkey door
+instead of the keyboard. That is why every password-shaped path (`unlock`, `checkPassword`,
+`revealBackup`, `ApprovePopup`) gained a passkey button and no key-shaped twin. The rule in
+"Unlocking with the phone" — never store the password — is about a HUMAN password that is reused
+elsewhere; a generated one opens nothing but this device's vault, which is exactly what the
+`VaultKey` the other door keeps would open. Keep it that way: never seal a typed password there.
+
+Seven rules, each one a way this breaks:
+
+- **One sheet, two secrets.** Every ceremony evaluates two PRF salts at once
+  (`PASSKEY_PRF_BACKUP_LABEL`, `PASSKEY_PRF_UNLOCK_LABEL` in `constants/passkey.ts`): one opens
+  the cloud backup, one opens this device. **Never change those labels** — a new label is a new
+  secret, and every door written under the old one stops opening, with no way back.
+- **The door is written BEFORE the vault moves.** A vault sealed under a generated password with
+  no door beside it is a wallet nobody can open. `rekeyDevice` takes `beforeCommit`/`onAbort` for
+  exactly this, onboarding enrols before `finishOnboarding`, and every path drops the door again
+  when nothing landed. Leaving a passkey device is the mirror image: the door is dropped AFTER
+  the commit (`afterCommit`), because until then the vault still needs the password it holds.
+- **The lock screen keeps a "use password" link on a passkey device.** An interrupted switch can
+  leave a device whose password is still a typed one; a screen with no field would strand it.
+  Never auto-drop the door on a failed passkey unlock for the same reason — a half-committed
+  change can leave some wallets on each password.
+- **The backup has doors, and its doors follow the device.** `cloudBackup.ts` writes `v: 2` for a
+  bare password (what an older server accepts) and `v: 3` — a random data key sealed once per
+  door — whenever a passkey is involved. Turning a passkey on keeps the typed password as a second
+  door (it is how the person restores where passkeys do not work); turning it off writes a plain
+  password box again. The community server's `isBackupBox` validates both shapes and holds every
+  password door to the same PBKDF2 floor — change the format on one side and the other refuses it.
+- **A passkey mismatch is never a guess.** `BackupPasskeyError` and `PasskeyUnlockStaleError`
+  are not `WrongPasswordError` and must not walk anyone up the attempt ladder; a dismissed sheet
+  (`PasskeyError` `cancelled`) says nothing at all.
+- **Offers learn.** `passkeyPossible` drops for the session the first time a ceremony comes back
+  `unsupported`/`noPrf` (or the browser says it has no PRF), and the create screen falls through
+  to the password form. An offer the person just watched fail is not one to keep making.
+- **The door is the device's, not a wallet's.** One per device (`cosmos.passkey`), because it
+  holds the password every wallet here shares — and `lib/vault.ts` drops it with the last wallet,
+  so the next onboarding does not inherit a button for a vault it never sealed.
+
+SEP-30 is offered on Home (`features/wallet/ProtectAccountCard.tsx`) as soon as the ledger shows
+the account funded with recovery off — a passkey-only wallet has no password to fall back on, and
+recovery is what stands in for one. "Not now" is remembered per account; Settings keeps the
+controls.
+
 ### Pollar is only a way out now
 
 No new Pollar wallets are created. The ones that exist still sign through `pollarApi`, and
@@ -742,7 +793,13 @@ derivation is covered end-to-end, not here — see the Known gap below, and do n
 this list as wider than it is.
 
 Keep logic that decides money **out** of the store hook so it stays reachable from
-here — the two Playwright suites only cover onboarding, unlock and layout.
+here — the Playwright suites only cover onboarding, unlock, layout, the sign-in and passkeys.
+
+`npm run test:e2e:passkey` runs real WebAuthn ceremonies against Chrome's virtual
+authenticator (with PRF) — creating, unlocking, restoring and upgrading. Point it at a
+`localhost` URL (`E2E_URL=http://localhost:<port>`): WebAuthn refuses an IP address as a
+relying party, and on `127.0.0.1` the wallet correctly falls back to a password, so the
+suite would be testing the fallback.
 
 **The Rust side has no tests, and the mobile halves have none that run anywhere.**
 `cargo check` in CI proves the desktop build compiles; the Kotlin is compiled only by the
