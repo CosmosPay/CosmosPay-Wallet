@@ -8,9 +8,9 @@ import '@/styles/features/onboarding/atoms.css';
  *
  * Shared rather than written twice, because the two onboarding paths that ask are the
  * same question and were drifting apart before this existed: the seed path asks on
- * `profile-setup`, and the SOCIAL path — which skips that screen entirely — asked
- * nowhere at all. A Pollar wallet was therefore created with `metricsOptIn` absent,
- * which is the same as declining, except the user was never given the choice.
+ * `profile-setup`, and the sign-in path — which skips that screen entirely — once asked
+ * nowhere at all, so its wallets were created with `metricsOptIn` absent: the same as
+ * declining, except the user was never given the choice.
  *
  * `metricsOptIn` is not a preference the app can infer: it is what turns diagnostics on
  * (`lib/telemetry.ts`), and STORE_LISTING.md tells the Chrome Web Store it is optional

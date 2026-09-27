@@ -5,7 +5,10 @@ plugins {
 
 android {
     namespace = "lat.cosmospay.plugin.cosmos"
-    compileSdk = 34
+    // Tauri 2.12's `:tauri-android` refuses to link into anything compiled below 36
+    // (checkReleaseAarMetadata). compileSdk only decides which APIs are visible at build
+    // time; runtime behaviour follows targetSdk / minSdk, which this does not touch.
+    compileSdk = 36
 
     defaultConfig {
         // Must not exceed `bundle.android.minSdkVersion` in src-tauri/tauri.conf.json.
@@ -39,5 +42,11 @@ dependencies {
     // it is the only API that can open a Keystore key through a CryptoObject, which is
     // what makes the read itself the authenticated operation.
     implementation("androidx.biometric:biometric:1.1.0")
+    // Passkeys (Passkey.kt). Credential Manager takes the WebAuthn JSON the web layer builds,
+    // PRF extension included, and hands it to the person's provider. The play-services half
+    // is what reaches Google Password Manager on Android 9-13, where the framework has no
+    // Credential Manager of its own. 1.3.0 was the newest line that built at compileSdk 34; moving past it is a separate change.
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
     implementation(project(":tauri-android"))
 }

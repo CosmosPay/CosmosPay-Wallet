@@ -40,6 +40,9 @@ A derivação de chaves está verificada contra o **vetor de teste oficial SEP-5
 3. Desbloquear decifra **só em memória**; palavra-passe errada falha o tag GCM e é rejeitada.
 4. As assinaturas podem exigir a palavra-passe de novo (toggle nas Definições). A janela de
    aprovação de dapps assina localmente — nenhum segredo chega a páginas ou servidores.
+   **Passkey em vez de palavra-passe** (web, extensão, desktop e as apps em Android 9+ / iOS 18+): a palavra-passe da app passa a
+   ser 32 bytes aleatórios selados sob a saída PRF do WebAuthn da passkey, por isso a impressão
+   digital abre o dispositivo e a mesma passkey abre a cópia na nuvem no seguinte.
 5. **Bloqueio automático por inatividade:** uma sessão aberta guarda a chave decifrada, por isso ao
    fim de 5 minutos sem interação é descartada e a palavra-passe volta a ser pedida.
 6. **Nada é assinado sem ser descodificado antes.** Tudo o que a wallet assina e não construiu ela

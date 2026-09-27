@@ -105,7 +105,7 @@ export async function signOwnership(input: {
     issuedAt: input.now ?? Date.now(),
   };
   const digest = await signMessagePayload(attestationMessage(body), ATTESTATION_DOMAIN);
-  const sig = Keypair.fromSecret(input.secret).sign(Buffer.from(digest)).toString('base64');
+  const sig = Buffer.from(Keypair.fromSecret(input.secret).sign(Buffer.from(digest))).toString('base64');
   return { ...body, sig };
 }
 

@@ -18,7 +18,7 @@
 import { cp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadEnv } from 'vite';
-import { DEFAULT_DEV_PLATFORM_URL, DEFAULT_GATEWAY_URL } from '../src/constants/backends.ts';
+import { DEFAULT_DEV_PLATFORM_URL, DEFAULT_GATEWAY_URL, DEFAULT_RECOVERY_A_URL, DEFAULT_RECOVERY_B_URL } from '../src/constants/backends.ts';
 import { cosmosHostPermissions } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
@@ -263,6 +263,10 @@ const DATA_COLLECTION = {
 const COSMOS_HOST_PERMISSIONS = cosmosHostPermissions([
   env.PUBLIC_COSMOS_DEV_PLATFORM_URL || DEFAULT_DEV_PLATFORM_URL,
   env.PUBLIC_COSMOS_GATEWAY_URL || DEFAULT_GATEWAY_URL,
+  // The two recovery servers are separate deployments and usually separate hosts, so
+  // neither is covered by the two above once a build points them off cosmospay.lat.
+  env.PUBLIC_COSMOS_RECOVERY_A_URL || DEFAULT_RECOVERY_A_URL,
+  env.PUBLIC_COSMOS_RECOVERY_B_URL || DEFAULT_RECOVERY_B_URL,
 ]);
 
 // MV3 manifest

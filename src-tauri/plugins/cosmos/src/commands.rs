@@ -11,7 +11,10 @@
 use tauri::{AppHandle, Runtime};
 
 use crate::error::Result;
-use crate::models::{AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest, ShareRequest};
+use crate::models::{
+    AuthDeleteRequest, AuthReadRequest, AuthSecret, AuthStatus, AuthStoreRequest, PasskeyRequest, PasskeyResponse,
+    PasskeyStatus, ShareRequest,
+};
 use crate::CosmosExt;
 
 #[tauri::command]
@@ -49,4 +52,19 @@ pub(crate) async fn app_exit<R: Runtime>(app: AppHandle<R>) -> Result<()> {
 #[tauri::command]
 pub(crate) async fn exclude_from_backup<R: Runtime>(app: AppHandle<R>) -> Result<()> {
     app.cosmos().exclude_from_backup().await
+}
+
+#[tauri::command]
+pub(crate) async fn passkey_status<R: Runtime>(app: AppHandle<R>) -> Result<PasskeyStatus> {
+    app.cosmos().passkey_status().await
+}
+
+#[tauri::command]
+pub(crate) async fn passkey_create<R: Runtime>(app: AppHandle<R>, payload: PasskeyRequest) -> Result<PasskeyResponse> {
+    app.cosmos().passkey_create(payload).await
+}
+
+#[tauri::command]
+pub(crate) async fn passkey_get<R: Runtime>(app: AppHandle<R>, payload: PasskeyRequest) -> Result<PasskeyResponse> {
+    app.cosmos().passkey_get(payload).await
 }
