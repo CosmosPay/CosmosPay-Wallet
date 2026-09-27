@@ -2,6 +2,49 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.11.0] - 2026-09-27
+
+### Features
+- Add yield protocol directory (ce4d470)
+- Integrate DeFindex vaults in wallet (e3e1a4a)
+- Surface BlindPay ramps on home (de6570e)
+- Implement dev icon handling for local builds across platforms (cb972dc)
+- Eliminar componente y estilos de inicio de sesión social (b0bfe48)
+- Implement sign-in methods UI and functionality (db9314a)
+- Mejorar manejo de errores en el proxy de desarrollo y optimizar dependencias (fe7e293)
+- Enhance SEP-10 and recovery features (3006f4e)
+- Switch the sign-in backend with a flag, not a rewrite (fc61913)
+- Implement recovery process with identity tokens and email codes (4151b8b)
+- Add OpenAPI sync script and gateway contract tests (e177362)
+- Agregar manejo de token de sesión en el proceso de inicio de sesión y recuperación (16aeff7)
+- Implement passkey unlock functionality (075c23b)
+- Implement passkey creation, retrieval, and status commands (0dc2fcd)
+- Agregar soporte para la configuración de MFA en el proceso de inicio de sesión (8c3d1f8)
+
+### Bug Fixes
+- Accept human-readable DeFindex amounts (4c06df1)
+- Add direct earn route (d57d36b)
+- Add explicit ramps action (2991139)
+- Use bank funding language for ramps (c6e3bff)
+- Adapt to @stellar/stellar-sdk 17 (4ec9ae0)
+- Read contract calls with the stellar-sdk 17 XDR shape (399bc71)
+- Compile the cosmos plugin against API 36 for tauri 2.12 (5b21bc0)
+
+### Miscellaneous
+- Bump @astrojs/react from 6.0.6 to 7.0.0 (fc3c7a8)
+- Bump the minor-and-patch group with 2 updates (281320b)
+- Bump @stellar/stellar-sdk from 16.3.0 to 17.1.0 (35db486)
+- Sync package-lock with dev (47c78b8)
+- Sync package-lock with dev (78af29e)
+- Sync package-lock with dev (1e99c06)
+- Bump @astrojs/react from 6.0.6 to 7.0.0 (a282ce2)
+
+### Refactor
+- Remove legacy Pollar tests and add new legacy wallet purge tests (231b8ea)
+
+### Dependencies
+- Update npm and Rust dependencies to latest (d356400)
+
 ## [1.10.0] - 2026-09-21
 
 ### Miscellaneous
