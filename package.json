@@ -40,7 +40,7 @@
     "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts"
   },
   "dependencies": {
-    "@astrojs/react": "^6.0.6",
+    "@astrojs/react": "^7.0.0",
     "@stellar/stellar-sdk": "^17.1.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.3",
