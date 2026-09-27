@@ -31,6 +31,13 @@ export type SignInPhase = 'idle' | 'opening' | 'waiting' | 'claiming' | 'code' |
 export interface SignInOffer {
   providers: SignInProvider[];
   email: boolean;
+  /**
+   * The page of the person's Cosmos Pay (Authentik) account where they add or remove a
+   * second factor — security key or passkey, authenticator app, recovery codes. Optional
+   * by design — the sign-in only offers one — so Settings links here. Null without
+   * Authentik, or when the server sent something that is not https.
+   */
+  mfaSettingsUrl: string | null;
 }
 
 /**

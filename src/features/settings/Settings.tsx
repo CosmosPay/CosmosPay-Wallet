@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { LangFlag } from '@/ui/LangSelect';
@@ -13,6 +13,7 @@ import { DevModeSection } from '@/features/settings/DevModeSection';
 import { useCopied } from '@/hooks/useCopied';
 import { shortAddr } from '@/lib/format';
 import { cx } from '@/lib/cx';
+import { openExternal } from '@/lib/openExternal';
 import { LANGUAGES } from '@/lib/i18n';
 import { deviceAuthFailureKey } from '@/lib/deviceAuth';
 import { THEME_OPTIONS } from '@/constants/settings';
@@ -25,6 +26,13 @@ export function Settings({ store }: { store: WalletStore }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
   const [pkOpen, setPkOpen] = useState(false);
+
+  // Only for the second-factor row below. Quiet: offline, the row is simply absent.
+  const { signInMethods, loadSignInMethods } = store;
+  useEffect(() => {
+    if (!signInMethods) void loadSignInMethods({ quiet: true });
+  }, [signInMethods, loadSignInMethods]);
+  const mfaUrl = signInMethods?.mfaSettingsUrl ?? null;
 
   return (
     <div className="scr screen pb-40">
@@ -76,6 +84,23 @@ export function Settings({ store }: { store: WalletStore }) {
           />
         )}
         <SettingsRow label={t('settings.exportPhrase')} onClick={() => store.setScreen('export')} />
+        {/* The Cosmos Pay ACCOUNT's second factors, in Authentik — not the device passkey
+            below, which opens this wallet. Optional: the sign-in only offers one, so this row
+            is where anyone who said "not now" adds a key, an authenticator app or recovery
+            codes later, or removes one. Absent without Authentik. */}
+        {mfaUrl && (
+          <>
+            <div className="desc settings-subform-desc">{t('settings.mfaDesc')}</div>
+            <SettingsRow
+              label={t('settings.mfa')}
+              onClick={() => {
+                void openExternal(mfaUrl).then((ok) => {
+                  if (!ok) store.flash(t('signin.openFailed'), 'err');
+                });
+              }}
+            />
+          </>
+        )}
         {/* How this device opens. A passkey device has no password to change, so the row
             that changes one is not offered there — the passkey row is how it gets one back. */}
         {store.passkeyPossible && (

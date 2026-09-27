@@ -18,10 +18,13 @@ import {
   finishMessage,
   loadSignInHandshake,
   saveSignInHandshake,
+  mfaSettingsLink,
   signInErrorKey,
   waitForSignIn,
   type SignInHandshake,
 } from '@/lib/signIn';
+import { parseShape } from '@/lib/apiShape';
+import { SignInProvidersShape } from '@/lib/signInShapes';
 import { SIGN_IN_POLL_TIMEOUT_MS } from '@/constants/signIn';
 
 test('the finish challenge is byte-identical to the platform’s', () => {
@@ -126,4 +129,25 @@ test('a handshake survives a closed popup, and a stale one is dropped on read', 
   // …and dropped for good, not merely hidden.
   assert.equal(await loadSignInHandshake(Date.now() - SIGN_IN_POLL_TIMEOUT_MS * 2), null);
   await clearSignInHandshake();
+});
+
+test('the MFA settings link reaches the opener only when it is https', () => {
+  const url = 'https://auth.example.com/if/user/#/settings;{"page":"page-credentials"}';
+  assert.equal(mfaSettingsLink(url), url);
+  assert.equal(mfaSettingsLink('http://auth.example.com/if/user/'), null);
+  assert.equal(mfaSettingsLink('javascript:alert(1)'), null);
+  assert.equal(mfaSettingsLink(null), null);
+  assert.equal(mfaSettingsLink(undefined), null);
+});
+
+test('the providers contract takes the MFA settings link, null, or a server that predates it', () => {
+  const url = '/v1/wallet/auth/providers';
+  const base = { providers: ['authentik'], email: true };
+  assert.equal(
+    parseShape(url, SignInProvidersShape, { ...base, mfaSettingsUrl: 'https://a.example/if/user/' }).mfaSettingsUrl,
+    'https://a.example/if/user/',
+  );
+  assert.equal(parseShape(url, SignInProvidersShape, { ...base, mfaSettingsUrl: null }).mfaSettingsUrl, null);
+  assert.equal(parseShape(url, SignInProvidersShape, base).mfaSettingsUrl, undefined);
+  assert.throws(() => parseShape(url, SignInProvidersShape, { ...base, mfaSettingsUrl: 42 }));
 });

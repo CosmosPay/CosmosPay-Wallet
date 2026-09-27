@@ -9,7 +9,13 @@
  */
 import { account, arrayOf, bool, id, nullable, num, object, optional, str, variant } from '@/lib/apiShape';
 
-export const SignInProvidersShape = object({ providers: arrayOf(str), email: bool });
+export const SignInProvidersShape = object({
+  providers: arrayOf(str),
+  email: bool,
+  // Absent on a server older than the field; null on a deployment with no Authentik.
+  // Checked as https before it reaches the OS opener — see `mfaSettingsLink`.
+  mfaSettingsUrl: optional(nullable(str)),
+});
 
 export const SignInAuthorizationShape = object({
   state: id,

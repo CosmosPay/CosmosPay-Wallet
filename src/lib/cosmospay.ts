@@ -548,7 +548,9 @@ export type SignInFinish =
   | { status: 'backup_conflict'; stellarAddress: string };
 
 /** `GET {walletApiBase}/auth/providers` — what this deployment can offer. */
-export async function signInProviders(accessKey: string | null = null): Promise<{ providers: string[]; email: boolean }> {
+export async function signInProviders(
+  accessKey: string | null = null,
+): Promise<{ providers: string[]; email: boolean; mfaSettingsUrl?: string | null }> {
   return getPlatformJson(`${walletApiBase()}/auth/providers`, SignInProvidersShape, signInHeaders(accessKey));
 }
 

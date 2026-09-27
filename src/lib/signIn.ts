@@ -87,6 +87,15 @@ export function signInErrorKey(reason: SignInError['reason'], detail: string | n
   return `signin.error.${reason}`;
 }
 
+/**
+ * The server's link to the account's MFA settings, or null when it is not one the wallet
+ * will hand to the OS opener. Same boundary as `openSignIn`: a string from the network
+ * becomes a launched program, so anything but https is dropped rather than opened.
+ */
+export function mfaSettingsLink(url: string | null | undefined): string | null {
+  return url && isHttpsUrl(url) ? url : null;
+}
+
 /* ------------------------------- handshake ------------------------------- */
 
 /**

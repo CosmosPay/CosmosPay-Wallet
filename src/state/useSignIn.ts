@@ -22,6 +22,7 @@ import {
   loadSignInHandshake,
   openSignIn,
   saveSignInHandshake,
+  mfaSettingsLink,
   waitForSignIn,
   type SignInHandshake,
 } from '@/lib/signIn';
@@ -65,19 +66,30 @@ export function useSignIn(
   const [methods, setMethods] = useState<SignInOffer | null>(null);
   const abort = useRef(false);
 
-  /** Ask the server what it offers. On failure, offer nothing rather than a guess. */
-  const loadMethods = useCallback(async () => {
-    try {
-      const res = await signInProviders(await accessKey());
-      setMethods({
-        providers: SIGN_IN_PROVIDERS.filter((p) => res.providers.includes(p)),
-        email: res.email,
-      });
-    } catch (e) {
-      setMethods({ providers: [], email: false });
-      flash((e as Error).message || t('signin.error.unavailable'), 'err');
-    }
-  }, [flash, t]);
+  /**
+   * Ask the server what it offers. On failure, offer nothing rather than a guess.
+   *
+   * `quiet` is for a screen where the offer is an extra, not the point — Settings, which
+   * only wants the MFA settings link. There a failure hides the row instead of painting
+   * an error, and leaves the offer unset so the sign-in screen asks again for itself.
+   */
+  const loadMethods = useCallback(
+    async (opts: { quiet?: boolean } = {}) => {
+      try {
+        const res = await signInProviders(await accessKey());
+        setMethods({
+          providers: SIGN_IN_PROVIDERS.filter((p) => res.providers.includes(p)),
+          email: res.email,
+          mfaSettingsUrl: mfaSettingsLink(res.mfaSettingsUrl),
+        });
+      } catch (e) {
+        if (opts.quiet) return;
+        setMethods({ providers: [], email: false, mfaSettingsUrl: null });
+        flash((e as Error).message || t('signin.error.unavailable'), 'err');
+      }
+    },
+    [flash, t],
+  );
 
   const fail = useCallback(
     (e: unknown, method: SignInMethod) => {
