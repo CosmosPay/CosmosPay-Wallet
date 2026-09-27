@@ -33,6 +33,7 @@ import {
 // `ChangePasswordDeps`. That is what keeps this module's own logic reachable from
 // node:test, and what stops a vault function owning UI strings.
 import { deviceAuthEnabled, disableDeviceAuth } from '@/lib/deviceAuth';
+import { dropPasskeyUnlock } from '@/lib/passkeyUnlock';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
 import { tNow } from '@/lib/i18n';
@@ -51,14 +52,10 @@ const cosmosPayKey = (id: string) => `cosmos.pay.${id}`;
 // the user confirming via the emailed link and (b) the matching stellarAddress.
 // It is not a long-lived secret and needs no password to survive a reload.
 const cosmosPayPendingKey = (id: string) => `cosmos.pay.pending.${id}`;
-// A Pollar (social-login) wallet's session: the bearer + refresh token, the wallet
-// Pollar resolved, and where to reach it. Sealed under the SAME app password as every
-// other box, because a refresh token is a spendable credential for a funded account —
-// it is what lets a stranger with the device file ask Pollar to sign.
-//
-// It also stands in for the secret box on a Pollar wallet, which has none: the app
-// password is proven by opening THIS box instead. See `primaryBoxKey`.
-const pollarKey = (id: string) => `cosmos.pollar.${id}`;
+
+// What the old Pollar login left behind — read only by `purgeLegacyPollar`, which removes it.
+const LEGACY_POLLAR_PREFIX = 'cosmos.pollar.';
+const LEGACY_POLLAR_NOTICE_KEY = 'cosmos.pollarRemoved';
 
 // legacy single-wallet keys (migrated on first run)
 const OLD_VAULT = 'cosmos.vault';
@@ -73,38 +70,8 @@ export interface VaultSecret {
  *  'x' covers non-binary and prefer-not-to-say. */
 export type Gender = 'm' | 'f' | 'x';
 
-/**
- * How the wallet's key is held.
- *
- * `local` (the default, and what every entry written before this existed is) means the
- * seed is in `cosmos.w.<id>` on this device and the wallet signs for itself. `pollar`
- * means the key lives in Pollar's KMS: there is no secret box, `secretOf` has nothing
- * to return, and signing goes out to Pollar through `lib/pollarApi.ts`.
- *
- * Absent rather than `'local'` on existing entries on purpose — a migration that
- * rewrites every WalletEntry to add a field whose absence already means the right
- * thing is a write that can fail for no gain. `isPollar` reads it, nothing else does.
- */
-export type WalletKind = 'local' | 'pollar';
-
 export interface WalletEntry {
   id: string;
-  kind?: WalletKind; // absent = 'local'
-  /** Pollar's own user id, for display on the account screen. Pollar wallets only. */
-  pollarUserId?: string | null;
-  /** Which provider the user logged in with ('google' | 'github'). Pollar wallets only. */
-  pollarProvider?: string;
-  /**
-   * Set on the TESTNET half of a social login, naming the wallet it belongs to.
-   *
-   * A social login produces two addresses because a custodied mainnet account cannot be
-   * used on testnet, but the user has ONE account and expects one row in the switcher.
-   * So the seeded half is hidden and reached through the network selector instead: the
-   * pair is (identity, network), and `entryForNetwork` is what resolves it. Absent on
-   * every other wallet, which is how a plain seed wallet stays free to be used on any
-   * network without any of this applying to it.
-   */
-  testnetFor?: string;
   publicKey: string; // G...
   name: string; // user name / nickname
   birthdate: string; // ISO "YYYY-MM-DD" (required at signup)
@@ -119,6 +86,24 @@ export interface WalletEntry {
   cosmosPayOrgId?: string;
   // Default BlindPay fiat receiver (KYC account) used for on/off-ramp.
   cosmosPayReceiverId?: string;
+  /**
+   * The dev platform keeps a backup of this wallet's seed, sealed under the app password
+   * (`lib/cloudBackup.ts`). What `changeAppPassword` reads to know the backup has to be
+   * re-sealed too — otherwise the next device would need the password this one gave up.
+   */
+  cloudBackup?: boolean;
+  /**
+   * The email registered with the two SEP-30 recovery servers, when recovery is on.
+   *
+   * It is NOT `email` and must not be folded into it. An identity is write-only in
+   * SEP-30 — `GET /accounts/<address>` reports each identity's role and whether the
+   * caller is authenticated as it, never the address it holds — so this is the only
+   * record of who the servers will actually let recover this account. The profile email
+   * is editable at any time and says nothing about what was registered; showing that one
+   * as the recovery address is how a screen promises an inbox that cannot recover
+   * anything. Absent means recovery was never turned on from this device.
+   */
+  recoveryEmail?: string;
 }
 
 /**
@@ -239,6 +224,61 @@ export async function migrate(): Promise<void> {
   }
 }
 
+/**
+ * Drop what is left of the old Pollar login from this device. Once, at startup.
+ *
+ * Pollar wallets were custodial: the key was in Pollar's KMS, and all this device held for
+ * one was an entry in the list and a sealed Pollar session (`cosmos.pollar.<id>`). The
+ * wallet no longer speaks to Pollar, so such an entry is a wallet it can neither sign for
+ * nor open — and its FUNDS are untouched by this, because they were never here: they stay
+ * with Pollar, at the same address.
+ *
+ * What a Pollar login also left was the TESTNET half of the pair — an ordinary seed wallet
+ * hidden from the pickers by `testnetFor`. That one is kept and made visible, because its
+ * seed is on this device and nothing else holds it. `migratedTo` (the target of a fund move)
+ * is dropped for the same reason `testnetFor` is: nothing reads it any more.
+ *
+ * Returns how many Pollar wallets were removed, and leaves a flag the store reads once to
+ * say so (`takeLegacyPollarNotice`). A device with none pays one read.
+ */
+export async function purgeLegacyPollar(): Promise<number> {
+  type Legacy = WalletEntry & { kind?: string; testnetFor?: string; migratedTo?: string; pollarUserId?: unknown; pollarProvider?: unknown };
+  const list = (await listWallets()) as Legacy[];
+  const legacy = list.filter((w) => w.kind === 'pollar');
+  const stale = list.some((w) => w.kind !== undefined || w.testnetFor !== undefined || w.migratedTo !== undefined);
+  if (!legacy.length && !stale) return 0;
+
+  for (const w of legacy) {
+    await storageRemove(LEGACY_POLLAR_PREFIX + w.id);
+    await storageRemove(vaultKey(w.id));
+    await disableDeviceAuth(w.id);
+    await storageRemove(cosmosPayKey(w.id));
+    await storageRemove(cosmosPayPendingKey(w.id));
+  }
+  const gone = new Set(legacy.map((w) => w.id));
+  const kept: WalletEntry[] = list
+    .filter((w) => !gone.has(w.id))
+    .map(({ kind: _k, testnetFor: _t, migratedTo: _m, pollarUserId: _u, pollarProvider: _p, ...rest }) => rest);
+  await writeWallets(kept);
+
+  const active = await getActiveId();
+  if (active !== null && gone.has(active)) {
+    if (kept[0]) await setActiveId(kept[0].id);
+    else await storageRemove(ACTIVE_KEY);
+  }
+  if (!kept.length) await dropPasskeyUnlock();
+  if (legacy.length) await storageSet(LEGACY_POLLAR_NOTICE_KEY, String(legacy.length));
+  return legacy.length;
+}
+
+/** How many Pollar wallets the clean-up removed, once — then forgotten. 0 when none. */
+export async function takeLegacyPollarNotice(): Promise<number> {
+  const raw = await storageGet(LEGACY_POLLAR_NOTICE_KEY);
+  if (!raw) return 0;
+  await storageRemove(LEGACY_POLLAR_NOTICE_KEY);
+  return Number(raw) || 0;
+}
+
 /* ---------------------------- create / unlock --------------------------- */
 
 /**
@@ -249,7 +289,7 @@ export async function migrate(): Promise<void> {
  */
 export async function addWallet(
   secret: VaultSecret,
-  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean; testnetFor?: string },
+  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean; avatar?: string; cloudBackup?: boolean },
   vk: VaultKey,
 ): Promise<WalletEntry> {
   const list = await listWallets();
@@ -271,7 +311,8 @@ export async function addWallet(
     gender: info.gender,
     metricsOptIn: info.metricsOptIn,
     promoOptIn: info.promoOptIn,
-    testnetFor: info.testnetFor,
+    avatar: info.avatar,
+    cloudBackup: info.cloudBackup,
     createdAt: Date.now(),
   };
   await writeWallets([...list, entry]);
@@ -282,7 +323,7 @@ export async function addWallet(
 /** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));
@@ -290,97 +331,9 @@ export async function updateWalletMeta(
   return next;
 }
 
-/** Is this a Pollar (social-login, KMS-custodied) wallet? Absent `kind` means local. */
-export function isPollar(entry: Pick<WalletEntry, 'kind'>): boolean {
-  return entry.kind === 'pollar';
-}
-
-/**
- * The wallet the USER means, which is never a testnet half.
- *
- * A social login writes two entries and shows one. Everything the user points at — the
- * row in the switcher, the row highlighted as active, the wallet they ask to delete — is
- * the identity; the seeded half is an implementation detail of being on testnet.
- */
-export function identityOf(entry: WalletEntry, wallets: WalletEntry[]): WalletEntry {
-  if (!entry.testnetFor) return entry;
-  return wallets.find((w) => w.id === entry.testnetFor) ?? entry;
-}
-
-/**
- * Resolve (identity, network) to the entry that actually holds a key there.
- *
- * This is the whole of the pairing rule, in one function so the network selector and the
- * wallet switcher cannot disagree about it. A custodied wallet has an address on mainnet
- * and nowhere else; its seeded half has one everywhere but is only ever reached off
- * mainnet. A plain local wallet has neither a sibling nor a parent, so both branches
- * return it unchanged and none of this touches it.
- *
- * Falls back to the entry it was given when the other half is missing — a pair whose
- * seeded half was deleted still works on mainnet, and the caller decides whether being
- * off mainnet with no sibling is an error.
- */
-export function entryForNetwork(
-  entry: WalletEntry,
-  wallets: WalletEntry[],
-  mainnet: boolean,
-): WalletEntry {
-  const identity = identityOf(entry, wallets);
-  if (mainnet) return identity;
-  return wallets.find((w) => w.testnetFor === identity.id) ?? identity;
-}
-
-/**
- * The box that PROVES the app password for a wallet.
- *
- * For a local wallet that is the secret box, as it always was. A Pollar wallet has no
- * secret box — the key is in Pollar's KMS — so its session box takes the role: it is
- * sealed under the same vault key, so opening it establishes exactly what opening the
- * secret box established, and a Pollar-only device still has something to unlock
- * against. Without this, `unlockSession` on such a device would throw `vault.notFound`
- * and the user would be locked out of a wallet that is perfectly intact.
- */
-function primaryBoxKey(entry: Pick<WalletEntry, 'id' | 'kind'>): string {
-  return isPollar(entry) ? pollarKey(entry.id) : vaultKey(entry.id);
-}
-
-/**
- * Thrown when something asks a Pollar wallet for a local secret.
- *
- * Its own type rather than `vault.notFound`, because the two are opposite situations:
- * "this wallet is damaged" versus "this wallet works and its key is somewhere else".
- * A caller that catches this can route to Pollar; one that saw `notFound` could only
- * tell the user their wallet is missing.
- */
-export class NoLocalKeyError extends Error {
-  constructor() {
-    super(tNow('vault.noLocalKey'));
-    this.name = 'NoLocalKeyError';
-  }
-}
-
-/**
- * The SECRET box — the seed. Every caller of this wants a key to sign with.
- *
- * A Pollar wallet has no such box, and the honest answer for it is not "that wallet was
- * not found on this device": the wallet is intact and working, its key is simply in
- * Pollar's KMS. Told apart by the presence of the session box, so the distinction is
- * made from what is actually on disk rather than from a flag that could disagree with
- * it. `revealBackup` and the export screen are the callers this matters to — both would
- * otherwise tell a Pollar user their wallet is missing.
- */
+/** The wallet's sealed seed. Every caller of this wants a key to sign with, or a proof. */
 async function readBox(id: string): Promise<SealedBox> {
   const raw = await storageGet(vaultKey(id));
-  if (!raw) {
-    if (await storageGet(pollarKey(id))) throw new NoLocalKeyError();
-    throw new Error(tNow('vault.notFound'));
-  }
-  return JSON.parse(raw) as SealedBox;
-}
-
-/** The password-proving box for an entry, whichever kind it is. */
-async function readPrimaryBox(entry: Pick<WalletEntry, 'id' | 'kind'>): Promise<SealedBox> {
-  const raw = await storageGet(primaryBoxKey(entry));
   if (!raw) throw new Error(tNow('vault.notFound'));
   return JSON.parse(raw) as SealedBox;
 }
@@ -413,24 +366,16 @@ export async function openVault(id: string, vk: VaultKey): Promise<VaultSecret> 
 }
 
 /**
- * Prove a vault key opens `entry`, whichever box that wallet actually keeps.
- *
- * The key-door twin of what `unlockSession` does through the password door, and the one
- * to reach for whenever a live session adopts another wallet — switching to it, falling
- * onto it after a removal, unlocking with the device. Those three all called `openVault`,
- * which asks for the SECRET box, so every one of them failed on a Pollar wallet that has
- * none: switching refused with an error, and the biometric unlock refused an enrolment
- * that was perfectly good.
+ * Prove a vault key opens `entry`. The key-door twin of what `unlockSession` does through the
+ * password door, and the one to reach for whenever a live session adopts another wallet —
+ * switching to it, falling onto it after a removal, unlocking with the device.
  *
  * Throws what the caller needs to tell apart: `VaultKeyMismatchError` when the key is
  * wrong, `vault.notFound` when the box is missing. Returns nothing — the proof is the
  * point, and a caller that wants the contents asks for them by name.
  */
-export async function openPrimaryBox(
-  entry: Pick<WalletEntry, 'id' | 'kind'>,
-  vk: VaultKey,
-): Promise<void> {
-  await openWithKey(await readPrimaryBox(entry), vk);
+export async function openWalletBox(entry: Pick<WalletEntry, 'id'>, vk: VaultKey): Promise<void> {
+  await openWithKey(await readBox(entry.id), vk);
 }
 
 /** Verify the app password by decrypting the active wallet. */
@@ -457,10 +402,7 @@ export async function verifyVaultKey(vk: VaultKey): Promise<boolean> {
   const entry = await getActiveEntry();
   if (!entry) return false;
   try {
-    // The proving box, not the secret one: a device whose active wallet came from a
-    // social login has no secret box, and answering `false` there would call a good key
-    // bad — on the one wallet kind that cannot fall back to typing a seed.
-    await openPrimaryBox(entry, vk);
+    await openWalletBox(entry, vk);
     return true;
   } catch {
     return false;
@@ -486,8 +428,7 @@ export interface UnlockedVault {
 export async function unlockSession(password: string): Promise<UnlockedVault> {
   const entry = await getActiveEntry();
   if (!entry) throw new Error(tNow('vault.notFound'));
-  // For a Pollar wallet this is the session box, not a secret box — see `primaryBoxKey`.
-  const box = await readPrimaryBox(entry);
+  const box = await readBox(entry.id);
   const vaultKey = await deriveVaultKey(password, kdfOf(box));
   await openWithKey(box, vaultKey); // throws WrongPasswordError — this is the guess
   return { entry, vaultKey };
@@ -541,19 +482,13 @@ export async function convergeSeals(password: string, vk: VaultKey): Promise<Vau
   // `unlockSession` does, so both agree on which box the session key came from.
   const active = await getActiveEntry();
   if (active) {
-    // `primaryBoxKey`, not `vaultKey`: on a Pollar wallet the box the session key has to
-    // cover is the session box. Checking the secret box there would test something that
-    // does not exist, find it uncovered, and abort every pass forever.
-    const box = primaryBoxKey(active);
+    const box = vaultKey(active.id);
     await resealOnto(box, password, target);
     if (!(await coveredBy(box, target))) return vk;
   }
   for (const w of await listWallets()) {
     await resealOnto(vaultKey(w.id), password, target);
     await resealOnto(cosmosPayKey(w.id), password, target);
-    // A Pollar wallet has no secret box, so this IS its box — leaving it behind would
-    // hand the session a key that cannot read the credential it is about to sign with.
-    await resealOnto(pollarKey(w.id), password, target);
   }
   return target;
 }
@@ -619,143 +554,6 @@ export async function saveCosmosPay(
   await writeWallets(next);
   return next;
 }
-
-/* ----------------------------- Pollar session ---------------------------- */
-
-/**
- * A Pollar session at rest: the tokens, the wallet Pollar resolved, and where to reach
- * Pollar directly.
- *
- * Stored sealed, under the same key as everything else. The refresh token is the part
- * that matters: it is single-use but long-lived, and it buys an access token that can
- * ask Pollar to sign for a funded account. Plaintext here would mean the device file is
- * the account.
- *
- * `expires_at` travels with it so a resumed session knows whether to refresh before its
- * first call rather than discovering it with a 401 in the middle of a payment.
- */
-export interface PollarStoredSession {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  expires_at: number;
-  user_id: string | null;
-  address: string;
-  publishable_key: string;
-  api_base_url: string;
-  provider?: string;
-}
-
-export async function savePollarSession(id: string, data: PollarStoredSession, vk: VaultKey): Promise<void> {
-  await storageSet(pollarKey(id), JSON.stringify(await sealWithKey(JSON.stringify(data), vk)));
-}
-
-export async function getPollarSession(id: string, vk: VaultKey): Promise<PollarStoredSession | null> {
-  const raw = await storageGet(pollarKey(id));
-  if (!raw) return null;
-  try {
-    return JSON.parse(await openWithKey(JSON.parse(raw) as SealedBox, vk)) as PollarStoredSession;
-  } catch {
-    return null;
-  }
-}
-
-/** The same read through the password door, for `changePassword`. See its CosmosPay twin. */
-async function readPollarWithPassword(id: string, password: string): Promise<PollarStoredSession | null> {
-  const raw = await storageGet(pollarKey(id));
-  if (!raw) return null;
-  try {
-    return JSON.parse(await open(JSON.parse(raw) as SealedBox, password)) as PollarStoredSession;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Create a wallet whose key Pollar custodies.
- *
- * No secret box is written, because there is no secret: the session box IS this
- * wallet's box, which is what `primaryBoxKey` encodes and what lets the app password be
- * proven on a device that has never held a seed.
- *
- * The vault key is derived here with fresh parameters when the caller has none — a
- * first-ever wallet on this device — and passed in when there is already a session, so
- * the new entry lands under the key the rest of the device is already on. Deriving a
- * second key for it would leave a device `convergeSeals` has to walk on the next
- * unlock, and until then a session key that opens some wallets and not others.
- */
-export async function createPollarWallet(
-  profile: Omit<WalletEntry, 'id' | 'createdAt' | 'kind' | 'publicKey'> & { publicKey: string },
-  session: PollarStoredSession,
-  vk: VaultKey,
-): Promise<{ entry: WalletEntry; wallets: WalletEntry[] }> {
-  const entry: WalletEntry = {
-    ...profile,
-    id: genId(),
-    kind: 'pollar',
-    pollarUserId: session.user_id,
-    pollarProvider: session.provider,
-    createdAt: Date.now(),
-  };
-  await savePollarSession(entry.id, session, vk);
-  const wallets = [...(await listWallets()), entry];
-  await writeWallets(wallets);
-  await setActiveId(entry.id);
-  return { entry, wallets };
-}
-
-/**
- * The same wallet from the same login, with the key on THIS device instead.
- *
- * Testnet takes this path: the login is real, the account and its API keys are real, and
- * the seed was generated here rather than custodied by Pollar — because activating a
- * custodied wallet funds its reserve out of the operator's XLM, and a network whose
- * lumens come from a faucet is not worth spending real ones on.
- *
- * So it is an ORDINARY local wallet: a secret box, no session box, `kind` left absent the
- * way every seed wallet leaves it. Nothing downstream needs to know it began as a social
- * login — which is the point, because everything downstream already works for a wallet
- * that signs for itself.
- *
- * Split from `addWallet` only for the avatar: the provider hands back a picture, and a
- * signup form has no field that would have collected one.
- */
-export async function createSocialLocalWallet(
-  profile: Omit<WalletEntry, 'id' | 'createdAt' | 'kind' | 'publicKey'> & { publicKey: string },
-  secret: VaultSecret,
-  vk: VaultKey,
-): Promise<{ entry: WalletEntry; wallets: WalletEntry[] }> {
-  const entry = await addWallet(
-    secret,
-    {
-      publicKey: profile.publicKey,
-      name: profile.name,
-      birthdate: profile.birthdate,
-      email: profile.email,
-      gender: profile.gender,
-      metricsOptIn: profile.metricsOptIn,
-      promoOptIn: profile.promoOptIn,
-      // What makes it the hidden half of a pair rather than a second wallet in the list.
-      testnetFor: profile.testnetFor,
-    },
-    vk,
-  );
-  const wallets = profile.avatar
-    ? await updateWalletMeta(entry.id, { avatar: profile.avatar })
-    : await listWallets();
-  return { entry: wallets.find((w) => w.id === entry.id) ?? entry, wallets };
-}
-
-// There was a `clearPollarSession(id)` here that dropped the session box and left the
-// entry. It is gone, and it must not come back in that shape: for a Pollar wallet the
-// session box is ALSO the box `unlockSession` opens to prove the app password
-// (`primaryBoxKey`), so removing it leaves the entry in the wallet list as something
-// that can never be unlocked again — with nothing on screen able to say why.
-//
-// Signing out of a Pollar wallet removes the whole entry, via `removeWallet`. That is
-// what sign-out means for an account whose key this device never held, and it costs the
-// user nothing: logging in with the same provider account resolves the same Stellar
-// wallet, funds included.
 
 /** Mark a receiver as the wallet's default BlindPay fiat account. */
 export async function saveDefaultReceiver(id: string, receiverId: string): Promise<WalletEntry[]> {
@@ -869,25 +667,15 @@ export async function removeWallet(
   await disableDeviceAuth(id);
   await storageRemove(cosmosPayKey(id));
   await storageRemove(cosmosPayPendingKey(id));
-  // The Pollar session outlives the entry unless it goes here — and unlike an orphaned
-  // Keystore key it is a live bearer credential for an account that still holds funds.
-  await storageRemove(pollarKey(id));
-  // The testnet half goes with it. Hidden from every picker, an orphan would be a wallet
-  // holding a seed that nothing on screen can reach, name or delete — and one the user
-  // believes they already deleted.
-  const paired = (await listWallets()).filter((w) => w.testnetFor === id).map((w) => w.id);
-  for (const sibling of paired) {
-    await storageRemove(vaultKey(sibling));
-    await disableDeviceAuth(sibling);
-    await storageRemove(cosmosPayKey(sibling));
-    await storageRemove(cosmosPayPendingKey(sibling));
-    await storageRemove(pollarKey(sibling));
-  }
-  const dropped = new Set([id, ...paired]);
-  const remaining = (await listWallets()).filter((w) => !dropped.has(w.id));
+  const remaining = (await listWallets()).filter((w) => w.id !== id);
   await writeWallets(remaining);
+  // The passkey door is the DEVICE's, not a wallet's — it holds the one app password all of
+  // them share — so it goes only with the last of them. Left behind, it would offer a
+  // passkey unlock for whatever vault the next onboarding writes, under a password it
+  // never held.
+  if (!remaining.length) await dropPasskeyUnlock();
   let active = await getActiveId();
-  if (active !== null && dropped.has(active)) {
+  if (active === id) {
     active = remaining[0]?.id ?? null;
     if (active) await setActiveId(active);
     else await storageRemove(ACTIVE_KEY);
@@ -974,15 +762,9 @@ export async function changePassword(
   //    `WrongPasswordError` on any wallet leaves the device untouched.
   const opened = [];
   for (const w of wallets) {
-    // A Pollar wallet has no secret box; its session box is what the password opens, and
-    // `open` there throws `WrongPasswordError` exactly as `unlockWallet` would. Calling
-    // `unlockWallet` on one would throw `vault.notFound` and abort a password change
-    // that has nothing wrong with it.
-    const secret = isPollar(w) ? null : await unlockWallet(w.id, oldPassword);
+    const secret = await unlockWallet(w.id, oldPassword);
     const cosmosPay = await readCosmosPayWithPassword(w.id, oldPassword);
-    const pollar = await readPollarWithPassword(w.id, oldPassword);
-    if (isPollar(w) && !pollar) throw new WrongPasswordError();
-    opened.push({ entry: w, secret, cosmosPay, pollar });
+    opened.push({ entry: w, secret, cosmosPay });
   }
 
   // 2. Seal everything under the new password, still writing nothing. This is pure crypto
@@ -997,13 +779,9 @@ export async function changePassword(
   for (const o of opened) {
     sealed.push({
       entry: o.entry,
-      vault: o.secret ? JSON.stringify(await sealWithKey(JSON.stringify(o.secret), newVaultKey)) : null,
+      vault: JSON.stringify(await sealWithKey(JSON.stringify(o.secret), newVaultKey)),
       // Re-seal the CosmosPay credential too, otherwise it would be undecryptable.
       cosmosPay: o.cosmosPay ? JSON.stringify(await sealWithKey(JSON.stringify(o.cosmosPay), newVaultKey)) : null,
-      // And the Pollar session, for the same reason with a sharper edge: on a Pollar
-      // wallet this box is also what the next unlock opens to prove the password, so
-      // leaving it on the old key locks the user out of the wallet entirely.
-      pollar: o.pollar ? JSON.stringify(await sealWithKey(JSON.stringify(o.pollar), newVaultKey)) : null,
     });
   }
 
@@ -1032,9 +810,8 @@ export async function changePassword(
   //    failure is reported as a commit failure and the caller must end the session.
   try {
     for (const s of sealed) {
-      if (s.vault) await storageSet(vaultKey(s.entry.id), s.vault);
+      await storageSet(vaultKey(s.entry.id), s.vault);
       if (s.cosmosPay) await storageSet(cosmosPayKey(s.entry.id), s.cosmosPay);
-      if (s.pollar) await storageSet(pollarKey(s.entry.id), s.pollar);
     }
   } catch (err) {
     throw new PasswordChangeCommitError(err);
@@ -1066,8 +843,8 @@ export async function destroyAll(): Promise<void> {
     await disableDeviceAuth(w.id);
     await storageRemove(cosmosPayKey(w.id));
     await storageRemove(cosmosPayPendingKey(w.id));
-    await storageRemove(pollarKey(w.id));
   }
   await storageRemove(WALLETS_KEY);
   await storageRemove(ACTIVE_KEY);
+  await dropPasskeyUnlock();
 }

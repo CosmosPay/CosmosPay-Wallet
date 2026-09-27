@@ -18,6 +18,13 @@ export const scopeKey = (networkId: string, publicKey: string) => `|${networkId}
 export const accountKey = (networkId: string, publicKey: string) => `account${scopeKey(networkId, publicKey)}`;
 export const historyKey = (networkId: string, publicKey: string) => `history${scopeKey(networkId, publicKey)}`;
 
+/**
+ * Whether SEP-30 recovery is on for this account, read from the ledger (`lib/recovery.ts`).
+ * Scoped like every other read: an account's signers are a fact about one account on one
+ * network, and the same person's other wallet may well have a different answer.
+ */
+export const recoveryKey = (networkId: string, publicKey: string) => `recovery${scopeKey(networkId, publicKey)}`;
+
 /** Prices are global — the same USD quote regardless of which wallet is open. */
 export const PRICES_KEY = 'prices';
 
@@ -36,6 +43,7 @@ export type OpsDomain = 'swaps' | 'payins' | 'payouts' | 'liquidity';
 
 /** Prefixes, for invalidating a whole domain after a write. */
 export const ACCOUNT_PREFIX = 'account|';
+export const RECOVERY_PREFIX = 'recovery|';
 export const HISTORY_PREFIX = 'history|';
 export const OPS_PREFIX = 'ops:';
 
@@ -46,6 +54,11 @@ export const OPS_PREFIX = 'ops:';
  */
 export const TTL = {
   account: 15_000,
+  /**
+   * The account's signers. Long, because they change only when the user changes them —
+   * and every path that does invalidates this key itself.
+   */
+  recovery: 5 * 60_000,
   history: 30_000,
   prices: 60_000,
   /**

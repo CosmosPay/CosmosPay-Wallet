@@ -41,6 +41,12 @@ internal class AuthDeleteArgs {
     lateinit var key: String
 }
 
+/** A WebAuthn ceremony as JSON — passed to Credential Manager verbatim. See `Passkey.kt`. */
+@InvokeArg
+internal class PasskeyArgs {
+    lateinit var requestJson: String
+}
+
 @InvokeArg
 internal class ShareArgs {
     lateinit var text: String
@@ -171,6 +177,34 @@ class CosmosPlugin(private val activity: Activity) : Plugin(activity) {
         // "there was nothing to delete" is success. See `desktop.rs` for the same choice.
         DeviceAuth.delete(activity, args.key)
         invoke.resolve()
+    }
+
+    /**
+     * Whether this phone can run a passkey ceremony. A STATUS, like `authStatus`: "no" is a
+     * valid answer that the wallet shows as "use a password", never an error.
+     */
+    @Command
+    fun passkeyStatus(invoke: Invoke) {
+        val (available, reason) = Passkey.status()
+        invoke.resolve(JSObject().put("available", available).apply { reason?.let { put("reason", it.token) } })
+    }
+
+    @Command
+    fun passkeyCreate(invoke: Invoke) {
+        val args = invoke.parseArgs(PasskeyArgs::class.java)
+        Passkey.create(activity, args.requestJson, passkeyOutcome(invoke))
+    }
+
+    @Command
+    fun passkeyGet(invoke: Invoke) {
+        val args = invoke.parseArgs(PasskeyArgs::class.java)
+        Passkey.get(activity, args.requestJson, passkeyOutcome(invoke))
+    }
+
+    /** The provider's JSON goes back as `responseJson`, unparsed — see `PasskeyResponse` in models.rs. */
+    private fun passkeyOutcome(invoke: Invoke) = object : Outcome<String> {
+        override fun ok(value: String) = invoke.resolve(JSObject().put("responseJson", value))
+        override fun fail(failure: Failure, detail: String?) = invoke.rejectWith(failure, detail)
     }
 
     @Command

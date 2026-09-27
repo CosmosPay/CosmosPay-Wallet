@@ -11,11 +11,8 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 
 > **Truly non-custodial:** keys are generated and encrypted on your device. Neither the recovery
 > phrase nor the secret key ever leaves it. Servers only receive locally-signed transactions.
->
-> The one exception is **social login** (Google / GitHub), which is opt-in and **custodial**:
-> that key lives in Pollar's KMS, so there is no recovery phrase to lose and none to hold.
-> The onboarding screen states this above the buttons — before the consent screen, not after.
-> Wallets created or imported from a recovery phrase are unaffected.
+> Signing in with Cosmos Pay, Google, GitHub or an emailed code proves who you are; it never
+> hands the key to anyone.
 
 ## Features
 
@@ -25,6 +22,8 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 | Encrypted vault | **AES-256-GCM**, key derived with **PBKDF2** (210k iters); unlock decrypts in memory only |
 | Idle auto-lock | The session is dropped after 5 minutes without interaction; getting back in needs the password |
 | Unlock with the phone | Opt-in on Android/iOS. The vault key is sealed under a key the OS releases only for a live biometric check, and that is destroyed when the biometric set changes; the password keeps working throughout |
+| Passkey | Web, extension, desktop, Android 9+ and iOS 18+: a passkey replaces the password. One fingerprint opens the device, and the same passkey restores the cloud backup on the next device. A browser without WebAuthn PRF keeps the password |
+| Account recovery | SEP-30 with two independent servers, offered on Home once the account is funded: whoever proves the email to both can put a new key on the account |
 | Signing guard | `assertSafeToSign` decodes every XDR before the key touches it and refuses what does not fit the flow (see Security model) |
 | Balances, send & receive | Horizon; QR receive; XLM send creates the destination account when needed |
 | Swap | Via the Cosmos Pay gateway (auto-quotes, slippage protection) |
@@ -32,7 +31,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 | History | Last operations with color-coded icons (green in / red out / white neutral) + genesis marker |
 | Favorites & markets | Star assets to pin them in the top-5; live prices (CoinGecko) with animated tickers |
 | Multi-wallet | Create / import / switch under one password; per-wallet email, gender-aware greetings |
-| Social login | Sign in with Google or GitHub for a Stellar account without a recovery phrase. **Custodial** (Pollar KMS) — flagged as such before the consent screen. One login also creates an ordinary seed wallet for testnet under the same password |
+| Sign-in | Cosmos Pay (Authentik), Google, GitHub or an emailed code. The key is generated on the device; the server keeps a backup it cannot open |
 | Dapp provider | `window.cosmosWallet` (SEP-43-style): `getAddress`, `getNetwork`, `signTransaction`, `signMessage`, `requestPayment` |
 | SEP-7 links | `web+stellar:pay` via provider, Firefox protocol handler, `pay` omnibox keyword and address-bar detection |
 | Extension surfaces | Popup (400×600) and side panel / sidebar, with a persistent preference toggle |
@@ -51,6 +50,10 @@ Key derivation is verified against the official **SEP-5 test vector**.
 3. Unlocking decrypts **in memory only**; a wrong password fails the GCM auth tag and is rejected.
 4. Signing actions can require the password again (toggle in Settings). The dapp approval window
    signs locally — no secret ever reaches a page or server.
+   **Passkey instead of a password** (web, extension, desktop, and the apps on Android 9+ / iOS 18+): the app password becomes 32
+   random bytes sealed under the passkey's WebAuthn PRF output, so a fingerprint opens the
+   device and the same passkey opens the cloud backup on the next one — see
+   [src/lib/passkeyUnlock.ts](src/lib/passkeyUnlock.ts).
 5. **Idle auto-lock:** an open session holds the decrypted key, so 5 minutes without interaction
    drops it and the password is required again.
 6. **Nothing is signed that has not been decoded first.** Everything the wallet signs but did not

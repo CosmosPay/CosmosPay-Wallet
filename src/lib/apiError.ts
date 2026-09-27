@@ -37,9 +37,8 @@ export class ApiRequestError extends Error {
  *
  * It used to fall back to `provider_unavailable` — "an upstream is in trouble" — for a
  * request the service had refused itself. The distinction matters here because the
- * Pollar login flow is budgeted tightly enough to hit it in normal use: twenty
- * `authorize` calls per ten minutes is the cap on wallet generation, and a user who
- * fumbles a consent screen a few times is inside that budget but not far inside it.
+ * sign-in routes are budgeted tightly enough to hit in normal use, and a user who fumbles
+ * a consent screen a few times is inside that budget but not far inside it.
  *
  * `retryAfterMs` is the server's own answer to "when", so nothing here invents a
  * backoff curve: `Retry-After` is authoritative and `RateLimit-Reset` is the fallback.

@@ -49,7 +49,9 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   'profile-setup': lazy(() => import('@/features/onboarding/ProfileSetup').then((m) => ({ default: m.ProfileSetup }))),
   password: lazy(() => import('@/features/onboarding/PasswordSetup').then((m) => ({ default: m.PasswordSetup }))),
   'device-auth': lazy(() => import('@/features/onboarding/DeviceAuthSetup').then((m) => ({ default: m.DeviceAuthSetup }))),
-  'social-login': lazy(() => import('@/features/onboarding/SocialLogin').then((m) => ({ default: m.SocialLogin }))),
+  'sign-in': lazy(() => import('@/features/onboarding/SignIn').then((m) => ({ default: m.SignIn }))),
+  'sign-in-password': lazy(() => import('@/features/onboarding/SignInPassword').then((m) => ({ default: m.SignInPassword }))),
+  recover: lazy(() => import('@/features/onboarding/RecoverAccount').then((m) => ({ default: m.RecoverAccount }))),
   home: Home,
   earn: Earn,
   defindex: lazy(() => import('@/features/wallet/Defindex').then((m) => ({ default: m.Defindex }))),
@@ -117,6 +119,16 @@ export default function WalletApp() {
 function WalletAppShell() {
   const store = useWalletStore();
   const { screen } = store;
+
+  // GitHub Pages is a static host, so public links need a real Astro page. Once
+  // that page boots the wallet, honour its path and open the matching in-app tab.
+  // The check waits for a session: on a locked wallet it is applied immediately
+  // after unlock, rather than being overwritten by the boot/unlock transition.
+  useEffect(() => {
+    if (!store.hasSession || typeof window === 'undefined') return;
+    const path = window.location.pathname.replace(/\/+$/, '');
+    if (path.endsWith('/earn') && store.screen !== 'earn') store.go('earn', 'earn');
+  }, [store, store.hasSession, store.screen]);
 
   // Publishes --kb-h / .kb-open for the whole document, so every screen's footer can
   // stay above the on-screen keyboard instead of being pushed up over its own content.

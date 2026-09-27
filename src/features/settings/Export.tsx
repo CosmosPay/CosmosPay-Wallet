@@ -4,6 +4,7 @@ import { BackBar } from '@/ui/BackBar';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Reveal } from '@/features/settings/Reveal';
+import { PasskeyButton } from '@/ui/PasskeyButton';
 import { useBusy } from '@/hooks/useBusy';
 import { useCopied } from '@/hooks/useCopied';
 import '@/styles/features/settings/export.css';
@@ -26,6 +27,14 @@ export function Export({ store }: { store: WalletStore }) {
       else store.flash(t('pwd.label') + ' ✗', 'err');
     });
 
+  // A passkey device has no password to type here; the passkey stands in for it. Null means
+  // the store already said why (a dismissed sheet says nothing at all).
+  const unlockWithPasskey = () =>
+    run(async () => {
+      const result = await store.revealBackupWithPasskey();
+      if (result) setBackup(result);
+    });
+
   const mnemonic = backup?.mnemonic ?? null;
   const secret = backup?.secret ?? '';
 
@@ -42,13 +51,24 @@ export function Export({ store }: { store: WalletStore }) {
 
       {!backup ? (
         <>
-          <div className="export-hint">
-            {t('export.enterPwd')}
-          </div>
-          <input type="password" value={pwd} placeholder={t('pwd.label')} onChange={(e) => setPwd((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} className="input export-pwd-input" />
-          <div className="kb-dock">
-            <PrimaryButton disabled={!pwd || busy} onClick={unlock}>{busy ? <Spinner /> : t('export.reveal')}</PrimaryButton>
-          </div>
+          {store.passkeyUnlock ? (
+            <>
+              <div className="export-hint">{t('passkey.exportHint')}</div>
+              <div className="kb-dock">
+                <PasskeyButton label={t('export.reveal')} busy={busy} onClick={unlockWithPasskey} />
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="export-hint">
+                {t('export.enterPwd')}
+              </div>
+              <input type="password" value={pwd} placeholder={t('pwd.label')} onChange={(e) => setPwd((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} className="input export-pwd-input" />
+              <div className="kb-dock">
+                <PrimaryButton disabled={!pwd || busy} onClick={unlock}>{busy ? <Spinner /> : t('export.reveal')}</PrimaryButton>
+              </div>
+            </>
+          )}
         </>
       ) : (
         <>
