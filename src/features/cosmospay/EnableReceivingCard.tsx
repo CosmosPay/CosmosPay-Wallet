@@ -59,6 +59,8 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
   const t = store.t;
   const link = store.cosmosLink;
   const [code, setCode] = useState('');
+  // Optional: with it the wallet is also backed up, so a sign-in on another device brings it back.
+  const [password, setPassword] = useState('');
   // LOCAL busy: only this card's own actions spin its buttons — an unrelated global
   // action (e.g. Home's "activate account" / Friendbot funding) must not.
   const [busy, run] = useBusy();
@@ -70,11 +72,12 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
         title={t('cosmospay.codeTitle')}
         desc={t('cosmospay.codeDesc')}
         cta={t('cosmospay.linkVerifyCta')}
-        onCta={() => run(() => store.submitLinkCode(code))}
+        onCta={() => run(() => store.submitLinkCode(code, password))}
         ctaDisabled={code.length !== 6}
         secondary={t('common.cancel')}
         onSecondary={() => {
           setCode('');
+          setPassword('');
           store.cancelLink();
         }}
       >
@@ -86,6 +89,15 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
           placeholder={t('cosmospay.codePlaceholder')}
           className="enable-receiving-code"
         />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
+          autoComplete="current-password"
+          placeholder={t('cosmospay.backupPasswordPlaceholder')}
+          className="enable-receiving-password"
+        />
+        <div className="enable-receiving-hint">{t('cosmospay.backupPasswordHint')}</div>
       </Card>
     );
   }

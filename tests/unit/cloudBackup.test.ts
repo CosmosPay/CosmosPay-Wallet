@@ -114,6 +114,18 @@ test('a recovered wallet’s account travels inside a v3 box too', async () => {
   assert.deepEqual(await openBackup(box, { passkey: passkey() }, account), { ...secret, account });
 });
 
+/* What `recoverWallet` seals after a SEP-30 re-key: the new key is no longer the account.
+   The server files the box under the ACCOUNT, and restore checks against that — so a box
+   sealed without the account is one the recovered wallet can never open again. */
+test('a recovered wallet opens under its account only when sealed with it', async () => {
+  const account = Keypair.random().publicKey();
+  const withAccount = await sealBackup(secret, PASSWORD, account);
+  assert.deepEqual(await openBackup(withAccount, PASSWORD, account), { ...secret, account });
+
+  const without = await sealBackup(secret, PASSWORD);
+  await assert.rejects(openBackup(without, PASSWORD, account), BackupMismatchError);
+});
+
 test('a passkey against a v2 box is refused as a passkey problem, not a wrong password', async () => {
   const box = await sealBackup(secret, PASSWORD);
   await assert.rejects(openBackup(box, { passkey: passkey() }, kp.publicKey()), BackupPasskeyError);

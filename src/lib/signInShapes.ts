@@ -43,6 +43,10 @@ const Ready = object({
   identity: Identity,
   account: str,
   backup: nullable(object({ stellarAddress: account, box: id, updatedAt: str })),
+  // Every wallet the account keeps a backup of (servers from the per-wallet backups on).
+  // `str`, not `account`: a Solana or Monad box names an address that is not a G…, and one
+  // such row must not fail the whole sign-in — the wallet filters by chain instead.
+  backups: optional(arrayOf(object({ chain: optional(str), stellarAddress: str, box: id, updatedAt: str }))),
   sessionToken: id,
   expiresInSeconds: num,
   // Asserted when present: the wallet hands it on to the recovery servers.

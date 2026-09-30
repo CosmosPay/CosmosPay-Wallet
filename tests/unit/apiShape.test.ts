@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ApiShapeError, amount, arrayOf, either, id, num, object, optional, parseShape, str, variant, xdr } from '@/lib/apiShape';
 import { LiquidityOperationShape, PayoutQuoteShape, SubmitResultShape, SwapShape } from '@/lib/cosmospayShapes';
-import { SignInFinishShape } from '@/lib/signInShapes';
+import { SignInCodeResultShape, SignInFinishShape } from '@/lib/signInShapes';
 
 const URL_ = 'https://gw.example/v1/thing';
 const G = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
@@ -128,4 +128,30 @@ test('str/num/id basics', () => {
   assert.throws(() => parseShape(URL_, num, Infinity), ApiShapeError);
   assert.throws(() => parseShape(URL_, id, '   '), ApiShapeError);
   assert.doesNotThrow(() => parseShape(URL_, variant('kind', { a: object({}) }), { kind: 'a' }));
+});
+
+/* Per-wallet backups: every box comes back at sign-in. A Solana or Monad row names an address
+   that is not a G…, and must not fail the whole sign-in — the store filters by chain. */
+test('a sign-in carries every backup, and still parses from a server without the list', () => {
+  const G = 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57';
+  const box = { stellarAddress: G, box: '{"v":2}', updatedAt: '2026-10-01T00:00:00Z' };
+  const ready = {
+    status: 'ready',
+    identity: { email: 'ada@example.com', name: null, avatar: null, method: 'google' },
+    account: 'existing',
+    backup: box,
+    sessionToken: 'st',
+    expiresInSeconds: 600,
+  };
+  assert.doesNotThrow(() => parseShape(URL_, SignInCodeResultShape, ready));
+  assert.doesNotThrow(() =>
+    parseShape(URL_, SignInCodeResultShape, {
+      ...ready,
+      backups: [
+        { chain: 'stellar', ...box },
+        { chain: 'solana', stellarAddress: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', box: '{"v":2}', updatedAt: '2026-10-01T00:00:00Z' },
+      ],
+    }),
+  );
+  assert.throws(() => parseShape(URL_, SignInCodeResultShape, { ...ready, backups: [{ chain: 'stellar' }] }), ApiShapeError);
 });

@@ -9,6 +9,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // is erased at compile time and costs nothing.
 import type { DerivedAccount } from '@/lib/wallet';
 const walletLib = () => import('@/lib/wallet');
+// Solana + Monad derivation (bip32, secp256k1, keccak): only when an address is first shown.
+const chainLib = () => import('@/lib/chainAddresses');
 import {
   addWallet as vaultAddWallet,
   changePassword,
@@ -61,7 +63,7 @@ import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
 import { usePasskey } from '@/state/usePasskey';
 import { finishSignIn, replaceBackup as storeBackupBox } from '@/lib/signIn';
-import { BackupPasskeyError, backupDoors, openBackup, sealBackup, type BackupDoors } from '@/lib/cloudBackup';
+import { BackupPasskeyError, backupDoors, openBackup, sealBackup, type BackupDoors, type BackupKey } from '@/lib/cloudBackup';
 import { PasskeyError, createPasskey, getPasskeySecrets, wipePasskeySecrets, type PasskeySecrets } from '@/lib/passkey';
 import {
   PasskeyUnlockStaleError,
@@ -969,6 +971,68 @@ export function useWalletStore() {
   );
 
   /**
+   * Bring back every OTHER wallet the account keeps a backup of, after the newest one
+   * landed as the active wallet.
+   *
+   * Best-effort and additive: each box opens with the same key the person just proved
+   * (their password, or the passkey), is added under the session's vault key, and gets the
+   * account's API keys. A box sealed under another password — backed up from a device that
+   * had a different one — stays closed and is counted, so the person knows to sign in with
+   * that password too. Only Stellar boxes: this wallet has no Solana or Monad wallets of
+   * its own; those addresses come back with the phrase (see `lib/chainAddresses.ts`).
+   *
+   * The active wallet is put back afterwards: `addWallet` makes each one it adds active.
+   */
+  const restoreOtherBackups = useCallback(
+    async (input: {
+      ready: SignInReady;
+      key: BackupKey;
+      vk: VaultKey;
+      primary: WalletEntry;
+      account: CosmosPayAccount;
+      consents: ConsentAnswers;
+    }): Promise<void> => {
+      const others = (input.ready.backups ?? []).filter(
+        (b) => (b.chain ?? 'stellar') === 'stellar' && b.stellarAddress !== input.primary.publicKey,
+      );
+      if (!others.length) return;
+      const { identity } = input.ready;
+      const base = identity.name?.trim() || identity.email.split('@')[0] || 'astronauta';
+      let restored = 0;
+      let closed = 0;
+      for (const b of others) {
+        try {
+          const secret = await openBackup(b.box, input.key, b.stellarAddress);
+          const entry = await vaultAddWallet(
+            { secret: secret.secret, mnemonic: secret.mnemonic },
+            {
+              publicKey: b.stellarAddress,
+              name: `${base} · ${b.stellarAddress.slice(-4)}`,
+              birthdate: '',
+              email: identity.email,
+              gender: 'x',
+              metricsOptIn: input.consents.metricsOptIn,
+              promoOptIn: input.consents.promoOptIn,
+              cloudBackup: true,
+            },
+            input.vk,
+          );
+          if (!entry.cloudBackup) await updateWalletMeta(entry.id, { cloudBackup: true });
+          await saveCosmosPay(entry.id, input.account, input.vk);
+          restored += 1;
+        } catch {
+          closed += 1;
+        }
+      }
+      await setActiveId(input.primary.id);
+      setWallets(await listWallets());
+      if (restored) flash(t('backup.restoredMore', { n: restored }), 'ok');
+      if (closed) flash(t('backup.otherPassword', { n: closed }), 'info');
+    },
+    [flash, t],
+  );
+
+  /**
    * A NEW wallet for a sign-in: the seed is generated here, sealed for the backup under
    * `password`, and only then is the server told — the signature it needs is made by the
    * key that was just generated, which is what binds the account to it.
@@ -1764,8 +1828,14 @@ export function useWalletStore() {
    * unlocks the key that signs `finish`, and the account's keys are stored sealed. Wrong
    * codes flash the attempts left; an expired or locked one drops back to the start.
    */
+  /**
+   * `checkPassword`, reached from above its declaration. It is defined with the signing
+   * gate, far below; naming it in a dependency list up here would read it before it exists.
+   */
+  const checkPasswordRef = useRef<((pwd: string) => Promise<PasswordCheck>) | null>(null);
+
   const submitLinkCode = useCallback(
-    async (code: string) => {
+    async (code: string, password = '') => {
       if (!session || !meta || !cosmosLink) return;
       const epoch = sessionEpochRef.current;
       setBusy(true);
@@ -1781,12 +1851,27 @@ export function useWalletStore() {
           flash(t(res.status === 'locked' ? 'cosmospay.linkLocked' : 'cosmospay.linkExpired'), 'err');
           return;
         }
-        // Signing needs the secret, so it is password-gated like every signature.
-        const ok = await requestSignature({
-          title: t('cosmospay.enableTitle'),
-          message: t('cosmospay.enableConfirm'),
-        });
-        if (!ok) return;
+        // With the app password, this wallet is backed up too — sealed under it, so a
+        // sign-in on the next device brings it back with the others. Without one (a passkey
+        // device runs on a password nobody typed) it connects for keys only, and signing is
+        // gated like every signature.
+        let box: string | undefined;
+        if (password) {
+          const check = await checkPasswordRef.current!(password);
+          if (!check.ok) {
+            flash(check.message, 'err');
+            return;
+          }
+          guardSession(epoch);
+          const vaulted = await openVault(meta.id, session.vaultKey);
+          box = await sealBackup({ secret: vaulted.secret, mnemonic: vaulted.mnemonic }, password, meta.publicKey);
+        } else {
+          const ok = await requestSignature({
+            title: t('cosmospay.enableTitle'),
+            message: t('cosmospay.enableConfirm'),
+          });
+          if (!ok) return;
+        }
         guardSession(epoch);
         const done = await finishSignIn({
           sessionToken: res.sessionToken,
@@ -1795,6 +1880,7 @@ export function useWalletStore() {
           // The wallet's account, not the key's own address: a recovered wallet signs with
           // the key that replaced its master.
           account: meta.publicKey,
+          ...(box ? { backup: box } : {}),
           accessKey,
         });
         guardSession(epoch);
@@ -1803,13 +1889,14 @@ export function useWalletStore() {
           return;
         }
         const account: CosmosPayAccount = { keys: done.keys, organizationId: done.organizationId };
-        const list = await saveCosmosPay(meta.id, account, session.vaultKey);
+        let list = await saveCosmosPay(meta.id, account, session.vaultKey);
+        if (box) list = await updateWalletMeta(meta.id, { cloudBackup: true });
         setWallets(list);
         const entry = list.find((w) => w.id === meta.id);
         if (entry) setMetaState(entry);
         setCosmosPay(account);
         setCosmosLink(null);
-        flash(t('cosmospay.linked'), 'ok');
+        flash(t(box ? 'cosmospay.linkedBackedUp' : 'cosmospay.linked'), 'ok');
       } catch (e) {
         flash((e as Error).message || t('cosmospay.error'), 'err');
       } finally {
@@ -1818,6 +1905,29 @@ export function useWalletStore() {
     },
     [session, meta, cosmosLink, network, requestSignature, guardSession, t, flash],
   );
+
+  /**
+   * The Solana and Monad addresses of the active wallet's recovery phrase, derived once and
+   * kept on its entry. Opens the vault with the session's key — no prompt, nothing leaves the
+   * device — and does nothing for a wallet imported from a bare secret key, which has none.
+   */
+  const ensureChainAddresses = useCallback(async (): Promise<void> => {
+    if (!session || !meta || meta.chainAddresses) return;
+    const epoch = sessionEpochRef.current;
+    try {
+      const vaulted = await openVault(meta.id, session.vaultKey);
+      if (!vaulted.mnemonic) return;
+      const { chainAddressesFromMnemonic } = await chainLib();
+      const chainAddresses = await chainAddressesFromMnemonic(vaulted.mnemonic);
+      guardSession(epoch);
+      const list = await updateWalletMeta(meta.id, { chainAddresses });
+      setWallets(list);
+      const entry = list.find((w) => w.id === meta.id);
+      if (entry) setMetaState(entry);
+    } catch {
+      /* Shown again next time; a derivation failure costs a line on a screen, not a wallet. */
+    }
+  }, [session, meta, guardSession]);
 
   /** Dismiss the code prompt (user changes their mind). */
   const cancelLink = useCallback(() => setCosmosLink(null), []);
@@ -2755,7 +2865,10 @@ export function useWalletStore() {
           // account this device can already sign for.
           const vk = await deriveVaultKey(password, newKdfParams());
           setTelemetryEnabled(consents.metricsOptIn);
-          const box = await sealBackup({ secret: fresh.secret, mnemonic }, password);
+          // Sealed WITH the account: the new key's own address is not the account any more,
+          // and `openBackup` on the next device checks the box against the account address
+          // the server hands back. Without it, the backup of a recovered wallet never opens.
+          const box = await sealBackup({ secret: fresh.secret, mnemonic }, password, address);
           const res = await finishSignIn({
             sessionToken: draft.ready.sessionToken,
             email: draft.ready.identity.email,
@@ -3404,6 +3517,7 @@ export function useWalletStore() {
     },
     [claimAttempt, t],
   );
+  checkPasswordRef.current = checkPassword;
 
   /**
    * The same check, answered by the phone's lock screen instead of a keyboard.
@@ -4262,6 +4376,14 @@ export function useWalletStore() {
             epoch,
           });
           report(EVENT.backupRestored, { category: 'lifecycle', props: { purpose: draft.purpose, passkey: !!door } });
+          await restoreOtherBackups({
+            ready: draft.ready,
+            key: password,
+            vk,
+            primary: entry,
+            account: { keys: res.keys, organizationId: res.organizationId },
+            consents,
+          });
         } else {
           // A NEW wallet on a device that already has a password: that password seals the
           // backup too, so the person keeps one. Proven first — a typo here would lock them
@@ -4389,6 +4511,14 @@ export function useWalletStore() {
           epoch,
         });
         report(EVENT.backupRestored, { category: 'lifecycle', props: { purpose: draft.purpose, passkey: true } });
+        await restoreOtherBackups({
+          ready: draft.ready,
+          key: { passkey: { id: secrets.credentialId, secret: secrets.backup } },
+          vk,
+          primary: entry,
+          account: { keys: res.keys, organizationId: res.organizationId },
+          consents,
+        });
       } else {
         let opened: { password: string; secrets: PasskeySecrets };
         try {
@@ -4734,6 +4864,7 @@ export function useWalletStore() {
     submitSend,
     enableReceiving,
     submitLinkCode,
+    ensureChainAddresses,
     cancelLink,
     quoteSwap,
     submitSwap,

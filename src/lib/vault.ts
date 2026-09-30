@@ -85,7 +85,7 @@ export interface WalletEntry {
   // Default BlindPay fiat receiver (KYC account) used for on/off-ramp.
   cosmosPayReceiverId?: string;
   /**
-   * The dev platform keeps a backup of this wallet's seed, sealed under the app password
+   * The community server keeps a backup of this wallet's seed, sealed under the app password
    * (`lib/cloudBackup.ts`). What `changeAppPassword` reads to know the backup has to be
    * re-sealed too — otherwise the next device would need the password this one gave up.
    */
@@ -102,6 +102,12 @@ export interface WalletEntry {
    * anything. Absent means recovery was never turned on from this device.
    */
   recoveryEmail?: string;
+  /**
+   * The Solana and Monad addresses this wallet's recovery phrase controls (`lib/chainAddresses.ts`).
+   * Public, derived once and kept here so showing them needs no password. Absent until first
+   * derived, and never present on a wallet imported from a bare secret key: it has no phrase.
+   */
+  chainAddresses?: { solana: string; monad: string };
 }
 
 /**
@@ -313,7 +319,7 @@ export async function addWallet(
 /** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail' | 'chainAddresses'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));

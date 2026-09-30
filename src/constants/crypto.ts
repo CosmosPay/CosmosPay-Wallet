@@ -42,7 +42,7 @@ export const LEGACY_PBKDF2_ITERATIONS = 210_000;
  * paid twice in a wallet's life — once when the backup is sealed and once on each restore —
  * so a second on a slow phone buys a lot for very little.
  *
- * The dev platform refuses a box below 600,000 (`BACKUP_MIN_ITERATIONS` in its
+ * The community server refuses a box below 600,000 (`BACKUP_MIN_ITERATIONS` in its
  * wallet-auth-core module), so lowering this under that floor breaks every new backup
  * rather than weakening it quietly. It must also stay within `MAX_PBKDF2_ITERATIONS`, or
  * no device could open what this one sealed.

@@ -334,8 +334,10 @@ export interface SignInIdentity {
   method: SignInMethod;
 }
 
-/** A backup the platform keeps for this account: the sealed seed and where it restores to. */
+/** A backup the community server keeps for this account: the sealed seed and where it restores to. */
 export interface StoredBackup {
+  /** Absent from servers older than the per-wallet backups: `stellar`. */
+  chain?: string;
   stellarAddress: string;
   box: string;
   updatedAt: string;
@@ -347,6 +349,11 @@ export interface SignInReady {
   identity: SignInIdentity;
   account: 'existing' | 'new';
   backup: StoredBackup | null;
+  /**
+   * Every wallet the account keeps a backup of, newest first (`backup` is the first). Absent
+   * from a server older than per-wallet backups, where `backup` is the only one.
+   */
+  backups?: StoredBackup[];
   sessionToken: string;
   expiresInSeconds: number;
   /**
