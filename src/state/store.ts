@@ -57,6 +57,7 @@ import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
 import { sendableAssets, spendableCeiling } from '@/lib/balances';
 import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
 import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
+import { CROSS_CHAIN_SLIPPAGE_BPS } from '@/constants/swap';
 import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
@@ -163,6 +164,10 @@ import {
   offrampQuote as cpOfframpQuote,
   onrampQuote as cpOnrampQuote,
   quoteSwap as cpQuoteSwap,
+  listCrossChainAssets as cpListCrossChainAssets,
+  quoteCrossChainSwap as cpQuoteCrossChainSwap,
+  createCrossChainSwap as cpCreateCrossChainSwap,
+  reportCrossChainDeposit as cpReportCrossChainDeposit,
   signInEmailStart,
   signInEmailVerify,
   submitLiquidity as cpSubmitLiquidity,
@@ -184,6 +189,10 @@ import {
   type Receiver,
   type SignInReady,
   type SwapQuote,
+  type CrossChainAsset,
+  type CrossChainQuote,
+  type CrossChainSwapInput,
+  type CrossChainTarget,
   recoverySetupSponsored,
 } from '@/lib/cosmospay';
 import { useToast } from '@/state/useToast';
@@ -335,6 +344,16 @@ export type { Toast } from '@/state/useToast';
  * server emailed the sign-in code, until the code is entered.
  */
 export type CosmosLink = { stage: 'sent'; claimToken: string; expiresAt: number };
+
+/** Two decimal strings naming the same amount ("1.50" and "1.5"). */
+function sameDecimal(a: string, b: string): boolean {
+  const norm = (v: string) => {
+    const [whole, frac = ''] = v.trim().split('.');
+    const f = frac.replace(/0+$/, '');
+    return `${whole.replace(/^0+(?=\d)/, '')}${f ? `.${f}` : ''}`;
+  };
+  return norm(a) === norm(b);
+}
 
 /** A swap side: the asset being sold (source) or bought (destination). `issuer` is
  *  null for native XLM. Built from the wallet's trustline balances. */
@@ -2145,6 +2164,134 @@ export function useWalletStore() {
       });
     },
     [session, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash],
+  );
+
+  /* ------------------------- cross-chain swaps --------------------- */
+  // One direction, by design: this wallet signs on Stellar only, so it sells from its
+  // Stellar account and receives on its OWN Solana or Monad address — the one its
+  // recovery phrase derives (`meta.chainAddresses`). NEAR Intents settles; mainnet only.
+
+  /** What NEAR Intents can swap. Empty on error: the screen just offers nothing. */
+  const crossChainAssets = useCallback(async (): Promise<CrossChainAsset[]> => {
+    const apiKey = openAccessKey();
+    if (!apiKey) return [];
+    try {
+      return await cpListCrossChainAssets(apiKey);
+    } catch {
+      return [];
+    }
+  }, [openAccessKey]);
+
+  /** The request both the quote and the create send. The recipient is always our own. */
+  const crossChainInput = useCallback(
+    (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset): CrossChainSwapInput | null => {
+      const recipient = meta?.chainAddresses?.[target];
+      if (!session || !recipient) return null;
+      return {
+        originChain: 'stellar',
+        originAsset: from.issuer ? `${from.code}:${from.issuer}` : 'XLM',
+        destinationChain: target,
+        destinationAsset: dest.contract ?? dest.symbol,
+        amount,
+        recipient,
+        refundTo: session.publicKey,
+        slippageBps: CROSS_CHAIN_SLIPPAGE_BPS,
+      };
+    },
+    [session, meta],
+  );
+
+  const quoteCrossChain = useCallback(
+    async (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
+      const apiKey = openAccessKey();
+      const input = crossChainInput(amount, from, target, dest);
+      if (!apiKey || !input) return null;
+      try {
+        return await cpQuoteCrossChainSwap(apiKey, input);
+      } catch (e) {
+        flash((e as Error).message || t('swap.quoteError'), 'err');
+        return null;
+      }
+    },
+    [openAccessKey, crossChainInput, t, flash],
+  );
+
+  /**
+   * Open the swap, then fund it: a Stellar payment of exactly what was typed to the
+   * deposit address NEAR Intents issued, with its memo as a MEMO_TEXT. The wallet builds
+   * and signs that payment itself — nothing from the gateway is signed here.
+   *
+   * What is checked before paying is what the gateway could otherwise redirect: the
+   * output must go to OUR address on the target chain, a refund must come back to OUR
+   * Stellar account, and the amount must be the one on the screen. The deposit address
+   * itself cannot be checked from here — it is NEAR Intents' — which is why the other
+   * three must be.
+   */
+  const submitCrossChain = useCallback(
+    async (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset, quote: CrossChainQuote) => {
+      if (!session) return;
+      const apiKey = openAccessKey();
+      const input = crossChainInput(amount, from, target, dest);
+      if (!apiKey || !input) return;
+      await exclusive.run('swap', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('confirmSig.swapTitle'),
+          message: t('xswap.confirmMsg', { amount, code: from.code, dest: quote.destination.asset, chain: t(`xswap.chain.${target}`) }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const swap = await cpCreateCrossChainSwap(apiKey, input);
+          if (
+            swap.recipient !== input.recipient ||
+            swap.refundTo !== session.publicKey ||
+            swap.originChain !== 'stellar' ||
+            swap.destinationChain !== target ||
+            !sameDecimal(swap.amountIn, amount) ||
+            !swap.depositMemo
+          ) {
+            throw new Error(t('xswap.mismatch'));
+          }
+          guardSession(epoch);
+          const { hash } = await sendPayment({
+            cfg: network,
+            secret: await secretOf(session),
+            destination: swap.depositAddress,
+            amount,
+            memo: swap.depositMemo,
+            memoKind: 'text',
+            asset: toPaymentAsset({ code: from.code, issuer: from.issuer }),
+          });
+          // Best effort: NEAR Intents watches the address anyway; this only starts it sooner.
+          cpReportCrossChainDeposit(apiKey, swap.id, hash).catch(() => {});
+          report(EVENT.swapSubmitted, {
+            category: 'transaction',
+            props: { from: from.code, to: quote.destination.asset, chain: target, amount, received: swap.amountOutEstimated, txHash: hash, crossChain: true },
+          });
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('xswap.success'),
+            msg: t('xswap.successMsg', { chain: t(`xswap.chain.${target}`), seconds: String(swap.timeEstimateSeconds) }),
+            rows: [
+              { label: t('swap.pay'), val: `${amount} ${from.code}` },
+              { label: t('swap.receiveEst'), val: `${swap.amountOutEstimated} ${quote.destination.asset}` },
+              { label: t('xswap.to'), val: `${input.recipient.slice(0, 6)}…${input.recipient.slice(-6)}` },
+            ],
+            hash,
+          });
+          setScreen('success');
+          refresh(true);
+        } catch (e) {
+          reportError(EVENT.swapFailed, e, { from: from.code, to: dest.symbol, amount, crossChain: true });
+          setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: (e as Error).message, rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+        }
+      });
+    },
+    [session, network, openAccessKey, crossChainInput, requestSignature, refresh, exclusive, guardSession, t],
   );
 
   /* ------------------------- liquidity pools ---------------------- */
@@ -4900,6 +5047,9 @@ export function useWalletStore() {
     cancelLink,
     quoteSwap,
     submitSwap,
+    crossChainAssets,
+    quoteCrossChain,
+    submitCrossChain,
     // liquidity pools
     lpTarget,
     listPools,
