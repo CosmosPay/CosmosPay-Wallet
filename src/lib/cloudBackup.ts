@@ -10,6 +10,11 @@
  *    it. `sealBackup` owns those numbers so no caller can lower them.
  *  - a PASSKEY door: 32 bytes of PRF output that only the person's authenticator can
  *    produce (`lib/passkey.ts`). Nothing to guess offline, so nothing to stretch.
+ *  - a RECOVERY door (v4 only, at most one, never alone): a random 32-byte key split in
+ *    two between the recovery servers (`lib/backupRecovery.ts`). It is how a person who
+ *    forgot the password — and has no passkey there — gets the whole wallet back by
+ *    proving their email to both servers, and then sets a new password
+ *    (`resetBackupPassword`). Either server alone holds random noise.
  *
  * THREE SHAPES, ONE WRITTEN. `v: 4` is what every backup is sealed as now: the seed under a
  * random DATA key, that key sealed once per door in `slots`, and a password door derived
@@ -70,20 +75,33 @@ export class BackupPasskeyError extends Error {
   }
 }
 
+/**
+ * The recovered key does not open this box: it has no recovery door, or the halves the
+ * servers returned are from an earlier seal. Nobody typed anything, so it is not a guess.
+ */
+export class BackupRecoveryError extends Error {
+  constructor() {
+    super(tNow('backup.recoveryMismatch'));
+    this.name = 'BackupRecoveryError';
+  }
+}
+
 /** A passkey door: the credential it is filed under and the PRF secret that opens it. */
 export interface PasskeyDoor {
   id: string;
   secret: Uint8Array;
 }
 
-/** The doors to seal a new box behind. At least one. */
+/** The doors to seal a new box behind. A password or a passkey; `recovery` only beside one. */
 export interface BackupDoors {
   password?: string;
   passkey?: PasskeyDoor;
+  /** The whole key the recovery servers hold the halves of. */
+  recovery?: Uint8Array;
 }
 
-/** What opens a box: a typed password, or a passkey's secret. */
-export type BackupKey = string | { passkey: PasskeyDoor };
+/** What opens a box: a typed password, a passkey's secret, or the recovered key. */
+export type BackupKey = string | { passkey: PasskeyDoor } | { recovery: Uint8Array };
 
 /** A v3 password door: PBKDF2. Only ever opened now. */
 interface Pbkdf2Slot extends SealedBytes {
@@ -109,7 +127,12 @@ interface PasskeySlot extends SealedBytes {
   id: string;
 }
 
-type Slot = PasswordSlot | PasskeySlot;
+/** The email-recovery door: the data key under the key the two recovery servers split. */
+interface RecoverySlot extends SealedBytes {
+  kind: 'recovery';
+}
+
+type Slot = PasswordSlot | PasskeySlot | RecoverySlot;
 
 /** The slot-shaped box: `v: 3` has PBKDF2 password doors, `v: 4` Argon2id ones. */
 interface BoxV3 extends SealedBytes {
@@ -154,6 +177,7 @@ export async function sealBackup(secret: VaultSecret, doors: string | BackupDoor
     if (doors.passkey) {
       slots.push({ kind: 'passkey', id: doors.passkey.id, ...(await sealBytes(dataKey, doors.passkey.secret)) });
     }
+    if (doors.recovery) slots.push({ kind: 'recovery', ...(await sealBytes(dataKey, doors.recovery)) });
     const box: BoxV3 = { v: 4, ...(await sealBytes(enc.encode(payload), dataKey)), slots };
     return JSON.stringify(box);
   } finally {
@@ -183,6 +207,7 @@ function parseSlot(s: unknown, v: 3 | 4): Slot | null {
     return { kind: 'password', kdf: 'argon2id', salt: o.salt, m: o.m as number, t: o.t as number, p: o.p as number, iv: o.iv, data: o.data };
   }
   if (o.kind === 'passkey' && isStr(o.id)) return { kind: 'passkey', id: o.id, iv: o.iv, data: o.data };
+  if (v === 4 && o.kind === 'recovery') return { kind: 'recovery', iv: o.iv, data: o.data };
   return null;
 }
 
@@ -209,12 +234,13 @@ function parseBox(box: string): SealedBox | BoxV3 {
  * box has a passkey door, a password field when it has a password door. A `v: 2` box is a
  * password door and nothing else.
  */
-export function backupDoors(box: string): { password: boolean; passkeys: string[] } {
+export function backupDoors(box: string): { password: boolean; passkeys: string[]; recovery: boolean } {
   const b = parseBox(box);
-  if (!('slots' in b)) return { password: true, passkeys: [] };
+  if (!('slots' in b)) return { password: true, passkeys: [], recovery: false };
   return {
     password: b.slots.some((s) => s.kind === 'password'),
     passkeys: b.slots.flatMap((s) => (s.kind === 'passkey' ? [s.id] : [])),
+    recovery: b.slots.some((s) => s.kind === 'recovery'),
   };
 }
 
@@ -246,6 +272,15 @@ async function dataKeyOf(box: BoxV3, key: BackupKey): Promise<Uint8Array> {
     }
     throw new WrongPasswordError();
   }
+  if ('recovery' in key) {
+    const door = box.slots.find((s): s is RecoverySlot => s.kind === 'recovery');
+    if (!door) throw new BackupRecoveryError();
+    try {
+      return await openBytes(door, key.recovery);
+    } catch (e) {
+      throw e instanceof WrongPasswordError ? new BackupRecoveryError() : e;
+    }
+  }
   const door = box.slots.find((s): s is PasskeySlot => s.kind === 'passkey' && s.id === key.passkey.id);
   if (!door) throw new BackupPasskeyError();
   try {
@@ -258,7 +293,7 @@ async function dataKeyOf(box: BoxV3, key: BackupKey): Promise<Uint8Array> {
 async function plaintextOf(b: SealedBox | BoxV3, key: BackupKey): Promise<string> {
   if (!('slots' in b)) {
     // A v2 box has one door and it is a password. A passkey here is not a guess.
-    if (typeof key !== 'string') throw new BackupPasskeyError();
+    if (typeof key !== 'string') throw 'recovery' in key ? new BackupRecoveryError() : new BackupPasskeyError();
     return open(b, key);
   }
   const dataKey = await dataKeyOf(b, key);
@@ -321,4 +356,51 @@ export async function openBackup(
     mnemonic: typeof secret.mnemonic === 'string' ? secret.mnemonic : null,
     ...(typeof secret.account === 'string' ? { account: secret.account } : {}),
   };
+}
+
+/* ------------------------------ changing doors ----------------------------- */
+
+/** The v4 box a door change starts from: its data key, opened with `key`. */
+async function reopen(box: string, key: BackupKey): Promise<{ box: BoxV3; dataKey: Uint8Array }> {
+  const b = parseBox(box);
+  // A door is added to the slot shape only; an older box is re-sealed on restore first.
+  if (!('slots' in b) || b.v !== 4) throw new BackupUnreadableError();
+  return { box: b, dataKey: await dataKeyOf(b, key) };
+}
+
+/**
+ * Give a box a recovery door, keeping every door it has.
+ *
+ * Opened with a door the caller holds (the password or passkey that just restored it), so
+ * the seed is never re-sealed: the same data key gains one more slot, and a passkey door
+ * filed by another device survives — which re-sealing from scratch could not promise. A
+ * recovery door already there is replaced: the servers hold the halves of ONE key.
+ */
+export async function addRecoveryDoor(box: string, key: BackupKey, recovery: Uint8Array): Promise<string> {
+  const { box: b, dataKey } = await reopen(box, key);
+  try {
+    const slots: Slot[] = [...b.slots.filter((s) => s.kind !== 'recovery'), { kind: 'recovery', ...(await sealBytes(dataKey, recovery)) }];
+    return JSON.stringify({ ...b, slots });
+  } finally {
+    dataKey.fill(0);
+  }
+}
+
+/**
+ * After an email recovery: open the box with the recovered key and put a NEW password
+ * door where the forgotten one was. Passkey doors stay, and so does the recovery door —
+ * the halves the servers hold still open it, so it keeps working for the next time.
+ */
+export async function resetBackupPassword(box: string, recovery: Uint8Array, password: string): Promise<string> {
+  const { box: b, dataKey } = await reopen(box, { recovery });
+  try {
+    const salt = toBase64(crypto.getRandomValues(new Uint8Array(SALT_BYTES)));
+    const params = { salt, ...BACKUP_ARGON2 };
+    const key = await deriveArgon2Key(password, params);
+    const door: Argon2Slot = { kind: 'password', kdf: 'argon2id', ...params, ...(await sealBytes(dataKey, key)) };
+    key.fill(0);
+    return JSON.stringify({ ...b, slots: [door, ...b.slots.filter((s) => s.kind !== 'password')] });
+  } finally {
+    dataKey.fill(0);
+  }
 }

@@ -165,6 +165,8 @@ import {
   CrossChainAssetListShape,
   CrossChainQuoteShape,
   CrossChainSwapShape,
+  RecoveryShareFiledShape,
+  RecoveryShareShape,
   ChainSwapShape,
   ChainSwapSubmitResultShape,
   TosShape,
@@ -608,6 +610,32 @@ export async function recoveryUpdateIdentities(
     RecoveryRegisteredShape,
     'PUT',
   );
+}
+
+/**
+ * File THIS server's half of a backup's recovery key (`lib/backupRecovery.ts`). The
+ * account's SEP-10 token is the credential; `email` is who may take the half back. A Cosmos
+ * extension beside SEP-30, under its base: `${base}/shares/<address>`.
+ */
+export async function recoveryShareFile(base: string, token: string, address: string, share: string, email: string): Promise<void> {
+  await postJson(
+    `${base}/shares/${encodeURIComponent(address)}`,
+    { share, email },
+    bearer(token),
+    false,
+    RecoveryShareFiledShape,
+    'PUT',
+  );
+}
+
+/** Take THIS server's half back with its identity token for the filed email. */
+export async function recoveryShareTake(base: string, token: string, address: string): Promise<string> {
+  const res = await getPlatformJson<{ share: string }>(
+    `${base}/shares/${encodeURIComponent(address)}`,
+    RecoveryShareShape,
+    bearer(token),
+  );
+  return res.share;
 }
 
 /** One protected account as THIS server describes it, or null when it does not know it. */

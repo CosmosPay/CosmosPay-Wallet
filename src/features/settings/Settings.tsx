@@ -9,6 +9,7 @@ import { ChangePassword } from '@/features/settings/ChangePassword';
 import { PasskeySwitch } from '@/features/settings/PasskeySwitch';
 import { ConnectedSites } from '@/features/settings/ConnectedSites';
 import { RecoverySection } from '@/features/settings/RecoverySection';
+import { BackupRecoverySection } from '@/features/settings/BackupRecoverySection';
 import { DevModeSection } from '@/features/settings/DevModeSection';
 import { useCopied } from '@/hooks/useCopied';
 import { shortAddr } from '@/lib/format';
@@ -131,6 +132,7 @@ export function Settings({ store }: { store: WalletStore }) {
         />
       </SettingsSection>
 
+      <BackupRecoverySection store={store} />
       <RecoverySection store={store} />
 
       <ConnectedSites store={store} />

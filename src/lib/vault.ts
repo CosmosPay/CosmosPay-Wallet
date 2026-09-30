@@ -108,6 +108,12 @@ export interface WalletEntry {
    * derived, and never present on a wallet imported from a bare secret key: it has no phrase.
    */
   chainAddresses?: { solana: string; monad: string };
+  /**
+   * The email the two recovery servers will hand this wallet's backup key halves to
+   * (`lib/backupRecovery.ts`). Like `recoveryEmail`, the only record of what was filed —
+   * the servers never say. Absent means the backup has no email-recovery door from here.
+   */
+  backupRecoveryEmail?: string;
 }
 
 /**
@@ -319,7 +325,7 @@ export async function addWallet(
 /** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail' | 'chainAddresses'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail' | 'chainAddresses' | 'backupRecoveryEmail'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));

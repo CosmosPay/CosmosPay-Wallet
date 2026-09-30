@@ -97,3 +97,10 @@ export const RECOVERY_OFFER_DISMISSED_PREFIX = 'cosmos.recoveryOffer.dismissed.'
  * answer, short enough that a server that was only restarting is offered again soon.
  */
 export const RECOVERY_PROBE_RETRY_MS = 60_000;
+
+/**
+ * The key a backup's email-recovery door is sealed under, and each server's half of it
+ * (`lib/backupRecovery.ts`): an AES-256 key, split by XOR, so both halves are this size too.
+ * The recovery servers refuse a half of any other length.
+ */
+export const BACKUP_RECOVERY_KEY_BYTES = 32;

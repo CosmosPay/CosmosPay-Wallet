@@ -135,7 +135,7 @@ test('a passkey-only box opens with that passkey and with nothing else', async (
   assert.equal(box.includes(secret.secret), false);
 
   assert.deepEqual(await openBackup(box, { passkey: passkey() }, kp.publicKey()), secret);
-  assert.deepEqual(backupDoors(box), { password: false, passkeys: ['cred-A'] });
+  assert.deepEqual(backupDoors(box), { password: false, passkeys: ['cred-A'], recovery: false });
 
   // Another credential is not a door here; the right id with the wrong secret is not one
   // either. Neither is a guess.
@@ -155,7 +155,7 @@ test('a box with both doors opens through either, and the password door keeps th
   assert.deepEqual(await openBackup(box, PASSWORD, kp.publicKey()), secret);
   assert.deepEqual(await openBackup(box, { passkey: passkey() }, kp.publicKey()), secret);
   await assert.rejects(openBackup(box, 'wrong-password-1', kp.publicKey()), WrongPasswordError);
-  assert.deepEqual(backupDoors(box), { password: true, passkeys: ['cred-A'] });
+  assert.deepEqual(backupDoors(box), { password: true, passkeys: ['cred-A'], recovery: false });
 });
 
 test('a slot box still refuses a genuine box filed under another address', async () => {
@@ -185,7 +185,7 @@ test('a recovered wallet opens under its account only when sealed with it', asyn
 test('a passkey against a v2 box is refused as a passkey problem, not a wrong password', async () => {
   const box = await sealBackup(secret, PASSWORD);
   await assert.rejects(openBackup(box, { passkey: passkey() }, kp.publicKey()), BackupPasskeyError);
-  assert.deepEqual(backupDoors(box), { password: true, passkeys: [] });
+  assert.deepEqual(backupDoors(box), { password: true, passkeys: [], recovery: false });
 });
 
 test('a v3 box with no doors, or a door of a kind this build does not know, is unreadable', async () => {

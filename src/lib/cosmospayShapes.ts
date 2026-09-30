@@ -116,6 +116,14 @@ export const CrossChainSwapShape = object({
   timeEstimateSeconds: num,
 });
 
+/* ------------------------- backup recovery shares ------------------------ */
+
+/** A filed half: only the receipt comes back. */
+export const RecoveryShareFiledShape = object({ address: str });
+
+/** A half handed back. `share` is decoded and length-checked in `lib/backupRecovery.ts`. */
+export const RecoveryShareShape = object({ address: str, share: str });
+
 /* ----------------------------- liquidity -------------------------------- */
 
 const Reserve = object({ asset: str, issuer: nullable(str), amount });
