@@ -59,6 +59,37 @@ export const SubmitResultShape = object({
   resultCodes: unchecked,
 });
 
+/* -------------------------- cross-chain swaps --------------------------- */
+
+export const CrossChainAssetListShape = object({
+  data: arrayOf(object({ chain: str, symbol: str, assetId: str, decimals: num, contract: nullable(str) })),
+});
+
+export const CrossChainQuoteShape = object({
+  fee: object({ amount, bps: num, asset: str }),
+  destination: object({ amount, minimum: amount, asset: str }),
+  timeEstimateSeconds: num,
+});
+
+/**
+ * The swap this wallet funds by paying `depositAddress` from its Stellar account, so
+ * those are the fields it acts on — and `recipient` / `refundTo`, which the wallet
+ * checks are its own before it pays anything.
+ */
+export const CrossChainSwapShape = object({
+  id,
+  status: str,
+  originChain: str,
+  destinationChain: str,
+  amountIn: amount,
+  amountOutEstimated: amount,
+  depositAddress: account,
+  depositMemo: nullable(str),
+  recipient: str,
+  refundTo: account,
+  timeEstimateSeconds: num,
+});
+
 /* ----------------------------- liquidity -------------------------------- */
 
 const Reserve = object({ asset: str, issuer: nullable(str), amount });

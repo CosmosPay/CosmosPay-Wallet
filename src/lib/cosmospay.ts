@@ -160,6 +160,9 @@ import {
   SwapListShape,
   SwapQuoteShape,
   SwapShape,
+  CrossChainAssetListShape,
+  CrossChainQuoteShape,
+  CrossChainSwapShape,
   TosShape,
   TrustlineTxShape,
   VirtualAccountListShape,
@@ -751,6 +754,100 @@ export async function quoteSwap(apiKey: string, input: QuoteSwapInput): Promise<
 /** Create a swap. The returned Swap carries the unsigned `xdr` to sign locally. */
 export async function createSwap(apiKey: string, input: CreateSwapInput): Promise<Swap> {
   return postJson<Swap>(`${gatewayApi()}/v1/swaps`, input, authHeaders(apiKey), false, SwapShape);
+}
+
+/* ------------------------- cross-chain swaps ---------------------------- */
+/*
+ * Stellar ⇄ Solana ⇄ Monad, settled by NEAR Intents behind the gateway. This wallet
+ * uses one direction: it pays a deposit address FROM its Stellar account, and NEAR
+ * Intents pays the output to the wallet's own Solana or Monad address (derived from
+ * the same recovery phrase). Mainnet only — the gateway refuses a testnet key.
+ */
+
+/** The chains a wallet can receive a cross-chain swap on. */
+export type CrossChainTarget = 'solana' | 'monad';
+
+export interface CrossChainAsset {
+  chain: 'stellar' | CrossChainTarget;
+  symbol: string;
+  assetId: string;
+  decimals: number;
+  /** SPL mint / ERC-20 / Stellar issuer; null for the native coin. */
+  contract: string | null;
+}
+
+export interface CrossChainQuote {
+  fee: { amount: string; bps: number; asset: string };
+  destination: { amount: string; minimum: string; asset: string };
+  timeEstimateSeconds: number;
+}
+
+export interface CrossChainSwapInput {
+  originChain: 'stellar';
+  originAsset: string;
+  destinationChain: CrossChainTarget;
+  destinationAsset: string;
+  amount: string;
+  recipient: string;
+  refundTo: string;
+  slippageBps?: number;
+}
+
+export interface CrossChainSwap {
+  id: string;
+  status: string;
+  originChain: string;
+  destinationChain: string;
+  amountIn: string;
+  amountOutEstimated: string;
+  depositAddress: string;
+  /** Required on Stellar: attach it as a MEMO_TEXT. */
+  depositMemo: string | null;
+  recipient: string;
+  refundTo: string;
+  timeEstimateSeconds: number;
+}
+
+/** What NEAR Intents can swap, on every chain. */
+export async function listCrossChainAssets(apiKey: string): Promise<CrossChainAsset[]> {
+  const res = await getJson<{ data: CrossChainAsset[] }>(
+    `${gatewayApi()}/v1/cross-chain-swaps/assets`,
+    apiKey,
+    CrossChainAssetListShape,
+  );
+  return res.data;
+}
+
+export async function quoteCrossChainSwap(apiKey: string, input: CrossChainSwapInput): Promise<CrossChainQuote> {
+  return postJson<CrossChainQuote>(
+    `${gatewayApi()}/v1/cross-chain-swaps/quote`,
+    input,
+    authHeaders(apiKey),
+    false,
+    CrossChainQuoteShape,
+  );
+}
+
+/** Open the swap: the answer carries the deposit address (and memo) to pay. */
+export async function createCrossChainSwap(apiKey: string, input: CrossChainSwapInput): Promise<CrossChainSwap> {
+  return postJson<CrossChainSwap>(
+    `${gatewayApi()}/v1/cross-chain-swaps`,
+    input,
+    authHeaders(apiKey),
+    false,
+    CrossChainSwapShape,
+  );
+}
+
+/** Point NEAR Intents at the payment that funded the swap (optional; it speeds it up). */
+export async function reportCrossChainDeposit(apiKey: string, id: string, txHash: string): Promise<CrossChainSwap> {
+  return postJson<CrossChainSwap>(
+    `${gatewayApi()}/v1/cross-chain-swaps/${encodeURIComponent(id)}/deposit`,
+    { txHash },
+    authHeaders(apiKey),
+    false,
+    CrossChainSwapShape,
+  );
 }
 
 /** Submit a locally signed XDR for an existing swap. */
