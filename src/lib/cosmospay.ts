@@ -116,6 +116,8 @@ export interface SubmitResult {
 }
 
 export interface QuoteSwapInput {
+  /** Omitted = Stellar. solana → Jupiter, monad → Kuru Flow (mainnet only). */
+  chain?: 'stellar' | CrossChainTarget;
   amount: string;
   sourceAssetCode?: string;
   sourceAssetIssuer?: string;
@@ -163,6 +165,8 @@ import {
   CrossChainAssetListShape,
   CrossChainQuoteShape,
   CrossChainSwapShape,
+  ChainSwapShape,
+  ChainSwapSubmitResultShape,
   TosShape,
   TrustlineTxShape,
   VirtualAccountListShape,
@@ -758,17 +762,20 @@ export async function createSwap(apiKey: string, input: CreateSwapInput): Promis
 
 /* ------------------------- cross-chain swaps ---------------------------- */
 /*
- * Stellar ⇄ Solana ⇄ Monad, settled by NEAR Intents behind the gateway. This wallet
- * uses one direction: it pays a deposit address FROM its Stellar account, and NEAR
- * Intents pays the output to the wallet's own Solana or Monad address (derived from
- * the same recovery phrase). Mainnet only — the gateway refuses a testnet key.
+ * Stellar ⇄ Solana ⇄ Monad, settled by NEAR Intents behind the gateway. The wallet pays
+ * a deposit address from its account on the origin chain — a payment it builds and
+ * signs itself — and NEAR Intents pays the output to the wallet's own address on the
+ * destination chain (all three derive from the same recovery phrase). Mainnet only —
+ * the gateway refuses a testnet key.
  */
 
-/** The chains a wallet can receive a cross-chain swap on. */
+/** The chains besides Stellar: a Jupiter / Kuru swap, or one end of a cross-chain one. */
 export type CrossChainTarget = 'solana' | 'monad';
+/** Any end of a cross-chain swap. */
+export type CrossChainNetwork = 'stellar' | CrossChainTarget;
 
 export interface CrossChainAsset {
-  chain: 'stellar' | CrossChainTarget;
+  chain: CrossChainNetwork;
   symbol: string;
   assetId: string;
   decimals: number;
@@ -783,9 +790,9 @@ export interface CrossChainQuote {
 }
 
 export interface CrossChainSwapInput {
-  originChain: 'stellar';
+  originChain: CrossChainNetwork;
   originAsset: string;
-  destinationChain: CrossChainTarget;
+  destinationChain: CrossChainNetwork;
   destinationAsset: string;
   amount: string;
   recipient: string;
@@ -847,6 +854,55 @@ export async function reportCrossChainDeposit(apiKey: string, id: string, txHash
     authHeaders(apiKey),
     false,
     CrossChainSwapShape,
+  );
+}
+
+/* ------------------------- Solana / Monad swaps -------------------------- */
+
+/**
+ * A Jupiter (Solana) or Kuru Flow (Monad) swap. `transaction` is what gets signed —
+ * Solana: `{ encoding: 'base64', data }`, the unsigned wire bytes; Monad: the router
+ * call `{ to, data, value, chainId }`. `approval`, on Monad only, is the exact ERC-20
+ * approve to send first. `lib/chainSwap.ts` checks both before any signature exists.
+ */
+export interface ChainSwap {
+  id: string;
+  chain: CrossChainTarget;
+  status: string;
+  source: string;
+  sendAsset: string;
+  sendAmount: string;
+  destAsset: string;
+  destEstimated: string;
+  destMin: string;
+  transaction: { encoding?: string; data: string; to?: string; value?: string; chainId?: number };
+  approval: { to: string; data: string; value: string; chainId: number } | null;
+  txHash: string | null;
+}
+
+export interface ChainSwapSubmitResult {
+  submitted: boolean;
+  status: string;
+  txHash: string;
+  swap: ChainSwap;
+}
+
+/** Build a Solana / Monad swap for `source` (the output always comes back to it). */
+export async function createChainSwap(
+  apiKey: string,
+  input: QuoteSwapInput & { chain: CrossChainTarget; source: string },
+): Promise<ChainSwap> {
+  return postJson<ChainSwap>(`${gatewayApi()}/v1/swaps`, input, authHeaders(apiKey), false, ChainSwapShape);
+}
+
+/** Hand back the signed swap: base64 wire bytes (Solana) or the raw 0x transaction (Monad). */
+export async function submitChainSwap(apiKey: string, id: string, signedTransaction: string): Promise<ChainSwapSubmitResult> {
+  return postJson<ChainSwapSubmitResult>(
+    `${gatewayApi()}/v1/swaps/${encodeURIComponent(id)}/submit`,
+    { signedTransaction },
+    authHeaders(apiKey),
+    false,
+    ChainSwapSubmitResultShape,
   );
 }
 

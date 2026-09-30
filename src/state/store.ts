@@ -11,6 +11,9 @@ import type { DerivedAccount } from '@/lib/wallet';
 const walletLib = () => import('@/lib/wallet');
 // Solana + Monad derivation (bip32, secp256k1, keccak): only when an address is first shown.
 const chainLib = () => import('@/lib/chainAddresses');
+// Signing on Solana / Monad: loaded on the first swap paid from there, not at startup.
+const chainKeysLib = () => import('@/lib/chainKeys');
+const chainSwapLib = () => import('@/lib/chainSwap');
 import {
   addWallet as vaultAddWallet,
   changePassword,
@@ -52,12 +55,13 @@ import { assertSafeToSign, reviewTx } from '@/lib/txGuard';
 import { MIN_APP_PWD_LEN, appPasswordOk, isAccessCode, isSafeHorizonUrl } from '@/lib/validate';
 import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
 import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
-import { FIAT_DECIMALS, fromMinorUnits } from '@/lib/amount';
+import { FIAT_DECIMALS, fromMinorUnits, toMinorUnitsBig } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
 import { sendableAssets, spendableCeiling } from '@/lib/balances';
 import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
 import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
 import { CROSS_CHAIN_SLIPPAGE_BPS } from '@/constants/swap';
+import { CHAIN_EXPLORER_TX, CHAIN_SWAP_SLIPPAGE_BPS, type ChainToken, type OtherChain } from '@/constants/chains';
 import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
@@ -168,6 +172,8 @@ import {
   quoteCrossChainSwap as cpQuoteCrossChainSwap,
   createCrossChainSwap as cpCreateCrossChainSwap,
   reportCrossChainDeposit as cpReportCrossChainDeposit,
+  createChainSwap as cpCreateChainSwap,
+  submitChainSwap as cpSubmitChainSwap,
   signInEmailStart,
   signInEmailVerify,
   submitLiquidity as cpSubmitLiquidity,
@@ -193,6 +199,7 @@ import {
   type CrossChainQuote,
   type CrossChainSwapInput,
   type CrossChainTarget,
+  type CrossChainNetwork,
   recoverySetupSponsored,
 } from '@/lib/cosmospay';
 import { useToast } from '@/state/useToast';
@@ -309,6 +316,8 @@ export interface SuccessInfo {
   msg: string;
   rows: { label: string; val: string }[];
   hash?: string;
+  /** Explorer link for `hash` when it is not a Stellar transaction (Solana, Monad). */
+  explorer?: string;
   kind?: 'ok' | 'err'; // controls the green check / red cross icon
 }
 
@@ -2292,6 +2301,297 @@ export function useWalletStore() {
       });
     },
     [session, network, openAccessKey, crossChainInput, requestSignature, refresh, exclusive, guardSession, t],
+  );
+
+  /* ------------------ paying from Solana / Monad ------------------- */
+  // The same phrase derives an address on each; the wallet signs there with keys derived
+  // at the moment of signing (`lib/chainKeys.ts`) and checks everything the gateway built
+  // before it does (`lib/chainSwap.ts`). Jupiter / Kuru Flow for a swap on one chain,
+  // NEAR Intents for one that leaves it. Mainnet only.
+
+  /** Our address on `chain`, or null for a wallet imported from a bare Stellar secret. */
+  const chainAddress = useCallback(
+    (chain: CrossChainNetwork): string | null =>
+      chain === 'stellar' ? session?.publicKey ?? null : meta?.chainAddresses?.[chain] ?? null,
+    [session, meta],
+  );
+
+  /** Base-unit balances of the tokens offered on `chain`; null when the node cannot be read. */
+  const chainBalances = useCallback(
+    async (chain: OtherChain): Promise<Record<string, bigint> | null> => {
+      const owner = meta?.chainAddresses?.[chain];
+      if (!owner) return null;
+      try {
+        return await (await chainSwapLib()).chainBalances(chain, owner);
+      } catch {
+        return null;
+      }
+    },
+    [meta],
+  );
+
+  /** The signing key of `chain`, checked against the address on screen. */
+  const chainSigner = useCallback(
+    async (chain: OtherChain): Promise<{ owner: string; secret: Uint8Array }> => {
+      const owner = meta?.chainAddresses?.[chain];
+      const missing = () => new Error(t('xswap.noAddress', { chain: t(`xswap.chain.${chain}`) }));
+      if (!session || !owner) throw missing();
+      const { mnemonic } = await openVault(session.walletId, session.vaultKey);
+      if (!mnemonic) throw missing();
+      return { owner, secret: await (await chainKeysLib()).chainSecret(mnemonic, chain, owner) };
+    },
+    [session, meta, t],
+  );
+
+  /** A refusal from `lib/chainSwap.ts` as a sentence; anything else as it came. */
+  const chainSwapMessage = useCallback(
+    (e: unknown): string => {
+      const err = e as { name?: string; code?: string; message?: string };
+      return err?.name === 'ChainSwapRefused' ? t(`xswap.refused.${err.code}`) : err?.message || t('swap.failed');
+    },
+    [t],
+  );
+
+  const quoteChainSwap = useCallback(
+    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken): Promise<SwapQuote | null> => {
+      const apiKey = openAccessKey();
+      if (!apiKey) return null;
+      try {
+        return await cpQuoteSwap(apiKey, {
+          chain,
+          amount,
+          sourceAssetCode: from.asset,
+          destAssetCode: to.asset,
+          slippageBps: CHAIN_SWAP_SLIPPAGE_BPS,
+        });
+      } catch (e) {
+        flash((e as Error).message || t('swap.quoteError'), 'err');
+        return null;
+      }
+    },
+    [openAccessKey, t, flash],
+  );
+
+  /**
+   * A swap on Solana (Jupiter) or Monad (Kuru Flow): the gateway builds it, the wallet
+   * checks and signs it, the gateway relays it. The bounds are the confirmed card's — the
+   * amount typed and the quote's minimum — never the create response's.
+   */
+  const submitChainSwap = useCallback(
+    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, quote: SwapQuote) => {
+      const apiKey = openAccessKey();
+      const owner = meta?.chainAddresses?.[chain];
+      const units = toMinorUnitsBig(amount, from.decimals);
+      const minimum = toMinorUnitsBig(quote.destination.minimum, to.decimals);
+      if (!session || !apiKey || !owner || !units || minimum === null) return;
+      await exclusive.run('swap', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('confirmSig.swapTitle'),
+          message: t('xswap.chainConfirmMsg', { amount, code: from.symbol, dest: to.symbol, chain: t(`xswap.chain.${chain}`) }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const same = (a: string, b: string) => (chain === 'monad' ? a.toLowerCase() === b.toLowerCase() : a === b);
+          const swap = await cpCreateChainSwap(apiKey, {
+            chain,
+            source: owner,
+            amount,
+            sourceAssetCode: from.asset,
+            destAssetCode: to.asset,
+            slippageBps: CHAIN_SWAP_SLIPPAGE_BPS,
+          });
+          if (
+            swap.chain !== chain ||
+            !same(swap.source, owner) ||
+            !same(swap.sendAsset, from.asset) ||
+            !same(swap.destAsset, to.asset) ||
+            !sameDecimal(swap.sendAmount, amount)
+          ) {
+            throw new Error(t('xswap.mismatch'));
+          }
+          const lib = await chainSwapLib();
+          const { secret } = await chainSigner(chain);
+          guardSession(epoch);
+          let signed: string;
+          try {
+            signed =
+              chain === 'solana'
+                ? await lib.signSolanaSwap({ wire: swap.transaction.data, secret, owner, sell: from.asset, buy: to.asset, amount: units, minimum })
+                : await lib.signMonadSwap({
+                    transaction: {
+                      to: swap.transaction.to ?? '',
+                      data: swap.transaction.data,
+                      value: swap.transaction.value ?? '0',
+                      chainId: swap.transaction.chainId ?? 0,
+                    },
+                    approval: swap.approval,
+                    secret,
+                    owner,
+                    sell: from.asset,
+                    amount: units,
+                  });
+          } finally {
+            secret.fill(0);
+          }
+          guardSession(epoch);
+          const res = await cpSubmitChainSwap(apiKey, swap.id, signed);
+          report(EVENT.swapSubmitted, {
+            category: 'transaction',
+            props: { from: from.symbol, to: to.symbol, chain, amount, received: swap.destEstimated, txHash: res.txHash },
+          });
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('xswap.chainSuccess'),
+            msg: t('xswap.chainSuccessMsg', { chain: t(`xswap.chain.${chain}`) }),
+            rows: [
+              { label: t('swap.pay'), val: `${amount} ${from.symbol}` },
+              { label: t('swap.receiveEst'), val: `${swap.destEstimated} ${to.symbol}` },
+            ],
+            hash: res.txHash,
+            explorer: CHAIN_EXPLORER_TX[chain](res.txHash),
+          });
+          setScreen('success');
+        } catch (e) {
+          reportError(EVENT.swapFailed, e, { from: from.symbol, to: to.symbol, amount, chain });
+          setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: chainSwapMessage(e), rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+        }
+      });
+    },
+    [session, meta, openAccessKey, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, t],
+  );
+
+  /** The request a cross-chain swap from Solana / Monad sends: both ends are our own. */
+  const crossChainFromInput = useCallback(
+    (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset): CrossChainSwapInput | null => {
+      const refundTo = chainAddress(origin);
+      const recipient = chainAddress(dest.chain);
+      if (!refundTo || !recipient || dest.chain === origin) return null;
+      return {
+        originChain: origin,
+        originAsset: from.asset === 'native' ? from.symbol : from.asset,
+        destinationChain: dest.chain,
+        destinationAsset:
+          dest.chain === 'stellar' && dest.contract ? `${dest.symbol}:${dest.contract}` : dest.contract ?? dest.symbol,
+        amount,
+        recipient,
+        refundTo,
+        slippageBps: CROSS_CHAIN_SLIPPAGE_BPS,
+      };
+    },
+    [chainAddress],
+  );
+
+  const quoteCrossChainFrom = useCallback(
+    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
+      const apiKey = openAccessKey();
+      const input = crossChainFromInput(origin, amount, from, dest);
+      if (!apiKey || !input) return null;
+      try {
+        return await cpQuoteCrossChainSwap(apiKey, input);
+      } catch (e) {
+        flash((e as Error).message || t('swap.quoteError'), 'err');
+        return null;
+      }
+    },
+    [openAccessKey, crossChainFromInput, t, flash],
+  );
+
+  /**
+   * Open a cross-chain swap from Solana / Monad and fund it with a transfer the wallet
+   * builds itself. Checked first, as from Stellar: the output goes to OUR address, a
+   * refund comes back to OUR origin address, the amount is the one on screen.
+   */
+  const submitCrossChainFrom = useCallback(
+    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset, quote: CrossChainQuote) => {
+      const apiKey = openAccessKey();
+      const input = crossChainFromInput(origin, amount, from, dest);
+      const units = toMinorUnitsBig(amount, from.decimals);
+      if (!session || !apiKey || !input || !units) return;
+      await exclusive.run('swap', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('confirmSig.swapTitle'),
+          message: t('xswap.confirmMsg', { amount, code: from.symbol, dest: quote.destination.asset, chain: t(`xswap.chain.${dest.chain}`) }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const swap = await cpCreateCrossChainSwap(apiKey, input);
+          const same = (a: string, b: string) => (origin === 'monad' ? a.toLowerCase() === b.toLowerCase() : a === b);
+          if (
+            swap.recipient !== input.recipient ||
+            !same(swap.refundTo, input.refundTo) ||
+            swap.originChain !== origin ||
+            swap.destinationChain !== dest.chain ||
+            !sameDecimal(swap.amountIn, amount)
+          ) {
+            throw new Error(t('xswap.mismatch'));
+          }
+          const lib = await chainSwapLib();
+          const { owner, secret } = await chainSigner(origin);
+          guardSession(epoch);
+          let hash: string;
+          try {
+            hash = await lib.sendDeposit({
+              chain: origin,
+              secret,
+              owner,
+              asset: from.asset,
+              decimals: from.decimals,
+              to: swap.depositAddress,
+              amount: units,
+            });
+          } finally {
+            secret.fill(0);
+          }
+          // Best effort: NEAR Intents watches the address anyway; this only starts it sooner.
+          cpReportCrossChainDeposit(apiKey, swap.id, hash).catch(() => {});
+          report(EVENT.swapSubmitted, {
+            category: 'transaction',
+            props: {
+              from: from.symbol,
+              to: quote.destination.asset,
+              origin,
+              chain: dest.chain,
+              amount,
+              received: swap.amountOutEstimated,
+              txHash: hash,
+              crossChain: true,
+            },
+          });
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('xswap.success'),
+            msg: t('xswap.successFromMsg', {
+              origin: t(`xswap.chain.${origin}`),
+              chain: t(`xswap.chain.${dest.chain}`),
+              seconds: String(swap.timeEstimateSeconds),
+            }),
+            rows: [
+              { label: t('swap.pay'), val: `${amount} ${from.symbol}` },
+              { label: t('swap.receiveEst'), val: `${swap.amountOutEstimated} ${quote.destination.asset}` },
+              { label: t('xswap.to'), val: `${input.recipient.slice(0, 6)}…${input.recipient.slice(-6)}` },
+            ],
+            hash,
+            explorer: CHAIN_EXPLORER_TX[origin](hash),
+          });
+          setScreen('success');
+          if (dest.chain === 'stellar') refresh(true);
+        } catch (e) {
+          reportError(EVENT.swapFailed, e, { from: from.symbol, to: dest.symbol, amount, origin, crossChain: true });
+          setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: chainSwapMessage(e), rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+        }
+      });
+    },
+    [session, openAccessKey, crossChainFromInput, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, refresh, t],
   );
 
   /* ------------------------- liquidity pools ---------------------- */
@@ -5050,6 +5350,12 @@ export function useWalletStore() {
     crossChainAssets,
     quoteCrossChain,
     submitCrossChain,
+    chainAddress,
+    chainBalances,
+    quoteChainSwap,
+    submitChainSwap,
+    quoteCrossChainFrom,
+    submitCrossChainFrom,
     // liquidity pools
     lpTarget,
     listPools,

@@ -16,6 +16,8 @@ import {
   DEFAULT_GATEWAY_URL,
   DEFAULT_RECOVERY_A_URL,
   DEFAULT_RECOVERY_B_URL,
+  DEFAULT_SOLANA_RPC_URL,
+  DEFAULT_MONAD_RPC_URL,
 } from '@/constants/backends';
 import type { RecoveryRole } from '@/constants/recovery';
 import { buildKind } from '@/lib/platform';
@@ -44,6 +46,8 @@ export interface EndpointOverrides {
   gatewayEntry?: string; // gateway entry prefix, e.g. /cosmos-api
   recoveryAUrl?: string; // SEP-30 recovery server A
   recoveryBUrl?: string; // SEP-30 recovery server B — a DIFFERENT deployment, always
+  solanaRpcUrl?: string; // Solana mainnet JSON-RPC node
+  monadRpcUrl?: string; // Monad mainnet JSON-RPC node
 }
 
 export function devModeEnabled(): boolean {
@@ -128,6 +132,13 @@ export const recoveryUrl = (role: RecoveryRole): string =>
     ? resolve('recoveryAUrl', ENV.PUBLIC_COSMOS_RECOVERY_A_URL || undefined, DEFAULT_RECOVERY_A_URL)
     : resolve('recoveryBUrl', ENV.PUBLIC_COSMOS_RECOVERY_B_URL || undefined, DEFAULT_RECOVERY_B_URL);
 
+/** Solana mainnet JSON-RPC (swaps paid from Solana). */
+export const solanaRpcUrl = (): string =>
+  resolve('solanaRpcUrl', ENV.PUBLIC_SOLANA_RPC_URL || undefined, DEFAULT_SOLANA_RPC_URL);
+
+/** Monad mainnet JSON-RPC (swaps paid from Monad). */
+export const monadRpcUrl = (): string => resolve('monadRpcUrl', ENV.PUBLIC_MONAD_RPC_URL || undefined, DEFAULT_MONAD_RPC_URL);
+
 /**
  * Both of them, in role order.
  *
@@ -173,6 +184,8 @@ export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; 
     labelKey: 'settings.epRecoveryB',
     getDefault: () => ENV.PUBLIC_COSMOS_RECOVERY_B_URL || DEFAULT_RECOVERY_B_URL,
   },
+  { key: 'solanaRpcUrl', labelKey: 'settings.epSolanaRpc', getDefault: () => ENV.PUBLIC_SOLANA_RPC_URL || DEFAULT_SOLANA_RPC_URL },
+  { key: 'monadRpcUrl', labelKey: 'settings.epMonadRpc', getDefault: () => ENV.PUBLIC_MONAD_RPC_URL || DEFAULT_MONAD_RPC_URL },
 ];
 
 /* ------------------------------- the sign-in ------------------------------- */

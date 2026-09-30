@@ -26,7 +26,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 | Account recovery | SEP-30 with two independent servers, offered on Home once the account is funded: whoever proves the email to both can put a new key on the account |
 | Signing guard | `assertSafeToSign` decodes every XDR before the key touches it and refuses what does not fit the flow (see Security model) |
 | Balances, send & receive | Horizon; QR receive; XLM send creates the destination account when needed |
-| Swap | Via the Cosmos Pay gateway (auto-quotes, slippage protection) |
+| Swap | Via the Cosmos Pay gateway (auto-quotes, slippage protection). Pay from Stellar (DEX), Solana (Jupiter) or Monad (Kuru Flow), or across chains through NEAR Intents (mainnet). A Solana swap is simulated before signing and refused if it would move more than confirmed; a Monad token sale approves exactly the amount, never unlimited. Solana/Monad nodes: `PUBLIC_SOLANA_RPC_URL` / `PUBLIC_MONAD_RPC_URL` (public mainnet endpoints are rate-limited) |
 | Fiat on/off-ramp | BlindPay receiver (KYC) — deposits & withdrawals, **18+ only** |
 | History | Last operations with color-coded icons (green in / red out / white neutral) + genesis marker |
 | Favorites & markets | Star assets to pin them in the top-5; live prices (CoinGecko) with animated tickers |
@@ -35,7 +35,7 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 | Dapp provider | `window.cosmosWallet` (SEP-43-style): `getAddress`, `getNetwork`, `signTransaction`, `signMessage`, `requestPayment` |
 | SEP-7 links | `web+stellar:pay` via provider, Firefox protocol handler, `pay` omnibox keyword and address-bar detection |
 | Extension surfaces | Popup (400×600) and side panel / sidebar, with a persistent preference toggle |
-| Developer mode | Live-overridable endpoints (prices API, Developer Platform, payments gateway) from Settings |
+| Developer mode | Live-overridable endpoints (prices API, Developer Platform, payments gateway, Solana / Monad RPC) from Settings |
 | Diagnostics | Opt-in (Settings → Privacy). Errors, screen views, gateway timings and the operations built — never the seed, the password, an address or a memo. With a Cosmos Pay account they reach that account's own dashboard; without one they are anonymous |
 
 Key derivation is verified against the official **SEP-5 test vector**.

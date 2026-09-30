@@ -37,3 +37,13 @@ export const DEFAULT_GATEWAY_ENTRY = '/cosmos-api';
  */
 export const DEFAULT_RECOVERY_A_URL = 'https://recovery-a.cosmospay.lat';
 export const DEFAULT_RECOVERY_B_URL = 'https://recovery-b.cosmospay.lat';
+
+/**
+ * The Solana and Monad nodes the swap screen reads balances from, simulates with and
+ * broadcasts through when a swap is paid from one of those chains. Public mainnet
+ * endpoints: both answer CORS, and both are rate-limited, which is fine for one wallet
+ * and is why a build expecting traffic should point `PUBLIC_SOLANA_RPC_URL` /
+ * `PUBLIC_MONAD_RPC_URL` at a node of its own.
+ */
+export const DEFAULT_SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
+export const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';

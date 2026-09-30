@@ -72,8 +72,34 @@ export const CrossChainQuoteShape = object({
 });
 
 /**
- * The swap this wallet funds by paying `depositAddress` from its Stellar account, so
- * those are the fields it acts on — and `recipient` / `refundTo`, which the wallet
+ * A Solana / Monad swap. `transaction` is what gets signed, so it is asserted to be an
+ * object with its `data`; that it is SAFE to sign is `lib/chainSwap.ts`'s call, which
+ * simulates (Solana) or checks the call (Monad) before signing.
+ */
+export const ChainSwapShape = object({
+  id,
+  chain: str,
+  source: str,
+  sendAsset: str,
+  sendAmount: amount,
+  destAsset: str,
+  destEstimated: amount,
+  destMin: amount,
+  transaction: object({ data: str }),
+  approval: nullable(object({ to: str, data: str, chainId: num })),
+});
+
+export const ChainSwapSubmitResultShape = object({
+  submitted: bool,
+  status: str,
+  txHash: str,
+  swap: object({ id }),
+});
+
+/**
+ * The swap this wallet funds by paying `depositAddress` from its account on the origin
+ * chain (Stellar, Solana or Monad — so these are shape-checked as strings and the store
+ * checks them per chain), so those are the fields it acts on — and `recipient` / `refundTo`, which the wallet
  * checks are its own before it pays anything.
  */
 export const CrossChainSwapShape = object({
@@ -83,10 +109,10 @@ export const CrossChainSwapShape = object({
   destinationChain: str,
   amountIn: amount,
   amountOutEstimated: amount,
-  depositAddress: account,
+  depositAddress: str,
   depositMemo: nullable(str),
   recipient: str,
-  refundTo: account,
+  refundTo: str,
   timeEstimateSeconds: num,
 });
 

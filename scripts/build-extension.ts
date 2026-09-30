@@ -18,8 +18,14 @@
 import { cp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadEnv } from 'vite';
-import { DEFAULT_GATEWAY_URL, DEFAULT_RECOVERY_A_URL, DEFAULT_RECOVERY_B_URL } from '../src/constants/backends.ts';
-import { cosmosHostPermissions } from './hostPermissions.ts';
+import {
+  DEFAULT_GATEWAY_URL,
+  DEFAULT_MONAD_RPC_URL,
+  DEFAULT_RECOVERY_A_URL,
+  DEFAULT_RECOVERY_B_URL,
+  DEFAULT_SOLANA_RPC_URL,
+} from '../src/constants/backends.ts';
+import { cosmosHostPermissions, hostPattern } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
 
@@ -268,6 +274,15 @@ const COSMOS_HOST_PERMISSIONS = cosmosHostPermissions([
   env.PUBLIC_COSMOS_RECOVERY_B_URL || DEFAULT_RECOVERY_B_URL,
 ]);
 
+// The Solana and Monad nodes a swap paid from those chains reads and broadcasts through.
+// Not CORS-exempt otherwise, exactly like the backends above.
+const CHAIN_RPC_HOST_PERMISSIONS = [
+  env.PUBLIC_SOLANA_RPC_URL || DEFAULT_SOLANA_RPC_URL,
+  env.PUBLIC_MONAD_RPC_URL || DEFAULT_MONAD_RPC_URL,
+]
+  .map(hostPattern)
+  .filter((p): p is string => p !== null);
+
 // MV3 manifest
 const manifest = {
   manifest_version: 3,
@@ -309,6 +324,7 @@ const manifest = {
     'https://friendbot.stellar.org/*',
     'https://api.coingecko.com/*',
     ...COSMOS_HOST_PERMISSIONS,
+    ...CHAIN_RPC_HOST_PERMISSIONS,
   ],
   // Inject the provider bridge into every web page so dapps can find window.cosmosWallet.
   content_scripts: [

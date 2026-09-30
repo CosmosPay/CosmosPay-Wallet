@@ -10,6 +10,8 @@ import { CROSS_CHAIN_TARGET_SYMBOLS, QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from 
 import type { CrossChainAsset, CrossChainQuote, CrossChainTarget, SwapQuote } from '@/lib/cosmospay';
 import { networkEnv } from '@/lib/stellar';
 import { AssetSelect } from '@/features/money/AssetSelect';
+import { ChainSwap } from '@/features/money/ChainSwap';
+import type { OtherChain } from '@/constants/chains';
 import { assetKey, findAsset, gatewayAssetLabel, isSameAsset, XLM, type AssetRef } from '@/lib/asset';
 import { parseDecimalOr0, sanitizeDecimalInput } from '@/lib/amount';
 import { spendableXlm, sendableAssets } from '@/lib/balances';
@@ -25,6 +27,9 @@ import '@/styles/features/money/swap.css';
 /** Where the output lands: Stellar (a path payment) or another network (NEAR Intents). */
 type Target = 'stellar' | CrossChainTarget;
 const TARGETS: Target[] = ['stellar', 'solana', 'monad'];
+/** Where the swap pays from. Stellar is this screen; Solana / Monad are `ChainSwap`. */
+type Origin = 'stellar' | OtherChain;
+const ORIGINS: Origin[] = ['stellar', 'solana', 'monad'];
 
 /**
  * Swap any trustlined asset for another via CosmosPay (preferential rate per the
@@ -35,6 +40,9 @@ const TARGETS: Target[] = ['stellar', 'solana', 'monad'];
  * NEAR Intents deposit address from its Stellar account (a payment it builds and signs
  * itself), and the output lands on its own Solana / Monad address — the one the same
  * recovery phrase derives. Mainnet only.
+ *
+ * "Pay from" Solana or Monad hands the screen to `ChainSwap`: a Jupiter / Kuru Flow swap
+ * on that chain, or a NEAR Intents swap from it to another (Stellar included).
  */
 export function Swap({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -58,6 +66,7 @@ export function Swap({ store }: { store: WalletStore }) {
 
   // Cross-chain state: the network the output lands on, what NEAR Intents lists, the
   // chosen destination asset and its quote.
+  const [origin, setOrigin] = useState<Origin>('stellar');
   const [target, setTarget] = useState<Target>('stellar');
   const [xAssets, setXAssets] = useState<CrossChainAsset[]>([]);
   const [xDestId, setXDestId] = useState<string | null>(null);
@@ -190,9 +199,31 @@ export function Swap({ store }: { store: WalletStore }) {
         ]
       : [];
 
+  const originPicker = (
+    <div className="swap-target" role="group" aria-label={t('xswap.payFrom')}>
+      <div className="swap-target-label">{t('xswap.payFrom')}</div>
+      {ORIGINS.map((c) => (
+        <button key={c} className={cx('swap-target-btn', origin === c && 'is-on')} onClick={() => setOrigin(c)}>
+          {t(`xswap.chain.${c}`)}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (origin !== 'stellar') {
+    return (
+      <div className="scr screen col pb-104">
+        <BackBar title={t('swap.title')} onBack={store.goBack} />
+        <ChainSwap store={store} origin={origin} header={originPicker} />
+      </div>
+    );
+  }
+
   return (
     <div className="scr screen col pb-104">
       <BackBar title={t('swap.title')} onBack={store.goBack} />
+
+      {originPicker}
 
       <div className="swap-target" role="group" aria-label={t('xswap.receiveOn')}>
         <div className="swap-target-label">{t('xswap.receiveOn')}</div>
