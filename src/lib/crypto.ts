@@ -30,6 +30,9 @@ import {
   BACKUP_PBKDF2_ITERATIONS,
   IV_BYTES,
   LEGACY_PBKDF2_ITERATIONS,
+  MAX_ARGON2_MEMORY_KIB,
+  MAX_ARGON2_PARALLELISM,
+  MAX_ARGON2_PASSES,
   MAX_PBKDF2_ITERATIONS,
   PBKDF2_ITERATIONS,
   SALT_BYTES,
@@ -427,6 +430,36 @@ export async function derivePasswordKey(password: string, kdf: KdfParams): Promi
     throw new Error('sealed box: unusable iteration count');
   }
   return deriveRaw(password, kdf);
+}
+
+/** Argon2id parameters, as a v4 backup door carries them. `m` is in KiB. */
+export interface Argon2Params {
+  salt: string;
+  m: number;
+  t: number;
+  p: number;
+}
+
+/**
+ * The 32-byte key an Argon2id backup door is sealed under.
+ *
+ * Pure JavaScript (`@noble/hashes`), not WebAssembly: the wallet's CSP is `script-src 'self'`
+ * in the extension and in Tauri, and loosening it for one KDF would loosen it for every
+ * script. The async form yields to the event loop, so the UI keeps painting while it works.
+ * Bounded before it runs, for the reason `derivePasswordKey` is — see `MAX_ARGON2_*`.
+ */
+export async function deriveArgon2Key(password: string, kdf: Argon2Params): Promise<Uint8Array> {
+  const within = (v: number, min: number, max: number) => Number.isInteger(v) && v >= min && v <= max;
+  if (!within(kdf.m, 8 * kdf.p, MAX_ARGON2_MEMORY_KIB) || !within(kdf.t, 1, MAX_ARGON2_PASSES) || !within(kdf.p, 1, MAX_ARGON2_PARALLELISM)) {
+    throw new Error('sealed box: unusable Argon2 parameters');
+  }
+  const { argon2idAsync } = await import('@noble/hashes/argon2.js');
+  return argon2idAsync(new TextEncoder().encode(password), fromBase64(kdf.salt), {
+    m: kdf.m,
+    t: kdf.t,
+    p: kdf.p,
+    dkLen: 32,
+  });
 }
 
 /**

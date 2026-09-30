@@ -15,7 +15,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { APP_PWD_CRITERIA, MIN_APP_PWD_LEN, appPasswordOk } from '@/lib/validate';
+import { APP_PWD_CRITERIA, MIN_APP_PWD_LEN, appPasswordOk, isCommonPassword } from '@/lib/validate';
 
 test('the rule is exactly the criteria the checklist shows — no more, no less', () => {
   const samples = [
@@ -44,7 +44,8 @@ test('each criterion is the one thing missing from an otherwise valid password',
   // Built FROM the constant rather than typed out, because it WAS typed out — as
   // `Abcdefg1` — and raising the floor turned "the base must be valid" into a failure that
   // said nothing about the criteria it exists to isolate.
-  const valid = `Abc1${'d'.repeat(MIN_APP_PWD_LEN - 4)}`;
+  // Varied letters after the base, so it also clears the common-password criterion.
+  const valid = `Abc1${'mzqtrwnlpkyh'.slice(0, MIN_APP_PWD_LEN - 4)}`;
   assert.equal(valid.length, MIN_APP_PWD_LEN);
   assert.ok(appPasswordOk(valid), 'the base must be valid or the rest proves nothing');
   assert.equal(appPasswordOk(valid.toLowerCase()), false, 'no uppercase');
@@ -54,7 +55,7 @@ test('each criterion is the one thing missing from an otherwise valid password',
 });
 
 test('the length floor is the exported constant, not a literal in a screen', () => {
-  const short = `Ab1${'c'.repeat(MIN_APP_PWD_LEN - 4)}`;
+  const short = `Ab1${'mzqtrwnlpkyh'.slice(0, MIN_APP_PWD_LEN - 4)}`;
   assert.equal(short.length, MIN_APP_PWD_LEN - 1);
   assert.equal(appPasswordOk(short), false);
   assert.equal(appPasswordOk(`${short}d`), true);
@@ -63,5 +64,28 @@ test('the length floor is the exported constant, not a literal in a screen', () 
 test('a long passphrase is not rejected for being long', () => {
   // The ladder in lib/attempts.ts bounds typing; the password's own entropy is what bounds
   // an offline grind of the vault blob. Nothing here may cap length.
-  assert.ok(appPasswordOk(`A1${'x'.repeat(400)}`));
+  // Varied, not one letter repeated: a repeat is refused on its own terms (see below).
+  const long = `A1 ${'correct horse battery staple '.repeat(14)}`;
+  assert.ok(long.length > 400);
+  assert.ok(appPasswordOk(long));
+});
+
+/* The backup is attacked offline, so length alone is not enough: these are long and still
+   among the first things a cracking rule tries. */
+test('long passwords a guesser tries early are refused', () => {
+  for (const pwd of [
+    'Password2024!',
+    'Contraseña2024',
+    'Qwerty123456A',
+    'Aaaaaaaaaaa1',
+    'Abcdefgh1234',
+    'Cosmospay2026!',
+    'Zyxwvut98765A',
+  ]) {
+    assert.ok(pwd.length >= MIN_APP_PWD_LEN, pwd);
+    assert.equal(isCommonPassword(pwd), true, pwd);
+    assert.equal(appPasswordOk(pwd), false, pwd);
+  }
+  assert.equal(appPasswordOk('Corr3ct-Horse-Battery'), true);
+  assert.equal(appPasswordOk('Mi-gato-come-7-peras'), true);
 });

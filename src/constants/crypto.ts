@@ -50,6 +50,32 @@ export const LEGACY_PBKDF2_ITERATIONS = 210_000;
 export const BACKUP_PBKDF2_ITERATIONS = 1_000_000;
 
 /**
+ * Argon2id for the cloud backup's password door (`v: 4` boxes) — what every backup is sealed
+ * with now. `BACKUP_PBKDF2_ITERATIONS` above is kept only to OPEN the `v: 2`/`v: 3` boxes
+ * already on the server.
+ *
+ * Why it replaced PBKDF2 there: a leaked backup table is attacked offline, on GPUs, and
+ * PBKDF2 costs a GPU almost nothing but time. Argon2id also costs MEMORY — 64 MiB per guess
+ * here — which is what a GPU has least of per core, so each guess costs the attacker what
+ * it costs the phone. OWASP's floor is 19 MiB × 2 passes; this is 64 MiB × 2, about a
+ * second on a laptop and a few on a phone, paid once when a backup is sealed and once per
+ * restore. The parameters travel in the box, so raising them later strands nothing.
+ *
+ * The community server refuses a v4 password door below 19 MiB or 2 passes
+ * (`BACKUP_ARGON2_MIN_*` in its wallet-auth constants).
+ */
+export const BACKUP_ARGON2 = { m: 65_536, t: 2, p: 1 } as const;
+
+/**
+ * The most memory (KiB) and passes this build will spend on a stored box's Argon2id door.
+ * Like `MAX_PBKDF2_ITERATIONS`: the parameters sit outside the AEAD, so without a ceiling a
+ * box served with `m` = 8 GiB would take the device down instead of failing.
+ */
+export const MAX_ARGON2_MEMORY_KIB = 262_144;
+export const MAX_ARGON2_PASSES = 10;
+export const MAX_ARGON2_PARALLELISM = 4;
+
+/**
  * The most rounds this build will attempt on behalf of a stored box.
  *
  * KDF parameters sit OUTSIDE the AEAD — like the salt and the IV they must be read before

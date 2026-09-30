@@ -302,6 +302,13 @@ export const T: Record<string, Record<Lang, string>> = {
   'pwd.critUpper': { es: 'Al menos una mayúscula (A-Z)', en: 'At least one uppercase letter (A-Z)', pt: 'Pelo menos uma maiúscula (A-Z)', de: 'Mindestens ein Großbuchstabe (A-Z)', fr: 'Au moins une majuscule (A-Z)' },
   'pwd.critDigit': { es: 'Al menos un número (0-9)', en: 'At least one number (0-9)', pt: 'Pelo menos um número (0-9)', de: 'Mindestens eine Zahl (0-9)', fr: 'Au moins un chiffre (0-9)' },
   'pwd.critLower': { es: 'Al menos una letra minúscula (a-z)', en: 'At least one lowercase letter (a-z)', pt: 'Pelo menos uma letra minúscula (a-z)', de: 'Mindestens ein Kleinbuchstabe (a-z)', fr: 'Au moins une lettre minuscule (a-z)' },
+  'pwd.critUncommon': {
+    es: 'No es una contraseña común, una secuencia (qwerty, 12345) ni caracteres repetidos',
+    en: 'Not a common password, a sequence (qwerty, 12345) or repeated characters',
+    pt: 'Não é uma palavra-passe comum, uma sequência (qwerty, 12345) nem caracteres repetidos',
+    de: 'Kein gängiges Passwort, keine Folge (qwertz, 12345) und keine wiederholten Zeichen',
+    fr: 'Pas un mot de passe courant, une suite (azerty, 12345) ni des caractères répétés',
+  },
   'pwd.critMatch': { es: 'Ambas contraseñas coinciden', en: 'Both passwords match', pt: 'As palavras-passe coincidem', de: 'Beide Passwörter stimmen überein', fr: 'Les deux mots de passe correspondent' },
   'pwd.create': { es: 'Crear wallet', en: 'Create wallet', pt: 'Criar wallet', de: 'Wallet erstellen', fr: 'Créer le portefeuille' },
 

@@ -63,7 +63,15 @@ import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
 import { usePasskey } from '@/state/usePasskey';
 import { finishSignIn, replaceBackup as storeBackupBox } from '@/lib/signIn';
-import { BackupPasskeyError, backupDoors, openBackup, sealBackup, type BackupDoors, type BackupKey } from '@/lib/cloudBackup';
+import {
+  BackupPasskeyError,
+  backupDoors,
+  backupNeedsUpgrade,
+  openBackup,
+  sealBackup,
+  type BackupDoors,
+  type BackupKey,
+} from '@/lib/cloudBackup';
 import { PasskeyError, createPasskey, getPasskeySecrets, wipePasskeySecrets, type PasskeySecrets } from '@/lib/passkey';
 import {
   PasskeyUnlockStaleError,
@@ -1020,6 +1028,19 @@ export function useWalletStore() {
           if (!entry.cloudBackup) await updateWalletMeta(entry.id, { cloudBackup: true });
           await saveCosmosPay(entry.id, input.account, input.vk);
           restored += 1;
+          // The same Argon2id upgrade the newest box got, best-effort: a failure leaves the
+          // old box, which still opens.
+          if (typeof input.key === 'string' && backupNeedsUpgrade(b.box)) {
+            const password = input.key;
+            void (async () => {
+              await storeBackupBox({
+                secret: secret.secret,
+                box: await sealBackup({ secret: secret.secret, mnemonic: secret.mnemonic }, password, b.stellarAddress),
+                account: b.stellarAddress,
+                accessKey: await warmPublicKey(networkEnv(network)),
+              });
+            })().catch((e) => reportError(EVENT.backupUpdateFailed, e));
+          }
         } catch {
           closed += 1;
         }
@@ -1029,7 +1050,7 @@ export function useWalletStore() {
       if (restored) flash(t('backup.restoredMore', { n: restored }), 'ok');
       if (closed) flash(t('backup.otherPassword', { n: closed }), 'info');
     },
-    [flash, t],
+    [flash, t, network],
   );
 
   /**
@@ -4339,6 +4360,17 @@ export function useWalletStore() {
               if (door) wipePasskeySecrets(door.secrets);
               door = null;
             }
+          }
+
+          // A box from before Argon2id (v2/v3, PBKDF2) is re-sealed as v4 on the way through,
+          // with the password that just opened it — in the same request, like the passkey
+          // upgrade. Never a box with a passkey door: this password cannot reproduce it.
+          if (!upgradedBox && backupNeedsUpgrade(backup.box)) {
+            upgradedBox = await sealBackup(
+              { secret: secret.secret, mnemonic: secret.mnemonic },
+              password,
+              backup.stellarAddress,
+            );
           }
 
           const res = await finishSignIn({

@@ -30,34 +30,70 @@ export function isEmail(raw: string): boolean {
  * under it. The weakest of two disagreeing rules is the one that ends up protecting the
  * seed.
  *
- * SIX characters, and that is a product decision about friction, not a security argument —
- * the number was twelve and the comment here used to make the case for it. Be clear about
- * what it costs, because the length is the half of the vault's strength that the iteration
- * count in `constants/crypto.ts` cannot buy back: a KDF multiplies the cost of each guess,
- * the password decides how many guesses there are. Against a vault file an attacker HOLDS —
- * a restored backup, a copied profile directory — six characters from the classes below is
- * a small keyspace at any PBKDF2 cost this app can afford to spend on an unlock a user
- * waits for. What still protects a wallet at this floor is the attacker never getting the
- * file: the device lock in `lib/deviceAuth.ts`, and the failed-attempt ladder in
- * `lib/attempts.ts` for the guesses made through the app.
+ * TWELVE characters, and not a common password. It is the same password that seals the
+ * cloud backup, and that copy is attacked OFFLINE: whoever reads the server's table (or the
+ * person's inbox) gets unlimited guesses, and no attempt ladder is in the way. A KDF
+ * multiplies the cost of each guess; the password decides how many guesses there are. At
+ * six characters the Argon2id door in `constants/crypto.ts` was guarding a keyspace a small
+ * GPU rig empties in hours; twelve, from the classes below and outside the common lists,
+ * puts it out of reach.
  *
  * It binds only what is SET from here on: `appPasswordOk` is checked when a password is
- * chosen or changed, never when one is used. So lowering it locks nobody out and shortens
- * nobody's existing password — a twelve-character one keeps working, and keeps being worth
- * more than this floor asks for.
+ * chosen or changed, never when one is used. Raising it locks nobody out — an existing
+ * six-character password keeps opening its vault — it is asked for the next time the
+ * password changes.
  *
  * Each criterion is separate because the onboarding screen shows them as a live checklist;
  * `appPasswordOk` is what everything else asks. The copy is not allowed to restate the
- * number either: the four strings that name it take it as a `{n}` parameter, so this line
+ * number either: the strings that name it take it as a `{n}` parameter, so this line
  * is the only place it is written down.
  */
-export const MIN_APP_PWD_LEN = 6;
+export const MIN_APP_PWD_LEN = 12;
+
+/**
+ * Passwords a guesser tries first, as the letters left once digits and symbols are dropped:
+ * `Password2024!` is `password` with decoration, and decoration is the first thing a cracking
+ * rule adds. English, Spanish, Portuguese, German and French, plus this product's own names.
+ */
+const COMMON_WORDS = new Set([
+  'password', 'passw', 'passwort', 'motdepasse', 'contrasena', 'contrasenia', 'senha', 'clave',
+  'secret', 'secreto', 'segredo', 'geheim', 'admin', 'administrator', 'root', 'user', 'usuario',
+  'welcome', 'bienvenido', 'bemvindo', 'willkommen', 'bienvenue', 'letmein', 'iloveyou', 'teamo',
+  'teamomucho', 'jetaime', 'ichliebedich', 'monkey', 'dragon', 'football', 'futbol', 'baseball',
+  'master', 'shadow', 'sunshine', 'princess', 'superman', 'batman', 'starwars', 'pokemon',
+  'qwerty', 'qwertz', 'azerty', 'asdfgh', 'zxcvbn', 'abc', 'abcd', 'abcde', 'abcdef', 'abcdefg',
+  'hola', 'holamundo', 'helloworld', 'hello', 'test', 'prueba', 'teste', 'changeme', 'cambiar',
+  'bitcoin', 'ethereum', 'crypto', 'cripto', 'wallet', 'billetera', 'carteira', 'stellar',
+  'lumens', 'solana', 'monad', 'cosmos', 'cosmospay', 'cosmoswallet',
+]);
+
+/** Runs a guesser walks: keyboard rows and counting, forwards and back. */
+const SEQUENCES = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm', 'qwertzuiop', 'azertyuiop', 'abcdefghijklmnopqrstuvwxyz', '01234567890'];
+const SEQUENCE_RUN = 5;
+
+/** Is this password one a guesser would reach early, whatever its length? */
+export function isCommonPassword(pwd: string): boolean {
+  const lower = pwd.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  // Few distinct characters is a repeat with a costume on: `Aaaaaaaaaaa1`, `Abc1dddddddd`.
+  if (new Set(lower).size < 6) return true;
+  const letters = lower.replace(/[^a-z]/g, '');
+  if (COMMON_WORDS.has(letters)) return true;
+  for (const seq of SEQUENCES) {
+    for (const s of [seq, [...seq].reverse().join('')]) {
+      for (let i = 0; i + SEQUENCE_RUN <= s.length; i++) {
+        if (lower.includes(s.slice(i, i + SEQUENCE_RUN))) return true;
+      }
+    }
+  }
+  return false;
+}
 
 export const APP_PWD_CRITERIA = {
   length: (p: string) => p.length >= MIN_APP_PWD_LEN,
   upper: (p: string) => /[A-Z]/.test(p),
   lower: (p: string) => /[a-z]/.test(p),
   digit: (p: string) => /\d/.test(p),
+  uncommon: (p: string) => p.length > 0 && !isCommonPassword(p),
 } as const;
 
 /** Is this string allowed to encrypt a wallet? Checked in the store, not only in a form. */

@@ -60,6 +60,7 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
   const upperOk = APP_PWD_CRITERIA.upper(pwd);
   const digitOk = APP_PWD_CRITERIA.digit(pwd);
   const lowerOk = APP_PWD_CRITERIA.lower(pwd);
+  const uncommonOk = APP_PWD_CRITERIA.uncommon(pwd);
   const match = pwd === confirm && confirm.length > 0;
   const ok = appPasswordOk(pwd) && match && !store.busy;
 
@@ -139,6 +140,7 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
         <Criterion met={upperOk}>{t('pwd.critUpper')}</Criterion>
         <Criterion met={digitOk}>{t('pwd.critDigit')}</Criterion>
         <Criterion met={lowerOk}>{t('pwd.critLower')}</Criterion>
+        <Criterion met={uncommonOk}>{t('pwd.critUncommon')}</Criterion>
         <Criterion met={match}>{t('pwd.critMatch')}</Criterion>
       </div>
 

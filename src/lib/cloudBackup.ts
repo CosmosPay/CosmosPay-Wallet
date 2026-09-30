@@ -5,17 +5,20 @@
  * The server stores the box and cannot open it. What stands between a leaked copy of its
  * table and the funds is decided here, and it depends on the door:
  *
- *  - a PASSWORD door: the password, and `BACKUP_PBKDF2_ITERATIONS` — higher than the local
- *    vault's cost because the reader of a leaked table gets unlimited offline guesses at
- *    every box in it. `sealBackup` owns that number so no caller can lower it.
+ *  - a PASSWORD door: the password, and the Argon2id cost `BACKUP_ARGON2` — memory-hard,
+ *    because the reader of a leaked table gets unlimited offline guesses at every box in
+ *    it. `sealBackup` owns those numbers so no caller can lower them.
  *  - a PASSKEY door: 32 bytes of PRF output that only the person's authenticator can
  *    produce (`lib/passkey.ts`). Nothing to guess offline, so nothing to stretch.
  *
- * TWO SHAPES. `v: 2` is the seed sealed straight under a password — what every wallet wrote
- * before passkeys, and still what a password-only backup is, so a server that does not know
- * `v: 3` keeps accepting it. `v: 3` seals the seed under a random DATA key and seals that
- * key once per door in `slots`; it is written whenever a passkey is involved. The community
- * server's `isBackupBox` validates both, and holds every password door to the same floor.
+ * THREE SHAPES, ONE WRITTEN. `v: 4` is what every backup is sealed as now: the seed under a
+ * random DATA key, that key sealed once per door in `slots`, and a password door derived
+ * with Argon2id (`BACKUP_ARGON2`) — memory-hard, so a leaked table costs a GPU per guess
+ * what it costs the phone. `v: 2` (the seed straight under a PBKDF2 password) and `v: 3`
+ * (the slot shape with a PBKDF2 password door) are still OPENED, because the server holds
+ * boxes written before; `backupNeedsUpgrade` says when a restore should re-seal one. The
+ * community server's `isBackupBox` validates all three and holds each password door to its
+ * own floor.
  *
  * Opening checks the result against the address the server filed the box under. The box
  * is authenticated (AES-GCM), so a server cannot forge one — but it can hand back SOMEONE
@@ -24,12 +27,12 @@
  */
 import { Keypair } from '@stellar/stellar-sdk';
 import {
+  deriveArgon2Key,
   derivePasswordKey,
   newRandomKey,
   open,
   openBytes,
   sealBytes,
-  sealForBackup,
   toBase64,
   WrongPasswordError,
   type SealedBox,
@@ -37,7 +40,7 @@ import {
 } from '@/lib/crypto';
 import { tNow } from '@/lib/i18n';
 import type { VaultSecret } from '@/lib/vault';
-import { BACKUP_PBKDF2_ITERATIONS, SALT_BYTES } from '@/constants/crypto';
+import { BACKUP_ARGON2, SALT_BYTES } from '@/constants/crypto';
 
 /** The box opened, but it is not the wallet it was filed as. Never a wrong password. */
 export class BackupMismatchError extends Error {
@@ -82,11 +85,24 @@ export interface BackupDoors {
 /** What opens a box: a typed password, or a passkey's secret. */
 export type BackupKey = string | { passkey: PasskeyDoor };
 
-interface PasswordSlot extends SealedBytes {
+/** A v3 password door: PBKDF2. Only ever opened now. */
+interface Pbkdf2Slot extends SealedBytes {
   kind: 'password';
   salt: string;
   iter: number;
 }
+
+/** A v4 password door: Argon2id, with its parameters beside it (they sit outside the AEAD). */
+interface Argon2Slot extends SealedBytes {
+  kind: 'password';
+  kdf: 'argon2id';
+  salt: string;
+  m: number;
+  t: number;
+  p: number;
+}
+
+type PasswordSlot = Pbkdf2Slot | Argon2Slot;
 
 interface PasskeySlot extends SealedBytes {
   kind: 'passkey';
@@ -95,8 +111,9 @@ interface PasskeySlot extends SealedBytes {
 
 type Slot = PasswordSlot | PasskeySlot;
 
+/** The slot-shaped box: `v: 3` has PBKDF2 password doors, `v: 4` Argon2id ones. */
 interface BoxV3 extends SealedBytes {
-  v: 3;
+  v: 3 | 4;
   slots: Slot[];
 }
 
@@ -108,9 +125,9 @@ const dec = new TextDecoder();
 /**
  * Seal a wallet's secret for the server to keep. Returns the box as the JSON it stores.
  *
- * A bare password string seals a `v: 2` box, exactly as before passkeys. Doors seal a
- * `v: 3` box with one slot per door — which is what a passkey needs, and what lets a person
- * keep their password as a second way in.
+ * Always a `v: 4` box, with one slot per door: a bare password string is a password door and
+ * nothing else. The password door is Argon2id; a passkey door is the authenticator's PRF
+ * output, which needs no stretching.
  *
  * `account` is only passed by a RECOVERED wallet, whose address is no longer its key's own
  * — SEP-30 recovery retires the master key and puts a new one on the account. It travels
@@ -121,7 +138,7 @@ const dec = new TextDecoder();
  */
 export async function sealBackup(secret: VaultSecret, doors: string | BackupDoors, account?: string): Promise<string> {
   const payload = JSON.stringify(account ? { ...secret, account } : secret);
-  if (typeof doors === 'string') return JSON.stringify(await sealForBackup(payload, doors));
+  if (typeof doors === 'string') doors = { password: doors };
   if (!doors.password && !doors.passkey) throw new Error('a backup needs at least one door');
 
   const dataKey = newRandomKey();
@@ -129,15 +146,15 @@ export async function sealBackup(secret: VaultSecret, doors: string | BackupDoor
     const slots: Slot[] = [];
     if (doors.password) {
       const salt = toBase64(crypto.getRandomValues(new Uint8Array(SALT_BYTES)));
-      const iter = BACKUP_PBKDF2_ITERATIONS;
-      const key = await derivePasswordKey(doors.password, { salt, iter });
-      slots.push({ kind: 'password', salt, iter, ...(await sealBytes(dataKey, key)) });
+      const params = { salt, ...BACKUP_ARGON2 };
+      const key = await deriveArgon2Key(doors.password, params);
+      slots.push({ kind: 'password', kdf: 'argon2id', ...params, ...(await sealBytes(dataKey, key)) });
       key.fill(0);
     }
     if (doors.passkey) {
       slots.push({ kind: 'passkey', id: doors.passkey.id, ...(await sealBytes(dataKey, doors.passkey.secret)) });
     }
-    const box: BoxV3 = { v: 3, ...(await sealBytes(enc.encode(payload), dataKey)), slots };
+    const box: BoxV3 = { v: 4, ...(await sealBytes(enc.encode(payload), dataKey)), slots };
     return JSON.stringify(box);
   } finally {
     dataKey.fill(0);
@@ -148,12 +165,22 @@ export async function sealBackup(secret: VaultSecret, doors: string | BackupDoor
 
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
 
-function parseSlot(s: unknown): Slot | null {
+function parseSlot(s: unknown, v: 3 | 4): Slot | null {
   if (!s || typeof s !== 'object') return null;
   const o = s as Record<string, unknown>;
   if (!isStr(o.iv) || !isStr(o.data)) return null;
-  if (o.kind === 'password' && isStr(o.salt) && Number.isInteger(o.iter)) {
+  // Each version has exactly one kind of password door: a v4 box never carries PBKDF2.
+  if (v === 3 && o.kind === 'password' && isStr(o.salt) && Number.isInteger(o.iter)) {
     return { kind: 'password', salt: o.salt, iter: o.iter as number, iv: o.iv, data: o.data };
+  }
+  if (
+    v === 4 &&
+    o.kind === 'password' &&
+    o.kdf === 'argon2id' &&
+    isStr(o.salt) &&
+    [o.m, o.t, o.p].every((n) => Number.isInteger(n))
+  ) {
+    return { kind: 'password', kdf: 'argon2id', salt: o.salt, m: o.m as number, t: o.t as number, p: o.p as number, iv: o.iv, data: o.data };
   }
   if (o.kind === 'passkey' && isStr(o.id)) return { kind: 'passkey', id: o.id, iv: o.iv, data: o.data };
   return null;
@@ -169,9 +196,10 @@ function parseBox(box: string): SealedBox | BoxV3 {
   }
   if (!b || typeof b !== 'object') throw new BackupUnreadableError();
   if (b.v === 2 && isStr(b.salt) && isStr(b.iv) && isStr(b.data)) return b as unknown as SealedBox;
-  if (b.v === 3 && isStr(b.iv) && isStr(b.data) && Array.isArray(b.slots) && b.slots.length > 0) {
-    const slots = b.slots.map(parseSlot);
-    if (slots.every((s): s is Slot => s !== null)) return { v: 3, iv: b.iv, data: b.data, slots };
+  if ((b.v === 3 || b.v === 4) && isStr(b.iv) && isStr(b.data) && Array.isArray(b.slots) && b.slots.length > 0) {
+    const v = b.v;
+    const slots = b.slots.map((slot) => parseSlot(slot, v));
+    if (slots.every((s): s is Slot => s !== null)) return { v, iv: b.iv, data: b.data, slots };
   }
   throw new BackupUnreadableError();
 }
@@ -183,7 +211,7 @@ function parseBox(box: string): SealedBox | BoxV3 {
  */
 export function backupDoors(box: string): { password: boolean; passkeys: string[] } {
   const b = parseBox(box);
-  if (b.v !== 3) return { password: true, passkeys: [] };
+  if (!('slots' in b)) return { password: true, passkeys: [] };
   return {
     password: b.slots.some((s) => s.kind === 'password'),
     passkeys: b.slots.flatMap((s) => (s.kind === 'passkey' ? [s.id] : [])),
@@ -204,7 +232,10 @@ async function dataKeyOf(box: BoxV3, key: BackupKey): Promise<Uint8Array> {
     const doors = box.slots.filter((s): s is PasswordSlot => s.kind === 'password');
     if (!doors.length) throw new WrongPasswordError();
     for (const door of doors) {
-      const k = await derivePasswordKey(key, { salt: door.salt, iter: door.iter });
+      const k =
+        'kdf' in door
+          ? await deriveArgon2Key(key, { salt: door.salt, m: door.m, t: door.t, p: door.p })
+          : await derivePasswordKey(key, { salt: door.salt, iter: door.iter });
       try {
         return await openBytes(door, k);
       } catch (e) {
@@ -225,7 +256,7 @@ async function dataKeyOf(box: BoxV3, key: BackupKey): Promise<Uint8Array> {
 }
 
 async function plaintextOf(b: SealedBox | BoxV3, key: BackupKey): Promise<string> {
-  if (b.v !== 3) {
+  if (!('slots' in b)) {
     // A v2 box has one door and it is a password. A passkey here is not a guess.
     if (typeof key !== 'string') throw new BackupPasskeyError();
     return open(b, key);
@@ -238,6 +269,19 @@ async function plaintextOf(b: SealedBox | BoxV3, key: BackupKey): Promise<string
   } finally {
     dataKey.fill(0);
   }
+}
+
+/**
+ * Whether a restore that just opened this box with the password should re-seal it as `v: 4`.
+ *
+ * Only a box older than v4 whose every door is a password: re-sealing needs a secret for
+ * every door, and a restore with the password cannot reproduce a passkey door — upgrading
+ * that box would silently remove the way in its owner set up.
+ */
+export function backupNeedsUpgrade(box: string): boolean {
+  const b = parseBox(box);
+  if ('slots' in b && b.v === 4) return false;
+  return backupDoors(box).passkeys.length === 0;
 }
 
 /**
