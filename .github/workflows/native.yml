@@ -108,7 +108,6 @@ env:
   # A Tauri window has NO CORS exemption (there is no tauri-plugin-http in
   # src-tauri/Cargo.toml, deliberately), so whatever host these name must also allow the
   # `tauri://localhost` and `http://tauri.localhost` origins — see .env.example.
-  PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
   PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
   PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
   PUBLIC_COSMOS_PUBLIC_KEY_DEV: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_DEV }}

@@ -3,7 +3,7 @@
  * DEVELOPER-MODE overrides persisted in localStorage:
  *
  *   cosmos.devMode       -> 'on' | (absent)
- *   cosmos.devEndpoints  -> JSON { coingeckoBase?, devPlatformUrl?, gatewayUrl?, gatewayEntry? }
+ *   cosmos.devEndpoints  -> JSON { coingeckoBase?, gatewayUrl?, gatewayEntry?, recoveryAUrl?, recoveryBUrl? }
  *
  * Resolution order: dev-mode override (when dev mode is ON) -> PUBLIC_* env -> default.
  * Getters are read per request, so changes apply immediately — no reload needed.
@@ -12,7 +12,6 @@
  */
 
 import {
-  DEFAULT_DEV_PLATFORM_URL,
   DEFAULT_GATEWAY_ENTRY,
   DEFAULT_GATEWAY_URL,
   DEFAULT_RECOVERY_A_URL,
@@ -41,7 +40,6 @@ const OVERRIDES_KEY = 'cosmos.devEndpoints';
 
 export interface EndpointOverrides {
   coingeckoBase?: string; // price feed base, e.g. https://api.coingecko.com
-  devPlatformUrl?: string; // Cosmos Developer Platform base ('' = same-origin /api proxy)
   gatewayUrl?: string; // APISIX gateway base ('' = same-origin proxy)
   gatewayEntry?: string; // gateway entry prefix, e.g. /cosmos-api
   recoveryAUrl?: string; // SEP-30 recovery server A
@@ -108,10 +106,6 @@ function resolve(key: keyof EndpointOverrides, envValue: string | undefined, fal
 /** CoinGecko (or compatible) price API base. */
 export const coingeckoBase = (): string => resolve('coingeckoBase', undefined, 'https://api.coingecko.com');
 
-/** Cosmos Developer Platform base ('' = same-origin `/api/...`, dev-proxied — web only). */
-export const devPlatformUrl = (): string =>
-  resolve('devPlatformUrl', ENV.PUBLIC_COSMOS_DEV_PLATFORM_URL || undefined, sameOriginWorks() ? '' : DEFAULT_DEV_PLATFORM_URL);
-
 /** APISIX gateway base ('' = same-origin, dev-proxied — web only). */
 export const gatewayUrl = (): string =>
   resolve('gatewayUrl', ENV.PUBLIC_COSMOS_GATEWAY_URL || undefined, sameOriginWorks() ? '' : DEFAULT_GATEWAY_URL);
@@ -164,11 +158,6 @@ function safeOrigin(url: string): string {
 export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; getDefault: () => string }[] = [
   { key: 'coingeckoBase', labelKey: 'settings.epCoingecko', getDefault: () => 'https://api.coingecko.com' },
   {
-    key: 'devPlatformUrl',
-    labelKey: 'settings.epDevPlatform',
-    getDefault: () => ENV.PUBLIC_COSMOS_DEV_PLATFORM_URL || (sameOriginWorks() ? '' : DEFAULT_DEV_PLATFORM_URL),
-  },
-  {
     key: 'gatewayUrl',
     labelKey: 'settings.epGateway',
     getDefault: () => ENV.PUBLIC_COSMOS_GATEWAY_URL || (sameOriginWorks() ? '' : DEFAULT_GATEWAY_URL),
@@ -195,10 +184,7 @@ export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; 
  * Only there. The sign-in used to live on the developer platform and then, for a while,
  * on both behind a flag; it is the community server's alone now, because that is the
  * piece that runs as replicas behind APISIX and that a developer can self-host with their
- * own Authentik. The platform issues API keys and shows metrics — it serves no part of
- * signing in, and a build that pointed at it would find nothing there.
- *
- * What the platform still serves is unaffected: `/api/assets`, `/api/public-key`,
- * and `/api/telemetry` stay on `devPlatformUrl()`.
+ * own Authentik. The platform issues API keys and shows metrics — the wallet does not
+ * call it at all: the public key, the asset catalog and telemetry are the gateway's too.
  */
 export const walletApiBase = (): string => `${gatewayApi()}/v1/wallet`;

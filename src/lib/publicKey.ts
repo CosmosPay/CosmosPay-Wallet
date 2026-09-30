@@ -21,19 +21,21 @@
  * the key that signs it, so the wallet stays non-custodial either way.
  *
  * Fetched rather than only compiled in, so a rotation takes effect without an
- * app-store review. The build-time value is the fallback for a wallet that cannot
- * reach the platform — which is also why a failed fetch is not an error worth
- * showing anyone.
+ * app-store review. It comes from the community server, through the gateway
+ * (`GET /v1/public-key`, keyless) — never from the developer platform, which is not
+ * in the path of anything the wallet does. The build-time value is the fallback for
+ * a wallet that cannot reach the gateway — which is also why a failed fetch is not
+ * an error worth showing anyone.
  */
 import { PUBLIC_KEY_TTL_MS } from '@/constants/api';
-import { devPlatformUrl } from '@/lib/endpoints';
+import { gatewayApi } from '@/lib/endpoints';
 import { object, parseShape, str, type Check } from '@/lib/apiShape';
 
 const ENV = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
 
 /**
  * Compiled-in fallbacks. Empty by default: a build that sets neither simply has
- * no public access until it can reach the platform, which is the honest state
+ * no public access until it can reach the gateway, which is the honest state
  * rather than a placeholder that produces a 401 somewhere far from here.
  */
 const BUILT_IN: Record<'dev' | 'prod', string> = {
@@ -83,13 +85,14 @@ export async function warmPublicKey(env: 'dev' | 'prod'): Promise<string | null>
   const pending = inFlight.get(env);
   if (pending) return pending;
 
-  const url = `${devPlatformUrl()}/api/public-key?env=${env}`;
+  const url = `${gatewayApi()}/v1/public-key?env=${env}`;
   const run = (async () => {
     try {
       const res = await fetch(url);
       if (!res.ok) return '';
       const json: unknown = await res.json();
-      // The dev platform wraps responses in `{ data, code, status, message }`.
+      // The server answers `{ env, apiKey }`; the `{ data }` envelope is tolerated
+      // for a build pointed at an older deployment.
       const payload =
         json && typeof json === 'object' && 'data' in (json as Record<string, unknown>)
           ? (json as { data: unknown }).data

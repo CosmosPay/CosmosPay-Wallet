@@ -27,9 +27,9 @@ test('the sign-in hangs off /v1/wallet on the gateway', () => {
   assert.doesNotMatch(walletApiBase(), /\/api\/wallet/);
 });
 
-test('moving the developer platform does not move the sign-in', { skip: !hasStorage }, () =>
+test('the sign-in follows the gateway override', { skip: !hasStorage }, () =>
   withDevOverrides(
-    { devPlatformUrl: 'https://dev.example.com', gatewayUrl: 'https://gw.example.com', gatewayEntry: '/cosmos-api' },
+    { gatewayUrl: 'https://gw.example.com', gatewayEntry: '/cosmos-api' },
     () => {
       assert.equal(walletApiBase(), 'https://gw.example.com/cosmos-api/v1/wallet');
     },

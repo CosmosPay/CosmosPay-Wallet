@@ -33,34 +33,6 @@ import {
   type Check,
 } from '@/lib/apiShape';
 
-/* --------------------------- provisioning ------------------------------ */
-
-const Keys = object({ dev: nullable(str), prod: nullable(str) });
-
-export const RegisterResultShape = variant('status', {
-  pending: object({ claimToken: id, expiresInSeconds: num }),
-  exists: object({}),
-});
-
-export const ClaimResultShape = variant('status', {
-  pending: object({}),
-  ready: object({ organizationId: id, keys: Keys }),
-  claimed: object({}),
-  expired: object({}),
-});
-
-export const LinkStartResultShape = variant('status', {
-  sent: object({ claimToken: id, expiresInSeconds: num }),
-  not_found: object({}),
-});
-
-export const LinkVerifyResultShape = variant('status', {
-  ready: object({ organizationId: id, keys: Keys }),
-  invalid: object({ attemptsLeft: num }),
-  expired: object({}),
-  locked: object({}),
-});
-
 /* ------------------------------- swaps --------------------------------- */
 
 export const SwapQuoteShape = object({

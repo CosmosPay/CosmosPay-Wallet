@@ -47,10 +47,8 @@ const vaultKey = (id: string) => `cosmos.w.${id}`;
 // secret (see crypto.ts) — i.e. encrypted, never plaintext in storage. Only the
 // non-sensitive org id / environment flags live on the plaintext WalletEntry.
 const cosmosPayKey = (id: string) => `cosmos.pay.${id}`;
-// Pending registration (awaiting email confirmation). Stored in PLAINTEXT: the
-// claim token is single-use, expires server-side, and is useless without (a)
-// the user confirming via the emailed link and (b) the matching stellarAddress.
-// It is not a long-lived secret and needs no password to survive a reload.
+// Where the retired email-link flow kept a pending registration, in plaintext. Nothing
+// writes it any more; it is only removed (clearPendingCosmosPay, clearCosmosPay, purges).
 const cosmosPayPendingKey = (id: string) => `cosmos.pay.pending.${id}`;
 
 // What the old Pollar login left behind — read only by `purgeLegacyPollar`, which removes it.
@@ -114,14 +112,6 @@ export interface WalletEntry {
 export interface CosmosPayAccount {
   keys: { dev: string | null; prod: string | null };
   organizationId: string;
-}
-
-/** A registration awaiting email confirmation (one-time claim token + address). */
-export interface CosmosPayPending {
-  claimToken: string;
-  stellarAddress: string;
-  expiresAt: number; // epoch ms (best-effort; server enforces expiry)
-  email?: string; // where the confirmation went — lets the UI flag a mismatch vs the current email
 }
 
 function genId(): string {
@@ -634,23 +624,7 @@ async function readCosmosPayWithPassword(id: string, password: string): Promise<
   }
 }
 
-/** Persist a pending registration (plaintext — see note on cosmosPayPendingKey). */
-export async function savePendingCosmosPay(id: string, pending: CosmosPayPending): Promise<void> {
-  await storageSet(cosmosPayPendingKey(id), JSON.stringify(pending));
-}
-
-/** Read a pending registration (null if none / malformed). */
-export async function getPendingCosmosPay(id: string): Promise<CosmosPayPending | null> {
-  const raw = await storageGet(cosmosPayPendingKey(id));
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as CosmosPayPending;
-  } catch {
-    return null;
-  }
-}
-
-/** Drop a pending registration (after claim, expiry, or removal). */
+/** Drop what the retired email-link flow left for a wallet. */
 export async function clearPendingCosmosPay(id: string): Promise<void> {
   await storageRemove(cosmosPayPendingKey(id));
 }

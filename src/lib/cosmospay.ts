@@ -1,23 +1,19 @@
 /**
  * CosmosPay HTTP client.
  *
- * Two backends are involved:
- *   - The Cosmos Developer Platform (DEV_PLATFORM_URL) provisions a payments
- *     account for a wallet. Its responses are wrapped in an envelope
- *     `{ data, code, status, message }` — we unwrap `.data`.
- *   - The APISIX gateway (COSMOS_GATEWAY_URL) fronts the payments API. Swap
- *     calls go here authenticated with the org's CosmosPay API key
- *     (`Authorization: Bearer <apiKey>`). Paths are URI-versioned (`/v1/...`)
- *     and the responses are the raw shapes documented below (no envelope).
+ * Everything goes to the APISIX gateway (COSMOS_GATEWAY_URL), which fronts the
+ * community server. Calls are authenticated with the account's CosmosPay API key
+ * (`Authorization: Bearer <apiKey>`), or with the shared public key for a wallet
+ * that has none. Paths are URI-versioned (`/v1/...`) and the responses are the
+ * raw shapes documented below (no envelope). The developer platform is not in
+ * the path of anything here: it issues developers' keys and shows data, and
+ * nothing a wallet does may depend on it being up.
  *
- * SECURITY — provisioning carries NO client secret. This wallet is open source,
- * so any embedded credential would be readable by everyone and let attackers
- * mint accounts/API keys. Instead provisioning is gated by two factors the
- * legitimate user controls: a signature from the wallet's Stellar secret key
- * (proves control of the account) plus email verification. The API key is
- * minted only after the user clicks an emailed confirmation link, and is
- * returned only to the wallet that initiated the request — via a one-time
- * claim token handed back at registration. No `X-Provisioning-Key` exists.
+ * SECURITY — connecting an account carries NO client secret. This wallet is open
+ * source, so any embedded credential would be readable by everyone. Instead the
+ * account's keys come from the wallet sign-in (`/v1/wallet/auth/*`), gated by two
+ * factors the legitimate user controls: the emailed (or provider-proven) identity
+ * and a signature from the wallet's own Stellar key.
  *
  * The wallet stays non-custodial: createSwap returns an unsigned XDR which we
  * sign locally (see signXdr in stellar.ts) and hand back via submitSwap — the
@@ -30,12 +26,11 @@
  * production / native builds. See `.env.example`. Never put secrets in PUBLIC_*
  * vars — they ship to the client.
  */
-import { Keypair } from '@stellar/stellar-sdk';
 // Endpoint bases (dev-platform + APISIX gateway) live in lib/endpoints: resolved
 // per request as developer-mode override -> PUBLIC_* env -> same-origin default,
 // so a dev can repoint them live from Settings without rebuilding. The gateway
 // still exposes the payments API behind an entry prefix (default `/cosmos-api`).
-import { devPlatformUrl, gatewayApi, walletApiBase } from '@/lib/endpoints';
+import { gatewayApi, walletApiBase } from '@/lib/endpoints';
 import { newTraceId } from '@/lib/trace';
 
 /** Default slippage tolerance for swaps (0.5%). */
@@ -57,43 +52,12 @@ export function usdcIssuer(networkId: string): string | undefined {
 
 /* ------------------------------- types --------------------------------- */
 
-/**
- * Result of a registration request. `pending` means an email was sent and the
- * caller must poll `claimCosmosAccount` with the one-time `claimToken` after
- * the user confirms; `exists` means an account already exists for that email.
- */
-export type RegisterResult =
-  | { status: 'pending'; claimToken: string; expiresInSeconds: number }
-  | { status: 'exists' };
-
 /** Both swap keys for an account: dev (testnet) + prod (mainnet). The wallet uses the one
  *  matching its current network. Either can be null if that environment's mint failed. */
 export interface CosmosKeys {
   dev: string | null;
   prod: string | null;
 }
-
-/** Result of a claim attempt against a pending registration. */
-export type ClaimResult =
-  | { status: 'pending' } // email not confirmed yet
-  | { status: 'ready'; organizationId: string; keys: CosmosKeys }
-  | { status: 'claimed' } // already claimed (token spent)
-  | { status: 'expired' }; // token / registration expired
-
-/**
- * Result of starting an account LINK — used when registration reported `exists`. The
- * server emails a one-time access code and returns a claim token the wallet keeps.
- */
-export type LinkStartResult =
-  | { status: 'sent'; claimToken: string; expiresInSeconds: number }
-  | { status: 'not_found' }; // no account for this email after all — register instead
-
-/** Result of verifying the emailed access code to finish linking. */
-export type LinkVerifyResult =
-  | { status: 'ready'; organizationId: string; keys: CosmosKeys }
-  | { status: 'invalid'; attemptsLeft: number } // wrong code
-  | { status: 'expired' } // code expired / unknown
-  | { status: 'locked' }; // too many wrong attempts — request a new code
 
 export interface PathHop {
   code: string;
@@ -173,9 +137,6 @@ import {
   AuthorizePayoutShape,
   BankAccountListShape,
   BankAccountShape,
-  ClaimResultShape,
-  LinkStartResultShape,
-  LinkVerifyResultShape,
   LiquidityOpListShape,
   LiquidityOperationShape,
   LiquidityPoolListShape,
@@ -192,7 +153,6 @@ import {
   RailsShape,
   ReceiverListShape,
   ReceiverShape,
-  RegisterResultShape,
   RegisteredWalletListShape,
   RegisteredWalletShape,
   SignMessageShape,
@@ -354,138 +314,6 @@ async function postJson<T>(
     unwrap && json && typeof json === 'object' && 'data' in (json as Envelope) ? (json as Envelope).data : json;
   parseShape(url, shape, payload);
   return payload as T;
-}
-
-/* --------------------------- provisioning ------------------------------ */
-
-/** Cryptographically-random hex nonce (NOT Math.random) to bind a registration. */
-export function makeNonce(bytes = 16): string {
-  const buf = new Uint8Array(bytes);
-  crypto.getRandomValues(buf);
-  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Sign the canonical registration message with the wallet's Stellar secret key,
- * proving control of `stellarAddress`. The server verifies this signature
- * against the public key before emailing a confirmation link. Returns the
- * base64 signature. The message format is fixed and must match the server.
- */
-export function signRegistrationMessage(
-  secret: string,
-  email: string,
-  stellarAddress: string,
-  nonce: string,
-): string {
-  const message = `Cosmos Pay Wallet account registration\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Buffer.from(Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'))).toString('base64');
-}
-
-/**
- * Begin provisioning: prove control of the Stellar account by signing a nonce,
- * then ask the dev platform to email a confirmation link. No client secret is
- * sent. Returns `pending` (with a one-time claim token) or `exists`.
- */
-export async function registerCosmosAccount(input: {
-  email: string;
-  name: string;
-  stellarAddress: string;
-  secret: string;
-}): Promise<RegisterResult> {
-  const nonce = makeNonce();
-  const signature = signRegistrationMessage(input.secret, input.email, input.stellarAddress, nonce);
-  return postJson<RegisterResult>(
-    `${devPlatformUrl()}/api/wallet/register`,
-    {
-      email: input.email,
-      name: input.name,
-      stellarAddress: input.stellarAddress,
-      nonce,
-      signature,
-    },
-    {},
-    true,
-    RegisterResultShape,
-  );
-}
-
-/**
- * Claim the API key for a pending registration once the user has confirmed via
- * email. The claim token is single-use and bound to `stellarAddress`, so the
- * key is only ever returned to the wallet that initiated the registration.
- */
-export async function claimCosmosAccount(input: {
-  stellarAddress: string;
-  claimToken: string;
-}): Promise<ClaimResult> {
-  return postJson<ClaimResult>(
-    `${devPlatformUrl()}/api/wallet/claim`,
-    { stellarAddress: input.stellarAddress, claimToken: input.claimToken },
-    {},
-    true,
-    ClaimResultShape,
-  );
-}
-
-/**
- * Sign the canonical account-LINK message. Distinct prefix from the registration message
- * so a signature for one flow can't be replayed in the other — must match the server's
- * linkMessage() byte-for-byte. Returns the base64 signature.
- */
-export function signLinkMessage(
-  secret: string,
-  email: string,
-  stellarAddress: string,
-  nonce: string,
-): string {
-  const message = `Cosmos Pay Wallet account link\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Buffer.from(Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'))).toString('base64');
-}
-
-/**
- * Begin linking the wallet to an EXISTING account (the email already has one). Proves
- * control of the Stellar account by signing a nonce; the server emails a one-time access
- * code. Returns `sent` (with a claim token to keep) or `not_found`.
- */
-export async function linkCosmosAccount(input: {
-  email: string;
-  name: string;
-  stellarAddress: string;
-  secret: string;
-}): Promise<LinkStartResult> {
-  const nonce = makeNonce();
-  const signature = signLinkMessage(input.secret, input.email, input.stellarAddress, nonce);
-  return postJson<LinkStartResult>(
-    `${devPlatformUrl()}/api/wallet/link`,
-    {
-      email: input.email,
-      name: input.name,
-      stellarAddress: input.stellarAddress,
-      nonce,
-      signature,
-    },
-    {},
-    true,
-    LinkStartResultShape,
-  );
-}
-
-/**
- * Finish linking: exchange the emailed access code (+ the claim token from linkCosmosAccount)
- * for the existing account's API key. Returns `ready` with the key, or a failure status.
- */
-export async function verifyCosmosLink(input: {
-  stellarAddress: string;
-  claimToken: string;
-  code: string;
-}): Promise<LinkVerifyResult> {
-  return postJson<LinkVerifyResult>(
-    `${devPlatformUrl()}/api/wallet/link/verify`,
-    { stellarAddress: input.stellarAddress, claimToken: input.claimToken, code: input.code },
-    {},
-    true,
-    LinkVerifyResultShape,
-  );
 }
 
 /* ---------------------------- wallet sign-in ----------------------------- */

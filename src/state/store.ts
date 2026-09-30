@@ -16,7 +16,6 @@ import {
   clearPendingCosmosPay,
   getActiveEntry,
   getCosmosPay,
-  getPendingCosmosPay,
   getCustomNetworks,
   getNetworkId,
   listWallets,
@@ -26,7 +25,6 @@ import {
   clearReceiver,
   saveCosmosPay,
   saveDefaultReceiver,
-  savePendingCosmosPay,
   updateWalletMeta,
   setActiveId,
   setCustomNetworks as vaultSetCustomNetworks,
@@ -41,7 +39,6 @@ import {
   verifyPassword,
   verifyVaultKey,
   type CosmosPayAccount,
-  type CosmosPayPending,
   type Gender,
   type VaultSecret,
   type WalletEntry,
@@ -133,7 +130,6 @@ import {
   addReceiverWallet as cpAddReceiverWallet,
   authorizePayout as cpAuthorizePayout,
   blindpayNetwork,
-  claimCosmosAccount,
   createPayLink as cpCreatePayLink,
   createPayin as cpCreatePayin,
   createPayout as cpCreatePayout,
@@ -143,7 +139,6 @@ import {
   depositLiquidity as cpDepositLiquidity,
   extractUnsignedXdr,
   getReceiver as cpGetReceiver,
-  linkCosmosAccount,
   listBankAccounts as cpListBankAccounts,
   listLiquidityPools as cpListLiquidityPools,
   liquidityPositions as cpLiquidityPositions,
@@ -158,11 +153,11 @@ import {
   offrampQuote as cpOfframpQuote,
   onrampQuote as cpOnrampQuote,
   quoteSwap as cpQuoteSwap,
-  registerCosmosAccount,
+  signInEmailStart,
+  signInEmailVerify,
   submitLiquidity as cpSubmitLiquidity,
   submitSwap as cpSubmitSwap,
   uploadKycDoc as cpUploadKycDoc,
-  verifyCosmosLink,
   withdrawLiquidity as cpWithdrawLiquidity,
   DEFAULT_SLIPPAGE_BPS,
   type BankAccount,
@@ -326,12 +321,10 @@ export type UnlockResult =
 export type { Toast } from '@/state/useToast';
 
 /**
- * Account-linking UI state. `offer` is shown when registration found the email already
- * has an account; `sent` holds the claim token after the access code is emailed.
+ * Connecting this wallet to Cosmos Pay: `sent` holds the claim token after the community
+ * server emailed the sign-in code, until the code is entered.
  */
-export type CosmosLink =
-  | { stage: 'offer' }
-  | { stage: 'sent'; claimToken: string; expiresAt: number };
+export type CosmosLink = { stage: 'sent'; claimToken: string; expiresAt: number };
 
 /** A swap side: the asset being sold (source) or bought (destination). `issuer` is
  *  null for native XLM. Built from the wallet's trustline balances. */
@@ -453,9 +446,6 @@ export function useWalletStore() {
   // Provisioned CosmosPay account for the active wallet (null until enabled /
   // before unlock). Loaded from the sealed store whenever a session opens.
   const [cosmosPay, setCosmosPay] = useState<CosmosPayAccount | null>(null);
-  // A registration awaiting email confirmation (set after enableReceiving until
-  // claimReceiving succeeds). Plaintext-persisted so it survives a reload.
-  const [cosmosPayPending, setCosmosPayPending] = useState<CosmosPayPending | null>(null);
   /**
    * Whether a gateway credential is available at all — this account's, or the
    * shared public one once it has loaded.
@@ -466,10 +456,9 @@ export function useWalletStore() {
    * never re-run.
    */
   const [publicKeyReady, setPublicKeyReady] = useState(false);
-  // Account-linking flow, shown when registration reports the email already has an
-  // account: 'offer' (prompt to link) → 'sent' (access code emailed, awaiting the code).
+  // Connecting to Cosmos Pay: 'sent' once the sign-in code is emailed, until it is entered.
   // In-memory only — the code lives in the user's email and is short-lived; a reload
-  // simply restarts the offer. See linkReceiving / submitLinkCode.
+  // simply starts over. See enableReceiving / submitLinkCode.
   const [cosmosLink, setCosmosLink] = useState<CosmosLink | null>(null);
 
   /**
@@ -974,7 +963,6 @@ export function useWalletStore() {
       setMetaState(landed);
       setSession({ publicKey: landed.publicKey, walletId: landed.id, vaultKey: input.vk });
       setCosmosPay(input.account);
-      setCosmosPayPending(null);
       return landed;
     },
     [meta, guardSession],
@@ -1119,8 +1107,7 @@ export function useWalletStore() {
         setWallets(await listWallets());
         setSession({ publicKey: draftAccount.publicKey, walletId: entry.id, vaultKey: vk });
         setCosmosPay(null); // fresh wallet — receiving not enabled yet
-        setCosmosPayPending(null);
-        setSuccessInfo({
+          setSuccessInfo({
           title: t(addingWallet ? 'success.added' : 'success.welcome', { name: entry.name }),
           msg: t('success.protected'),
           rows: [
@@ -1231,14 +1218,16 @@ export function useWalletStore() {
    *
    * Shared by `unlock` (a typed password) and `unlockWithKey` (the phone's own lock). They
    * differ only in how the key was obtained; what a session IS must not depend on that, and
-   * when it did, the biometric path quietly skipped `setCosmosPayPending`.
+   * when it did, the biometric path quietly skipped loading the Cosmos Pay state.
    */
   const openSession = useCallback(async (entry: WalletEntry, vaultKey: VaultKey) => {
     setMetaState(entry);
     setWallets(await listWallets());
     setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey });
     setCosmosPay(await getCosmosPay(entry.id, vaultKey));
-    setCosmosPayPending(await getPendingCosmosPay(entry.id));
+    // What the retired email-link flow left behind: a claim token for a platform route
+    // that no longer exists, plus the email and address in plaintext.
+    void clearPendingCosmosPay(entry.id);
     setTab('home');
     setScreen('home');
   }, []);
@@ -1402,7 +1391,6 @@ export function useWalletStore() {
     invalidate(ACCOUNT_PREFIX);
     invalidate(HISTORY_PREFIX);
     setCosmosPay(null);
-    setCosmosPayPending(null);
     setSend({ to: '', amount: '0', memo: '', memoKind: 'text', asset: XLM });
     setSuccessInfo(null);
     // The one-time enrolment offer dies with the session that earned it. Left standing,
@@ -1511,7 +1499,9 @@ export function useWalletStore() {
       setMetaState(entry);
       setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey });
       setCosmosPay(await getCosmosPay(entry.id, vaultKey));
-      setCosmosPayPending(await getPendingCosmosPay(entry.id));
+      // What the retired email-link flow left behind: a claim token for a platform route
+      // that no longer exists, plus the email and address in plaintext.
+      void clearPendingCosmosPay(entry.id);
     },
     [adoptWallet],
   );
@@ -1555,8 +1545,7 @@ export function useWalletStore() {
         invalidate(ACCOUNT_PREFIX);
         invalidate(HISTORY_PREFIX);
         setCosmosPay(null);
-        setCosmosPayPending(null);
-        setMetaState(null);
+          setMetaState(null);
         setScreen('welcome');
         return;
       }
@@ -1566,7 +1555,9 @@ export function useWalletStore() {
       setMetaState(entry);
       setSession({ publicKey: entry.publicKey, walletId: newActive, vaultKey: session.vaultKey });
       setCosmosPay(await getCosmosPay(newActive, session.vaultKey));
-      setCosmosPayPending(await getPendingCosmosPay(newActive));
+      // What the retired email-link flow left behind: a claim token for a platform route
+      // that no longer exists, plus the email and address in plaintext.
+      void clearPendingCosmosPay(newActive);
       setTab('home');
       setScreen('home');
       flash(t('toast.walletRemoved'), 'ok');
@@ -1738,10 +1729,13 @@ export function useWalletStore() {
 
   /* --------------------------- CosmosPay -------------------------- */
   /**
-   * Begin provisioning a CosmosPay account so this wallet can receive payments.
-   * No client secret is used: the wallet signs a nonce with its Stellar secret
-   * (proving account control) and the dev platform emails a confirmation link.
-   * The API key is minted only after the user confirms — see claimReceiving.
+   * Connect this wallet to a Cosmos Pay account — create it, or join the one its email
+   * already has. Step 1: the community server emails a sign-in code to the wallet's email.
+   *
+   * The same sign-in the onboarding uses (`/v1/wallet/auth/*`, through the gateway), ending
+   * in a `finish` WITHOUT a backup: this wallet already exists on the device, so nothing is
+   * backed up — it only proves its key and gets the account's API keys back. No developer
+   * platform in the path; it used to own a separate email-link flow for exactly this.
    */
   const enableReceiving = useCallback(async () => {
     if (!session || !meta) return;
@@ -1749,140 +1743,9 @@ export function useWalletStore() {
       flash(t('cosmospay.needEmail'), 'info');
       return;
     }
-    // Signing the registration needs the secret, so always password-gate it.
-    const epoch = sessionEpochRef.current;
-    const ok = await requestSignature({
-      title: t('cosmospay.enableTitle'),
-      message: t('cosmospay.enableConfirm'),
-    });
-    if (!ok) return;
     setBusy(true);
     try {
-      guardSession(epoch);
-      const res = await registerCosmosAccount({
-        email: meta.email,
-        name: meta.name,
-        stellarAddress: meta.publicKey,
-        secret: await secretOf(session),
-      });
-      if (res.status === 'exists') {
-        // Email already has an account — offer to link this wallet via an access code.
-        setCosmosLink({ stage: 'offer' });
-        flash(t('cosmospay.exists'), 'info');
-        return;
-      }
-      // pending — persist the claim token so the claim survives a reload.
-      const pending: CosmosPayPending = {
-        claimToken: res.claimToken,
-        stellarAddress: meta.publicKey,
-        expiresAt: Date.now() + (res.expiresInSeconds || 0) * 1000,
-        email: meta.email, // remember where it went, to flag mismatches later
-      };
-      await savePendingCosmosPay(meta.id, pending);
-      setCosmosPayPending(pending);
-      flash(t('cosmospay.checkEmail'), 'ok');
-    } catch (e) {
-      flash((e as Error).message || t('cosmospay.error'), 'err');
-    } finally {
-      setBusy(false);
-    }
-  }, [session, meta, requestSignature, guardSession, t, flash]);
-
-  /**
-   * Re-send the confirmation email: drops the stale pending registration (e.g. it
-   * was created with a previous/incorrect email) and registers again using the
-   * wallet's CURRENT email — so a fresh confirmation lands in the right inbox.
-   */
-  const resendReceiving = useCallback(async () => {
-    if (!meta) return;
-    await clearPendingCosmosPay(meta.id);
-    setCosmosPayPending(null);
-    await enableReceiving();
-  }, [meta, enableReceiving]);
-
-  /**
-   * Claim the API key for a pending registration once the user confirmed by
-   * email. `silent` is used by the background poller (no spinner, no "not
-   * confirmed yet" toast). Persists the key sealed (saveCosmosPay) on success.
-   */
-  const claimReceiving = useCallback(
-    async (silent = false) => {
-      if (!session || !meta || !cosmosPayPending) return;
-      const pending = cosmosPayPending;
-      // A background poller drives this every few seconds, so its closure routinely
-      // outlives the session it captured — and it re-seals the CosmosPay bearer key with
-      // that session's vault key. After a password change that key is superseded: the write
-      // would succeed, `getCosmosPay` would swallow the decrypt failure as "none", and the
-      // wallet would show receiving as enabled with a credential nothing can open.
-      const epoch = sessionEpochRef.current;
-      if (!silent) setBusy(true);
-      try {
-        const res = await claimCosmosAccount({
-          stellarAddress: pending.stellarAddress,
-          claimToken: pending.claimToken,
-        });
-        guardSession(epoch);
-        if (res.status === 'ready') {
-          const account: CosmosPayAccount = {
-            keys: res.keys,
-            organizationId: res.organizationId,
-          };
-          const list = await saveCosmosPay(meta.id, account, session.vaultKey);
-          setWallets(list);
-          const entry = list.find((w) => w.id === meta.id);
-          if (entry) setMetaState(entry);
-          setCosmosPay(account);
-          await clearPendingCosmosPay(meta.id);
-          setCosmosPayPending(null);
-          flash(t('cosmospay.created'), 'ok');
-        } else if (res.status === 'claimed') {
-          await clearPendingCosmosPay(meta.id);
-          setCosmosPayPending(null);
-          flash(t('cosmospay.already'), 'info');
-        } else if (res.status === 'expired') {
-          await clearPendingCosmosPay(meta.id);
-          setCosmosPayPending(null);
-          flash(t('cosmospay.expired'), 'err');
-        } else if (!silent) {
-          flash(t('cosmospay.notConfirmed'), 'info');
-        }
-      } catch (e) {
-        if (!silent) flash((e as Error).message || t('cosmospay.error'), 'err');
-      } finally {
-        if (!silent) setBusy(false);
-      }
-    },
-    [session, meta, cosmosPayPending, guardSession, t, flash],
-  );
-
-  /**
-   * Start linking this wallet to an EXISTING account (the email already had one — see the
-   * `exists` branch of enableReceiving). Password-gates the Stellar signature, then asks the
-   * server to email a one-time access code. On success we move to the 'sent' stage.
-   */
-  const linkReceiving = useCallback(async () => {
-    if (!session || !meta || !meta.email) return;
-    const epoch = sessionEpochRef.current;
-    const ok = await requestSignature({
-      title: t('cosmospay.linkTitle'),
-      message: t('cosmospay.linkConfirm'),
-    });
-    if (!ok) return;
-    setBusy(true);
-    try {
-      guardSession(epoch);
-      const res = await linkCosmosAccount({
-        email: meta.email,
-        name: meta.name,
-        stellarAddress: meta.publicKey,
-        secret: await secretOf(session),
-      });
-      if (res.status === 'not_found') {
-        // No account after all — drop back so the user can use the normal create flow.
-        setCosmosLink(null);
-        flash(t('cosmospay.linkNotFound'), 'info');
-        return;
-      }
+      const res = await signInEmailStart(meta.email, await warmPublicKey(networkEnv(network)));
       setCosmosLink({
         stage: 'sent',
         claimToken: res.claimToken,
@@ -1894,71 +1757,70 @@ export function useWalletStore() {
     } finally {
       setBusy(false);
     }
-  }, [session, meta, requestSignature, guardSession, t, flash]);
+  }, [session, meta, network, t, flash]);
 
   /**
-   * Verify the emailed access code. On success, store the linked account's API key sealed
-   * (same as a claim) so receiving/swaps light up. Wrong/expired/locked codes flash and,
-   * for expired/locked, drop back to the 'offer' stage so the user can request a new code.
+   * Step 2: the emailed code. A right code yields a sign-in session; the password then
+   * unlocks the key that signs `finish`, and the account's keys are stored sealed. Wrong
+   * codes flash the attempts left; an expired or locked one drops back to the start.
    */
   const submitLinkCode = useCallback(
     async (code: string) => {
-      if (!session || !meta || !cosmosLink || cosmosLink.stage !== 'sent') return;
+      if (!session || !meta || !cosmosLink) return;
+      const epoch = sessionEpochRef.current;
       setBusy(true);
       try {
-        const res = await verifyCosmosLink({
-          stellarAddress: meta.publicKey,
-          claimToken: cosmosLink.claimToken,
-          code,
-        });
-        if (res.status === 'ready') {
-          const account: CosmosPayAccount = {
-            keys: res.keys,
-            organizationId: res.organizationId,
-          };
-          const list = await saveCosmosPay(meta.id, account, session.vaultKey);
-          setWallets(list);
-          const entry = list.find((w) => w.id === meta.id);
-          if (entry) setMetaState(entry);
-          setCosmosPay(account);
-          setCosmosLink(null);
-          flash(t('cosmospay.linked'), 'ok');
-        } else if (res.status === 'invalid') {
+        const accessKey = await warmPublicKey(networkEnv(network));
+        const res = await signInEmailVerify({ claimToken: cosmosLink.claimToken, code }, accessKey);
+        if (res.status === 'invalid') {
           flash(t('cosmospay.linkInvalid', { n: res.attemptsLeft }), 'err');
-        } else if (res.status === 'locked') {
-          setCosmosLink({ stage: 'offer' });
-          flash(t('cosmospay.linkLocked'), 'err');
-        } else {
-          setCosmosLink({ stage: 'offer' });
-          flash(t('cosmospay.linkExpired'), 'err');
+          return;
         }
+        if (res.status !== 'ready') {
+          setCosmosLink(null);
+          flash(t(res.status === 'locked' ? 'cosmospay.linkLocked' : 'cosmospay.linkExpired'), 'err');
+          return;
+        }
+        // Signing needs the secret, so it is password-gated like every signature.
+        const ok = await requestSignature({
+          title: t('cosmospay.enableTitle'),
+          message: t('cosmospay.enableConfirm'),
+        });
+        if (!ok) return;
+        guardSession(epoch);
+        const done = await finishSignIn({
+          sessionToken: res.sessionToken,
+          email: res.identity.email,
+          secret: await secretOf(session),
+          // The wallet's account, not the key's own address: a recovered wallet signs with
+          // the key that replaced its master.
+          account: meta.publicKey,
+          accessKey,
+        });
+        guardSession(epoch);
+        if (done.status !== 'ready') {
+          flash(t('cosmospay.error'), 'err');
+          return;
+        }
+        const account: CosmosPayAccount = { keys: done.keys, organizationId: done.organizationId };
+        const list = await saveCosmosPay(meta.id, account, session.vaultKey);
+        setWallets(list);
+        const entry = list.find((w) => w.id === meta.id);
+        if (entry) setMetaState(entry);
+        setCosmosPay(account);
+        setCosmosLink(null);
+        flash(t('cosmospay.linked'), 'ok');
       } catch (e) {
         flash((e as Error).message || t('cosmospay.error'), 'err');
       } finally {
         setBusy(false);
       }
     },
-    [session, meta, cosmosLink, t, flash],
+    [session, meta, cosmosLink, network, requestSignature, guardSession, t, flash],
   );
 
-  /** Dismiss the link prompt (user changes their mind). */
+  /** Dismiss the code prompt (user changes their mind). */
   const cancelLink = useCallback(() => setCosmosLink(null), []);
-
-  // Background auto-poll: while a registration is pending (and not yet claimed),
-  // try to claim every 4s for ~1 minute. The user can also click "I've confirmed"
-  // manually (claimReceiving) — we never rely solely on polling.
-  const claimRef = useRef(claimReceiving);
-  claimRef.current = claimReceiving;
-  useEffect(() => {
-    if (!cosmosPayPending || cosmosPay) return;
-    let n = 0;
-    const id = setInterval(() => {
-      n += 1;
-      claimRef.current(true);
-      if (n >= 15) clearInterval(id);
-    }, 4000);
-    return () => clearInterval(id);
-  }, [cosmosPayPending, cosmosPay]);
 
   /**
    * A key for the endpoints that need no account: quotes, envelope builders and
@@ -3229,7 +3091,6 @@ export function useWalletStore() {
     const entry = list.find((w) => w.id === meta.id);
     if (entry) setMetaState(entry);
     setCosmosPay(null);
-    setCosmosPayPending(null);
     setCosmosLink(null);
     flash(t('cosmospay.unlinked'), 'ok');
   }, [meta, t, flash]);
@@ -4707,7 +4568,6 @@ export function useWalletStore() {
     signRawXdr,
     revealBackup,
     cosmosPay,
-    cosmosPayPending,
     // True while the wallet is swapping on the shared public key. Screens read it
     // to show the public commission and the offer to lower it; the fee itself is
     // always the one the gateway returned in the quote, never this.
@@ -4873,9 +4733,6 @@ export function useWalletStore() {
     fund,
     submitSend,
     enableReceiving,
-    resendReceiving,
-    claimReceiving,
-    linkReceiving,
     submitLinkCode,
     cancelLink,
     quoteSwap,

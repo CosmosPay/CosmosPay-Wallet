@@ -15,12 +15,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cosmosHostPermissions, hostPattern, safeHost } from '../../scripts/hostPermissions.ts';
-import { DEFAULT_DEV_PLATFORM_URL, DEFAULT_GATEWAY_URL } from '../../src/constants/backends.ts';
+import { DEFAULT_GATEWAY_URL } from '../../src/constants/backends.ts';
 
 test('the compiled-in defaults are covered, wildcards included', () => {
-  const got = cosmosHostPermissions([DEFAULT_DEV_PLATFORM_URL, DEFAULT_GATEWAY_URL]);
+  const got = cosmosHostPermissions([DEFAULT_GATEWAY_URL]);
   assert.deepEqual(got, [
-    'https://dev.cosmospay.lat/*',
     'https://api.cosmospay.lat/*',
     'https://cosmospay.lat/*',
     'https://*.cosmospay.lat/*',

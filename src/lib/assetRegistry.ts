@@ -39,7 +39,8 @@ import {
   type RegistryAsset,
 } from '@/constants/assetRegistry';
 import { assetKey, type AssetRef } from '@/lib/asset';
-import { devPlatformUrl } from '@/lib/endpoints';
+import { gatewayApi } from '@/lib/endpoints';
+import { warmPublicKey } from '@/lib/publicKey';
 import { storageGet, storageSet } from '@/lib/storage';
 
 export type { RegistryAsset } from '@/constants/assetRegistry';
@@ -128,19 +129,27 @@ async function writeCache(networkId: string, payload: RegistryPayload): Promise<
 /**
  * The platform's public asset catalog.
  *
- * Deliberately NOT routed through `lib/cosmospay.ts`: every helper there takes an
- * API key, and the entire point of this read is that it works without one. It
- * also must not report through that module's failure telemetry — a wallet
- * offline at launch would report an error for a call whose failure is fully
- * expected and fully handled by the bundled fallback.
+ * `GET /v1/assets` through the gateway, under the SHARED public key — the catalog
+ * is identical for every caller, so it needs no account of its own. It used to be
+ * read from the developer platform's mirror, which put the platform in the path of
+ * every cold start.
+ *
+ * Deliberately NOT routed through `lib/cosmospay.ts`: it must not report through
+ * that module's failure telemetry — a wallet offline at launch would report an
+ * error for a call whose failure is fully expected and fully handled by the
+ * bundled fallback.
  */
 async function fetchRegistry(networkId: string): Promise<RegistryPayload | null> {
-  const url = `${devPlatformUrl()}/api/assets?network=${encodeURIComponent(networkId)}`;
+  const url = `${gatewayApi()}/v1/assets?network=${encodeURIComponent(networkId)}`;
   try {
-    const res = await fetch(url);
+    // Any valid key reads the whole catalog; the network is the query parameter.
+    const key = await warmPublicKey(networkId === 'public' ? 'prod' : 'dev');
+    if (!key) return null;
+    const res = await fetch(url, { headers: { apikey: key } });
     if (!res.ok) return null;
     const json: unknown = await res.json();
-    // The dev platform wraps responses in `{ data, code, status, message }`.
+    // The server answers the payload bare; the `{ data }` envelope is tolerated for
+    // a build pointed at an older deployment.
     const payload =
       json && typeof json === 'object' && 'data' in (json as Record<string, unknown>)
         ? (json as { data: unknown }).data

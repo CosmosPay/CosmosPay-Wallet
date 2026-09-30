@@ -209,7 +209,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'setup.about': { es: 'Sobre ti', en: 'About you', pt: 'Sobre ti', de: 'Über dich', fr: 'À propos de toi' },
   'setup.title': { es: '¿Cómo te llamas?', en: 'What’s your name?', pt: 'Como te chamas?', de: 'Wie heißt du?', fr: 'Comment t’appelles-tu ?' },
   // "…only on your device" was unqualified here, and it stops being true the moment the user
-  // links a Cosmos Pay account: registerCosmosAccount sends the name and the email. The
+  // links a Cosmos Pay account: connecting sends the email to the community server. The
   // promise is now scoped to what the app actually guarantees.
   'setup.subtitle': {
     es: 'Así te saludamos cada vez que abres la wallet. Se guardan en este dispositivo; solo salen de él si vinculas una cuenta Cosmos Pay.',
@@ -449,7 +449,6 @@ export const T: Record<string, Record<Lang, string>> = {
   },
   'settings.devReset': { es: 'Restablecer endpoints', en: 'Reset endpoints', pt: 'Repor endpoints', de: 'Endpunkte zurücksetzen', fr: 'Réinitialiser les endpoints' },
   'settings.epCoingecko': { es: 'API de precios (CoinGecko)', en: 'Prices API (CoinGecko)', pt: 'API de preços (CoinGecko)', de: 'Preis-API (CoinGecko)', fr: 'API de prix (CoinGecko)' },
-  'settings.epDevPlatform': { es: 'Developer Platform', en: 'Developer Platform', pt: 'Developer Platform', de: 'Developer Platform', fr: 'Developer Platform' },
   'settings.epGateway': { es: 'Gateway de pagos (APISIX)', en: 'Payments gateway (APISIX)', pt: 'Gateway de pagamentos (APISIX)', de: 'Zahlungs-Gateway (APISIX)', fr: 'Passerelle de paiements (APISIX)' },
   'settings.epGatewayEntry': { es: 'Prefijo del gateway', en: 'Gateway entry prefix', pt: 'Prefixo do gateway', de: 'Gateway-Präfix', fr: 'Préfixe de la passerelle' },
 
@@ -1010,11 +1009,11 @@ export const T: Record<string, Record<Lang, string>> = {
   // ---- CosmosPay (enable receiving payments) ----
   'cosmospay.cardTitle': { es: 'Conectá Cosmos Pay', en: 'Connect Cosmos Pay', pt: 'Conectar Cosmos Pay', de: 'Cosmos Pay verbinden', fr: 'Connecter Cosmos Pay' },
   'cosmospay.cardDesc': {
-    es: 'Conecta tu wallet a Cosmos Pay para cobrar, intercambiar a tasa preferencial y usar onramp/offramp. Firmas con tu clave de Stellar y confirmas por correo — sin contraseñas en la app.',
-    en: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. You sign with your Stellar key and confirm by email — no secrets stored in the app.',
-    pt: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. You sign with your Stellar key and confirm by email — no secrets stored in the app.',
-    de: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. You sign with your Stellar key and confirm by email — no secrets stored in the app.',
-    fr: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. You sign with your Stellar key and confirm by email — no secrets stored in the app.',
+    es: 'Conecta tu wallet a Cosmos Pay para cobrar, intercambiar a tasa preferencial y usar onramp/offramp. Te enviamos un código a tu correo y firmas con tu clave de Stellar — sin secretos guardados en la app.',
+    en: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. We email you a code and you sign with your Stellar key — no secrets stored in the app.',
+    pt: 'Conecta a tua wallet ao Cosmos Pay para receber pagamentos, trocar a uma taxa preferencial e usar on/off-ramp. Enviamos-te um código por e-mail e assinas com a tua chave Stellar — sem segredos guardados na app.',
+    de: 'Verbinde deine Wallet mit Cosmos Pay, um Zahlungen zu empfangen, zu einem Vorzugskurs zu tauschen und On-/Off-Ramp zu nutzen. Wir senden dir einen Code per E-Mail und du signierst mit deinem Stellar-Schlüssel — keine Geheimnisse in der App.',
+    fr: 'Connecte ton portefeuille à Cosmos Pay pour recevoir des paiements, échanger à un taux préférentiel et utiliser l’on/off-ramp. Nous t’envoyons un code par e-mail et tu signes avec ta clé Stellar — aucun secret stocké dans l’app.',
   },
 
   'addAsset.verified': {
@@ -1082,41 +1081,12 @@ export const T: Record<string, Record<Lang, string>> = {
   'cosmospay.confirmRow': { es: 'Confirma tu correo (CosmosPay)', en: 'Confirm your email (CosmosPay)', pt: 'Confirm your email (CosmosPay)', de: 'Confirm your email (CosmosPay)', fr: 'Confirm your email (CosmosPay)' },
   'cosmospay.enableTitle': { es: 'Activar cobros', en: 'Enable receiving payments', pt: 'Enable receiving payments', de: 'Enable receiving payments', fr: 'Enable receiving payments' },
   'cosmospay.enableConfirm': {
-    es: 'Introduce tu contraseña para firmar la solicitud con tu clave de Stellar. Te enviaremos un correo para confirmar.',
-    en: 'Enter your password to sign the request with your Stellar key. We’ll email you a link to confirm.',
-    pt: 'Enter your password to sign the request with your Stellar key. We’ll email you a link to confirm.',
-    de: 'Enter your password to sign the request with your Stellar key. We’ll email you a link to confirm.',
-    fr: 'Enter your password to sign the request with your Stellar key. We’ll email you a link to confirm.',
+    es: 'Introduce tu contraseña para firmar con tu clave de Stellar y terminar de conectar la cuenta.',
+    en: 'Enter your password to sign with your Stellar key and finish connecting the account.',
+    pt: 'Introduz a tua palavra-passe para assinar com a tua chave Stellar e terminar de conectar a conta.',
+    de: 'Gib dein Passwort ein, um mit deinem Stellar-Schlüssel zu signieren und die Verbindung abzuschließen.',
+    fr: 'Saisis ton mot de passe pour signer avec ta clé Stellar et terminer la connexion du compte.',
   },
-  'cosmospay.pendingTitle': { es: 'Confirma tu correo', en: 'Confirm your email', pt: 'Confirma o teu e-mail', de: 'Bestätige deine E-Mail', fr: 'Confirme ton e-mail' },
-  'cosmospay.resend': { es: 'Reenviar correo de confirmación', en: 'Resend confirmation email', pt: 'Reenviar e-mail de confirmação', de: 'Bestätigungs-E-Mail erneut senden', fr: 'Renvoyer l’e-mail de confirmation' },
-  'cosmospay.emailMismatch': {
-    es: 'La solicitud pendiente se envió a {old}, pero tu correo actual es {new}. Reenvía el correo para usar el actual.',
-    en: 'The pending request was sent to {old}, but your current email is {new}. Resend to use the current one.',
-    pt: 'O pedido pendente foi enviado para {old}, mas o teu e-mail atual é {new}. Reenvia para usar o atual.',
-    de: 'Die ausstehende Anfrage ging an {old}, deine aktuelle E-Mail ist aber {new}. Sende sie erneut, um die aktuelle zu verwenden.',
-    fr: 'La demande en attente a été envoyée à {old}, mais ton e-mail actuel est {new}. Renvoie l’e-mail pour utiliser l’actuel.',
-  },
-  'cosmospay.pendingDesc': {
-    es: 'Te enviamos un enlace de confirmación. Ábrelo desde tu correo y luego toca «Ya lo confirmé».',
-    en: 'We emailed you a confirmation link. Open it from your inbox, then tap “I’ve confirmed”.',
-    pt: 'We emailed you a confirmation link. Open it from your inbox, then tap “I’ve confirmed”.',
-    de: 'We emailed you a confirmation link. Open it from your inbox, then tap “I’ve confirmed”.',
-    fr: 'We emailed you a confirmation link. Open it from your inbox, then tap “I’ve confirmed”.',
-  },
-  'cosmospay.confirmCta': { es: 'Ya confirmé mi correo', en: 'I’ve confirmed my email', pt: 'I’ve confirmed my email', de: 'I’ve confirmed my email', fr: 'I’ve confirmed my email' },
-  'cosmospay.checkEmail': { es: 'Revisa tu correo y confirma para terminar.', en: 'Check your email and confirm to finish.', pt: 'Check your email and confirm to finish.', de: 'Check your email and confirm to finish.', fr: 'Check your email and confirm to finish.' },
-  'cosmospay.notConfirmed': { es: 'Aún sin confirmar — abre el enlace de tu correo.', en: 'Not confirmed yet — click the link in your email.', pt: 'Not confirmed yet — click the link in your email.', de: 'Not confirmed yet — click the link in your email.', fr: 'Not confirmed yet — click the link in your email.' },
-  'cosmospay.expired': { es: 'La solicitud caducó. Inténtalo de nuevo.', en: 'Expired — please try again.', pt: 'Expired — please try again.', de: 'Expired — please try again.', fr: 'Expired — please try again.' },
-  'cosmospay.exists': {
-    es: 'Ya existe una cuenta para este correo. Inicia sesión en el panel de CosmosPay.',
-    en: 'An account already exists for this email. Sign in on the CosmosPay dashboard.',
-    pt: 'An account already exists for this email. Sign in on the CosmosPay dashboard.',
-    de: 'An account already exists for this email. Sign in on the CosmosPay dashboard.',
-    fr: 'An account already exists for this email. Sign in on the CosmosPay dashboard.',
-  },
-  'cosmospay.created': { es: 'Cobros activados — ya puedes aceptar pagos.', en: 'Receiving enabled — you can now accept payments.', pt: 'Receiving enabled — you can now accept payments.', de: 'Receiving enabled — you can now accept payments.', fr: 'Receiving enabled — you can now accept payments.' },
-  'cosmospay.already': { es: 'Esta cuenta ya estaba activada. Cobros activados.', en: 'This account was already claimed. Receiving enabled.', pt: 'This account was already claimed. Receiving enabled.', de: 'This account was already claimed. Receiving enabled.', fr: 'This account was already claimed. Receiving enabled.' },
   'cosmospay.needEmail': {
     es: 'Añade un correo a esta wallet para activar los cobros.',
     en: 'Add an email to this wallet to enable receiving payments.',
@@ -1141,39 +1111,51 @@ export const T: Record<string, Record<Lang, string>> = {
   'cosmospay.error': { es: 'No se pudo activar los cobros.', en: 'Couldn’t enable receiving payments.', pt: 'Couldn’t enable receiving payments.', de: 'Couldn’t enable receiving payments.', fr: 'Couldn’t enable receiving payments.' },
 
   // ---- CosmosPay (link an existing account via a one-time access code) ----
-  'cosmospay.existsLinkTitle': { es: 'Vincula tu cuenta', en: 'Link your account', pt: 'Link your account', de: 'Link your account', fr: 'Link your account' },
-  'cosmospay.existsLinkDesc': {
-    es: 'Ya existe una cuenta con este correo. Genera un código de acceso de un solo uso para vincularla a esta wallet — sin crear una cuenta nueva.',
-    en: 'An account already exists for this email. Generate a one-time access code to link it to this wallet — no new account needed.',
-    pt: 'An account already exists for this email. Generate a one-time access code to link it to this wallet — no new account needed.',
-    de: 'An account already exists for this email. Generate a one-time access code to link it to this wallet — no new account needed.',
-    fr: 'An account already exists for this email. Generate a one-time access code to link it to this wallet — no new account needed.',
-  },
-  'cosmospay.linkCta': { es: 'Generar código de acceso', en: 'Generate access code', pt: 'Generate access code', de: 'Generate access code', fr: 'Generate access code' },
-  'cosmospay.linkTitle': { es: 'Vincular cuenta', en: 'Link account', pt: 'Link account', de: 'Link account', fr: 'Link account' },
-  'cosmospay.linkConfirm': {
-    es: 'Introduce tu contraseña para firmar con tu clave de Stellar. Te enviaremos un código de acceso a tu correo.',
-    en: 'Enter your password to sign with your Stellar key. We’ll email you a one-time access code.',
-    pt: 'Enter your password to sign with your Stellar key. We’ll email you a one-time access code.',
-    de: 'Enter your password to sign with your Stellar key. We’ll email you a one-time access code.',
-    fr: 'Enter your password to sign with your Stellar key. We’ll email you a one-time access code.',
-  },
   'cosmospay.codeTitle': { es: 'Ingresa tu código', en: 'Enter your code', pt: 'Enter your code', de: 'Enter your code', fr: 'Enter your code' },
   'cosmospay.codeDesc': {
-    es: 'Te enviamos un código de 6 dígitos a tu correo. Ingrésalo para vincular tu cuenta a esta wallet.',
-    en: 'We emailed you a 6-digit code. Enter it to link your account to this wallet.',
-    pt: 'We emailed you a 6-digit code. Enter it to link your account to this wallet.',
-    de: 'We emailed you a 6-digit code. Enter it to link your account to this wallet.',
-    fr: 'We emailed you a 6-digit code. Enter it to link your account to this wallet.',
+    es: 'Te enviamos un código de 6 dígitos a tu correo. Ingrésalo para conectar esta wallet a tu cuenta Cosmos Pay.',
+    en: 'We emailed you a 6-digit code. Enter it to connect this wallet to your Cosmos Pay account.',
+    pt: 'Enviámos-te um código de 6 dígitos por e-mail. Introdu-lo para conectar esta wallet à tua conta Cosmos Pay.',
+    de: 'Wir haben dir einen 6-stelligen Code per E-Mail gesendet. Gib ihn ein, um diese Wallet mit deinem Cosmos-Pay-Konto zu verbinden.',
+    fr: 'Nous t’avons envoyé un code à 6 chiffres par e-mail. Saisis-le pour connecter ce portefeuille à ton compte Cosmos Pay.',
   },
   'cosmospay.codePlaceholder': { es: 'Código de 6 dígitos', en: '6-digit code', pt: '6-digit code', de: '6-digit code', fr: '6-digit code' },
-  'cosmospay.linkVerifyCta': { es: 'Vincular cuenta', en: 'Link account', pt: 'Link account', de: 'Link account', fr: 'Link account' },
-  'cosmospay.linkSent': { es: 'Te enviamos un código de acceso a tu correo.', en: 'We emailed you an access code.', pt: 'We emailed you an access code.', de: 'We emailed you an access code.', fr: 'We emailed you an access code.' },
-  'cosmospay.linked': { es: 'Cuenta vinculada — cobros activados.', en: 'Account linked — receiving enabled.', pt: 'Account linked — receiving enabled.', de: 'Account linked — receiving enabled.', fr: 'Account linked — receiving enabled.' },
+  'cosmospay.linkVerifyCta': {
+    es: 'Conectar cuenta',
+    en: 'Connect account',
+    pt: 'Conectar conta',
+    de: 'Konto verbinden',
+    fr: 'Connecter le compte',
+  },
+  'cosmospay.linkSent': {
+    es: 'Te enviamos un código a tu correo.',
+    en: 'We emailed you a code.',
+    pt: 'Enviámos-te um código por e-mail.',
+    de: 'Wir haben dir einen Code per E-Mail gesendet.',
+    fr: 'Nous t’avons envoyé un code par e-mail.',
+  },
+  'cosmospay.linked': {
+    es: 'Cuenta conectada — cobros activados.',
+    en: 'Account connected — receiving enabled.',
+    pt: 'Conta conectada — recebimentos ativados.',
+    de: 'Konto verbunden — Empfang aktiviert.',
+    fr: 'Compte connecté — réception activée.',
+  },
   'cosmospay.linkInvalid': { es: 'Código incorrecto. Te quedan {n} intentos.', en: 'Incorrect code. {n} attempts left.', pt: 'Incorrect code. {n} attempts left.', de: 'Incorrect code. {n} attempts left.', fr: 'Incorrect code. {n} attempts left.' },
-  'cosmospay.linkExpired': { es: 'El código caducó. Genera uno nuevo.', en: 'The code expired. Generate a new one.', pt: 'The code expired. Generate a new one.', de: 'The code expired. Generate a new one.', fr: 'The code expired. Generate a new one.' },
-  'cosmospay.linkLocked': { es: 'Demasiados intentos. Genera un código nuevo.', en: 'Too many attempts. Generate a new code.', pt: 'Too many attempts. Generate a new code.', de: 'Too many attempts. Generate a new code.', fr: 'Too many attempts. Generate a new code.' },
-  'cosmospay.linkNotFound': { es: 'No hay cuenta para este correo. Crea una nueva.', en: 'No account for this email. Create a new one.', pt: 'No account for this email. Create a new one.', de: 'No account for this email. Create a new one.', fr: 'No account for this email. Create a new one.' },
+  'cosmospay.linkExpired': {
+    es: 'El código caducó. Pide uno nuevo con “Conectar”.',
+    en: 'The code expired. Ask for a new one with “Connect”.',
+    pt: 'O código expirou. Pede um novo com “Conectar”.',
+    de: 'Der Code ist abgelaufen. Fordere mit „Verbinden“ einen neuen an.',
+    fr: 'Le code a expiré. Demandes-en un nouveau avec « Connecter ».',
+  },
+  'cosmospay.linkLocked': {
+    es: 'Demasiados intentos. Pide un código nuevo con “Conectar”.',
+    en: 'Too many attempts. Ask for a new code with “Connect”.',
+    pt: 'Demasiadas tentativas. Pede um novo código com “Conectar”.',
+    de: 'Zu viele Versuche. Fordere mit „Verbinden“ einen neuen Code an.',
+    fr: 'Trop de tentatives. Demande un nouveau code avec « Connecter ».',
+  },
 
   // ---- about ----
   'about.title': { es: 'Acerca de Cosmos', en: 'About Cosmos', pt: 'Acerca do Cosmos', de: 'Über Cosmos', fr: 'À propos de Cosmos' },

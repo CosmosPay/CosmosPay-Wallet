@@ -18,8 +18,8 @@ export function CosmosPay({ store }: { store: WalletStore }) {
   const t = store.t;
   const cp = store.cosmosPay;
   const receiverId = store.meta?.cosmosPayReceiverId;
-  // While a connect / re-link flow is running, show its card even if some keys already exist.
-  const flowActive = !!store.cosmosLink || !!store.cosmosPayPending;
+  // While a connect flow is running, show its card even if some keys already exist.
+  const flowActive = !!store.cosmosLink;
   // Fiat (BlindPay receiver) is 18+ only — minors don't get the option at all.
   const adult = (ageFromBirthdate(store.meta?.birthdate ?? '') ?? 0) >= 18;
 

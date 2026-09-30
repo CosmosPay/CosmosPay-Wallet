@@ -8,7 +8,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ApiShapeError, amount, arrayOf, either, id, num, object, optional, parseShape, str, variant, xdr } from '@/lib/apiShape';
-import { ClaimResultShape, LiquidityOperationShape, PayoutQuoteShape, SubmitResultShape, SwapShape } from '@/lib/cosmospayShapes';
+import { LiquidityOperationShape, PayoutQuoteShape, SubmitResultShape, SwapShape } from '@/lib/cosmospayShapes';
+import { SignInFinishShape } from '@/lib/signInShapes';
 
 const URL_ = 'https://gw.example/v1/thing';
 const G = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
@@ -63,14 +64,16 @@ test('arrayOf reports the failing index', () => {
 });
 
 test('variant rejects an unrecognised discriminant instead of falling through', () => {
-  assert.doesNotThrow(() => parseShape(URL_, ClaimResultShape, { status: 'pending' }));
   assert.doesNotThrow(() =>
-    parseShape(URL_, ClaimResultShape, { status: 'ready', organizationId: 'org_1', keys: { dev: 'k', prod: null } }),
+    parseShape(URL_, SignInFinishShape, { status: 'backup_conflict', stellarAddress: 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57' }),
+  );
+  assert.doesNotThrow(() =>
+    parseShape(URL_, SignInFinishShape, { status: 'ready', account: 'linked', organizationId: 'org_1', keys: { dev: 'k', prod: null } }),
   );
   // A typo'd status would otherwise hit the wallet's `switch` default branch.
-  assert.throws(() => parseShape(URL_, ClaimResultShape, { status: 'redy' }), ApiShapeError);
+  assert.throws(() => parseShape(URL_, SignInFinishShape, { status: 'redy' }), ApiShapeError);
   // 'ready' without its payload is rejected too.
-  assert.throws(() => parseShape(URL_, ClaimResultShape, { status: 'ready' }), ApiShapeError);
+  assert.throws(() => parseShape(URL_, SignInFinishShape, { status: 'ready' }), ApiShapeError);
 });
 
 test('either accepts both the bare array and the enveloped form', () => {

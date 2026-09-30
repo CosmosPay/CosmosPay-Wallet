@@ -2,9 +2,8 @@
  * The backends a build talks to when nothing in `.env` names one.
  *
  * These are FALLBACKS, not configuration. `.env` and `.env.example` are the place to
- * decide where a build points: `PUBLIC_COSMOS_DEV_PLATFORM_URL`,
- * `PUBLIC_COSMOS_GATEWAY_URL` and `PUBLIC_COSMOS_GATEWAY_ENTRY` win wherever they are
- * set. What lives here is the answer for a build that shipped none of them — which was
+ * decide where a build points: `PUBLIC_COSMOS_GATEWAY_URL`, `PUBLIC_COSMOS_GATEWAY_ENTRY`
+ * and the two recovery URLs win wherever they are set. What lives here is the answer for a build that shipped none of them — which was
  * every extension and Tauri release until the workflows started passing them through,
  * and is still any fork that clones without an `.env`.
  *
@@ -17,10 +16,11 @@
  * server being down.
  */
 
-/** Cosmos Developer Platform: provisioning, social login, `/api/public-key`. */
-export const DEFAULT_DEV_PLATFORM_URL = 'https://dev.cosmospay.lat';
-
-/** APISIX gateway: the payments API and the wallet's sign-in. */
+/**
+ * APISIX gateway: the payments API, the wallet's sign-in and the public key — everything
+ * the wallet calls. The developer platform is deliberately not a backend of the wallet:
+ * it issues developers' keys and shows data, and nothing here may depend on it being up.
+ */
 export const DEFAULT_GATEWAY_URL = 'https://api.cosmospay.lat';
 
 /** Gateway entry prefix. APISIX strips it itself before forwarding upstream. */
