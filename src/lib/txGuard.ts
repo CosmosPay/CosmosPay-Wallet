@@ -874,6 +874,16 @@ export type GuardOptions =
        */
       signers: readonly [string, string];
       /**
+       * The key this device signs with. Equal to `signer` on an account that was never
+       * recovered, and then the template requires `masterWeight` at the device's weight.
+       * Anything else means the account was recovered: its master is the key on the lost
+       * device and sits at 0, so the template requires `masterWeight` to be ABSENT — an
+       * envelope that raised it would hand the account back to whoever holds that device.
+       * The caller establishes from the ledger that this key holds the device weight
+       * (`isDeviceKey`); the envelope cannot say so about itself.
+       */
+      deviceKey: string;
+      /**
        * Whether someone else is paying the signers' reserve.
        *
        * A BOOLEAN, and deliberately not the sponsor's address. It was an address, taken
@@ -925,6 +935,9 @@ function stroops(amount: string): bigint | null {
  *     [endSponsoringFutureReserves]     (only when sponsored, sourced by us)
  *      setOptions  masterWeight 10, low/med/high 10
  *
+ * On a RECOVERED account the last operation carries no `masterWeight` at all — see
+ * `deviceKey` on the intent.
+ *
  * The two signers must be the two the servers reported, each exactly once, and no
  * operation may carry any other option — no home domain, no flags, no inflation
  * destination, no second signer riding along with the thresholds.
@@ -943,6 +956,7 @@ function assertRecoveryTemplate(
   // complaint. Two identical signers would be one server holding both shares.
   if (first === second) fail('guard.recoverySameSigner');
   if (first === opts.signer || second === opts.signer) fail('guard.recoverySelfSigner');
+  if (first === opts.deviceKey || second === opts.deviceKey) fail('guard.recoverySelfSigner');
 
   const ops = review.operations;
   const expected = opts.sponsored ? 5 : 3;
@@ -1040,9 +1054,15 @@ function assertRecoveryTemplate(
   // A signer smuggled onto the thresholds operation is the whole attack in one line.
   if (c.signerKind !== null) fail('guard.recoveryThresholdSigner');
   // The device must still be able to act alone. `masterWeight` below the threshold is how
-  // an account is taken away from its owner without a single key changing hands.
-  if (c.masterWeight !== DEVICE_WEIGHT) {
-    fail('guard.recoveryMasterWeight', { weight: c.masterWeight ?? 0, expected: DEVICE_WEIGHT });
+  // an account is taken away from its owner without a single key changing hands. On a
+  // recovered account the device is NOT the master, and the master is the lost key: then
+  // the operation must leave it alone, since raising it is the same takeover in reverse.
+  if (opts.deviceKey === opts.signer) {
+    if (c.masterWeight !== DEVICE_WEIGHT) {
+      fail('guard.recoveryMasterWeight', { weight: c.masterWeight ?? 0, expected: DEVICE_WEIGHT });
+    }
+  } else if (c.masterWeight !== null) {
+    fail('guard.recoveryRetiredMaster', { weight: c.masterWeight });
   }
   for (const k of ['lowThreshold', 'medThreshold', 'highThreshold'] as const) {
     if (c[k] !== DEVICE_WEIGHT) fail('guard.recoveryThreshold', { weight: c[k] ?? 0, expected: DEVICE_WEIGHT });

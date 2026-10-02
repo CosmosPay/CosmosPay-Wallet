@@ -55,8 +55,10 @@ import {
   DEVICE_WEIGHT,
   IDENTITY_ROLE_OWNER,
   RECOVERY_LIST_MAX_PAGES,
+  RECOVERY_MAX_REVOKE,
   RECOVERY_PROBE_RETRY_MS,
   RECOVERY_SERVER_COUNT,
+  RECOVERY_SETUP_OPS,
   RECOVERY_TIMEOUT_S,
   SERVER_WEIGHT,
   type RecoveryRole,
@@ -223,6 +225,9 @@ export async function describeServer(cfg: NetConfig, role: RecoveryRole, url: st
  * The challenge is checked before it is signed — see `lib/sep10.ts`, and note that what
  * is passed as the expected web-auth domain is derived from the URL the wallet called, not
  * from anything the server said about itself.
+ *
+ * The ledger is only asked who signs when the key is NOT the master — a recovered account,
+ * whose replacement key `signChallenge` has to find among the account's signers.
  */
 export async function authenticate(cfg: NetConfig, server: RecoveryServer, address: string, secret: string): Promise<string> {
   const challenge = await sep10Challenge(server.webAuthEndpoint, address);
@@ -231,7 +236,7 @@ export async function authenticate(cfg: NetConfig, server: RecoveryServer, addre
     homeDomain: server.homeDomain,
     webAuthDomain: server.webAuthDomain,
     signingKey: server.signingKey,
-  }, secret);
+  }, secret, Keypair.fromSecret(secret).publicKey() === address ? [] : await activeSignersOf(cfg, address));
   const { token } = await sep10Token(server.webAuthEndpoint, signed);
   return token;
 }
@@ -331,14 +336,26 @@ export async function registerForRecovery(
 
 export interface SetupInput {
   account: string;
+  /**
+   * The key this device signs with. When it is not `account` the account was recovered:
+   * its master is retired at 0 and must STAY there — it is the key on the lost device —
+   * so `masterWeight` is left out instead of being raised back to the device weight.
+   * Callers check `isDeviceKey` against the ledger before passing anything but `account`.
+   */
+  deviceKey: string;
   signers: readonly [string, string];
   /** The account's CURRENT sequence, from Horizon. The builder increments it. */
   sequence: string;
   networkPassphrase: string;
 }
 
+/** The master weight a setup or removal sets: the device's on a never-recovered account, none on a recovered one. */
+const masterWeightFor = (input: { account: string; deviceKey: string }) =>
+  input.deviceKey === input.account ? { masterWeight: DEVICE_WEIGHT } : {};
+
 /**
- * The setup transaction, in the variant the account pays for itself.
+ * The setup transaction, in the variant the account pays for itself — which needs
+ * `RECOVERY_MIN_SPENDABLE_XLM` free before anything is registered.
  *
  * Byte-for-byte the same shape the operator's sponsored builder produces minus the
  * sponsorship pair — deliberately, so one template in the guard covers both and neither
@@ -352,7 +369,7 @@ export interface SetupInput {
 export function buildRecoverySetup(input: SetupInput): string {
   const source = new Account(input.account, input.sequence);
   const builder = new TransactionBuilder(source, {
-    fee: String(Number(BASE_FEE) * 3),
+    fee: String(Number(BASE_FEE) * RECOVERY_SETUP_OPS),
     networkPassphrase: input.networkPassphrase,
     memo: Memo.none(),
   });
@@ -364,7 +381,7 @@ export function buildRecoverySetup(input: SetupInput): string {
   builder.addOperation(
     Operation.setOptions({
       source: input.account,
-      masterWeight: DEVICE_WEIGHT,
+      ...masterWeightFor(input),
       lowThreshold: DEVICE_WEIGHT,
       medThreshold: DEVICE_WEIGHT,
       highThreshold: DEVICE_WEIGHT,
@@ -399,6 +416,13 @@ export function signedRecoverySetup(secret: string, address: string, signers: re
 
 export interface RemovalInput {
   account: string;
+  /**
+   * The key this device signs with. When it is not `account` the account was recovered:
+   * its master is retired at 0 and must STAY there — it is the key on the lost device —
+   * so `masterWeight` is left out instead of being raised back to the device weight.
+   * Callers check `isDeviceKey` against the ledger before passing anything but `account`.
+   */
+  deviceKey: string;
   /** The recovery signers currently on the account, as the LEDGER reports them. */
   signers: readonly string[];
   sequence: string;
@@ -432,7 +456,7 @@ export function buildRecoveryRemoval(input: RemovalInput): string {
   builder.addOperation(
     Operation.setOptions({
       source: input.account,
-      masterWeight: DEVICE_WEIGHT,
+      ...masterWeightFor(input),
       lowThreshold: DEVICE_WEIGHT,
       medThreshold: DEVICE_WEIGHT,
       highThreshold: DEVICE_WEIGHT,
@@ -445,6 +469,77 @@ export function buildRecoveryRemoval(input: RemovalInput): string {
 export async function sequenceOf(cfg: NetConfig, address: string): Promise<string> {
   const account = await getServer(cfg).loadAccount(address);
   return account.sequenceNumber();
+}
+
+/**
+ * The account's signers as Horizon reports them — the master included, at whatever weight
+ * it has. An unfunded account has none, which is an answer rather than an error.
+ */
+export async function ledgerAccountOf(cfg: NetConfig, address: string): Promise<LedgerAccount | null> {
+  try {
+    return (await getServer(cfg).loadAccount(address)) as unknown as LedgerAccount;
+  } catch (e) {
+    const err = e as { name?: string; response?: { status?: number } };
+    if (err?.name === 'NotFoundError' || err?.response?.status === 404) return null;
+    throw e;
+  }
+}
+
+/** Every key that may currently sign for the account: weight above 0. */
+export async function activeSignersOf(cfg: NetConfig, address: string): Promise<string[]> {
+  const account = await ledgerAccountOf(cfg, address);
+  return (account?.signers ?? []).filter((s) => s.weight > 0).map((s) => s.key);
+}
+
+/**
+ * Whether `key` is the account's DEVICE signer: its master at the device weight, or —
+ * on a recovered account — the replacement key at that weight with the master at 0.
+ *
+ * Asked before any builder leaves the master weight alone. A setup or removal that skips
+ * `masterWeight` is only right when the master really is retired; on any other account it
+ * would leave the device unable to sign, or the old key with a weight nobody chose.
+ */
+export function isDeviceKey(address: string, account: LedgerAccount, key: string): boolean {
+  const weight = (k: string) => account.signers.find((s) => s.key === k)?.weight ?? 0;
+  if (key === address) return weight(address) > 0;
+  return weight(address) === 0 && weight(key) === DEVICE_WEIGHT;
+}
+
+/**
+ * This device's signing key, confirmed against the ledger as the account's device signer.
+ *
+ * What setup and removal pass as `deviceKey`. Refused when the ledger disagrees — a key
+ * that is neither a live master nor a recovered account's replacement is not one either
+ * builder knows how to leave the account safe with.
+ */
+export async function deviceKeyFor(cfg: NetConfig, address: string, secret: string): Promise<string> {
+  const key = Keypair.fromSecret(secret).publicKey();
+  const account = await ledgerAccountOf(cfg, address);
+  if (!account || !isDeviceKey(address, account, key)) throw new RecoveryError('recovery.error.deviceKey');
+  return key;
+}
+
+/**
+ * The keys a key replacement must zero: every signer with weight above 0 that is neither
+ * the master (zeroed by its own operation), the new key, nor one of the recovery signers
+ * the servers reported holding. On a first recovery that is nobody; on a second, it is the
+ * key the first one put on — the one now lost.
+ *
+ * A server's key is kept only at the SERVER weight. The list of keys to keep comes from
+ * the servers, and a server naming a key the ledger has at any other weight is naming a
+ * key that is not acting as a recovery signer — at the device weight it could act alone.
+ * That key is retired with the rest instead of surviving the recovery on a server's word.
+ */
+export function keysToRevoke(
+  address: string,
+  account: LedgerAccount,
+  keep: readonly string[],
+  newKey: string,
+): string[] {
+  const kept = (s: { key: string; weight: number }) => keep.includes(s.key) && s.weight === SERVER_WEIGHT;
+  return account.signers
+    .filter((s) => s.weight > 0 && s.key !== address && s.key !== newKey && !kept(s))
+    .map((s) => s.key);
 }
 
 /** Whether recovery is actually on for an account, read from the ledger. */
@@ -481,14 +576,27 @@ const NOT_FUNDED: RecoveryState = { exists: false, enabled: false, signers: [] }
  * `signersToRemove`, which asks the servers themselves.
  */
 export async function recoveryStateOf(cfg: NetConfig, address: string): Promise<RecoveryState> {
-  let account: { signers: { key: string; weight: number }[]; thresholds: Record<string, number> };
-  try {
-    account = (await getServer(cfg).loadAccount(address)) as unknown as typeof account;
-  } catch (e) {
-    const err = e as { name?: string; response?: { status?: number } };
-    if (err?.name === 'NotFoundError' || err?.response?.status === 404) return NOT_FUNDED;
-    throw e;
-  }
+  const account = await ledgerAccountOf(cfg, address);
+  return account ? recoveryStateFromLedger(address, account) : NOT_FUNDED;
+}
+
+/** The two fields of a Horizon account record that `recoveryStateFromLedger` reads. */
+export interface LedgerAccount {
+  signers: { key: string; weight: number }[];
+  thresholds: Record<string, number>;
+}
+
+/**
+ * The pure half of `recoveryStateOf`, split out so the shapes it accepts can be tested.
+ *
+ * **The device key is not always the master.** `buildKeyReplacement` leaves a recovered
+ * account with its master at 0 and the new device key as an ordinary signer at the
+ * device's weight — and the recovery signers untouched, so recovery is still on. Reading
+ * only the master reported every recovered account as unprotected and invited the person
+ * to "turn on" what was already on. Either shape is accepted, but only ONE device signer:
+ * a second key at that weight is a second party able to act alone, not a device.
+ */
+export function recoveryStateFromLedger(address: string, account: LedgerAccount): RecoveryState {
   const all = account.signers ?? [];
   const signers = all.filter((s) => s.key !== address && s.weight === SERVER_WEIGHT).map((s) => s.key);
   const thresholds = account.thresholds ?? {};
@@ -496,9 +604,19 @@ export async function recoveryStateOf(cfg: NetConfig, address: string): Promise<
     (k) => Number(thresholds[k]) === DEVICE_WEIGHT,
   );
   const master = all.find((s) => s.key === address)?.weight ?? 0;
+  const replacements = all.filter((s) => s.key !== address && s.weight === DEVICE_WEIGHT).length;
+  const oneDevice =
+    (master === DEVICE_WEIGHT && replacements === 0) || (master === 0 && replacements === 1);
+  // Nobody else with any weight. A third key at, say, 5 is not a device and not a server,
+  // and with ONE server it reaches the threshold — the exact power the pair exists to
+  // deny either server alone. Reporting that account as protected would be the wallet
+  // vouching for an arrangement it did not build.
+  const others = all.filter(
+    (s) => s.key !== address && s.weight > 0 && s.weight !== DEVICE_WEIGHT && s.weight !== SERVER_WEIGHT,
+  ).length;
   return {
     exists: true,
-    enabled: signers.length === RECOVERY_SERVER_COUNT && rightThresholds && master === DEVICE_WEIGHT,
+    enabled: signers.length === RECOVERY_SERVER_COUNT && rightThresholds && oneDevice && others === 0,
     signers,
   };
 }
@@ -649,6 +767,13 @@ export interface ReplaceInput {
   account: string;
   /** The key this device just generated. It becomes the account's new device key. */
   newKey: string;
+  /**
+   * Every OTHER key that can sign for the account today, besides the master and the
+   * recovery signers: on an account recovered before, the previous device key — the one
+   * that was just lost. Zeroing only the master left it at the device weight, able to act
+   * alone, after a recovery whose whole purpose was to take that power away from it.
+   */
+  revoke: readonly string[];
   sequence: string;
   networkPassphrase: string;
 }
@@ -662,17 +787,26 @@ export interface ReplaceInput {
  *
  * Two operations, and the second is what makes it a recovery rather than an addition:
  * the new key goes on at the device's weight, and the old master key — the one on the
- * phone in the taxi — goes to zero. The recovery signers are left exactly as they are, so
- * the account can be recovered again from the next device too.
+ * phone in the taxi — goes to zero. So does every key in `revoke`: on an account recovered
+ * once already, the lost key is not the master but the previous replacement. The recovery
+ * signers are left exactly as they are, so the account can be recovered again from the
+ * next device too.
  */
 export function buildKeyReplacement(input: ReplaceInput): string {
+  if (input.revoke.length > RECOVERY_MAX_REVOKE) throw new RecoveryError('recovery.error.tooManySigners');
+  if (input.revoke.includes(input.newKey) || input.revoke.includes(input.account)) {
+    throw new RecoveryError('recovery.error.generic');
+  }
   const source = new Account(input.account, input.sequence);
-  return new TransactionBuilder(source, {
-    fee: String(Number(BASE_FEE) * 2),
+  const builder = new TransactionBuilder(source, {
+    fee: String(Number(BASE_FEE) * (input.revoke.length + 2)),
     networkPassphrase: input.networkPassphrase,
     memo: Memo.none(),
-  })
-    .addOperation(Operation.setOptions({ source: input.account, signer: { ed25519PublicKey: input.newKey, weight: DEVICE_WEIGHT } }))
+  }).addOperation(Operation.setOptions({ source: input.account, signer: { ed25519PublicKey: input.newKey, weight: DEVICE_WEIGHT } }));
+  for (const key of input.revoke) {
+    builder.addOperation(Operation.setOptions({ source: input.account, signer: { ed25519PublicKey: key, weight: 0 } }));
+  }
+  return builder
     .addOperation(Operation.setOptions({ source: input.account, masterWeight: 0 }))
     .setTimeout(RECOVERY_TIMEOUT_S)
     .build()

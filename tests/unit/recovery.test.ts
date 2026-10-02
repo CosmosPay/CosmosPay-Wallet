@@ -37,12 +37,16 @@ import {
   identityRoute,
   identityTokensFromIdToken,
   recoverySetupMessage,
+  recoveryStateFromLedger,
+  buildRecoveryRemoval,
+  isDeviceKey,
+  keysToRevoke,
   startRecoveryCodes,
   registerForRecovery,
   updateRecoveryIdentities,
   type RecoveryServer,
 } from '@/lib/recovery';
-import { assertSafeChallenge, Sep10Error, webAuthDomainOf } from '@/lib/sep10';
+import { assertSafeChallenge, signChallenge, Sep10Error, webAuthDomainOf } from '@/lib/sep10';
 import { parseStellarToml } from '@/lib/stellarToml';
 import { DEVICE_WEIGHT, RECOVERY_LIST_MAX_PAGES, SERVER_WEIGHT } from '@/constants/recovery';
 import type { NetConfig } from '@/lib/stellar';
@@ -63,7 +67,7 @@ const SPONSOR = sponsorKp.publicKey();
 const ATTACKER = Keypair.random().publicKey();
 
 const SIGNERS: [string, string] = [SIGNER_A, SIGNER_B];
-const base = { signer: ME, destinations: 'self' as const, intent: 'recovery' as const };
+const base = { signer: ME, deviceKey: ME, destinations: 'self' as const, intent: 'recovery' as const };
 
 /** Build an envelope from raw operations — the shape a hostile server might send. */
 function envelope(ops: ReturnType<typeof Operation.setOptions>[], source = ME, timeout = 300): string {
@@ -118,7 +122,7 @@ function refusal(xdr: string, opts: Record<string, unknown> = {}): string | null
 /* ------------------------------ the happy paths ----------------------------- */
 
 test('the wallet-built setup transaction passes its own guard', () => {
-  const xdr = buildRecoverySetup({ account: ME, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase });
+  const xdr = buildRecoverySetup({ account: ME, deviceKey: ME, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase });
   assert.equal(refusal(xdr), null);
 });
 
@@ -302,7 +306,7 @@ test('a value-moving operation cannot ride along in a recovery setup', () => {
 
 test('a self-paid envelope that already carries a signature is not the one we were shown', () => {
   const tx = TransactionBuilder.fromXDR(
-    buildRecoverySetup({ account: ME, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase }),
+    buildRecoverySetup({ account: ME, deviceKey: ME, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase }),
     CFG.passphrase,
   );
   tx.sign(Keypair.random());
@@ -310,7 +314,7 @@ test('a self-paid envelope that already carries a signature is not the one we we
 });
 
 test('a caller that names the account itself, or one server twice, is refused by name', () => {
-  const xdr = buildRecoverySetup({ account: ME, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase });
+  const xdr = buildRecoverySetup({ account: ME, deviceKey: ME, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase });
   assert.equal(refusal(xdr, { signers: [SIGNER_A, SIGNER_A] }), 'guard.recoverySameSigner');
   assert.equal(refusal(xdr, { signers: [ME, SIGNER_B] }), 'guard.recoverySelfSigner');
 });
@@ -319,7 +323,7 @@ test('a caller that names the account itself, or one server twice, is refused by
 
 test('recovery replaces the lost key and keeps the account, and the servers keep theirs', () => {
   const fresh = Keypair.random().publicKey();
-  const xdr = buildKeyReplacement({ account: ME, newKey: fresh, sequence: '7', networkPassphrase: CFG.passphrase });
+  const xdr = buildKeyReplacement({ account: ME, newKey: fresh, revoke: [], sequence: '7', networkPassphrase: CFG.passphrase });
   const tx = TransactionBuilder.fromXDR(xdr, CFG.passphrase) as unknown as {
     source: string;
     operations: Record<string, unknown>[];
@@ -843,6 +847,26 @@ test('a malformed or insecure value is absent, never a best guess', () => {
   assert.equal(toml.signingKey, undefined);
 });
 
+test('a local recovery server may publish cleartext loopback endpoints', () => {
+  // `npm run dev:local -- recovery` serves the pair on http://localhost:3002/3003. Refusing
+  // those made every local wallet report the servers as unreachable while they answered.
+  // Loopback never leaves the machine; `localhost.evil.example` is not loopback.
+  const toml = parseStellarToml(
+    [
+      'WEB_AUTH_ENDPOINT = "http://localhost:3002/v1/sep10/auth"',
+      `SIGNING_KEY = "${SIGNER_A}"`,
+      '[[RECOVERY_SERVERS]]',
+      'ENDPOINT = "http://127.0.0.1:3002/v1/sep30"',
+    ].join('\n'),
+  );
+  assert.equal(toml.webAuthEndpoint, 'http://localhost:3002/v1/sep10/auth');
+  assert.equal(toml.recovery?.endpoint, 'http://127.0.0.1:3002/v1/sep30');
+  assert.equal(
+    parseStellarToml('WEB_AUTH_ENDPOINT = "http://localhost.evil.example/auth"').webAuthEndpoint,
+    undefined,
+  );
+});
+
 test('two servers on different hosts still name ONE wallet domain', async () => {
   // The check that matters is `loadRecoveryServers` requiring both to report the SAME
   // home domain — it is what makes a server's claim about itself worth anything, since
@@ -1005,4 +1029,193 @@ test('each server is asked for its OWN code', async () => {
   }
   assert.deepEqual(claims, ['c1', 'c2']);
   assert.deepEqual(urls, SERVERS.map((s) => `${s.sep30Base}/identity/email/start`));
+});
+
+/* ------------------------------ reading the ledger ------------------------------ */
+
+const ledger = (signers: { key: string; weight: number }[], t = DEVICE_WEIGHT) => ({
+  signers,
+  thresholds: { low_threshold: t, med_threshold: t, high_threshold: t },
+});
+const SERVERS_ON = [
+  { key: SIGNER_A, weight: SERVER_WEIGHT },
+  { key: SIGNER_B, weight: SERVER_WEIGHT },
+];
+
+test('recovery state: the setup shape — master at the device weight — is on', () => {
+  const state = recoveryStateFromLedger(ME, ledger([{ key: ME, weight: DEVICE_WEIGHT }, ...SERVERS_ON]));
+  assert.equal(state.enabled, true);
+  assert.deepEqual(state.signers, SIGNERS);
+});
+
+test('recovery state: a recovered account — master 0, new device key at the device weight — is still on', () => {
+  const NEW_KEY = Keypair.random().publicKey();
+  const state = recoveryStateFromLedger(
+    ME,
+    ledger([{ key: ME, weight: 0 }, { key: NEW_KEY, weight: DEVICE_WEIGHT }, ...SERVERS_ON]),
+  );
+  assert.equal(state.enabled, true);
+  assert.deepEqual(state.signers, SIGNERS);
+});
+
+test('recovery state: master 0 with no device key is not on — the servers own the account', () => {
+  assert.equal(recoveryStateFromLedger(ME, ledger([{ key: ME, weight: 0 }, ...SERVERS_ON])).enabled, false);
+});
+
+test('recovery state: a second key at the device weight is not a device — not on', () => {
+  const extra = { key: ATTACKER, weight: DEVICE_WEIGHT };
+  assert.equal(recoveryStateFromLedger(ME, ledger([{ key: ME, weight: DEVICE_WEIGHT }, extra, ...SERVERS_ON])).enabled, false);
+  const NEW_KEY = Keypair.random().publicKey();
+  assert.equal(
+    recoveryStateFromLedger(ME, ledger([{ key: ME, weight: 0 }, { key: NEW_KEY, weight: DEVICE_WEIGHT }, extra, ...SERVERS_ON])).enabled,
+    false,
+  );
+});
+
+test('recovery state: one server able to change signers alone is not on', () => {
+  const account = ledger([{ key: ME, weight: DEVICE_WEIGHT }, ...SERVERS_ON]);
+  account.thresholds.high_threshold = SERVER_WEIGHT;
+  assert.equal(recoveryStateFromLedger(ME, account).enabled, false);
+});
+
+/* ------------------------- a recovered account ------------------------- */
+
+// After a recovery the account's master is the lost key, at 0, and a replacement key holds
+// the device weight. Every builder that used to set `masterWeight: 10` would have handed
+// the account back to whoever holds the lost device.
+const NEW_DEVICE = Keypair.random().publicKey();
+
+const masterOps = (xdr: string) =>
+  (TransactionBuilder.fromXDR(xdr, CFG.passphrase) as unknown as { operations: { masterWeight?: number }[] }).operations.filter(
+    (op) => op.masterWeight !== undefined,
+  );
+
+test('recovered account: the setup leaves the retired master alone and passes its guard', () => {
+  const xdr = buildRecoverySetup({ account: ME, deviceKey: NEW_DEVICE, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase });
+  assert.equal(masterOps(xdr).length, 0);
+  assert.equal(refusal(xdr, { deviceKey: NEW_DEVICE }), null);
+});
+
+test('recovered account: an envelope that raises the retired master is refused', () => {
+  // The never-recovered build, which sets the master to 10, checked as a recovered account.
+  const xdr = buildRecoverySetup({ account: ME, deviceKey: ME, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase });
+  assert.equal(refusal(xdr, { deviceKey: NEW_DEVICE }), 'guard.recoveryRetiredMaster');
+  // And the operator's sponsored builder, which always sets it, is refused the same way.
+  assert.equal(refusal(sponsored(), { sponsored: true, deviceKey: NEW_DEVICE }), 'guard.recoveryRetiredMaster');
+});
+
+test('recovered account: the operator’s sponsored envelope without a master weight passes', () => {
+  // What the community server builds for a recovered account: the sponsorship pair, the
+  // two signers, and thresholds that leave the retired master where it is.
+  const noMaster = Operation.setOptions({
+    source: ME,
+    lowThreshold: DEVICE_WEIGHT,
+    medThreshold: DEVICE_WEIGHT,
+    highThreshold: DEVICE_WEIGHT,
+  });
+  const xdr = sponsored({
+    ops: [
+      Operation.beginSponsoringFutureReserves({ sponsoredId: ME, source: SPONSOR }),
+      addSigner(SIGNER_A),
+      addSigner(SIGNER_B),
+      Operation.endSponsoringFutureReserves({ source: ME }),
+      noMaster,
+    ],
+  });
+  assert.equal(refusal(xdr, { sponsored: true, deviceKey: NEW_DEVICE }), null);
+  // And the same envelope on a never-recovered account is refused: there the master IS
+  // the device, and leaving it at its default weight would lock the account out.
+  assert.equal(refusal(xdr, { sponsored: true }), 'guard.recoveryMasterWeight');
+});
+
+test('never-recovered account: a setup with no master weight is still refused', () => {
+  const xdr = buildRecoverySetup({ account: ME, deviceKey: NEW_DEVICE, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase });
+  assert.equal(refusal(xdr), 'guard.recoveryMasterWeight');
+});
+
+test('recovered account: a recovery server cannot be the device key', () => {
+  const xdr = buildRecoverySetup({ account: ME, deviceKey: SIGNER_A, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase });
+  assert.equal(refusal(xdr, { deviceKey: SIGNER_A }), 'guard.recoverySelfSigner');
+});
+
+test('recovered account: turning recovery off does not raise the retired master', () => {
+  const off = (deviceKey: string) =>
+    buildRecoveryRemoval({ account: ME, deviceKey, signers: SIGNERS, sequence: '7', networkPassphrase: CFG.passphrase });
+  assert.equal(masterOps(off(NEW_DEVICE)).length, 0);
+  assert.deepEqual(masterOps(off(ME)).map((op) => op.masterWeight), [DEVICE_WEIGHT]);
+});
+
+test('device key: the master while live, the replacement only once the master is retired', () => {
+  const live = ledger([{ key: ME, weight: 1 }]);
+  assert.equal(isDeviceKey(ME, live, ME), true);
+  assert.equal(isDeviceKey(ME, live, NEW_DEVICE), false);
+  const recovered = ledger([{ key: ME, weight: 0 }, { key: NEW_DEVICE, weight: DEVICE_WEIGHT }, ...SERVERS_ON]);
+  assert.equal(isDeviceKey(ME, recovered, NEW_DEVICE), true);
+  assert.equal(isDeviceKey(ME, recovered, ME), false, 'the retired master is not a device');
+  assert.equal(isDeviceKey(ME, recovered, SIGNER_A), false, 'a recovery server is not a device');
+  const both = ledger([{ key: ME, weight: DEVICE_WEIGHT }, { key: NEW_DEVICE, weight: DEVICE_WEIGHT }]);
+  assert.equal(isDeviceKey(ME, both, NEW_DEVICE), false, 'not while the master still signs');
+});
+
+test('a second recovery retires the previous replacement key, not only the master', () => {
+  const lost = NEW_DEVICE;
+  const fresh = Keypair.random().publicKey();
+  const account = ledger([{ key: ME, weight: 0 }, { key: lost, weight: DEVICE_WEIGHT }, ...SERVERS_ON]);
+  const revoke = keysToRevoke(ME, account, SIGNERS, fresh);
+  assert.deepEqual(revoke, [lost]);
+
+  const xdr = buildKeyReplacement({ account: ME, newKey: fresh, revoke, sequence: '7', networkPassphrase: CFG.passphrase });
+  const ops = (TransactionBuilder.fromXDR(xdr, CFG.passphrase) as unknown as {
+    operations: { signer?: { ed25519PublicKey?: string; weight?: number }; masterWeight?: number }[];
+  }).operations;
+  const weightOf = (k: string) => ops.find((op) => op.signer?.ed25519PublicKey === k)?.signer?.weight;
+  assert.equal(weightOf(fresh), DEVICE_WEIGHT);
+  assert.equal(weightOf(lost), 0, 'the lost key must lose its weight');
+  assert.equal(weightOf(SIGNER_A), undefined, 'the recovery signers are left in place');
+  assert.equal(ops.at(-1)?.masterWeight, 0);
+});
+
+test('a first recovery revokes nothing beyond the master', () => {
+  const account = ledger([{ key: ME, weight: DEVICE_WEIGHT }, ...SERVERS_ON]);
+  assert.deepEqual(keysToRevoke(ME, account, SIGNERS, NEW_DEVICE), []);
+});
+
+test('a key replacement refuses to zero more keys than the servers will co-sign', () => {
+  const many = Array.from({ length: 7 }, () => Keypair.random().publicKey());
+  assert.throws(
+    () => buildKeyReplacement({ account: ME, newKey: NEW_DEVICE, revoke: many, sequence: '7', networkPassphrase: CFG.passphrase }),
+    (e: unknown) => (e as { key?: string }).key === 'recovery.error.tooManySigners',
+  );
+});
+
+test('SEP-10: a recovered account signs its login with the replacement key the ledger lists', () => {
+  const device = Keypair.random();
+  const xdr = liveChallenge(EXPECT.webAuthDomain);
+  // Listed as a signer: signed. Not listed: refused by name, before anything is sent.
+  assert.doesNotThrow(() => signChallenge(CFG, xdr, EXPECT, device.secret(), [device.publicKey()]));
+  assert.throws(
+    () => signChallenge(CFG, xdr, EXPECT, device.secret(), [SIGNER_A]),
+    (e: unknown) => e instanceof Sep10Error && e.key === 'sep10.error.wrongKey',
+  );
+  // The master still signs for an account that was never recovered.
+  assert.doesNotThrow(() => signChallenge(CFG, xdr, EXPECT, me.secret(), []));
+});
+
+test('recovery state: any other weighted key is not on — with one server it reaches the threshold', () => {
+  const extra = { key: ATTACKER, weight: SERVER_WEIGHT - 1 };
+  assert.equal(recoveryStateFromLedger(ME, ledger([{ key: ME, weight: DEVICE_WEIGHT }, extra, ...SERVERS_ON])).enabled, false);
+  // A third key AT the servers' weight was already caught: three of them is not a pair.
+  const third = { key: ATTACKER, weight: SERVER_WEIGHT };
+  assert.equal(recoveryStateFromLedger(ME, ledger([{ key: ME, weight: DEVICE_WEIGHT }, third, ...SERVERS_ON])).enabled, false);
+});
+
+test('a key a server asks to keep is retired when the ledger has it at any weight but the servers’', () => {
+  // Server A reports SIGNER_A as its key, but the ledger has it at the device weight: it
+  // could act alone, so it does not survive the recovery on the server's word.
+  const account = ledger([
+    { key: ME, weight: 0 },
+    { key: SIGNER_A, weight: DEVICE_WEIGHT },
+    { key: SIGNER_B, weight: SERVER_WEIGHT },
+  ]);
+  assert.deepEqual(keysToRevoke(ME, account, SIGNERS, NEW_DEVICE), [SIGNER_A]);
 });

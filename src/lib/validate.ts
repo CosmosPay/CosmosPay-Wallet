@@ -105,14 +105,12 @@ export function appPasswordOk(pwd: string): boolean {
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
 
 /**
- * Is this a Horizon endpoint the wallet may use?
- *
- * TLS is required for anything non-loopback: a custom network's Horizon sees every
- * balance query and receives every signed envelope the wallet submits, so cleartext
- * there means a network attacker reads the account and can withhold or replay
- * submissions. Loopback stays allowed so a local core/Horizon still works.
+ * https, or http on a loopback host — the rule for any server the wallet sends a
+ * signature, a token or an account to. Cleartext to a remote host lets a network attacker
+ * read and replay it; on loopback it never leaves the machine, and it is what a local dev
+ * server (Horizon, the recovery pair on :3002/:3003) speaks.
  */
-export function isSafeHorizonUrl(raw: string): boolean {
+export function isSecureOrLoopbackUrl(raw: string): boolean {
   let url: URL;
   try {
     url = new URL(raw.trim());
@@ -121,6 +119,18 @@ export function isSafeHorizonUrl(raw: string): boolean {
   }
   if (url.protocol === 'https:') return true;
   return url.protocol === 'http:' && LOOPBACK.has(url.hostname);
+}
+
+/**
+ * Is this a Horizon endpoint the wallet may use?
+ *
+ * TLS is required for anything non-loopback: a custom network's Horizon sees every
+ * balance query and receives every signed envelope the wallet submits, so cleartext
+ * there means a network attacker reads the account and can withhold or replay
+ * submissions. Loopback stays allowed so a local core/Horizon still works.
+ */
+export function isSafeHorizonUrl(raw: string): boolean {
+  return isSecureOrLoopbackUrl(raw);
 }
 
 /** Why an endpoint was rejected, for the UI to show. Null when it is acceptable. */

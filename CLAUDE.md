@@ -594,10 +594,28 @@ would pass any bound. The envelope must be, operation for operation:
 ```
 
 Each signer exactly once, both from the pair the servers reported, nothing else set on any
-operation, and no signature on it but the payer's. Both funding variants exist and both end
+operation, and no signature on it but the payer's. On a **recovered** account the last
+operation carries NO `masterWeight`: its master is the key on the lost device, retired at 0,
+and raising it to 10 hands the account back to whoever holds that device. The intent's
+`deviceKey` says which case it is, `deviceKeyFor` confirms it against the ledger first, and
+turning recovery off (`buildRecoveryRemoval`) follows the same rule. Both funding variants exist and both end
 here: the wallet builds the self-paid one and the main community server builds the sponsored one (`POST /v1/wallet/recovery/setup`, never on a recovery server — its sponsor key is the operator's money), and the
 template checks the wallet's own build too — a builder that checked only the other side's
-envelope would be trusting its own code more than the thing that has to be right.
+envelope would be trusting its own code more than the thing that has to be right. The
+operator's builder follows the same master rule: on a recovered account it verifies the
+challenge against the replacement key and leaves the retired master out
+(`sponsorableDeviceKey` in the community server's `recovery-setup.ts`), and an envelope that
+raises it anyway is refused here.
+
+**Sponsorship is a product, not a fallback that always works.** Wallet-as-a-service offers it
+from the community server and the dashboard; a deployment with no sponsor key answers that it
+is unavailable. So the self-paid path stands on its own: it needs `RECOVERY_MIN_SPENDABLE_XLM`
+free (the reserve plus a fee margin, so turning recovery on never leaves the account unable
+to pay its next fee), measured as `recoveryShortfall` over what the account already locks —
+never a fixed balance, which would under-ask an account with trustlines. `enableRecovery`
+checks it on a fresh ledger read BEFORE registering with either server, and the screens show
+the missing amount beside the sponsored offer, with a way to cover it (`topUpFromFriendbot`
+on testnet, Receive elsewhere).
 
 Three things that bit, each now a test in `tests/unit/recovery.test.ts`:
 
@@ -661,7 +679,9 @@ returns the signer the server has always held.
 
 **Recovering keeps the ACCOUNT and replaces the KEY.** `buildKeyReplacement` puts a new
 device key on at weight 10 and takes the old master to 0, leaving the recovery signers in
-place so the next device can do it again. It is built HERE, by the device that will use it,
+place so the next device can do it again. It also zeroes every other live signer
+(`keysToRevoke`): on a second recovery the lost key is the FIRST replacement, not the master,
+and zeroing only the master left it able to act alone. It is built HERE, by the device that will use it,
 and only then handed to the servers for signatures — a transaction a server built and a
 server signed is one nobody independent read. `collectSignatures` assembles both, and
 `addSignature` is what catches a server that signed something else.
@@ -697,7 +717,11 @@ recovery on already has, not in the identity builder.
 Three consequences of re-keying, each handled in one place and each easy to reintroduce:
 
 - **The address stops being derivable from the key.** `WalletEntry.publicKey` is the ACCOUNT;
-  the key that signs is whatever the vault holds. `finishSignIn` and `replaceBackup` take an
+  the key that signs is whatever the vault holds. Never `loadAccount(keypair.publicKey())`:
+  the payment builders in `lib/stellar.ts` take a required `account`, and `signChallenge`
+  accepts any key the ledger lists as a signer — each used to assume the master and failed
+  on every recovered wallet. Ledger readers must not assume the device key IS the master
+  either (`recoveryStateFromLedger`, `isDeviceKey`). `finishSignIn` and `replaceBackup` take an
   optional `account` for exactly this, and the community server accepts the signature because
   that key is one of the account's current signers (its account-signers module, on the one
   Horizon the operator configures — never one the request names).

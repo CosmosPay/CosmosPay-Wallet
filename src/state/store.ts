@@ -57,9 +57,10 @@ import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
 import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
 import { FIAT_DECIMALS, fromMinorUnits, toMinorUnitsBig } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
-import { sendableAssets, spendableCeiling } from '@/lib/balances';
+import { recoveryShortfall, sendableAssets, spendableCeiling } from '@/lib/balances';
 import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
 import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
+import { retryOnNetworkError } from '@/lib/retryNetwork';
 import { CROSS_CHAIN_SLIPPAGE_BPS } from '@/constants/swap';
 import { fileBackupRecovery, newRecoveryKey, takeBackupRecovery } from '@/lib/backupRecovery';
 import { CHAIN_EXPLORER_TX, CHAIN_SWAP_SLIPPAGE_BPS, type ChainToken, type OtherChain } from '@/constants/chains';
@@ -111,8 +112,11 @@ import {
   buildRecoveryRemoval,
   buildRecoverySetup,
   collectSignatures,
+  deviceKeyFor,
   identityRoute,
   identityTokensFromIdToken,
+  keysToRevoke,
+  ledgerAccountOf,
   loadRecoveryServers,
   recoverableAccounts,
   recoveryReachable,
@@ -131,6 +135,7 @@ import {
   addTrustline as stellarAddTrustline,
   allNetworks,
   fundWithFriendbot,
+  topUpFromFriendbot,
   getAccountState,
   getHistory,
   getPrices,
@@ -1784,7 +1789,7 @@ export function useWalletStore() {
       setBusy(true);
       try {
         guardSession(epoch);
-        await stellarAddTrustline({ cfg: network, secret: await secretOf(session), code: code.trim(), issuer: issuer.trim() });
+        await stellarAddTrustline({ cfg: network, secret: await secretOf(session), account: session.publicKey, code: code.trim(), issuer: issuer.trim() });
         await refresh(true);
         report(EVENT.trustlineAdded, { category: 'transaction', props: { asset: code.trim() } });
         flash(t('toast.assetAdded', { code: code.trim() }), 'ok');
@@ -1820,6 +1825,24 @@ export function useWalletStore() {
     }
   }, [session, network, refresh, t, flash]);
 
+  /**
+   * Testnet only: add free XLM to an account that already exists — for the recovery
+   * reserve, chiefly. `fund` cannot: Friendbot only creates accounts.
+   */
+  const topUpTestnet = useCallback(async () => {
+    if (!session || !network.friendbot) return;
+    setBusy(true);
+    try {
+      await topUpFromFriendbot(network, session.publicKey);
+      flash(t('toast.funded'), 'ok');
+      await refresh(true);
+    } catch (e) {
+      flash((e as Error).message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  }, [session, network, refresh, t, flash]);
+
   const submitSend = useCallback(async () => {
     if (!session) return;
     await exclusive.run('send', async () => {
@@ -1840,6 +1863,7 @@ export function useWalletStore() {
         const { hash } = await sendPayment({
           cfg: network,
           secret: await secretOf(session),
+          account: session.publicKey,
           destination: send.to.trim(),
           amount: send.amount,
           memo: send.memo,
@@ -2322,6 +2346,7 @@ export function useWalletStore() {
           const { hash } = await sendPayment({
             cfg: network,
             secret: await secretOf(session),
+            account: session.publicKey,
             destination: swap.depositAddress,
             amount,
             memo: swap.depositMemo,
@@ -2959,7 +2984,8 @@ export function useWalletStore() {
    * `code` is the one an email sign-in just sent, and passing it chooses the SPONSORED
    * variant: the operator pays the two signer entries' reserve, which is the only way an
    * account with no spare lumens gets recovery at all. Without it the account pays its
-   * own, and needs no sign-in at all. Both end at the same guard with the same template —
+   * own, needs no sign-in at all, and is stopped before either server hears of the account
+   * when it lacks `RECOVERY_MIN_SPENDABLE_XLM` free. Both end at the same guard with the same template —
    * the sponsorship is a funding arrangement, not a second way of changing an account.
    *
    * The token that the sponsored variant spends never leaves this function, which is why
@@ -2992,6 +3018,15 @@ export function useWalletStore() {
             flash(t('recovery.error.notFunded'), 'err');
             return false;
           }
+          // On the self-paid path the account finds out it cannot pay BEFORE either server
+          // is told about it. A fresh read, not the cached balance the screen showed. The
+          // sponsored path needs nothing free: the operator pays the reserve.
+          const missing = opts.code ? 0 : recoveryShortfall(await getAccountState(network, address));
+          guardSession(epoch);
+          if (missing > 0) {
+            flash(t('recovery.needXlm', { amount: missing }), 'err');
+            return false;
+          }
 
           // Said plainly before anything happens, because this is the bargain: whoever
           // can prove that inbox — to BOTH servers — can put a new key on this account.
@@ -3003,6 +3038,10 @@ export function useWalletStore() {
           guardSession(epoch);
 
           const secret = await secretOf(session);
+          // Before anything is registered: on a recovered account the key that signs is
+          // not the master, and the setup must then leave the master at 0.
+          const deviceKey = await deviceKeyFor(network, address, secret);
+          guardSession(epoch);
           const signers = await registerForRecovery(network, servers, address, secret, email);
           guardSession(epoch);
 
@@ -3027,14 +3066,16 @@ export function useWalletStore() {
             // built by the operator, on the sequence it reads for itself.
             const sequence = await sequenceOf(network, address);
             guardSession(epoch);
-            xdr = buildRecoverySetup({ account: address, signers, sequence, networkPassphrase: network.passphrase });
+            xdr = buildRecoverySetup({ account: address, deviceKey, signers, sequence, networkPassphrase: network.passphrase });
           }
 
           // The template, on both variants — including the one this wallet built itself.
           // A builder that checked only the other side's envelope would be trusting its
-          // own code more than the thing that has to be right.
+          // own code more than the thing that has to be right. On a recovered account it
+          // refuses the operator's envelope, which raises the retired master to 10.
           assertSafeToSign(network, xdr, {
             signer: address,
+            deviceKey,
             intent: 'recovery',
             // Nothing leaves. Stating the policy is still required, and this is the
             // honest answer rather than the empty one.
@@ -3112,6 +3153,10 @@ export function useWalletStore() {
         const servers = await loadRecoveryServers(network);
         guardSession(epoch);
         const secret = await secretOf(session);
+        // Asked BEFORE the servers are told to forget the account, so a refusal here leaves
+        // recovery exactly as it was.
+        const deviceKey = await deviceKeyFor(network, address, secret);
+        guardSession(epoch);
         const signers = await signersToRemove(network, servers, address, secret);
         guardSession(epoch);
         if (!signers.length) {
@@ -3121,7 +3166,7 @@ export function useWalletStore() {
 
         const sequence = await sequenceOf(network, address);
         guardSession(epoch);
-        const xdr = buildRecoveryRemoval({ account: address, signers, sequence, networkPassphrase: network.passphrase });
+        const xdr = buildRecoveryRemoval({ account: address, deviceKey, signers, sequence, networkPassphrase: network.passphrase });
         const signed = await signEnvelope(xdr);
         await stellarSubmitXdr(network, signed);
 
@@ -3405,10 +3450,15 @@ export function useWalletStore() {
           const mnemonic = createMnemonic();
           const fresh = await accountFromMnemonic(mnemonic);
 
+          // Read once, for both the sequence and the keys to retire: a second recovery's
+          // lost key is the previous replacement, not the master.
+          const ledger = await ledgerAccountOf(network, address);
+          if (!ledger) throw new Error(t('recovery.error.notFunded'));
           const sequence = await sequenceOf(network, address);
           const xdr = buildKeyReplacement({
             account: address,
             newKey: fresh.publicKey,
+            revoke: keysToRevoke(address, ledger, row.signers, fresh.publicKey),
             sequence,
             networkPassphrase: network.passphrase,
           });
@@ -3425,19 +3475,29 @@ export function useWalletStore() {
           const recovery = await fileRecovery(fresh.secret, address, draft.ready.identity.email);
           const box = await sealBackup({ secret: fresh.secret, mnemonic }, recovery ? { password, recovery } : password, address);
           recovery?.fill(0);
-          const res = await finishSignIn({
-            sessionToken: draft.ready.sessionToken,
-            email: draft.ready.identity.email,
-            secret: fresh.secret,
-            // The ACCOUNT, not the new key's own address: what was recovered is the
-            // account, and the server accepts the signature because that key is now one
-            // of its signers — see the community server's account-signers module, which is
-            // in a separate repository and so is named rather than linked.
-            account: address,
-            backup: box,
-            replaceBackup: true,
-            accessKey: await warmPublicKey(networkEnv(network)),
-          });
+          const accessKey = await warmPublicKey(networkEnv(network));
+          // Retried, unlike every other call that follows a signature, because the key is
+          // ALREADY on the ledger and exists nowhere but in this closure: a dropped
+          // connection here would throw away the only copy of a key that now controls the
+          // account. Only failures that never got an HTTP answer are retried — a refusal
+          // is the server's decision and repeating it changes nothing. A repeat cannot
+          // duplicate anything either: it replaces the same account's backup with the same
+          // box.
+          const res = await retryOnNetworkError(() =>
+            finishSignIn({
+              sessionToken: draft.ready.sessionToken,
+              email: draft.ready.identity.email,
+              secret: fresh.secret,
+              // The ACCOUNT, not the new key's own address: what was recovered is the
+              // account, and the server accepts the signature because that key is now one
+              // of its signers — see the community server's account-signers module, which
+              // is in a separate repository and so is named rather than linked.
+              account: address,
+              backup: box,
+              replaceBackup: true,
+              accessKey,
+            }),
+          );
           if (res.status === 'backup_conflict') {
             flash(t('backup.conflict'), 'err');
             return false;
@@ -5551,8 +5611,9 @@ export function useWalletStore() {
      */
     recovery,
     loadRecovery,
-    startRecoveryCode,
     enableRecovery,
+    topUpTestnet,
+    startRecoveryCode,
     disableRecovery,
     updateRecoveryEmail,
 

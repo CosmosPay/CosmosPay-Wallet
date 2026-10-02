@@ -54,6 +54,14 @@ export type RecoveryRole = (typeof RECOVERY_ROLES)[number];
 export const RECOVERY_TIMEOUT_S = 300;
 
 /**
+ * How many stale keys one key replacement may zero. The recovery servers co-sign at most
+ * eight operations (`RECOVERY_SIGN_MAX_OPS` on the community server); a replacement spends
+ * two on the new key and the master, which leaves six. An account carrying more than that
+ * is not one this wallet set up, and is refused rather than half-cleaned.
+ */
+export const RECOVERY_MAX_REVOKE = 6;
+
+/**
  * How many pages of `GET /accounts` the wallet will follow before it stops.
  *
  * SEP-30 pages that listing with an `after` cursor and sets no page size, so the walk is
@@ -65,14 +73,24 @@ export const RECOVERY_TIMEOUT_S = 300;
 export const RECOVERY_LIST_MAX_PAGES = 20;
 
 /**
- * XLM an account needs spare to pay for recovery itself: 0.5 per signer entry, plus a
- * little for the fee.
- *
- * Below this the account cannot turn recovery on with its own lumens, and the operator's
- * sponsored path is the only one that works — which is most accounts on a first run, and
- * the reason that path exists at all.
+ * XLM the two signer entries lock on the account: Stellar's base reserve, 0.5 per entry.
+ * Locked, not spent — it is free again the moment recovery is turned off.
  */
-export const RECOVERY_RESERVE_XLM = RECOVERY_SERVER_COUNT * 0.5 + 0.01;
+export const RECOVERY_RESERVE_XLM = RECOVERY_SERVER_COUNT * 0.5;
+
+/**
+ * Spare XLM left over AFTER the reserve, on the path where the account pays for recovery
+ * itself. A reserve that took the last free lumen would leave an account unable to pay the
+ * fee on anything it does next, turning recovery off included. Below this the operator's
+ * sponsored path is what gets offered, when the deployment runs one.
+ */
+export const RECOVERY_FEE_MARGIN_XLM = 0.5;
+
+/** Free XLM an account needs before recovery can be turned on: the reserve plus the margin. */
+export const RECOVERY_MIN_SPENDABLE_XLM = RECOVERY_RESERVE_XLM + RECOVERY_FEE_MARGIN_XLM;
+
+/** The setup transaction's operation count: one per server signer, then the thresholds. */
+export const RECOVERY_SETUP_OPS = RECOVERY_SERVER_COUNT + 1;
 
 /**
  * How long the wallet keeps a recovery's identity tokens before asking again.

@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { SettingsSection } from '@/features/settings/SettingsSection';
 import { useBusy } from '@/hooks/useBusy';
-import { spendableXlm } from '@/lib/balances';
+import { recoveryShortfall } from '@/lib/balances';
 import { isAccessCode, normalizeAccessCode } from '@/lib/validate';
-import { RECOVERY_RESERVE_XLM } from '@/constants/recovery';
 import { recoveryConfigured } from '@/lib/recovery';
 import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
 import { shortAddr } from '@/lib/format';
@@ -66,9 +65,20 @@ export function RecoverySection({ store }: { store: WalletStore }) {
   // never told. Both end at the same button, which is the only way to make them agree.
   const drifted = on && registered !== '' && registered !== email;
   const unknown = on && registered === '';
-  // Whether the account can pay the two signer entries' reserve itself. Below it the
-  // operator's sponsored path is the only one that works, and it is what gets offered.
-  const affordable = spendableXlm(store.account) >= RECOVERY_RESERVE_XLM;
+  // XLM the account is short of paying the two signer entries' reserve itself, with a fee
+  // margin after it. Below it the operator's sponsored path is offered — when a deployment
+  // runs none, the server says so — next to a way to cover the shortfall instead.
+  const missing = recoveryShortfall(store.account);
+  const affordable = missing === 0;
+  const topUp = store.network.friendbot ? (
+    <button disabled={busy} onClick={() => run(() => store.topUpTestnet())} className="btn-ghost recovery-btn">
+      {t('recovery.topUpTestnet')}
+    </button>
+  ) : (
+    <button onClick={() => store.go('receive')} className="btn-ghost recovery-btn">
+      {t('receive.title')}
+    </button>
+  );
 
   return (
     <SettingsSection title={t('recovery.title')}>
@@ -179,6 +189,7 @@ export function RecoverySection({ store }: { store: WalletStore }) {
             </>
           ) : (
             <>
+              <div className="recovery-note recovery-note-warn">{t('recovery.needXlm', { amount: missing })}</div>
               <div className="recovery-note">{t('recovery.sponsoredNote')}</div>
               <button
                 disabled={busy || !email}
@@ -187,6 +198,7 @@ export function RecoverySection({ store }: { store: WalletStore }) {
               >
                 {t('recovery.sponsoredCta')}
               </button>
+              {topUp}
             </>
           )}
         </>
