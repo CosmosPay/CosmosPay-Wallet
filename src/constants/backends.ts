@@ -47,3 +47,12 @@ export const DEFAULT_RECOVERY_B_URL = 'https://recovery-b.cosmospay.lat';
  */
 export const DEFAULT_SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
 export const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
+
+/**
+ * Their test networks: Solana devnet and Monad testnet. The wallet reads the native
+ * balance there and asks devnet for an airdrop whenever Stellar is on a test network, so a
+ * developer holds test SOL / MON beside test XLM. Public and rate-limited, like the two
+ * above; `PUBLIC_SOLANA_TESTNET_RPC_URL` / `PUBLIC_MONAD_TESTNET_RPC_URL` replace them.
+ */
+export const DEFAULT_SOLANA_TESTNET_RPC_URL = 'https://api.devnet.solana.com';
+export const DEFAULT_MONAD_TESTNET_RPC_URL = 'https://testnet-rpc.monad.xyz';

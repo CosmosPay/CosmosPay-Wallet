@@ -158,9 +158,19 @@ const dec = new TextDecoder();
  * it is told, and a box that carried its own address in the clear would be telling the
  * server something it already knows while telling anyone who reads the row something
  * they should not.
+ *
+ * `rekeyedOn` goes with it: the passphrase of the ONE ledger the account was re-keyed on.
+ * On every other network the new key controls only its own address, and a restore that
+ * lost this would point the wallet at an account it cannot sign for there
+ * (`lib/accountAddress.ts`).
  */
-export async function sealBackup(secret: VaultSecret, doors: string | BackupDoors, account?: string): Promise<string> {
-  const payload = JSON.stringify(account ? { ...secret, account } : secret);
+export async function sealBackup(
+  secret: VaultSecret,
+  doors: string | BackupDoors,
+  account?: string,
+  rekeyedOn?: string,
+): Promise<string> {
+  const payload = JSON.stringify(account ? { ...secret, account, ...(rekeyedOn ? { rekeyedOn } : {}) } : secret);
   if (typeof doors === 'string') doors = { password: doors };
   if (!doors.password && !doors.passkey) throw new Error('a backup needs at least one door');
 
@@ -331,11 +341,11 @@ export async function openBackup(
   box: string,
   key: BackupKey,
   expectedAddress: string,
-): Promise<VaultSecret & { account?: string }> {
+): Promise<VaultSecret & { account?: string; rekeyedOn?: string }> {
   const plain = await plaintextOf(parseBox(box), key);
-  let secret: VaultSecret & { account?: string };
+  let secret: VaultSecret & { account?: string; rekeyedOn?: string };
   try {
-    secret = JSON.parse(plain) as VaultSecret & { account?: string };
+    secret = JSON.parse(plain) as VaultSecret & { account?: string; rekeyedOn?: string };
   } catch {
     throw new BackupUnreadableError();
   }
@@ -355,6 +365,7 @@ export async function openBackup(
     secret: secret.secret,
     mnemonic: typeof secret.mnemonic === 'string' ? secret.mnemonic : null,
     ...(typeof secret.account === 'string' ? { account: secret.account } : {}),
+    ...(typeof secret.account === 'string' && typeof secret.rekeyedOn === 'string' ? { rekeyedOn: secret.rekeyedOn } : {}),
   };
 }
 

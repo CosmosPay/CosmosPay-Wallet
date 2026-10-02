@@ -36,6 +36,7 @@ import { deviceAuthEnabled, disableDeviceAuth } from '@/lib/deviceAuth';
 import { dropPasskeyUnlock } from '@/lib/passkeyUnlock';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
+import type { Rekey } from '@/lib/accountAddress';
 import { tNow } from '@/lib/i18n';
 
 const WALLETS_KEY = 'cosmos.wallets';
@@ -70,7 +71,13 @@ export type Gender = 'm' | 'f' | 'x';
 
 export interface WalletEntry {
   id: string;
-  publicKey: string; // G...
+  publicKey: string; // G... — the ACCOUNT; on a re-keyed wallet, see `rekey`
+  /**
+   * Set on a wallet recovered through SEP-30: the ledger its account was re-keyed on, and
+   * the new key's own address, which is what the wallet acts as on every OTHER network
+   * (`addressOn` in `lib/accountAddress.ts`).
+   */
+  rekey?: Rekey;
   name: string; // user name / nickname
   birthdate: string; // ISO "YYYY-MM-DD" (required at signup)
   email: string; // for opt-in linking to Cosmos products (required at signup)
@@ -291,7 +298,18 @@ export async function takeLegacyPollarNotice(): Promise<number> {
  */
 export async function addWallet(
   secret: VaultSecret,
-  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean; avatar?: string; cloudBackup?: boolean },
+  info: {
+    publicKey: string;
+    name: string;
+    birthdate: string;
+    email: string;
+    gender?: Gender;
+    metricsOptIn?: boolean;
+    promoOptIn?: boolean;
+    avatar?: string;
+    cloudBackup?: boolean;
+    rekey?: Rekey;
+  },
   vk: VaultKey,
 ): Promise<WalletEntry> {
   const list = await listWallets();
@@ -300,7 +318,14 @@ export async function addWallet(
     // already imported — just make it active (and refresh its seal)
     await storageSet(vaultKey(dup.id), JSON.stringify(await sealWithKey(JSON.stringify(secret), vk)));
     await setActiveId(dup.id);
-    return dup;
+    // The seal may now hold a DIFFERENT key for the same account — a recovery landing
+    // where the lost device's entry still sits. What the old key implied goes with it: its
+    // re-key record, and the Solana / Monad addresses its phrase derived (re-derived from
+    // the new phrase the next time a screen asks).
+    const { chainAddresses: _stale, rekey: _old, ...kept } = dup;
+    const updated: WalletEntry = info.rekey ? { ...kept, rekey: info.rekey } : kept;
+    await writeWallets(list.map((w) => (w.id === dup.id ? updated : w)));
+    return updated;
   }
   const id = genId();
   await storageSet(vaultKey(id), JSON.stringify(await sealWithKey(JSON.stringify(secret), vk)));
@@ -315,6 +340,7 @@ export async function addWallet(
     promoOptIn: info.promoOptIn,
     avatar: info.avatar,
     cloudBackup: info.cloudBackup,
+    ...(info.rekey ? { rekey: info.rekey } : {}),
     createdAt: Date.now(),
   };
   await writeWallets([...list, entry]);
@@ -325,7 +351,7 @@ export async function addWallet(
 /** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail' | 'chainAddresses' | 'backupRecoveryEmail'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail' | 'chainAddresses' | 'backupRecoveryEmail' | 'rekey'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));

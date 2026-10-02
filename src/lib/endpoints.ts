@@ -18,7 +18,10 @@ import {
   DEFAULT_RECOVERY_B_URL,
   DEFAULT_SOLANA_RPC_URL,
   DEFAULT_MONAD_RPC_URL,
+  DEFAULT_SOLANA_TESTNET_RPC_URL,
+  DEFAULT_MONAD_TESTNET_RPC_URL,
 } from '@/constants/backends';
+import type { ChainNet, OtherChain } from '@/constants/chains';
 import type { RecoveryRole } from '@/constants/recovery';
 import { buildKind } from '@/lib/platform';
 
@@ -48,6 +51,8 @@ export interface EndpointOverrides {
   recoveryBUrl?: string; // SEP-30 recovery server B — a DIFFERENT deployment, always
   solanaRpcUrl?: string; // Solana mainnet JSON-RPC node
   monadRpcUrl?: string; // Monad mainnet JSON-RPC node
+  solanaTestnetRpcUrl?: string; // Solana devnet JSON-RPC node
+  monadTestnetRpcUrl?: string; // Monad testnet JSON-RPC node
 }
 
 export function devModeEnabled(): boolean {
@@ -139,6 +144,16 @@ export const solanaRpcUrl = (): string =>
 /** Monad mainnet JSON-RPC (swaps paid from Monad). */
 export const monadRpcUrl = (): string => resolve('monadRpcUrl', ENV.PUBLIC_MONAD_RPC_URL || undefined, DEFAULT_MONAD_RPC_URL);
 
+/** Solana devnet / Monad testnet JSON-RPC (test balances, airdrops and test sends). */
+export const testnetRpcUrl = (chain: OtherChain): string =>
+  chain === 'solana'
+    ? resolve('solanaTestnetRpcUrl', ENV.PUBLIC_SOLANA_TESTNET_RPC_URL || undefined, DEFAULT_SOLANA_TESTNET_RPC_URL)
+    : resolve('monadTestnetRpcUrl', ENV.PUBLIC_MONAD_TESTNET_RPC_URL || undefined, DEFAULT_MONAD_TESTNET_RPC_URL);
+
+/** The node for `chain` on `net`. */
+export const chainRpcUrl = (chain: OtherChain, net: ChainNet): string =>
+  net === 'testnet' ? testnetRpcUrl(chain) : chain === 'solana' ? solanaRpcUrl() : monadRpcUrl();
+
 /**
  * Both of them, in role order.
  *
@@ -186,6 +201,16 @@ export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; 
   },
   { key: 'solanaRpcUrl', labelKey: 'settings.epSolanaRpc', getDefault: () => ENV.PUBLIC_SOLANA_RPC_URL || DEFAULT_SOLANA_RPC_URL },
   { key: 'monadRpcUrl', labelKey: 'settings.epMonadRpc', getDefault: () => ENV.PUBLIC_MONAD_RPC_URL || DEFAULT_MONAD_RPC_URL },
+  {
+    key: 'solanaTestnetRpcUrl',
+    labelKey: 'settings.epSolanaTestnetRpc',
+    getDefault: () => ENV.PUBLIC_SOLANA_TESTNET_RPC_URL || DEFAULT_SOLANA_TESTNET_RPC_URL,
+  },
+  {
+    key: 'monadTestnetRpcUrl',
+    labelKey: 'settings.epMonadTestnetRpc',
+    getDefault: () => ENV.PUBLIC_MONAD_TESTNET_RPC_URL || DEFAULT_MONAD_TESTNET_RPC_URL,
+  },
 ];
 
 /* ------------------------------- the sign-in ------------------------------- */

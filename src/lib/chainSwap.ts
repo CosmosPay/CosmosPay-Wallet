@@ -1,7 +1,7 @@
 /**
- * Paying from Solana or Monad: the balances the swap screen shows, and the three things
- * the wallet signs there — a Jupiter swap, a Kuru Flow swap (with its approval), and a
- * deposit into a NEAR Intents address.
+ * Paying from Solana or Monad: the balances the swap screen shows, and the things the
+ * wallet signs there — a Jupiter swap, a Kuru Flow swap (with its approval), a deposit
+ * into a NEAR Intents address, and a plain transfer on a test network.
  *
  * Every function that signs checks first, and refuses with a `ChainSwapRefused` whose
  * `code` the store turns into a message. Nothing here reaches the gateway: the store
@@ -11,11 +11,14 @@ import { base64 } from '@scure/base';
 import {
   CHAIN_CONFIRM_POLL_MS,
   CHAIN_CONFIRM_TIMEOUT_MS,
-  CHAIN_TOKENS,
+  CHAIN_TOKENS_BY_NET,
   EVM_BASE_FEE_MULTIPLIER,
   EVM_GAS_HEADROOM_PCT,
   MONAD_CHAIN_ID,
+  MONAD_CHAIN_IDS,
   NATIVE_RESERVE,
+  SOLANA_RENT_EXEMPT_LAMPORTS,
+  type ChainNet,
   type OtherChain,
 } from '@/constants/chains';
 import {
@@ -55,6 +58,8 @@ export type ChainSwapRefusalCode =
   | 'short' // it would deliver less than the quote's minimum
   | 'simulation' // the node could not run it at all
   | 'chain' // a Monad call for another chain, or the node is not Monad mainnet
+  | 'testnetNode' // the node configured for Monad testnet is not Monad testnet
+  | 'rent' // a SOL transfer would open an account with less than rent exemption
   | 'value' // a Monad swap sending more MON than confirmed
   | 'approval' // an approval that is not exactly (router, amount)
   | 'address' // a deposit address that is not an address on that chain
@@ -69,22 +74,33 @@ export class ChainSwapRefused extends Error {
   }
 }
 
-/** Base-unit balance of each token the screen offers on `chain`, keyed by `asset`. */
-export async function chainBalances(chain: OtherChain, owner: string): Promise<Record<string, bigint>> {
+/**
+ * Base-unit balance of each token offered on `chain`'s `net`, keyed by `asset`. On a
+ * test network the Monad node is asked which chain it serves first: an override pointed
+ * at mainnet would otherwise show real MON on a card that calls it test MON.
+ */
+export async function chainBalances(chain: OtherChain, owner: string, net: ChainNet = 'mainnet'): Promise<Record<string, bigint>> {
   const out: Record<string, bigint> = {};
+  const tokens = CHAIN_TOKENS_BY_NET[net][chain];
   if (chain === 'solana') {
-    const [lamports, accounts] = await Promise.all([solanaLamports(owner), solanaTokenAccounts(owner)]);
-    for (const t of CHAIN_TOKENS.solana) {
+    const [lamports, accounts] = await Promise.all([solanaLamports(owner, net), solanaTokenAccounts(owner, net)]);
+    for (const t of tokens) {
       out[t.asset] = t.asset === 'native' ? lamports : accounts.filter((a) => a.mint === t.asset).reduce((s, a) => s + a.amount, 0n);
     }
     return out;
   }
+  if (net === 'testnet') await assertMonadNode(net);
   await Promise.all(
-    CHAIN_TOKENS.monad.map(async (t) => {
-      out[t.asset] = t.asset === 'native' ? await monadBalance(owner) : await monadTokenBalance(t.asset, owner);
+    tokens.map(async (t) => {
+      out[t.asset] = t.asset === 'native' ? await monadBalance(owner, net) : await monadTokenBalance(t.asset, owner, net);
     }),
   );
   return out;
+}
+
+/** Whether `address` is an address on `chain` — the predicate a screen and the signer share. */
+export function isChainAddress(chain: OtherChain, address: string): boolean {
+  return chain === 'solana' ? isSolanaAddress(address) : isEvmAddress(address);
 }
 
 /** What may be sold: the balance, less the fee reserve when it is the native coin. */
@@ -171,20 +187,22 @@ export async function signSolanaSwap(p: {
 
 /* --------------------------------- Monad --------------------------------- */
 
-async function assertMonadNode(): Promise<void> {
-  if ((await monadChainId()) !== MONAD_CHAIN_ID) throw new ChainSwapRefused('chain');
+/** The node must serve the chain `net` names; the signature is bound to that chain id too. */
+async function assertMonadNode(net: ChainNet = 'mainnet'): Promise<void> {
+  if ((await monadChainId(net)) !== MONAD_CHAIN_IDS[net]) throw new ChainSwapRefused(net === 'mainnet' ? 'chain' : 'testnetNode');
 }
 
 /** Sign one call as an EIP-1559 transaction at the node's current fees and our nonce. */
-async function signMonadCall(call: { to: string; data: string; value: bigint }, secret: Uint8Array, owner: string, nonce?: bigint) {
-  const [n, fees, gas] = await Promise.all([
-    nonce === undefined ? monadNonce(owner) : Promise.resolve(nonce),
-    monadFees(),
-    monadEstimateGas({ from: owner, ...call }),
-  ]);
+async function signMonadCall(
+  call: { to: string; data: string; value: bigint },
+  secret: Uint8Array,
+  owner: string,
+  net: ChainNet = 'mainnet',
+) {
+  const [n, fees, gas] = await Promise.all([monadNonce(owner, net), monadFees(net), monadEstimateGas({ from: owner, ...call }, net)]);
   return signEip1559(
     {
-      chainId: MONAD_CHAIN_ID,
+      chainId: MONAD_CHAIN_IDS[net],
       nonce: n,
       maxPriorityFeePerGas: fees.tip,
       maxFeePerGas: fees.baseFee * EVM_BASE_FEE_MULTIPLIER + fees.tip,
@@ -237,13 +255,9 @@ export async function signMonadSwap(p: {
   return swap.raw;
 }
 
-/* -------------------------------- deposits ------------------------------- */
+/* ------------------------------- transfers ------------------------------- */
 
-/**
- * Pay `amount` of `asset` from our address on `chain` to a NEAR Intents deposit address,
- * with a transaction this wallet builds itself. Answers the transaction id.
- */
-export async function sendDeposit(p: {
+export interface TransferParams {
   chain: OtherChain;
   secret: Uint8Array;
   owner: string;
@@ -251,10 +265,22 @@ export async function sendDeposit(p: {
   decimals: number;
   to: string;
   amount: bigint;
-}): Promise<string> {
+}
+
+/**
+ * Pay `amount` of `asset` from our address on `chain` to `to`, on `net`, with a
+ * transaction this wallet builds itself. Answers the transaction id once the node has
+ * accepted it (Solana runs preflight, so a doomed one is refused there).
+ */
+export async function sendTransfer(p: TransferParams & { net: ChainNet }): Promise<string> {
+  if (!isChainAddress(p.chain, p.to)) throw new ChainSwapRefused('address');
   if (p.chain === 'solana') {
-    if (!isSolanaAddress(p.to)) throw new ChainSwapRefused('address');
-    const blockhash = await solanaBlockhash();
+    // Opening an account with less than rent exemption fails on chain with an error
+    // about rent nobody expects from "send 0.0001 SOL"; refuse it here and say why.
+    if (p.asset === 'native' && p.amount < SOLANA_RENT_EXEMPT_LAMPORTS && (await solanaLamports(p.to, p.net)) === 0n) {
+      throw new ChainSwapRefused('rent');
+    }
+    const blockhash = await solanaBlockhash(p.net);
     const wire =
       p.asset === 'native'
         ? solTransferTx(p.owner, p.to, p.amount, blockhash)
@@ -264,18 +290,22 @@ export async function sendDeposit(p: {
             mint: p.asset,
             decimals: p.decimals,
             amount: p.amount,
-            tokenProgram: await solanaMintProgram(p.asset),
+            tokenProgram: await solanaMintProgram(p.asset, p.net),
             recentBlockhash: blockhash,
           });
-    return solanaSend(signSolanaTx(wire, p.secret, p.owner).signed);
+    return solanaSend(signSolanaTx(wire, p.secret, p.owner).signed, p.net);
   }
-  if (!isEvmAddress(p.to)) throw new ChainSwapRefused('address');
-  await assertMonadNode();
+  await assertMonadNode(p.net);
   const call =
     p.asset === 'native'
       ? { to: p.to, data: '0x', value: p.amount }
       : { to: p.asset, data: transferCalldata(p.to, p.amount), value: 0n };
-  const signed = await signMonadCall(call, p.secret, p.owner);
-  await monadSend(signed.raw);
+  const signed = await signMonadCall(call, p.secret, p.owner, p.net);
+  await monadSend(signed.raw, p.net);
   return signed.hash;
+}
+
+/** Pay a NEAR Intents deposit address, on mainnet. Answers the transaction id. */
+export function sendDeposit(p: TransferParams): Promise<string> {
+  return sendTransfer({ ...p, net: 'mainnet' });
 }

@@ -133,6 +133,7 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
 
           <div className="glass-soft col g8 recover-warn">
             <div className="recover-warn-text">{t('recover.phraseWarn')}</div>
+            <div className="recover-warn-text">{t('recover.otherNetworks', { network: store.network.label })}</div>
             <CheckRow on={ack} onToggle={() => setAck(!ack)}>
               {t('recover.phraseAck')}
             </CheckRow>

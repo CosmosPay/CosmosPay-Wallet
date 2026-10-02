@@ -944,6 +944,31 @@ const refusesWith = async (body: string, key: string) =>
     }),
   );
 
+/* One server recovers on several ledgers and publishes a TOML per ledger: the wallet asks
+   for its own, and the endpoints it is handed carry that ledger's segment. */
+test('the TOML is asked for the ledger the wallet is on', async () => {
+  const asked: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request) => {
+    asked.push(String(input));
+    return new Response(
+      goodToml({
+        WEB_AUTH_ENDPOINT: '"https://recovery-a.cosmospay.lat/cosmos-api/v1/sep10/testnet/auth"',
+        ENDPOINT: '"https://recovery-a.cosmospay.lat/cosmos-api/v1/sep30/testnet"',
+      }),
+      { status: 200 },
+    );
+  }) as typeof fetch;
+  try {
+    const described = await describeServer(CFG, 'a', 'https://recovery-a.cosmospay.lat');
+    assert.equal(described.sep30Base, 'https://recovery-a.cosmospay.lat/cosmos-api/v1/sep30/testnet');
+    assert.equal(described.webAuthEndpoint, 'https://recovery-a.cosmospay.lat/cosmos-api/v1/sep10/testnet/auth');
+  } finally {
+    globalThis.fetch = real;
+  }
+  assert.deepEqual(asked, ['https://recovery-a.cosmospay.lat/.well-known/stellar.toml?network=testnet']);
+});
+
 test('a server with no SIGNING_KEY is refused, not trusted on shape alone', () =>
   refusesWith(goodToml({ SIGNING_KEY: null }), 'recovery.error.discovery'));
 

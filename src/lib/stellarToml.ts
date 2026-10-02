@@ -136,10 +136,14 @@ export function parseStellarToml(text: string): StellarToml {
  * What is never done is inventing a value — a guessed key is a check that passes against
  * whoever answered.
  */
-export async function fetchStellarToml(origin: string): Promise<StellarToml | null> {
+export async function fetchStellarToml(origin: string, network?: string | null): Promise<StellarToml | null> {
   let url: string;
   try {
-    url = new URL('/.well-known/stellar.toml', origin).toString();
+    const target = new URL('/.well-known/stellar.toml', origin);
+    // One recovery server serves several ledgers, each with its own TOML. A server that
+    // serves one ignores the parameter, and its TOML's NETWORK_PASSPHRASE says which.
+    if (network) target.searchParams.set('network', network);
+    url = target.toString();
   } catch {
     return null;
   }

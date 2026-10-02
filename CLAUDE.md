@@ -561,6 +561,21 @@ failure with nothing left to do about it. Both hosts are derived into the extens
 `host_permissions` alongside the other two; a host the bundle calls and the manifest does not
 name is unreachable from the popup.
 
+**One deployment, every ledger; one registration per ledger.** A recovery server serves
+each ledger its operator lists (`RECOVERY_NETWORKS`), named inside the existing prefixes —
+`stellar.toml?network=testnet`, `/v1/sep10/testnet/auth`, `/v1/sep30/testnet/…` — so the
+gateway route and CORS cover them unchanged. `describeServer` asks for the wallet's own
+ledger (`ledgerName`), and the passphrase check still refuses whatever answers for another.
+A SEP-10 token is bound to the ledger it was issued on; an identity token (the inbox) is not.
+
+**A re-key lands on one ledger, so a recovered wallet's address is per network**
+(`addressOn` in `src/lib/accountAddress.ts`). `WalletEntry.rekey` records the ledger and the
+new key's own address; on that ledger the wallet is the recovered account, on every other it
+is the key's own address. The store's `meta` and `session` are already that view — anything
+that speaks to the sign-in or backup servers reads `metaEntry` (the canonical account) and
+sends `network` so the server reads signers from the right ledger. Never carry a recovered
+account to the other network: every payment built there fails at submit.
+
 **A SEP-10 challenge is decoded before it is signed** (`src/lib/sep10.ts`). A server hands
 the wallet a transaction and asks for a signature: that is the shape of everything
 `txGuard.ts` exists to refuse. What makes it safe is a property the wallet checks for

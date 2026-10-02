@@ -182,6 +182,22 @@ test('a recovered wallet opens under its account only when sealed with it', asyn
   await assert.rejects(openBackup(without, PASSWORD, account), BackupMismatchError);
 });
 
+/* The ledger the re-key landed on travels with the account, so a restore knows which network
+   the account is good for — and every other one uses the key's own address. */
+test('a recovered wallet’s re-key ledger survives the box, and only beside an account', async () => {
+  const account = Keypair.random().publicKey();
+  const box = await sealBackup(secret, PASSWORD, account, 'Test SDF Network ; September 2015');
+  assert.equal(box.includes('September 2015'), false);
+  assert.deepEqual(await openBackup(box, PASSWORD, account), {
+    ...secret,
+    account,
+    rekeyedOn: 'Test SDF Network ; September 2015',
+  });
+  // No account, no re-key: the key is its own address on every network.
+  const plain = await sealBackup(secret, PASSWORD, undefined, 'Test SDF Network ; September 2015');
+  assert.deepEqual(await openBackup(plain, PASSWORD, Keypair.fromSecret(secret.secret).publicKey()), secret);
+});
+
 test('a passkey against a v2 box is refused as a passkey problem, not a wrong password', async () => {
   const box = await sealBackup(secret, PASSWORD);
   await assert.rejects(openBackup(box, { passkey: passkey() }, kp.publicKey()), BackupPasskeyError);

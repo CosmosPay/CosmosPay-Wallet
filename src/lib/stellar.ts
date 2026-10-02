@@ -74,6 +74,19 @@ export function networkEnv(cfg: NetConfig): 'dev' | 'prod' {
   return cfg.passphrase === Networks.PUBLIC ? 'prod' : 'dev';
 }
 
+/** A ledger as the community server names it: the two public ones, by passphrase. */
+export type LedgerName = 'public' | 'testnet';
+
+/**
+ * The name servers use for the ledger a passphrase belongs to, or null for a custom
+ * network — which a server only ever serves as its default, so naming none is right.
+ */
+export function ledgerName(passphrase: string): LedgerName | null {
+  if (passphrase === Networks.PUBLIC) return 'public';
+  if (passphrase === Networks.TESTNET) return 'testnet';
+  return null;
+}
+
 export function getServer(cfg: NetConfig): Horizon.Server {
   return new Horizon.Server(cfg.horizon);
 }

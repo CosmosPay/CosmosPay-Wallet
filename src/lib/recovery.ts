@@ -50,7 +50,7 @@ import { fetchStellarToml } from '@/lib/stellarToml';
 import { ApiRequestError } from '@/lib/apiError';
 import { tNow } from '@/lib/i18n';
 import { signChallenge, webAuthDomainOf } from '@/lib/sep10';
-import { getServer, type NetConfig } from '@/lib/stellar';
+import { ledgerName, getServer, type NetConfig } from '@/lib/stellar';
 import {
   DEVICE_WEIGHT,
   IDENTITY_ROLE_OWNER,
@@ -189,7 +189,9 @@ export async function loadRecoveryServers(cfg: NetConfig): Promise<RecoveryServe
  */
 export async function describeServer(cfg: NetConfig, role: RecoveryRole, url: string): Promise<RecoveryServer> {
   const host = webAuthDomainOf(url);
-  const toml = await fetchStellarToml(url);
+  // The TOML for THIS ledger: a server that recovers on several publishes one per ledger,
+  // and the passphrase check below still refuses whatever answers for another.
+  const toml = await fetchStellarToml(url, ledgerName(cfg.passphrase));
   const endpoint = toml?.recovery?.endpoint;
 
   if (!toml?.webAuthEndpoint || !toml.signingKey || !endpoint) {

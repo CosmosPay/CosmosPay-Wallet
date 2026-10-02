@@ -14,6 +14,8 @@ const chainLib = () => import('@/lib/chainAddresses');
 // Signing on Solana / Monad: loaded on the first swap paid from there, not at startup.
 const chainKeysLib = () => import('@/lib/chainKeys');
 const chainSwapLib = () => import('@/lib/chainSwap');
+// Solana devnet / Monad testnet balances and the devnet airdrop: only on a test network.
+const chainRpcLib = () => import('@/lib/chainRpc');
 import {
   addWallet as vaultAddWallet,
   changePassword,
@@ -63,7 +65,16 @@ import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
 import { retryOnNetworkError } from '@/lib/retryNetwork';
 import { CROSS_CHAIN_SLIPPAGE_BPS } from '@/constants/swap';
 import { fileBackupRecovery, newRecoveryKey, takeBackupRecovery } from '@/lib/backupRecovery';
-import { CHAIN_EXPLORER_TX, CHAIN_SWAP_SLIPPAGE_BPS, type ChainToken, type OtherChain } from '@/constants/chains';
+import {
+  CHAIN_CONFIRM_POLL_MS,
+  CHAIN_CONFIRM_TIMEOUT_MS,
+  CHAIN_EXPLORER_TX,
+  CHAIN_SWAP_SLIPPAGE_BPS,
+  CHAIN_TESTNET_EXPLORER_TX,
+  SOLANA_AIRDROP_LAMPORTS,
+  type ChainToken,
+  type OtherChain,
+} from '@/constants/chains';
 import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
@@ -81,6 +92,7 @@ import {
   type BackupDoors,
   type BackupKey,
 } from '@/lib/cloudBackup';
+import { addressOn, keyAddressOf, ledgerOfRekey, rekeyOfBackup, type Rekey } from '@/lib/accountAddress';
 import { PasskeyError, createPasskey, getPasskeySecrets, wipePasskeySecrets, type PasskeySecrets } from '@/lib/passkey';
 import {
   PasskeyUnlockStaleError,
@@ -117,6 +129,7 @@ import {
   identityTokensFromIdToken,
   keysToRevoke,
   ledgerAccountOf,
+  activeSignersOf,
   loadRecoveryServers,
   recoverableAccounts,
   recoveryReachable,
@@ -140,6 +153,7 @@ import {
   getHistory,
   getPrices,
   networkEnv,
+  ledgerName,
   resolveNetwork,
   sendPayment,
   signXdr,
@@ -147,6 +161,7 @@ import {
   type AccountState,
   type HistoryOp,
   type NetConfig,
+  type LedgerName,
   type PriceInfo,
 } from '@/lib/stellar';
 import {
@@ -472,9 +487,28 @@ export function useWalletStore() {
   const [customNetworks, setCustomNetworksState] = useState<NetConfig[]>([]);
   const networks = useMemo(() => allNetworks(customNetworks), [customNetworks]);
   const network = useMemo(() => resolveNetwork(networkId, customNetworks), [networkId, customNetworks]);
-  const [meta, setMetaState] = useState<WalletEntry | null>(null);
+  /** The active wallet as stored: `publicKey` is its canonical ACCOUNT. */
+  const [metaEntry, setMetaState] = useState<WalletEntry | null>(null);
   const [wallets, setWallets] = useState<WalletEntry[]>([]);
-  const [session, setSession] = useState<Session | null>(null);
+  const [rawSession, setSession] = useState<Session | null>(null);
+  /**
+   * The active wallet and session AS THEY ACT ON THIS NETWORK — what every balance, payment
+   * and screen reads. Identical to the stored ones except on a wallet SEP-30 re-keyed on
+   * another ledger, which acts as its new key's own address here (`addressOn`). Anything
+   * that speaks to the sign-in or backup servers reads `metaEntry` instead: a backup is
+   * filed under the canonical account, whatever network the device is on.
+   */
+  const meta = useMemo(
+    () => (metaEntry ? { ...metaEntry, publicKey: addressOn(metaEntry, network.passphrase) } : null),
+    [metaEntry, network.passphrase],
+  );
+  const session = useMemo(
+    () =>
+      rawSession && metaEntry && rawSession.walletId === metaEntry.id
+        ? { ...rawSession, publicKey: addressOn(metaEntry, network.passphrase) }
+        : rawSession,
+    [rawSession, metaEntry, network.passphrase],
+  );
   /**
    * The live session, readable from a callback that must not depend on it.
    *
@@ -968,6 +1002,8 @@ export function useWalletStore() {
     async (input: {
       secret: VaultSecret;
       publicKey: string;
+      /** Set when `publicKey` is an account re-keyed on one ledger (`lib/accountAddress.ts`). */
+      rekey?: Rekey;
       ready: SignInReady;
       account: CosmosPayAccount;
       vk: VaultKey;
@@ -996,6 +1032,7 @@ export function useWalletStore() {
           metricsOptIn: input.consents.metricsOptIn,
           promoOptIn: input.consents.promoOptIn,
           cloudBackup: true,
+          rekey: input.rekey,
         },
         input.vk,
       );
@@ -1090,6 +1127,7 @@ export function useWalletStore() {
               metricsOptIn: input.consents.metricsOptIn,
               promoOptIn: input.consents.promoOptIn,
               cloudBackup: true,
+              rekey: rekeyOfBackup(secret),
             },
             input.vk,
           );
@@ -1103,8 +1141,14 @@ export function useWalletStore() {
             void (async () => {
               await storeBackupBox({
                 secret: secret.secret,
-                box: await sealBackup({ secret: secret.secret, mnemonic: secret.mnemonic }, password, b.stellarAddress),
+                box: await sealBackup(
+                  { secret: secret.secret, mnemonic: secret.mnemonic },
+                  password,
+                  b.stellarAddress,
+                  secret.rekeyedOn,
+                ),
                 account: b.stellarAddress,
+                network: secret.rekeyedOn ? ledgerName(secret.rekeyedOn) : null,
                 accessKey: await warmPublicKey(networkEnv(network)),
               });
             })().catch((e) => reportError(EVENT.backupUpdateFailed, e));
@@ -1952,7 +1996,10 @@ export function useWalletStore() {
 
   const submitLinkCode = useCallback(
     async (code: string, password = '') => {
-      if (!session || !meta || !cosmosLink) return;
+      if (!session || !meta || !metaEntry || !cosmosLink) return;
+      // The canonical account, not this network's view of it: the backup and the sign-in are
+      // filed under it whatever network the device is on.
+      const canonical = metaEntry;
       const epoch = sessionEpochRef.current;
       setBusy(true);
       try {
@@ -1981,11 +2028,12 @@ export function useWalletStore() {
           }
           guardSession(epoch);
           const vaulted = await openVault(meta.id, session.vaultKey);
-          const recovery = await fileRecovery(vaulted.secret, meta.publicKey, res.identity.email);
+          const recovery = await fileRecovery(vaulted.secret, canonical.publicKey, res.identity.email);
           box = await sealBackup(
             { secret: vaulted.secret, mnemonic: vaulted.mnemonic },
             recovery ? { password, recovery } : password,
-            meta.publicKey,
+            canonical.publicKey,
+            canonical.rekey?.passphrase,
           );
           linkFiled = !!recovery;
           recovery?.fill(0);
@@ -2003,7 +2051,8 @@ export function useWalletStore() {
           secret: await secretOf(session),
           // The wallet's account, not the key's own address: a recovered wallet signs with
           // the key that replaced its master.
-          account: meta.publicKey,
+          account: canonical.publicKey,
+          network: canonical.rekey ? ledgerName(canonical.rekey.passphrase) : null,
           ...(box ? { backup: box } : {}),
           accessKey,
         });
@@ -2032,7 +2081,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [session, meta, cosmosLink, network, requestSignature, guardSession, fileRecovery, t, flash],
+    [session, meta, metaEntry, cosmosLink, network, requestSignature, guardSession, fileRecovery, t, flash],
   );
 
   /**
@@ -2057,6 +2106,44 @@ export function useWalletStore() {
       /* Shown again next time; a derivation failure costs a line on a screen, not a wallet. */
     }
   }, [session, meta, guardSession]);
+
+  /**
+   * A wallet recovered before re-keys were recorded carries an account its key may sign for
+   * on only one ledger, and no record of which — so it builds payments on the other one that
+   * fail at submit. Once per unlock, while that is the case: find the one built-in ledger
+   * that lists the key as a signer and record it. Nothing is signed; a node that answers
+   * wrongly can only make the wallet show the wrong address, never spend from one.
+   */
+  const rekeyHealRef = useRef<string | null>(null);
+  useEffect(() => {
+    const entry = metaEntry;
+    const live = rawSession;
+    if (!entry || !live || entry.rekey || live.walletId !== entry.id || rekeyHealRef.current === entry.id) return;
+    rekeyHealRef.current = entry.id;
+    const epoch = sessionEpochRef.current;
+    void (async () => {
+      try {
+        const keyAddress = keyAddressOf((await openVault(entry.id, live.vaultKey)).secret);
+        if (keyAddress === entry.publicKey) return;
+        const ledgers = await Promise.all(
+          allNetworks([]).map(async (n) => ({
+            passphrase: n.passphrase,
+            signers: await activeSignersOf(n, entry.publicKey).catch(() => null),
+          })),
+        );
+        const passphrase = ledgerOfRekey(keyAddress, ledgers);
+        if (!passphrase) return;
+        guardSession(epoch);
+        const list = await updateWalletMeta(entry.id, { rekey: { passphrase, keyAddress } });
+        setWallets(list);
+        const next = list.find((w) => w.id === entry.id);
+        if (next) setMetaState((cur) => (cur?.id === entry.id ? next : cur));
+      } catch {
+        // Tried again on the next unlock.
+        rekeyHealRef.current = null;
+      }
+    })();
+  }, [metaEntry, rawSession, guardSession]);
 
   /** Dismiss the code prompt (user changes their mind). */
   const cancelLink = useCallback(() => setCosmosLink(null), []);
@@ -2411,6 +2498,58 @@ export function useWalletStore() {
     [meta],
   );
 
+  /**
+   * Base-unit balances of the test tokens (`CHAIN_TESTNET_TOKENS`) at this phrase's
+   * address on `chain`'s TEST network — Solana devnet, Monad testnet. Null off a test
+   * network, for a wallet with no phrase, or when the node cannot be read.
+   */
+  const testnetChainBalances = useCallback(
+    async (chain: OtherChain): Promise<Record<string, bigint> | null> => {
+      const owner = meta?.chainAddresses?.[chain];
+      if (!owner || networkEnv(network) !== 'dev') return null;
+      try {
+        return await (await chainSwapLib()).chainBalances(chain, owner, 'testnet');
+      } catch {
+        return null;
+      }
+    },
+    [meta, network],
+  );
+
+  /** Which chain the test-network send screen opens on; set by the Home card. */
+  const [chainSendTarget, setChainSendTarget] = useState<OtherChain>('solana');
+
+  /**
+   * Airdrop 1 devnet SOL to this phrase's Solana address and wait for it to confirm, so
+   * the balance read straight after already includes it. Devnet rate-limits the airdrop
+   * per IP; a refusal says so and points at the web faucet. Nothing is signed.
+   */
+  const airdropTestnetSol = useCallback(async (): Promise<boolean> => {
+    const owner = meta?.chainAddresses?.solana;
+    if (!owner || networkEnv(network) !== 'dev') return false;
+    try {
+      const rpcLib = await chainRpcLib();
+      const sig = await rpcLib.solanaDevnetAirdrop(owner, SOLANA_AIRDROP_LAMPORTS);
+      const deadline = Date.now() + CHAIN_CONFIRM_TIMEOUT_MS;
+      for (;;) {
+        const done = await rpcLib.solanaDevnetConfirmed(sig);
+        if (done === false) throw new Error('airdrop failed on chain');
+        if (done) break;
+        if (Date.now() > deadline) {
+          // Sent but not seen yet: it usually lands; the next balance read will show it.
+          flash(t('testnetChains.airdropPending'), 'info');
+          return true;
+        }
+        await new Promise((r) => setTimeout(r, CHAIN_CONFIRM_POLL_MS));
+      }
+      flash(t('testnetChains.airdropOk'), 'ok');
+      return true;
+    } catch {
+      flash(t('testnetChains.airdropFailed'), 'err');
+      return false;
+    }
+  }, [meta, network, t, flash]);
+
   /** The signing key of `chain`, checked against the address on screen. */
   const chainSigner = useCallback(
     async (chain: OtherChain): Promise<{ owner: string; secret: Uint8Array }> => {
@@ -2431,6 +2570,69 @@ export function useWalletStore() {
       return err?.name === 'ChainSwapRefused' ? t(`xswap.refused.${err.code}`) : err?.message || t('swap.failed');
     },
     [t],
+  );
+
+  /**
+   * Send `amount` of `token` on `chain`'s TEST network to `to`, signed with this phrase's
+   * key there. Test networks only: mainnet Solana / Monad money moves through the swap
+   * screen, behind the checks `lib/chainSwap.ts` runs on what the gateway built.
+   */
+  const submitTestnetSend = useCallback(
+    async (chain: OtherChain, token: ChainToken, to: string, amount: string) => {
+      const units = toMinorUnitsBig(amount, token.decimals);
+      const destination = to.trim();
+      if (!session || !units || units <= 0n || networkEnv(network) !== 'dev') return;
+      const net = t(`testnetChains.net.${chain}`);
+      const short = `${destination.slice(0, 6)}…${destination.slice(-6)}`;
+      await exclusive.run('send', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('chainSend.confirmTitle'),
+          message: t('chainSend.confirmMsg', { amount, code: token.symbol, net, to: short }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const lib = await chainSwapLib();
+          if (!lib.isChainAddress(chain, destination)) throw new lib.ChainSwapRefused('address');
+          const { owner, secret } = await chainSigner(chain);
+          guardSession(epoch);
+          let hash: string;
+          try {
+            hash = await lib.sendTransfer({
+              chain,
+              net: 'testnet',
+              secret,
+              owner,
+              asset: token.asset,
+              decimals: token.decimals,
+              to: destination,
+              amount: units,
+            });
+          } finally {
+            secret.fill(0);
+          }
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('chainSend.success'),
+            msg: t('chainSend.successMsg', { net }),
+            rows: [
+              { label: t('chainSend.amount'), val: `${amount} ${token.symbol}` },
+              { label: t('chainSend.to'), val: short },
+            ],
+            hash,
+            explorer: CHAIN_TESTNET_EXPLORER_TX[chain](hash),
+          });
+          setScreen('success');
+        } catch (e) {
+          setSuccessInfo({ kind: 'err', title: t('chainSend.failed'), msg: chainSwapMessage(e), rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+        }
+      });
+    },
+    [session, network, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, t],
   );
 
   const quoteChainSwap = useCallback(
@@ -3056,7 +3258,13 @@ export function useWalletStore() {
             if (!ready) return false; // the slice already said why
             const built = await recoverySetupSponsored(
               ready.sessionToken,
-              { stellarAddress: address, signers, ...signedRecoverySetup(secret, address, signers) },
+              {
+                stellarAddress: address,
+                signers,
+                ...signedRecoverySetup(secret, address, signers),
+                // The ledger to sponsor on: this one, never the operator's default by accident.
+                ...(ledgerName(network.passphrase) ? { network: ledgerName(network.passphrase)! } : {}),
+              },
               await warmPublicKey(networkEnv(network)),
             );
             guardSession(epoch);
@@ -3467,13 +3675,21 @@ export function useWalletStore() {
 
           // Only now is the key real. Everything below is local bookkeeping over an
           // account this device can already sign for.
+          // The re-key happened on THIS ledger only. Recorded on the entry and in the box, so
+          // every other network uses the new key's own address instead (`addressOn`).
+          const rekey: Rekey = { passphrase: network.passphrase, keyAddress: fresh.publicKey };
           const vk = await deriveVaultKey(password, newKdfParams());
           setTelemetryEnabled(consents.metricsOptIn);
           // Sealed WITH the account: the new key's own address is not the account any more,
           // and `openBackup` on the next device checks the box against the account address
           // the server hands back. Without it, the backup of a recovered wallet never opens.
           const recovery = await fileRecovery(fresh.secret, address, draft.ready.identity.email);
-          const box = await sealBackup({ secret: fresh.secret, mnemonic }, recovery ? { password, recovery } : password, address);
+          const box = await sealBackup(
+            { secret: fresh.secret, mnemonic },
+            recovery ? { password, recovery } : password,
+            address,
+            rekey.passphrase,
+          );
           recovery?.fill(0);
           const accessKey = await warmPublicKey(networkEnv(network));
           // Retried, unlike every other call that follows a signature, because the key is
@@ -3493,6 +3709,8 @@ export function useWalletStore() {
               // of its signers — see the community server's account-signers module, which
               // is in a separate repository and so is named rather than linked.
               account: address,
+              // ...on THIS ledger, the one the re-key just landed on.
+              network: ledgerName(network.passphrase),
               backup: box,
               replaceBackup: true,
               accessKey,
@@ -3506,6 +3724,7 @@ export function useWalletStore() {
           const landed = await landSignedInWallet({
             secret: { secret: fresh.secret, mnemonic },
             publicKey: address,
+            rekey,
             ready: draft.ready,
             account: { keys: res.keys, organizationId: res.organizationId },
             vk,
@@ -4538,6 +4757,8 @@ export function useWalletStore() {
             account: string;
             box: string;
             recovery: { email: string; key: Uint8Array; box: string } | null;
+            /** The ledger a re-keyed `account` lists this key on — see `lib/accountAddress.ts`. */
+            ledger: LedgerName | null;
           }[] = [];
           if (live) {
             for (const w of wallets) {
@@ -4555,13 +4776,15 @@ export function useWalletStore() {
                           secret,
                           { ...(typeof input.doors === 'string' ? { password: input.doors } : input.doors), recovery: recoveryKey },
                           w.publicKey,
+                          w.rekey?.passphrase,
                         ),
                       }
                     : null,
                 name: w.name,
                 secret: secret.secret,
                 account: w.publicKey,
-                box: await sealBackup(secret, input.doors, w.publicKey),
+                ledger: w.rekey ? ledgerName(w.rekey.passphrase) : null,
+                box: await sealBackup(secret, input.doors, w.publicKey, w.rekey?.passphrase),
               });
             }
           }
@@ -4606,6 +4829,7 @@ export function useWalletStore() {
                 secret: b.secret,
                 box,
                 account: b.account,
+                network: b.ledger,
                 accessKey: await warmPublicKey(networkEnv(network)),
               });
             } catch (e) {
@@ -4762,8 +4986,10 @@ export function useWalletStore() {
   const enableBackupRecovery = useCallback(
     async (password?: string): Promise<boolean> => {
       const live = sessionRef.current;
-      if (!live || !meta?.cloudBackup) return false;
-      const email = meta.email.trim().toLowerCase();
+      // The canonical account: a backup is filed under it whatever network is active.
+      const canonical = metaEntry;
+      if (!live || !canonical?.cloudBackup) return false;
+      const email = canonical.email.trim().toLowerCase();
       if (!email) {
         flash(t('recovery.error.noEmail'), 'err');
         return false;
@@ -4793,25 +5019,26 @@ export function useWalletStore() {
           flash(t('recovery.error.unreachable'), 'err');
           return false;
         }
-        const vaulted = await openVault(meta.id, live.vaultKey);
-        const recovery = await fileRecovery(vaulted.secret, meta.publicKey, email);
+        const vaulted = await openVault(canonical.id, live.vaultKey);
+        const recovery = await fileRecovery(vaulted.secret, canonical.publicKey, email);
         if (!recovery) {
           flash(t('backupRecovery.failed'), 'err');
           return false;
         }
         let box: string;
         try {
-          box = await sealBackup(vaulted, { ...doors, recovery }, meta.publicKey);
+          box = await sealBackup(vaulted, { ...doors, recovery }, canonical.publicKey, canonical.rekey?.passphrase);
         } finally {
           recovery.fill(0);
         }
         await storeBackupBox({
           secret: vaulted.secret,
           box,
-          account: meta.publicKey,
+          account: canonical.publicKey,
+          network: canonical.rekey ? ledgerName(canonical.rekey.passphrase) : null,
           accessKey: await warmPublicKey(networkEnv(network)),
         });
-        await noteBackupRecovery(meta.id, email);
+        await noteBackupRecovery(canonical.id, email);
         flash(t('backupRecovery.enabled', { email }), 'ok');
         return true;
       } catch (e) {
@@ -4823,7 +5050,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [meta, passkey, network, checkPassword, fileRecovery, noteBackupRecovery, flashPasskey, errLine, flash, t],
+    [metaEntry, passkey, network, checkPassword, fileRecovery, noteBackupRecovery, flashPasskey, errLine, flash, t],
   );
 
   /** Open the liquidity deposit form, optionally preset with a pair (e.g. from the explorer). */
@@ -5039,7 +5266,7 @@ export function useWalletStore() {
             flash(blocked, 'err');
             return false;
           }
-          let secret: VaultSecret;
+          let secret: Awaited<ReturnType<typeof openBackup>>;
           try {
             secret = await openBackup(backup.box, password, backup.stellarAddress);
           } catch (e) {
@@ -5062,9 +5289,10 @@ export function useWalletStore() {
               });
               door = { secrets, devicePassword: newDevicePassword() };
               upgradedBox = await sealBackup(
-                secret,
+                { secret: secret.secret, mnemonic: secret.mnemonic },
                 { password, passkey: { id: secrets.credentialId, secret: secrets.backup } },
                 backup.stellarAddress,
+                secret.rekeyedOn,
               );
             } catch (e) {
               // Dismissed or unsupported: finish with the password. Only a real failure says so.
@@ -5082,6 +5310,7 @@ export function useWalletStore() {
               { secret: secret.secret, mnemonic: secret.mnemonic },
               password,
               backup.stellarAddress,
+              secret.rekeyedOn,
             );
           }
 
@@ -5111,6 +5340,7 @@ export function useWalletStore() {
             // key's own — see `finishSignIn`. For every other wallet the two are equal and
             // passing it changes nothing.
             account: backup.stellarAddress,
+            network: secret.rekeyedOn ? ledgerName(secret.rekeyedOn) : null,
             ...(upgradedBox ? { backup: upgradedBox } : {}),
             accessKey: await warmPublicKey(networkEnv(network)),
           });
@@ -5131,6 +5361,7 @@ export function useWalletStore() {
             // `publicKey`, just below), not inside the sealed secret this device writes.
             secret: { secret: secret.secret, mnemonic: secret.mnemonic },
             publicKey: backup.stellarAddress,
+            rekey: rekeyOfBackup(secret),
             ready: draft.ready,
             account: { keys: res.keys, organizationId: res.organizationId },
             vk,
@@ -5246,6 +5477,7 @@ export function useWalletStore() {
             email: draft.ready.identity.email,
             secret: secret.secret,
             account: backup.stellarAddress,
+            network: secret.rekeyedOn ? ledgerName(secret.rekeyedOn) : null,
             backup: box,
             accessKey: await warmPublicKey(networkEnv(network)),
           });
@@ -5256,6 +5488,7 @@ export function useWalletStore() {
           const entry = await landSignedInWallet({
             secret: { secret: secret.secret, mnemonic: secret.mnemonic },
             publicKey: backup.stellarAddress,
+            rekey: rekeyOfBackup(secret),
             ready: draft.ready,
             account: { keys: res.keys, organizationId: res.organizationId },
             vk,
@@ -5340,6 +5573,7 @@ export function useWalletStore() {
           email: draft.ready.identity.email,
           secret: secret.secret,
           account: backup.stellarAddress,
+          network: secret.rekeyedOn ? ledgerName(secret.rekeyedOn) : null,
           ...(passkeyBox ? { backup: passkeyBox } : {}),
           accessKey: await warmPublicKey(networkEnv(network)),
         });
@@ -5357,6 +5591,7 @@ export function useWalletStore() {
         entry = await landSignedInWallet({
           secret: { secret: secret.secret, mnemonic: secret.mnemonic },
           publicKey: backup.stellarAddress,
+          rekey: rekeyOfBackup(secret),
           ready: draft.ready,
           account: { keys: res.keys, organizationId: res.organizationId },
           vk,
@@ -5733,6 +5968,11 @@ export function useWalletStore() {
     enableBackupRecovery,
     chainAddress,
     chainBalances,
+    testnetChainBalances,
+    chainSendTarget,
+    setChainSendTarget,
+    submitTestnetSend,
+    airdropTestnetSol,
     quoteChainSwap,
     submitChainSwap,
     quoteCrossChainFrom,

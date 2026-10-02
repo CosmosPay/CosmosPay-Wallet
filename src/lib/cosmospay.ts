@@ -30,6 +30,7 @@
 // per request as developer-mode override -> PUBLIC_* env -> same-origin default,
 // so a dev can repoint them live from Settings without rebuilding. The gateway
 // still exposes the payments API behind an entry prefix (default `/cosmos-api`).
+import type { LedgerName } from '@/lib/stellar';
 import { gatewayApi, walletApiBase } from '@/lib/endpoints';
 import { newTraceId } from '@/lib/trace';
 
@@ -461,7 +462,14 @@ const walletSession = (token: string): Record<string, string> => ({ 'X-Wallet-Se
 /** `POST {walletApiBase}/auth/finish` — the session token plus a signature by `stellarAddress`. */
 export async function signInFinish(
   sessionToken: string,
-  body: { stellarAddress: string; signedAt: string; signature: string; backup?: string; replaceBackup?: boolean },
+  body: {
+    stellarAddress: string;
+    signedAt: string;
+    signature: string;
+    backup?: string;
+    replaceBackup?: boolean;
+    network?: LedgerName;
+  },
   accessKey: string | null = null,
 ): Promise<SignInFinish> {
   return postJson(
@@ -480,6 +488,7 @@ export async function putBackup(
     box: string;
     signedAt: string;
     signature: string;
+    network?: LedgerName;
   },
   accessKey: string | null = null,
 ): Promise<{ status: 'updated' }> {
@@ -714,7 +723,8 @@ export async function recoverySetupSponsored(
   sessionToken: string,
   // `stellarAddress`, not `account`: the field name is the server's, and the two repos
   // only find a rename like that at runtime.
-  body: { stellarAddress: string; signers: [string, string]; signedAt: string; signature: string },
+  // `network` picks the ledger the operator builds and sponsors on; none is its default.
+  body: { stellarAddress: string; signers: [string, string]; signedAt: string; signature: string; network?: LedgerName },
   accessKey: string | null,
 ): Promise<{ transaction: string; sponsor: string; network_passphrase: string }> {
   return postJson(
