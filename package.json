@@ -41,10 +41,10 @@
   },
   "dependencies": {
     "@astrojs/react": "^7.0.0",
-    "@stellar/stellar-sdk": "^17.1.0",
+    "@stellar/stellar-sdk": "^17.2.0",
     "@tauri-apps/api": "^2.12.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.4.0",
-    "@tauri-apps/plugin-opener": "^2.6.0",
+    "@tauri-apps/plugin-opener": "^2.7.0",
     "@tauri-apps/plugin-store": "^2.5.0",
     "astro": "^7.3.5",
     "bip39": "^3.1.0",
