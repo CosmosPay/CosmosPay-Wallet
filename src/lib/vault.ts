@@ -36,6 +36,7 @@ import { deviceAuthEnabled, disableDeviceAuth } from '@/lib/deviceAuth';
 import { dropPasskeyUnlock } from '@/lib/passkeyUnlock';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
+import type { Rekey } from '@/lib/accountAddress';
 import { tNow } from '@/lib/i18n';
 
 const WALLETS_KEY = 'cosmos.wallets';
@@ -47,10 +48,8 @@ const vaultKey = (id: string) => `cosmos.w.${id}`;
 // secret (see crypto.ts) — i.e. encrypted, never plaintext in storage. Only the
 // non-sensitive org id / environment flags live on the plaintext WalletEntry.
 const cosmosPayKey = (id: string) => `cosmos.pay.${id}`;
-// Pending registration (awaiting email confirmation). Stored in PLAINTEXT: the
-// claim token is single-use, expires server-side, and is useless without (a)
-// the user confirming via the emailed link and (b) the matching stellarAddress.
-// It is not a long-lived secret and needs no password to survive a reload.
+// Where the retired email-link flow kept a pending registration, in plaintext. Nothing
+// writes it any more; it is only removed (clearPendingCosmosPay, clearCosmosPay, purges).
 const cosmosPayPendingKey = (id: string) => `cosmos.pay.pending.${id}`;
 
 // What the old Pollar login left behind — read only by `purgeLegacyPollar`, which removes it.
@@ -72,7 +71,13 @@ export type Gender = 'm' | 'f' | 'x';
 
 export interface WalletEntry {
   id: string;
-  publicKey: string; // G...
+  publicKey: string; // G... — the ACCOUNT; on a re-keyed wallet, see `rekey`
+  /**
+   * Set on a wallet recovered through SEP-30: the ledger its account was re-keyed on, and
+   * the new key's own address, which is what the wallet acts as on every OTHER network
+   * (`addressOn` in `lib/accountAddress.ts`).
+   */
+  rekey?: Rekey;
   name: string; // user name / nickname
   birthdate: string; // ISO "YYYY-MM-DD" (required at signup)
   email: string; // for opt-in linking to Cosmos products (required at signup)
@@ -87,7 +92,7 @@ export interface WalletEntry {
   // Default BlindPay fiat receiver (KYC account) used for on/off-ramp.
   cosmosPayReceiverId?: string;
   /**
-   * The dev platform keeps a backup of this wallet's seed, sealed under the app password
+   * The community server keeps a backup of this wallet's seed, sealed under the app password
    * (`lib/cloudBackup.ts`). What `changeAppPassword` reads to know the backup has to be
    * re-sealed too — otherwise the next device would need the password this one gave up.
    */
@@ -104,6 +109,18 @@ export interface WalletEntry {
    * anything. Absent means recovery was never turned on from this device.
    */
   recoveryEmail?: string;
+  /**
+   * The Solana and Monad addresses this wallet's recovery phrase controls (`lib/chainAddresses.ts`).
+   * Public, derived once and kept here so showing them needs no password. Absent until first
+   * derived, and never present on a wallet imported from a bare secret key: it has no phrase.
+   */
+  chainAddresses?: { solana: string; monad: string };
+  /**
+   * The email the two recovery servers will hand this wallet's backup key halves to
+   * (`lib/backupRecovery.ts`). Like `recoveryEmail`, the only record of what was filed —
+   * the servers never say. Absent means the backup has no email-recovery door from here.
+   */
+  backupRecoveryEmail?: string;
 }
 
 /**
@@ -114,14 +131,6 @@ export interface WalletEntry {
 export interface CosmosPayAccount {
   keys: { dev: string | null; prod: string | null };
   organizationId: string;
-}
-
-/** A registration awaiting email confirmation (one-time claim token + address). */
-export interface CosmosPayPending {
-  claimToken: string;
-  stellarAddress: string;
-  expiresAt: number; // epoch ms (best-effort; server enforces expiry)
-  email?: string; // where the confirmation went — lets the UI flag a mismatch vs the current email
 }
 
 function genId(): string {
@@ -289,7 +298,18 @@ export async function takeLegacyPollarNotice(): Promise<number> {
  */
 export async function addWallet(
   secret: VaultSecret,
-  info: { publicKey: string; name: string; birthdate: string; email: string; gender?: Gender; metricsOptIn?: boolean; promoOptIn?: boolean; avatar?: string; cloudBackup?: boolean },
+  info: {
+    publicKey: string;
+    name: string;
+    birthdate: string;
+    email: string;
+    gender?: Gender;
+    metricsOptIn?: boolean;
+    promoOptIn?: boolean;
+    avatar?: string;
+    cloudBackup?: boolean;
+    rekey?: Rekey;
+  },
   vk: VaultKey,
 ): Promise<WalletEntry> {
   const list = await listWallets();
@@ -298,7 +318,14 @@ export async function addWallet(
     // already imported — just make it active (and refresh its seal)
     await storageSet(vaultKey(dup.id), JSON.stringify(await sealWithKey(JSON.stringify(secret), vk)));
     await setActiveId(dup.id);
-    return dup;
+    // The seal may now hold a DIFFERENT key for the same account — a recovery landing
+    // where the lost device's entry still sits. What the old key implied goes with it: its
+    // re-key record, and the Solana / Monad addresses its phrase derived (re-derived from
+    // the new phrase the next time a screen asks).
+    const { chainAddresses: _stale, rekey: _old, ...kept } = dup;
+    const updated: WalletEntry = info.rekey ? { ...kept, rekey: info.rekey } : kept;
+    await writeWallets(list.map((w) => (w.id === dup.id ? updated : w)));
+    return updated;
   }
   const id = genId();
   await storageSet(vaultKey(id), JSON.stringify(await sealWithKey(JSON.stringify(secret), vk)));
@@ -313,6 +340,7 @@ export async function addWallet(
     promoOptIn: info.promoOptIn,
     avatar: info.avatar,
     cloudBackup: info.cloudBackup,
+    ...(info.rekey ? { rekey: info.rekey } : {}),
     createdAt: Date.now(),
   };
   await writeWallets([...list, entry]);
@@ -323,7 +351,7 @@ export async function addWallet(
 /** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail' | 'chainAddresses' | 'backupRecoveryEmail' | 'rekey'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));
@@ -634,23 +662,7 @@ async function readCosmosPayWithPassword(id: string, password: string): Promise<
   }
 }
 
-/** Persist a pending registration (plaintext — see note on cosmosPayPendingKey). */
-export async function savePendingCosmosPay(id: string, pending: CosmosPayPending): Promise<void> {
-  await storageSet(cosmosPayPendingKey(id), JSON.stringify(pending));
-}
-
-/** Read a pending registration (null if none / malformed). */
-export async function getPendingCosmosPay(id: string): Promise<CosmosPayPending | null> {
-  const raw = await storageGet(cosmosPayPendingKey(id));
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw) as CosmosPayPending;
-  } catch {
-    return null;
-  }
-}
-
-/** Drop a pending registration (after claim, expiry, or removal). */
+/** Drop what the retired email-link flow left for a wallet. */
 export async function clearPendingCosmosPay(id: string): Promise<void> {
   await storageRemove(cosmosPayPendingKey(id));
 }

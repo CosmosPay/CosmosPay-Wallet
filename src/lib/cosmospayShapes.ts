@@ -33,34 +33,6 @@ import {
   type Check,
 } from '@/lib/apiShape';
 
-/* --------------------------- provisioning ------------------------------ */
-
-const Keys = object({ dev: nullable(str), prod: nullable(str) });
-
-export const RegisterResultShape = variant('status', {
-  pending: object({ claimToken: id, expiresInSeconds: num }),
-  exists: object({}),
-});
-
-export const ClaimResultShape = variant('status', {
-  pending: object({}),
-  ready: object({ organizationId: id, keys: Keys }),
-  claimed: object({}),
-  expired: object({}),
-});
-
-export const LinkStartResultShape = variant('status', {
-  sent: object({ claimToken: id, expiresInSeconds: num }),
-  not_found: object({}),
-});
-
-export const LinkVerifyResultShape = variant('status', {
-  ready: object({ organizationId: id, keys: Keys }),
-  invalid: object({ attemptsLeft: num }),
-  expired: object({}),
-  locked: object({}),
-});
-
 /* ------------------------------- swaps --------------------------------- */
 
 export const SwapQuoteShape = object({
@@ -86,6 +58,71 @@ export const SubmitResultShape = object({
   reason: nullable(str),
   resultCodes: unchecked,
 });
+
+/* -------------------------- cross-chain swaps --------------------------- */
+
+export const CrossChainAssetListShape = object({
+  data: arrayOf(object({ chain: str, symbol: str, assetId: str, decimals: num, contract: nullable(str) })),
+});
+
+export const CrossChainQuoteShape = object({
+  fee: object({ amount, bps: num, asset: str }),
+  destination: object({ amount, minimum: amount, asset: str }),
+  timeEstimateSeconds: num,
+});
+
+/**
+ * A Solana / Monad swap. `transaction` is what gets signed, so it is asserted to be an
+ * object with its `data`; that it is SAFE to sign is `lib/chainSwap.ts`'s call, which
+ * simulates (Solana) or checks the call (Monad) before signing.
+ */
+export const ChainSwapShape = object({
+  id,
+  chain: str,
+  source: str,
+  sendAsset: str,
+  sendAmount: amount,
+  destAsset: str,
+  destEstimated: amount,
+  destMin: amount,
+  transaction: object({ data: str }),
+  approval: nullable(object({ to: str, data: str, chainId: num })),
+});
+
+export const ChainSwapSubmitResultShape = object({
+  submitted: bool,
+  status: str,
+  txHash: str,
+  swap: object({ id }),
+});
+
+/**
+ * The swap this wallet funds by paying `depositAddress` from its account on the origin
+ * chain (Stellar, Solana or Monad — so these are shape-checked as strings and the store
+ * checks them per chain), so those are the fields it acts on — and `recipient` / `refundTo`, which the wallet
+ * checks are its own before it pays anything.
+ */
+export const CrossChainSwapShape = object({
+  id,
+  status: str,
+  originChain: str,
+  destinationChain: str,
+  amountIn: amount,
+  amountOutEstimated: amount,
+  depositAddress: str,
+  depositMemo: nullable(str),
+  recipient: str,
+  refundTo: str,
+  timeEstimateSeconds: num,
+});
+
+/* ------------------------- backup recovery shares ------------------------ */
+
+/** A filed half: only the receipt comes back. */
+export const RecoveryShareFiledShape = object({ address: str });
+
+/** A half handed back. `share` is decoded and length-checked in `lib/backupRecovery.ts`. */
+export const RecoveryShareShape = object({ address: str, share: str });
 
 /* ----------------------------- liquidity -------------------------------- */
 

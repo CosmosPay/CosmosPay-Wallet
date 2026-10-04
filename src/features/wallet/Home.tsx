@@ -11,6 +11,8 @@ import { HomeAction } from '@/features/wallet/HomeAction';
 import { AssetListRow } from '@/features/wallet/AssetListRow';
 import { ActivateCard } from '@/features/wallet/ActivateCard';
 import { ProtectAccountCard } from '@/features/wallet/ProtectAccountCard';
+import { TestnetChainsCard } from '@/features/wallet/TestnetChainsCard';
+import { networkEnv } from '@/lib/stellar';
 import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
 import { computePortfolio } from '@/lib/portfolio';
 import { fmt, splitMoney, pct } from '@/lib/format';
@@ -167,6 +169,8 @@ export function Home({ store }: { store: WalletStore }) {
       {/* Recovery can only go on a funded account. The card itself decides from the ledger. */}
       {!notActivated && recoveryUp && <ProtectAccountCard store={store} />}
       {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
+      {/* Test SOL / test MON beside test XLM — a test network is a developer's network. */}
+      {networkEnv(store.network) === 'dev' && <TestnetChainsCard store={store} />}
 
       <div className="home-assets">
         <div className="row between home-assets-head">

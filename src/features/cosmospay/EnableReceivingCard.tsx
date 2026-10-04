@@ -50,32 +50,34 @@ function Card({
 
 /**
  * CosmosPay account card — shared by the Home screen and the Swap screen so both
- * route the user through the same provisioning/linking flow. States:
- *   - enable (initial) / confirm-email (register flow);
- *   - link offer + access-code entry (when the email already has an account).
+ * route the user through the same flow. Two states:
+ *   - connect (initial): emails a sign-in code to the wallet's email;
+ *   - code entry: the code, then the password that signs with this wallet's key.
+ * It creates the account or joins the one the email already has — the server decides.
  */
 export function EnableReceivingCard({ store }: { store: WalletStore }) {
   const t = store.t;
-  const pending = !!store.cosmosPayPending;
   const link = store.cosmosLink;
   const [code, setCode] = useState('');
+  // Optional: with it the wallet is also backed up, so a sign-in on another device brings it back.
+  const [password, setPassword] = useState('');
   // LOCAL busy: only this card's own actions spin its buttons — an unrelated global
   // action (e.g. Home's "activate account" / Friendbot funding) must not.
   const [busy, run] = useBusy();
 
-  // Link flow — enter the emailed access code.
-  if (link?.stage === 'sent') {
+  if (link) {
     return (
       <Card
         busy={busy}
         title={t('cosmospay.codeTitle')}
         desc={t('cosmospay.codeDesc')}
         cta={t('cosmospay.linkVerifyCta')}
-        onCta={() => run(() => store.submitLinkCode(code))}
+        onCta={() => run(() => store.submitLinkCode(code, password))}
         ctaDisabled={code.length !== 6}
         secondary={t('common.cancel')}
         onSecondary={() => {
           setCode('');
+          setPassword('');
           store.cancelLink();
         }}
       >
@@ -87,40 +89,26 @@ export function EnableReceivingCard({ store }: { store: WalletStore }) {
           placeholder={t('cosmospay.codePlaceholder')}
           className="enable-receiving-code"
         />
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword((e.target as HTMLInputElement).value)}
+          autoComplete="current-password"
+          placeholder={t('cosmospay.backupPasswordPlaceholder')}
+          className="enable-receiving-password"
+        />
+        <div className="enable-receiving-hint">{t('cosmospay.backupPasswordHint')}</div>
       </Card>
     );
   }
 
-  // Link flow — offer to link the existing account.
-  if (link?.stage === 'offer') {
-    return (
-      <Card
-        busy={busy}
-        title={t('cosmospay.existsLinkTitle')}
-        desc={t('cosmospay.existsLinkDesc')}
-        cta={t('cosmospay.linkCta')}
-        onCta={() => run(() => store.linkReceiving())}
-        secondary={t('common.cancel')}
-        onSecondary={() => store.cancelLink()}
-      />
-    );
-  }
-
-  // Default — enable (create) / confirm-email.
-  // If the pending registration went to a DIFFERENT email than the wallet's current
-  // one (e.g. the user fixed a typo in Profile), surface it and offer a resend.
-  const pendingEmail = store.cosmosPayPending?.email;
-  const emailMismatch = pending && !!pendingEmail && !!store.meta?.email && pendingEmail !== store.meta.email;
   return (
     <Card
       busy={busy}
-      title={pending ? t('cosmospay.pendingTitle') : t('cosmospay.cardTitle')}
-      desc={pending ? t('cosmospay.pendingDesc') : t('cosmospay.cardDesc')}
-      note={emailMismatch ? t('cosmospay.emailMismatch', { old: pendingEmail!, new: store.meta!.email }) : undefined}
-      cta={pending ? t('cosmospay.confirmCta') : t('cosmospay.cta')}
-      onCta={() => run(() => (pending ? store.claimReceiving() : store.enableReceiving()))}
-      secondary={pending ? t('cosmospay.resend') : undefined}
-      onSecondary={() => run(() => store.resendReceiving())}
+      title={t('cosmospay.cardTitle')}
+      desc={t('cosmospay.cardDesc')}
+      cta={t('cosmospay.cta')}
+      onCta={() => run(() => store.enableReceiving())}
     />
   );
 }

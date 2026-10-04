@@ -329,6 +329,7 @@ export default function ApprovePopup() {
         const { hash } = await sendPayment({
           cfg,
           secret,
+          account: entry.publicKey,
           destination: pay.destination,
           amount: pay.amount || '0',
           memo: pay.memo,

@@ -1,0 +1,22 @@
+/* Test SOL / test MON on Home (src/features/wallet/TestnetChainsCard.tsx). */
+
+.testnet-chains { margin-bottom: 22px; } /* on .glass.card */
+.testnet-chains-title { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
+.testnet-chains-desc { font-size: 13px; color: var(--muted); font-weight: 600; line-height: 1.5; margin-bottom: 4px; }
+
+.testnet-chain { padding-top: 14px; margin-top: 14px; border-top: 1px solid var(--hairline); }
+.testnet-chain-name { font-size: 14px; font-weight: 800; }
+.testnet-chain-addr { display: inline-block; font-size: 12px; font-weight: 700; color: var(--muted); text-decoration: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.testnet-chain-balances { display: flex; gap: 18px; margin-top: 10px; }
+.testnet-chain-balance { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.testnet-chain-symbol { font-size: 12px; color: var(--muted); }
+.testnet-chain-err { margin-top: 8px; font-size: 12px; font-weight: 700; color: var(--danger); }
+
+.testnet-chain-actions { margin-top: 12px; }
+.testnet-chain-btn { min-width: 0; height: 38px; border: none; border-radius: 999px; padding: 0 10px; display: flex; align-items: center; justify-content: center; background: var(--surface); color: var(--text); font-size: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; cursor: pointer; }
+.testnet-chain-btn.is-primary { background: var(--accent); color: var(--on-accent); }
+.testnet-chain-btn.is-copied { color: var(--accent); }
+.testnet-chain-btn:disabled { opacity: 0.6; cursor: default; }
+.testnet-chain-faucet { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 700; color: var(--muted); text-decoration: none; }
+
+.testnet-chains-usdc { display: block; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--hairline); font-size: 13px; font-weight: 800; color: var(--text); text-decoration: none; }

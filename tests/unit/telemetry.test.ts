@@ -3,17 +3,18 @@
  *
  *  1. Report at all when the user turned diagnostics off.
  *  2. Carry an account-identifying field on the ANONYMOUS route — a wallet with no
- *     Cosmos Pay account has no credential, so those events land in a shared feed,
- *     and an address or a transaction hash there ties an install to a Stellar
- *     account nobody asked to publish.
+ *     Cosmos Pay account reports under the SHARED public key, so those events land in
+ *     a shared feed, and an address or a transaction hash there ties an install to a
+ *     Stellar account nobody asked to publish.
  *  3. Send the account's data to the keyed route without the key that authorizes it.
  *
  * Each is a decision that a later edit could reverse while every type still checks,
  * and none of them fails loudly in production — a leak looks exactly like a working
  * feature.
  */
-import { test, beforeEach, afterEach } from 'node:test';
+import { test, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { warmPublicKey } from '@/lib/publicKey';
 import { configureTelemetry, flushTelemetry, report, setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
 import { ATTESTATION_PROP, ATTESTATION_PROPS_BUDGET, EVENT, TRACE_PROP } from '@/constants/telemetry';
 
@@ -25,6 +26,18 @@ interface Sent {
 
 const sent: Sent[] = [];
 const realFetch = globalThis.fetch;
+
+/** The shared key the anonymous route reports under, as `GET /v1/public-key` serves it. */
+const PUBLIC_KEY = `dv_${'p'.repeat(64)}`;
+
+before(async () => {
+  globalThis.fetch = (async (url: string) => {
+    assert.ok(String(url).endsWith('/v1/public-key?env=dev'), 'fetched from the gateway, not the platform');
+    return { ok: true, json: async () => ({ env: 'dev', apiKey: PUBLIC_KEY }) } as Response;
+  }) as typeof fetch;
+  assert.equal(await warmPublicKey('dev'), PUBLIC_KEY);
+  globalThis.fetch = realFetch;
+});
 
 beforeEach(() => {
   sent.length = 0;
@@ -97,8 +110,9 @@ test('the anonymous route carries no account-identifying field', async () => {
   await flushTelemetry();
 
   assert.equal(sent.length, 1);
-  assert.ok(sent[0].url.endsWith('/api/telemetry'));
-  assert.equal(sent[0].headers.Authorization, undefined);
+  // Straight to the gateway under the shared key — no platform in the path.
+  assert.ok(sent[0].url.endsWith('/v1/activity/events'));
+  assert.equal(sent[0].headers.Authorization, `Bearer ${PUBLIC_KEY}`);
   const props = sent[0].body.events[0].props ?? {};
   for (const gone of ['amount', 'received', 'shares', 'account', 'destination', 'txHash']) {
     assert.equal(props[gone], undefined, `${gone} must not travel anonymously`);
@@ -106,8 +120,6 @@ test('the anonymous route carries no account-identifying field', async () => {
   // What is left is what the event is FOR: which asset, and how it was built.
   assert.equal(props.asset, 'XLM');
   assert.equal(props.memoKind, 'text');
-  // The environment decides which consumer the platform files it under.
-  assert.equal(sent[0].body.env, 'dev');
 });
 
 test('a wallet with a key reports to the gateway, with it, and keeps its own data', async () => {
@@ -151,8 +163,8 @@ test('a key that predates the activity scope falls back instead of going silent'
     return { status: 202 } as Response;
   }) as typeof fetch;
   await flushTelemetry();
-  assert.ok(sent[1].url.endsWith('/api/telemetry'));
-  assert.equal(sent[1].headers.Authorization, undefined);
+  assert.ok(sent[1].url.endsWith('/v1/activity/events'));
+  assert.equal(sent[1].headers.Authorization, `Bearer ${PUBLIC_KEY}`);
 });
 
 test('a failed flush keeps the events for the next one', async () => {

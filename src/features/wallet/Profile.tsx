@@ -2,6 +2,7 @@ import { useMemo, useRef } from 'react';
 import type { WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
 import { shortAddr } from '@/lib/format';
+import { addressOn } from '@/lib/accountAddress';
 import { getGreeting } from '@/lib/greeting';
 import { useCopied } from '@/hooks/useCopied';
 import { cx } from '@/lib/cx';
@@ -112,7 +113,7 @@ export function Profile({ store }: { store: WalletStore }) {
               <div className="profile-wallet-avatar">{w.name.slice(0, 1).toUpperCase()}</div>
               <div className="f1 min0">
                 <div className="profile-wallet-name">{w.name}</div>
-                <div className="profile-wallet-addr">{shortAddr(w.publicKey, 6, 6)}</div>
+                <div className="profile-wallet-addr">{shortAddr(addressOn(w, store.network.passphrase), 6, 6)}</div>
               </div>
               {active ? (
                 <span className="profile-wallet-active">{t('profile.active')}</span>

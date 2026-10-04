@@ -18,8 +18,16 @@
 import { cp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadEnv } from 'vite';
-import { DEFAULT_DEV_PLATFORM_URL, DEFAULT_GATEWAY_URL, DEFAULT_RECOVERY_A_URL, DEFAULT_RECOVERY_B_URL } from '../src/constants/backends.ts';
-import { cosmosHostPermissions } from './hostPermissions.ts';
+import {
+  DEFAULT_GATEWAY_URL,
+  DEFAULT_MONAD_RPC_URL,
+  DEFAULT_MONAD_TESTNET_RPC_URL,
+  DEFAULT_RECOVERY_A_URL,
+  DEFAULT_RECOVERY_B_URL,
+  DEFAULT_SOLANA_RPC_URL,
+  DEFAULT_SOLANA_TESTNET_RPC_URL,
+} from '../src/constants/backends.ts';
+import { cosmosHostPermissions, hostPattern } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
 
@@ -261,13 +269,24 @@ const DATA_COLLECTION = {
  * can reach them.
  */
 const COSMOS_HOST_PERMISSIONS = cosmosHostPermissions([
-  env.PUBLIC_COSMOS_DEV_PLATFORM_URL || DEFAULT_DEV_PLATFORM_URL,
   env.PUBLIC_COSMOS_GATEWAY_URL || DEFAULT_GATEWAY_URL,
   // The two recovery servers are separate deployments and usually separate hosts, so
   // neither is covered by the two above once a build points them off cosmospay.lat.
   env.PUBLIC_COSMOS_RECOVERY_A_URL || DEFAULT_RECOVERY_A_URL,
   env.PUBLIC_COSMOS_RECOVERY_B_URL || DEFAULT_RECOVERY_B_URL,
 ]);
+
+// The Solana and Monad nodes a swap paid from those chains reads and broadcasts through,
+// and their test networks, where Home reads test balances and asks devnet for an airdrop.
+// Not CORS-exempt otherwise, exactly like the backends above.
+const CHAIN_RPC_HOST_PERMISSIONS = [
+  env.PUBLIC_SOLANA_RPC_URL || DEFAULT_SOLANA_RPC_URL,
+  env.PUBLIC_MONAD_RPC_URL || DEFAULT_MONAD_RPC_URL,
+  env.PUBLIC_SOLANA_TESTNET_RPC_URL || DEFAULT_SOLANA_TESTNET_RPC_URL,
+  env.PUBLIC_MONAD_TESTNET_RPC_URL || DEFAULT_MONAD_TESTNET_RPC_URL,
+]
+  .map(hostPattern)
+  .filter((p): p is string => p !== null);
 
 // MV3 manifest
 const manifest = {
@@ -310,6 +329,7 @@ const manifest = {
     'https://friendbot.stellar.org/*',
     'https://api.coingecko.com/*',
     ...COSMOS_HOST_PERMISSIONS,
+    ...CHAIN_RPC_HOST_PERMISSIONS,
   ],
   // Inject the provider bridge into every web page so dapps can find window.cosmosWallet.
   content_scripts: [

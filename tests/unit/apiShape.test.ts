@@ -8,7 +8,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ApiShapeError, amount, arrayOf, either, id, num, object, optional, parseShape, str, variant, xdr } from '@/lib/apiShape';
-import { ClaimResultShape, LiquidityOperationShape, PayoutQuoteShape, SubmitResultShape, SwapShape } from '@/lib/cosmospayShapes';
+import { LiquidityOperationShape, PayoutQuoteShape, SubmitResultShape, SwapShape } from '@/lib/cosmospayShapes';
+import { SignInCodeResultShape, SignInFinishShape } from '@/lib/signInShapes';
 
 const URL_ = 'https://gw.example/v1/thing';
 const G = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
@@ -63,14 +64,16 @@ test('arrayOf reports the failing index', () => {
 });
 
 test('variant rejects an unrecognised discriminant instead of falling through', () => {
-  assert.doesNotThrow(() => parseShape(URL_, ClaimResultShape, { status: 'pending' }));
   assert.doesNotThrow(() =>
-    parseShape(URL_, ClaimResultShape, { status: 'ready', organizationId: 'org_1', keys: { dev: 'k', prod: null } }),
+    parseShape(URL_, SignInFinishShape, { status: 'backup_conflict', stellarAddress: 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57' }),
+  );
+  assert.doesNotThrow(() =>
+    parseShape(URL_, SignInFinishShape, { status: 'ready', account: 'linked', organizationId: 'org_1', keys: { dev: 'k', prod: null } }),
   );
   // A typo'd status would otherwise hit the wallet's `switch` default branch.
-  assert.throws(() => parseShape(URL_, ClaimResultShape, { status: 'redy' }), ApiShapeError);
+  assert.throws(() => parseShape(URL_, SignInFinishShape, { status: 'redy' }), ApiShapeError);
   // 'ready' without its payload is rejected too.
-  assert.throws(() => parseShape(URL_, ClaimResultShape, { status: 'ready' }), ApiShapeError);
+  assert.throws(() => parseShape(URL_, SignInFinishShape, { status: 'ready' }), ApiShapeError);
 });
 
 test('either accepts both the bare array and the enveloped form', () => {
@@ -125,4 +128,30 @@ test('str/num/id basics', () => {
   assert.throws(() => parseShape(URL_, num, Infinity), ApiShapeError);
   assert.throws(() => parseShape(URL_, id, '   '), ApiShapeError);
   assert.doesNotThrow(() => parseShape(URL_, variant('kind', { a: object({}) }), { kind: 'a' }));
+});
+
+/* Per-wallet backups: every box comes back at sign-in. A Solana or Monad row names an address
+   that is not a G…, and must not fail the whole sign-in — the store filters by chain. */
+test('a sign-in carries every backup, and still parses from a server without the list', () => {
+  const G = 'GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57';
+  const box = { stellarAddress: G, box: '{"v":2}', updatedAt: '2026-10-01T00:00:00Z' };
+  const ready = {
+    status: 'ready',
+    identity: { email: 'ada@example.com', name: null, avatar: null, method: 'google' },
+    account: 'existing',
+    backup: box,
+    sessionToken: 'st',
+    expiresInSeconds: 600,
+  };
+  assert.doesNotThrow(() => parseShape(URL_, SignInCodeResultShape, ready));
+  assert.doesNotThrow(() =>
+    parseShape(URL_, SignInCodeResultShape, {
+      ...ready,
+      backups: [
+        { chain: 'stellar', ...box },
+        { chain: 'solana', stellarAddress: 'HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk', box: '{"v":2}', updatedAt: '2026-10-01T00:00:00Z' },
+      ],
+    }),
+  );
+  assert.throws(() => parseShape(URL_, SignInCodeResultShape, { ...ready, backups: [{ chain: 'stellar' }] }), ApiShapeError);
 });

@@ -56,7 +56,7 @@ try {
   await page.getByText('Crea una contraseña').or(pwdInstead).first().waitFor();
   if (await pwdInstead.isVisible()) await pwdInstead.click();
   await page.getByText('Crea una contraseña').waitFor();
-  await page.getByPlaceholder('Mínimo 6 caracteres').fill('Test-pass-123');
+  await page.getByPlaceholder('Mínimo 12 caracteres').fill('Test-pass-123');
   await page.getByPlaceholder('Repite la contraseña').fill('Test-pass-123');
   await page.getByRole('button', { name: 'Crear wallet' }).click();
   await page.getByRole('button', { name: 'Ver mi wallet' }).waitFor({ timeout: 10000 });

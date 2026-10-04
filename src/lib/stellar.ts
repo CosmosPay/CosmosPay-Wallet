@@ -74,6 +74,19 @@ export function networkEnv(cfg: NetConfig): 'dev' | 'prod' {
   return cfg.passphrase === Networks.PUBLIC ? 'prod' : 'dev';
 }
 
+/** A ledger as the community server names it: the two public ones, by passphrase. */
+export type LedgerName = 'public' | 'testnet';
+
+/**
+ * The name servers use for the ledger a passphrase belongs to, or null for a custom
+ * network — which a server only ever serves as its default, so naming none is right.
+ */
+export function ledgerName(passphrase: string): LedgerName | null {
+  if (passphrase === Networks.PUBLIC) return 'public';
+  if (passphrase === Networks.TESTNET) return 'testnet';
+  return null;
+}
+
 export function getServer(cfg: NetConfig): Horizon.Server {
   return new Horizon.Server(cfg.horizon);
 }
@@ -139,6 +152,12 @@ export async function getAccountState(
 export interface SendParams {
   cfg: NetConfig;
   secret: string;
+  /**
+   * The ACCOUNT the transaction is sourced from — never derived from `secret`. After a
+   * SEP-30 recovery the key that signs is a new signer on the old account, so its own
+   * address is an unfunded one and Horizon answers 404 for it.
+   */
+  account: string;
   destination: string;
   amount: string; // in XLM
   memo?: string;
@@ -171,6 +190,7 @@ function buildMemo(value?: string, kind: MemoKind = 'text'): Memo | null {
 export async function sendXlm({
   cfg,
   secret,
+  account,
   destination,
   amount,
   memo,
@@ -179,7 +199,7 @@ export async function sendXlm({
   const server = getServer(cfg);
   const keypair = Keypair.fromSecret(secret);
 
-  const source = await server.loadAccount(keypair.publicKey());
+  const source = await server.loadAccount(account);
 
   // Does the destination already exist? Decides createAccount vs payment.
   let destExists = true;
@@ -237,6 +257,10 @@ export async function sendXlm({
 export interface PaymentParams {
   cfg: NetConfig;
   secret: string;
+  /**
+   * The ACCOUNT the transaction is sourced from — see {@link SendParams.account}.
+   */
+  account: string;
   destination: string;
   amount: string;
   memo?: string;
@@ -254,6 +278,7 @@ export interface PaymentParams {
 export async function sendPayment({
   cfg,
   secret,
+  account,
   destination,
   amount,
   memo,
@@ -261,11 +286,11 @@ export async function sendPayment({
   asset,
 }: PaymentParams): Promise<{ hash: string }> {
   if (!asset || asset.code === 'XLM' || !asset.issuer) {
-    return sendXlm({ cfg, secret, destination, amount, memo, memoKind });
+    return sendXlm({ cfg, secret, account, destination, amount, memo, memoKind });
   }
   const server = getServer(cfg);
   const keypair = Keypair.fromSecret(secret);
-  const source = await server.loadAccount(keypair.publicKey());
+  const source = await server.loadAccount(account);
 
   let fee = BASE_FEE;
   try {
@@ -385,23 +410,54 @@ export async function fundWithFriendbot(cfg: NetConfig, publicKey: string): Prom
   }
 }
 
+/**
+ * Testnet only: top up an account that ALREADY exists.
+ *
+ * Friendbot only creates accounts — asked to fund an existing one, its `createAccount`
+ * fails. So a throwaway account is created by Friendbot and merged straight into
+ * `destination`, which keeps its address and receives the throwaway's whole balance. The
+ * throwaway's key lives only in this call, signs this one merge, and is gone with it.
+ */
+export async function topUpFromFriendbot(cfg: NetConfig, destination: string): Promise<{ hash: string }> {
+  const temp = Keypair.random();
+  await fundWithFriendbot(cfg, temp.publicKey());
+  const server = getServer(cfg);
+  const source = await server.loadAccount(temp.publicKey());
+  const builder = new TransactionBuilder(source, { fee: BASE_FEE, networkPassphrase: cfg.passphrase }).addOperation(
+    Operation.accountMerge({ destination }),
+  );
+  const memoOp = buildMemo();
+  if (memoOp) builder.addMemo(memoOp);
+  const tx = builder.setTimeout(180).build();
+  tx.sign(temp);
+  try {
+    const res = await server.submitTransaction(tx);
+    return { hash: res.hash };
+  } catch (err) {
+    throw new Error(parseHorizonError(err));
+  }
+}
+
 /** Add (or remove, with limit '0') a trustline so the account can hold an asset. */
 export async function addTrustline({
   cfg,
   secret,
+  account,
   code,
   issuer,
   limit,
 }: {
   cfg: NetConfig;
   secret: string;
+  /** The account that holds the trustline — see {@link SendParams.account}. */
+  account: string;
   code: string;
   issuer: string;
   limit?: string;
 }): Promise<{ hash: string }> {
   const server = getServer(cfg);
   const keypair = Keypair.fromSecret(secret);
-  const source = await server.loadAccount(keypair.publicKey());
+  const source = await server.loadAccount(account);
 
   let fee = BASE_FEE;
   try {

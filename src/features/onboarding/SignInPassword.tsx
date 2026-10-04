@@ -26,9 +26,11 @@ import '@/styles/features/onboarding/sign-in-password.css';
  * PROTECT — a new wallet on a device that already has a password or a passkey: whichever
  * this device opens with also seals the new backup, so the person keeps one way in.
  *
- * "Forgot the password?" is here and not hidden, because there is no reset: the server
- * cannot open the backup, so the only ways forward without it are SEP-30 recovery (the
- * account survives) or a NEW wallet that replaces the backup. The screen says what the
+ * "Forgot the password?" is here and not hidden. The server cannot open the backup, so
+ * the ways forward without the password are, in order: the backup's EMAIL door, when it has
+ * one — proving the inbox to both recovery servers gives the whole wallet back, seed and
+ * all, under a new password; SEP-30 recovery (the account survives, the seed does not); or
+ * a NEW wallet that replaces the backup. The screen says what the
  * second gives up and asks for an explicit acknowledgement before the store is allowed to
  * send `replaceBackup`.
  */
@@ -106,7 +108,7 @@ export function SignInPassword({ store }: { store: WalletStore }) {
 
   // A box that will not parse reads as a password box: that is what every box before
   // passkeys was, and the store reports the real problem when it tries to open it.
-  const doors = pending.backupDoors ?? { password: true, passkeys: 0 };
+  const doors = pending.backupDoors ?? { password: true, passkeys: 0, recovery: false };
   const passkeyDoor = store.passkeyPossible && doors.passkeys > 0;
   // The field, when there is a password door to type into — up front when it is the only
   // way in, behind a link when the passkey leads.
@@ -137,6 +139,12 @@ export function SignInPassword({ store }: { store: WalletStore }) {
       )}
 
       {fieldShown && <Field password label={t('signin.backupPwdLabel')} value={pwd} onChange={setPwd} />}
+      {/* The passkey this person signed in with is Authentik's, and it is not a door of the
+          backup — which is exactly why they are being asked for a password here. Said, so
+          it does not read as the passkey having failed. */}
+      {fieldShown && !passkeyDoor && store.passkeyPossible && (
+        <div className="desc sign-in-pwd-note">{t('passkey.authentikNote')}</div>
+      )}
       {offerUpgrade && (
         <CheckRow on={upgrade} onToggle={() => setUpgrade(!upgrade)}>
           {t('passkey.upgradeOnRestore')}
@@ -159,9 +167,11 @@ export function SignInPassword({ store }: { store: WalletStore }) {
               recovery on — has nothing else. */}
           {recoverable && (
             <>
-              <div className="sign-in-pwd-startover-text">{t('signin.recoverOffer')}</div>
+              <div className="sign-in-pwd-startover-text">
+                {t(doors.recovery ? 'signin.recoverEmailOffer' : 'signin.recoverOffer')}
+              </div>
               <button className="btn-ghost" disabled={busy} onClick={() => store.setScreen('recover')}>
-                {t('signin.recoverCta')}
+                {t(doors.recovery ? 'signin.recoverEmailCta' : 'signin.recoverCta')}
               </button>
               <div className="sign-in-pwd-or">{t('common.or')}</div>
             </>

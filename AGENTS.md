@@ -563,7 +563,7 @@ refusals. Add a case there before changing anything in `assertRecoveryTemplate`.
 ## An asset is a (code, issuer) pair, and the registry says whose
 
 `src/lib/assetRegistry.ts` answers "which asset is this, and who issues it?" from three
-sources, each covering the one before: **our API** (`/api/assets`, no key — a first-run
+sources, each covering the one before: **our API** (`GET /v1/assets` through the gateway, under the public key — a first-run
 wallet has no credential and still has to name what it is about to trust), the
 **bundled table** in `src/constants/assetRegistry.ts`, and the **user's own Horizon**
 via `resolveAssetIssuer`.

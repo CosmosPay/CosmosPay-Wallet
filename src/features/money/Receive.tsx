@@ -16,6 +16,13 @@ export function Receive({ store }: { store: WalletStore }) {
   const [qr, setQr] = useState('');
   const [copied, copy] = useCopied();
   const pub = store.meta?.publicKey ?? '';
+  const chains = store.meta?.chainAddresses;
+  const { ensureChainAddresses } = store;
+
+  // The phrase's Solana and Monad addresses, derived the first time this screen opens.
+  useEffect(() => {
+    void ensureChainAddresses();
+  }, [ensureChainAddresses]);
 
   useEffect(() => {
     // Encode a SEP-0007 payment request so other Stellar wallets can pre-fill the send.
@@ -61,6 +68,21 @@ export function Receive({ store }: { store: WalletStore }) {
         <button onClick={share} className="receive-btn receive-btn--share">{t('common.share')}</button>
       </div>
 
+      {chains && (
+        <div className="receive-chains">
+          <div className="receive-chains-title">{t('receive.otherChains')}</div>
+          <div className="receive-chains-desc">{t('receive.otherChainsDesc')}</div>
+          {(
+            [
+              ['Solana', chains.solana],
+              ['Monad', chains.monad],
+            ] as const
+          ).map(([label, addr]) => (
+            <ChainRow key={label} label={label} addr={addr} copyLabel={t('common.copy')} copiedLabel={t('common.copied')} />
+          ))}
+        </div>
+      )}
+
       <div onClick={() => store.setScreen('paylink')} className="tap glass-soft row between receive-paylink">
         <div className="row g12">
           <div className="receive-paylink-emoji">🔗</div>
@@ -71,6 +93,22 @@ export function Receive({ store }: { store: WalletStore }) {
         </div>
         <span className="receive-paylink-chev">›</span>
       </div>
+    </div>
+  );
+}
+
+/** One of the phrase's other-chain addresses, with its own copy state. */
+function ChainRow({ label, addr, copyLabel, copiedLabel }: { label: string; addr: string; copyLabel: string; copiedLabel: string }) {
+  const [copied, copy] = useCopied();
+  return (
+    <div className="glass row between g12 receive-chain-row">
+      <div className="min0">
+        <div className="receive-addr-label">{label}</div>
+        <div className="receive-addr-value">{addr}</div>
+      </div>
+      <button onClick={() => copy(addr)} className={cx('receive-chain-copy', copied && 'is-copied')}>
+        {copied ? copiedLabel : copyLabel}
+      </button>
     </div>
   );
 }

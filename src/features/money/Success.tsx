@@ -38,7 +38,7 @@ export function Success({ store }: { store: WalletStore }) {
         </div>
       ) : null}
       {si?.hash && (
-        <ExternalLink href={explorerTxUrl(store.network, si.hash)} className="success-tx">
+        <ExternalLink href={si.explorer ?? explorerTxUrl(store.network, si.hash)} className="success-tx">
           {t('success.viewTx')}
         </ExternalLink>
       )}
