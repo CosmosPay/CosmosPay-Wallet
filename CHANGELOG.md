@@ -2,6 +2,31 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.12.0] - 2026-10-04
+
+### Features
+- Add optional app password for wallet backup and recovery (e07298e)
+- Implement Argon2id for cloud backup encryption and enhance password criteria (31cd4cd)
+- Add cross-chain swap functionality with NEAR Intents support (fa26717)
+- Add cross-chain swap functionality with NEAR Intents support (923d278)
+- Implement chain swap functionality for Solana and Monad (26d1f0e)
+- Implement email recovery for wallet backups (99d7346)
+- Implement retry mechanism for network errors in API calls (53c9a89)
+- Add support for testnet chain sending and recovery (d681156)
+
+### Bug Fixes
+- Align the tauri-plugin-opener crate with its npm package, sync server spec (fb312a5)
+
+### Refactor
+- Update public key fetching to use gateway API (53a0fa7)
+
+### Testing
+- Follow the 12-character minimum on the password placeholder (5451665)
+- Assert the v4 Argon2id backup box on sign-in (8ad612c)
+
+### Dependencies
+- Bump stellar-sdk and tauri plugin-opener, patch audit findings (4d584cd)
+
 ## [1.11.1] - 2026-09-27
 
 ### Miscellaneous
