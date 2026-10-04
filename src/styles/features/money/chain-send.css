@@ -1,0 +1,16 @@
+/* Test-network send (src/features/money/ChainSend.tsx). */
+
+.chain-send-tabs { display: flex; gap: 8px; margin: 4px 0 6px; }
+.chain-send-tab { flex: 1; min-width: 0; height: 40px; border: 1px solid var(--glass-soft-border); border-radius: 999px; background: var(--surface); color: var(--muted); font-size: 13px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.chain-send-tab.is-on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+
+.chain-send-label { margin: 16px 0 6px; } /* on .label-up */
+.chain-send-paste { flex-shrink: 0; height: 48px; padding: 0 16px; border-radius: 999px; color: var(--text); font-size: 13px; font-weight: 800; cursor: pointer; }
+.chain-send-paste:disabled { opacity: 0.5; cursor: default; }
+
+.chain-send-note { margin: 6px 2px 0; font-size: 12px; font-weight: 700; text-align: right; }
+.chain-send-note.is-valid { color: var(--up); }
+.chain-send-note.is-invalid { color: var(--danger); }
+.chain-send-balance { margin: 8px 2px 0; font-size: 12px; font-weight: 700; color: var(--muted); text-align: right; }
+
+.chain-send-guard { margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--danger-soft); color: var(--danger); font-size: 13px; font-weight: 700; line-height: 1.45; }

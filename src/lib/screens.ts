@@ -66,6 +66,7 @@ export const SCREEN_IDS = [
   'add-asset',
   'edit-profile',
   'scan',
+  'chain-send',
 ] as const;
 
 export type Screen = (typeof SCREEN_IDS)[number];
@@ -145,6 +146,8 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   success: { back: (c) => (c.hasSession ? 'home' : 'unlock'), terminal: true },
   history: { back: 'home' },
   paylink: { back: 'receive' },
+  // Test SOL / MON / USDC, from the Home card shown on a test network.
+  'chain-send': { back: 'home' },
   asset: { back: (c) => c.tab },
 
   // liquidity

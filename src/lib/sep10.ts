@@ -171,11 +171,25 @@ export function assertSafeChallenge(
  *
  * `secret` is fetched per signature by the store and never held; this returns the signed
  * envelope and keeps nothing.
+ *
+ * `accountSigners` is what the LEDGER says may sign for the account (weight above 0). A
+ * recovered account is signed for by a key that is not its master — SEP-10 verifies a
+ * challenge against the account's current signers, not its address — so requiring the
+ * master refused every recovered wallet. The check stays: a key that is neither the master
+ * nor a signer would produce a token the server refuses anyway, and saying so here names
+ * the actual problem.
  */
-export function signChallenge(cfg: NetConfig, xdr: string, expect: ChallengeExpectation, secret: string): string {
+export function signChallenge(
+  cfg: NetConfig,
+  xdr: string,
+  expect: ChallengeExpectation,
+  secret: string,
+  accountSigners: readonly string[],
+): string {
   const tx = assertSafeChallenge(cfg, xdr, expect);
   const kp = Keypair.fromSecret(secret);
-  if (kp.publicKey() !== expect.account) throw new Sep10Error('sep10.error.wrongKey');
+  const key = kp.publicKey();
+  if (key !== expect.account && !accountSigners.includes(key)) throw new Sep10Error('sep10.error.wrongKey');
   tx.sign(kp);
   return tx.toXDR();
 }

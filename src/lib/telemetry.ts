@@ -49,7 +49,7 @@
  * Turning it off drops what is already queued rather than keeping it for later — an
  * opt-out that still sends the last few minutes is not one.
  */
-import { isPublicKey } from '@/lib/publicKey';
+import { cachedPublicKey, isPublicKey } from '@/lib/publicKey';
 import { APP_VERSION } from '@/constants/app';
 import {
   ATTESTATION_PROP,
@@ -63,7 +63,7 @@ import {
   QUEUE_KEY,
 } from '@/constants/telemetry';
 import { attestationFresh, type OwnershipAttestation } from '@/lib/attestation';
-import { devPlatformUrl, gatewayApi } from '@/lib/endpoints';
+import { gatewayApi } from '@/lib/endpoints';
 import { buildKind } from '@/lib/platform';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 
@@ -441,7 +441,15 @@ export async function flushTelemetry(): Promise<void> {
       }
       if (!delivered(res)) throw new Error(`ingest failed (${res})`);
     } else {
-      const res = await postEvents(`${devPlatformUrl()}/api/telemetry`, { events: anonymize(batch), env }, {});
+      // No key of our own, or it was refused: the shared public key, anonymized —
+      // straight to the gateway. This used to go through the developer platform,
+      // which put it in the path of every anonymous wallet's reports. With no public
+      // key either, the batch stays queued until one arrives.
+      const shared = cachedPublicKey(env);
+      if (!shared) throw new Error('no key to report under yet');
+      const res = await postEvents(`${gatewayApi()}/v1/activity/events`, { events: anonymize(batch) }, {
+        Authorization: `Bearer ${shared}`,
+      });
       if (!delivered(res)) throw new Error(`telemetry failed (${res})`);
     }
     // Landed. Anything still queued goes on the next tick rather than recursing.

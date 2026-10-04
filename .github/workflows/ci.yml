@@ -25,7 +25,6 @@ concurrency:
 # beforeBuildCommand, and a variable attached to only one of those produces a bundle and a
 # manifest that disagree about which backend the extension may reach.
 env:
-  PUBLIC_COSMOS_DEV_PLATFORM_URL: ${{ vars.PUBLIC_COSMOS_DEV_PLATFORM_URL }}
   PUBLIC_COSMOS_GATEWAY_URL: ${{ vars.PUBLIC_COSMOS_GATEWAY_URL }}
   PUBLIC_COSMOS_GATEWAY_ENTRY: ${{ vars.PUBLIC_COSMOS_GATEWAY_ENTRY }}
   PUBLIC_COSMOS_PUBLIC_KEY_DEV: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_DEV }}

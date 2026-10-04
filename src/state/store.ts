@@ -9,6 +9,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // is erased at compile time and costs nothing.
 import type { DerivedAccount } from '@/lib/wallet';
 const walletLib = () => import('@/lib/wallet');
+// Solana + Monad derivation (bip32, secp256k1, keccak): only when an address is first shown.
+const chainLib = () => import('@/lib/chainAddresses');
+// Signing on Solana / Monad: loaded on the first swap paid from there, not at startup.
+const chainKeysLib = () => import('@/lib/chainKeys');
+const chainSwapLib = () => import('@/lib/chainSwap');
+// Solana devnet / Monad testnet balances and the devnet airdrop: only on a test network.
+const chainRpcLib = () => import('@/lib/chainRpc');
 import {
   addWallet as vaultAddWallet,
   changePassword,
@@ -16,7 +23,6 @@ import {
   clearPendingCosmosPay,
   getActiveEntry,
   getCosmosPay,
-  getPendingCosmosPay,
   getCustomNetworks,
   getNetworkId,
   listWallets,
@@ -26,7 +32,6 @@ import {
   clearReceiver,
   saveCosmosPay,
   saveDefaultReceiver,
-  savePendingCosmosPay,
   updateWalletMeta,
   setActiveId,
   setCustomNetworks as vaultSetCustomNetworks,
@@ -41,7 +46,6 @@ import {
   verifyPassword,
   verifyVaultKey,
   type CosmosPayAccount,
-  type CosmosPayPending,
   type Gender,
   type VaultSecret,
   type WalletEntry,
@@ -53,18 +57,42 @@ import { assertSafeToSign, reviewTx } from '@/lib/txGuard';
 import { MIN_APP_PWD_LEN, appPasswordOk, isAccessCode, isSafeHorizonUrl } from '@/lib/validate';
 import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
 import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
-import { FIAT_DECIMALS, fromMinorUnits } from '@/lib/amount';
+import { FIAT_DECIMALS, fromMinorUnits, toMinorUnitsBig } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
-import { sendableAssets, spendableCeiling } from '@/lib/balances';
+import { recoveryShortfall, sendableAssets, spendableCeiling } from '@/lib/balances';
 import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
 import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
+import { retryOnNetworkError } from '@/lib/retryNetwork';
+import { CROSS_CHAIN_SLIPPAGE_BPS } from '@/constants/swap';
+import { fileBackupRecovery, newRecoveryKey, takeBackupRecovery } from '@/lib/backupRecovery';
+import {
+  CHAIN_CONFIRM_POLL_MS,
+  CHAIN_CONFIRM_TIMEOUT_MS,
+  CHAIN_EXPLORER_TX,
+  CHAIN_SWAP_SLIPPAGE_BPS,
+  CHAIN_TESTNET_EXPLORER_TX,
+  SOLANA_AIRDROP_LAMPORTS,
+  type ChainToken,
+  type OtherChain,
+} from '@/constants/chains';
 import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
 import { usePasskey } from '@/state/usePasskey';
 import { finishSignIn, replaceBackup as storeBackupBox } from '@/lib/signIn';
-import { BackupPasskeyError, backupDoors, openBackup, sealBackup, type BackupDoors } from '@/lib/cloudBackup';
+import {
+  BackupPasskeyError,
+  backupDoors,
+  addRecoveryDoor,
+  resetBackupPassword,
+  backupNeedsUpgrade,
+  openBackup,
+  sealBackup,
+  type BackupDoors,
+  type BackupKey,
+} from '@/lib/cloudBackup';
+import { addressOn, keyAddressOf, ledgerOfRekey, rekeyOfBackup, type Rekey } from '@/lib/accountAddress';
 import { PasskeyError, createPasskey, getPasskeySecrets, wipePasskeySecrets, type PasskeySecrets } from '@/lib/passkey';
 import {
   PasskeyUnlockStaleError,
@@ -96,10 +124,15 @@ import {
   buildRecoveryRemoval,
   buildRecoverySetup,
   collectSignatures,
+  deviceKeyFor,
   identityRoute,
   identityTokensFromIdToken,
+  keysToRevoke,
+  ledgerAccountOf,
+  activeSignersOf,
   loadRecoveryServers,
   recoverableAccounts,
+  recoveryReachable,
   recoveryStateOf,
   registerForRecovery,
   sequenceOf,
@@ -115,10 +148,12 @@ import {
   addTrustline as stellarAddTrustline,
   allNetworks,
   fundWithFriendbot,
+  topUpFromFriendbot,
   getAccountState,
   getHistory,
   getPrices,
   networkEnv,
+  ledgerName,
   resolveNetwork,
   sendPayment,
   signXdr,
@@ -126,6 +161,7 @@ import {
   type AccountState,
   type HistoryOp,
   type NetConfig,
+  type LedgerName,
   type PriceInfo,
 } from '@/lib/stellar';
 import {
@@ -133,7 +169,6 @@ import {
   addReceiverWallet as cpAddReceiverWallet,
   authorizePayout as cpAuthorizePayout,
   blindpayNetwork,
-  claimCosmosAccount,
   createPayLink as cpCreatePayLink,
   createPayin as cpCreatePayin,
   createPayout as cpCreatePayout,
@@ -143,7 +178,6 @@ import {
   depositLiquidity as cpDepositLiquidity,
   extractUnsignedXdr,
   getReceiver as cpGetReceiver,
-  linkCosmosAccount,
   listBankAccounts as cpListBankAccounts,
   listLiquidityPools as cpListLiquidityPools,
   liquidityPositions as cpLiquidityPositions,
@@ -158,11 +192,17 @@ import {
   offrampQuote as cpOfframpQuote,
   onrampQuote as cpOnrampQuote,
   quoteSwap as cpQuoteSwap,
-  registerCosmosAccount,
+  listCrossChainAssets as cpListCrossChainAssets,
+  quoteCrossChainSwap as cpQuoteCrossChainSwap,
+  createCrossChainSwap as cpCreateCrossChainSwap,
+  reportCrossChainDeposit as cpReportCrossChainDeposit,
+  createChainSwap as cpCreateChainSwap,
+  submitChainSwap as cpSubmitChainSwap,
+  signInEmailStart,
+  signInEmailVerify,
   submitLiquidity as cpSubmitLiquidity,
   submitSwap as cpSubmitSwap,
   uploadKycDoc as cpUploadKycDoc,
-  verifyCosmosLink,
   withdrawLiquidity as cpWithdrawLiquidity,
   DEFAULT_SLIPPAGE_BPS,
   type BankAccount,
@@ -179,6 +219,11 @@ import {
   type Receiver,
   type SignInReady,
   type SwapQuote,
+  type CrossChainAsset,
+  type CrossChainQuote,
+  type CrossChainSwapInput,
+  type CrossChainTarget,
+  type CrossChainNetwork,
   recoverySetupSponsored,
 } from '@/lib/cosmospay';
 import { useToast } from '@/state/useToast';
@@ -295,6 +340,8 @@ export interface SuccessInfo {
   msg: string;
   rows: { label: string; val: string }[];
   hash?: string;
+  /** Explorer link for `hash` when it is not a Stellar transaction (Solana, Monad). */
+  explorer?: string;
   kind?: 'ok' | 'err'; // controls the green check / red cross icon
 }
 
@@ -326,12 +373,20 @@ export type UnlockResult =
 export type { Toast } from '@/state/useToast';
 
 /**
- * Account-linking UI state. `offer` is shown when registration found the email already
- * has an account; `sent` holds the claim token after the access code is emailed.
+ * Connecting this wallet to Cosmos Pay: `sent` holds the claim token after the community
+ * server emailed the sign-in code, until the code is entered.
  */
-export type CosmosLink =
-  | { stage: 'offer' }
-  | { stage: 'sent'; claimToken: string; expiresAt: number };
+export type CosmosLink = { stage: 'sent'; claimToken: string; expiresAt: number };
+
+/** Two decimal strings naming the same amount ("1.50" and "1.5"). */
+function sameDecimal(a: string, b: string): boolean {
+  const norm = (v: string) => {
+    const [whole, frac = ''] = v.trim().split('.');
+    const f = frac.replace(/0+$/, '');
+    return `${whole.replace(/^0+(?=\d)/, '')}${f ? `.${f}` : ''}`;
+  };
+  return norm(a) === norm(b);
+}
 
 /** A swap side: the asset being sold (source) or bought (destination). `issuer` is
  *  null for native XLM. Built from the wallet's trustline balances. */
@@ -432,9 +487,28 @@ export function useWalletStore() {
   const [customNetworks, setCustomNetworksState] = useState<NetConfig[]>([]);
   const networks = useMemo(() => allNetworks(customNetworks), [customNetworks]);
   const network = useMemo(() => resolveNetwork(networkId, customNetworks), [networkId, customNetworks]);
-  const [meta, setMetaState] = useState<WalletEntry | null>(null);
+  /** The active wallet as stored: `publicKey` is its canonical ACCOUNT. */
+  const [metaEntry, setMetaState] = useState<WalletEntry | null>(null);
   const [wallets, setWallets] = useState<WalletEntry[]>([]);
-  const [session, setSession] = useState<Session | null>(null);
+  const [rawSession, setSession] = useState<Session | null>(null);
+  /**
+   * The active wallet and session AS THEY ACT ON THIS NETWORK — what every balance, payment
+   * and screen reads. Identical to the stored ones except on a wallet SEP-30 re-keyed on
+   * another ledger, which acts as its new key's own address here (`addressOn`). Anything
+   * that speaks to the sign-in or backup servers reads `metaEntry` instead: a backup is
+   * filed under the canonical account, whatever network the device is on.
+   */
+  const meta = useMemo(
+    () => (metaEntry ? { ...metaEntry, publicKey: addressOn(metaEntry, network.passphrase) } : null),
+    [metaEntry, network.passphrase],
+  );
+  const session = useMemo(
+    () =>
+      rawSession && metaEntry && rawSession.walletId === metaEntry.id
+        ? { ...rawSession, publicKey: addressOn(metaEntry, network.passphrase) }
+        : rawSession,
+    [rawSession, metaEntry, network.passphrase],
+  );
   /**
    * The live session, readable from a callback that must not depend on it.
    *
@@ -453,9 +527,6 @@ export function useWalletStore() {
   // Provisioned CosmosPay account for the active wallet (null until enabled /
   // before unlock). Loaded from the sealed store whenever a session opens.
   const [cosmosPay, setCosmosPay] = useState<CosmosPayAccount | null>(null);
-  // A registration awaiting email confirmation (set after enableReceiving until
-  // claimReceiving succeeds). Plaintext-persisted so it survives a reload.
-  const [cosmosPayPending, setCosmosPayPending] = useState<CosmosPayPending | null>(null);
   /**
    * Whether a gateway credential is available at all — this account's, or the
    * shared public one once it has loaded.
@@ -466,10 +537,9 @@ export function useWalletStore() {
    * never re-run.
    */
   const [publicKeyReady, setPublicKeyReady] = useState(false);
-  // Account-linking flow, shown when registration reports the email already has an
-  // account: 'offer' (prompt to link) → 'sent' (access code emailed, awaiting the code).
+  // Connecting to Cosmos Pay: 'sent' once the sign-in code is emailed, until it is entered.
   // In-memory only — the code lives in the user's email and is short-lived; a reload
-  // simply restarts the offer. See linkReceiving / submitLinkCode.
+  // simply starts over. See enableReceiving / submitLinkCode.
   const [cosmosLink, setCosmosLink] = useState<CosmosLink | null>(null);
 
   /**
@@ -932,6 +1002,8 @@ export function useWalletStore() {
     async (input: {
       secret: VaultSecret;
       publicKey: string;
+      /** Set when `publicKey` is an account re-keyed on one ledger (`lib/accountAddress.ts`). */
+      rekey?: Rekey;
       ready: SignInReady;
       account: CosmosPayAccount;
       vk: VaultKey;
@@ -960,6 +1032,7 @@ export function useWalletStore() {
           metricsOptIn: input.consents.metricsOptIn,
           promoOptIn: input.consents.promoOptIn,
           cloudBackup: true,
+          rekey: input.rekey,
         },
         input.vk,
       );
@@ -974,10 +1047,122 @@ export function useWalletStore() {
       setMetaState(landed);
       setSession({ publicKey: landed.publicKey, walletId: landed.id, vaultKey: input.vk });
       setCosmosPay(input.account);
-      setCosmosPayPending(null);
       return landed;
     },
     [meta, guardSession],
+  );
+
+  /**
+   * Bring back every OTHER wallet the account keeps a backup of, after the newest one
+   * landed as the active wallet.
+   *
+   * Best-effort and additive: each box opens with the same key the person just proved
+   * (their password, or the passkey), is added under the session's vault key, and gets the
+   * account's API keys. A box sealed under another password — backed up from a device that
+   * had a different one — stays closed and is counted, so the person knows to sign in with
+   * that password too. Only Stellar boxes: this wallet has no Solana or Monad wallets of
+   * its own; those addresses come back with the phrase (see `lib/chainAddresses.ts`).
+   *
+   * The active wallet is put back afterwards: `addWallet` makes each one it adds active.
+   */
+  /**
+   * File an email-recovery key for one backup (`lib/backupRecovery.ts`), when both recovery
+   * servers answer. Best effort: null means the box goes up without that door — the sign-in,
+   * restore or password change it rides on carries on either way. The caller seals the box
+   * with the key it gets back, uploads it, and zeroes the key.
+   */
+  const fileRecovery = useCallback(
+    async (secret: string, address: string, email: string | null | undefined): Promise<Uint8Array | null> => {
+      // Quiet on a build whose two servers are not deployed: nothing to offer, nothing wrong.
+      if (!email || !(await recoveryReachable(network))) return null;
+      const key = newRecoveryKey();
+      try {
+        await fileBackupRecovery(network, secret, address, email, key);
+        return key;
+      } catch (e) {
+        key.fill(0);
+        reportError(EVENT.backupUpdateFailed, e);
+        return null;
+      }
+    },
+    [network],
+  );
+
+  /** Record which inbox a wallet's backup halves were filed under — the servers never say. */
+  const noteBackupRecovery = useCallback(async (id: string, email: string) => {
+    const list = await updateWalletMeta(id, { backupRecoveryEmail: email.trim().toLowerCase() });
+    setWallets(list);
+    const entry = list.find((w) => w.id === id);
+    if (entry) setMetaState((cur) => (cur?.id === id ? entry : cur));
+  }, []);
+
+  const restoreOtherBackups = useCallback(
+    async (input: {
+      ready: SignInReady;
+      key: BackupKey;
+      vk: VaultKey;
+      primary: WalletEntry;
+      account: CosmosPayAccount;
+      consents: ConsentAnswers;
+    }): Promise<void> => {
+      const others = (input.ready.backups ?? []).filter(
+        (b) => (b.chain ?? 'stellar') === 'stellar' && b.stellarAddress !== input.primary.publicKey,
+      );
+      if (!others.length) return;
+      const { identity } = input.ready;
+      const base = identity.name?.trim() || identity.email.split('@')[0] || 'astronauta';
+      let restored = 0;
+      let closed = 0;
+      for (const b of others) {
+        try {
+          const secret = await openBackup(b.box, input.key, b.stellarAddress);
+          const entry = await vaultAddWallet(
+            { secret: secret.secret, mnemonic: secret.mnemonic },
+            {
+              publicKey: b.stellarAddress,
+              name: `${base} · ${b.stellarAddress.slice(-4)}`,
+              birthdate: '',
+              email: identity.email,
+              gender: 'x',
+              metricsOptIn: input.consents.metricsOptIn,
+              promoOptIn: input.consents.promoOptIn,
+              cloudBackup: true,
+              rekey: rekeyOfBackup(secret),
+            },
+            input.vk,
+          );
+          if (!entry.cloudBackup) await updateWalletMeta(entry.id, { cloudBackup: true });
+          await saveCosmosPay(entry.id, input.account, input.vk);
+          restored += 1;
+          // The same Argon2id upgrade the newest box got, best-effort: a failure leaves the
+          // old box, which still opens.
+          if (typeof input.key === 'string' && backupNeedsUpgrade(b.box)) {
+            const password = input.key;
+            void (async () => {
+              await storeBackupBox({
+                secret: secret.secret,
+                box: await sealBackup(
+                  { secret: secret.secret, mnemonic: secret.mnemonic },
+                  password,
+                  b.stellarAddress,
+                  secret.rekeyedOn,
+                ),
+                account: b.stellarAddress,
+                network: secret.rekeyedOn ? ledgerName(secret.rekeyedOn) : null,
+                accessKey: await warmPublicKey(networkEnv(network)),
+              });
+            })().catch((e) => reportError(EVENT.backupUpdateFailed, e));
+          }
+        } catch {
+          closed += 1;
+        }
+      }
+      await setActiveId(input.primary.id);
+      setWallets(await listWallets());
+      if (restored) flash(t('backup.restoredMore', { n: restored }), 'ok');
+      if (closed) flash(t('backup.otherPassword', { n: closed }), 'info');
+    },
+    [flash, t, network],
   );
 
   /**
@@ -1007,7 +1192,13 @@ export function useWalletStore() {
       const mnemonic = createMnemonic();
       const acc = await accountFromMnemonic(mnemonic);
       const secret: VaultSecret = { secret: acc.secret, mnemonic };
-      const box = await sealBackup(secret, doors);
+      const email = draft.ready.identity.email;
+      const recovery = await fileRecovery(acc.secret, acc.publicKey, email);
+      const box = await sealBackup(
+        secret,
+        recovery ? { ...(typeof doors === 'string' ? { password: doors } : doors), recovery } : doors,
+      );
+      recovery?.fill(0);
       const res = await finishSignIn({
         sessionToken: draft.ready.sessionToken,
         email: draft.ready.identity.email,
@@ -1020,7 +1211,7 @@ export function useWalletStore() {
         flash(t('backup.conflict'), 'err');
         return null;
       }
-      return landSignedInWallet({
+      const entry = await landSignedInWallet({
         secret,
         publicKey: acc.publicKey,
         ready: draft.ready,
@@ -1029,8 +1220,10 @@ export function useWalletStore() {
         consents,
         epoch,
       });
+      if (entry && recovery) await noteBackupRecovery(entry.id, email);
+      return entry;
     },
-    [landSignedInWallet, flash, t],
+    [landSignedInWallet, fileRecovery, noteBackupRecovery, flash, t],
   );
 
   /**
@@ -1119,8 +1312,7 @@ export function useWalletStore() {
         setWallets(await listWallets());
         setSession({ publicKey: draftAccount.publicKey, walletId: entry.id, vaultKey: vk });
         setCosmosPay(null); // fresh wallet — receiving not enabled yet
-        setCosmosPayPending(null);
-        setSuccessInfo({
+          setSuccessInfo({
           title: t(addingWallet ? 'success.added' : 'success.welcome', { name: entry.name }),
           msg: t('success.protected'),
           rows: [
@@ -1231,14 +1423,16 @@ export function useWalletStore() {
    *
    * Shared by `unlock` (a typed password) and `unlockWithKey` (the phone's own lock). They
    * differ only in how the key was obtained; what a session IS must not depend on that, and
-   * when it did, the biometric path quietly skipped `setCosmosPayPending`.
+   * when it did, the biometric path quietly skipped loading the Cosmos Pay state.
    */
   const openSession = useCallback(async (entry: WalletEntry, vaultKey: VaultKey) => {
     setMetaState(entry);
     setWallets(await listWallets());
     setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey });
     setCosmosPay(await getCosmosPay(entry.id, vaultKey));
-    setCosmosPayPending(await getPendingCosmosPay(entry.id));
+    // What the retired email-link flow left behind: a claim token for a platform route
+    // that no longer exists, plus the email and address in plaintext.
+    void clearPendingCosmosPay(entry.id);
     setTab('home');
     setScreen('home');
   }, []);
@@ -1402,7 +1596,6 @@ export function useWalletStore() {
     invalidate(ACCOUNT_PREFIX);
     invalidate(HISTORY_PREFIX);
     setCosmosPay(null);
-    setCosmosPayPending(null);
     setSend({ to: '', amount: '0', memo: '', memoKind: 'text', asset: XLM });
     setSuccessInfo(null);
     // The one-time enrolment offer dies with the session that earned it. Left standing,
@@ -1511,7 +1704,9 @@ export function useWalletStore() {
       setMetaState(entry);
       setSession({ publicKey: entry.publicKey, walletId: entry.id, vaultKey });
       setCosmosPay(await getCosmosPay(entry.id, vaultKey));
-      setCosmosPayPending(await getPendingCosmosPay(entry.id));
+      // What the retired email-link flow left behind: a claim token for a platform route
+      // that no longer exists, plus the email and address in plaintext.
+      void clearPendingCosmosPay(entry.id);
     },
     [adoptWallet],
   );
@@ -1555,8 +1750,7 @@ export function useWalletStore() {
         invalidate(ACCOUNT_PREFIX);
         invalidate(HISTORY_PREFIX);
         setCosmosPay(null);
-        setCosmosPayPending(null);
-        setMetaState(null);
+          setMetaState(null);
         setScreen('welcome');
         return;
       }
@@ -1566,7 +1760,9 @@ export function useWalletStore() {
       setMetaState(entry);
       setSession({ publicKey: entry.publicKey, walletId: newActive, vaultKey: session.vaultKey });
       setCosmosPay(await getCosmosPay(newActive, session.vaultKey));
-      setCosmosPayPending(await getPendingCosmosPay(newActive));
+      // What the retired email-link flow left behind: a claim token for a platform route
+      // that no longer exists, plus the email and address in plaintext.
+      void clearPendingCosmosPay(newActive);
       setTab('home');
       setScreen('home');
       flash(t('toast.walletRemoved'), 'ok');
@@ -1637,7 +1833,7 @@ export function useWalletStore() {
       setBusy(true);
       try {
         guardSession(epoch);
-        await stellarAddTrustline({ cfg: network, secret: await secretOf(session), code: code.trim(), issuer: issuer.trim() });
+        await stellarAddTrustline({ cfg: network, secret: await secretOf(session), account: session.publicKey, code: code.trim(), issuer: issuer.trim() });
         await refresh(true);
         report(EVENT.trustlineAdded, { category: 'transaction', props: { asset: code.trim() } });
         flash(t('toast.assetAdded', { code: code.trim() }), 'ok');
@@ -1673,6 +1869,24 @@ export function useWalletStore() {
     }
   }, [session, network, refresh, t, flash]);
 
+  /**
+   * Testnet only: add free XLM to an account that already exists — for the recovery
+   * reserve, chiefly. `fund` cannot: Friendbot only creates accounts.
+   */
+  const topUpTestnet = useCallback(async () => {
+    if (!session || !network.friendbot) return;
+    setBusy(true);
+    try {
+      await topUpFromFriendbot(network, session.publicKey);
+      flash(t('toast.funded'), 'ok');
+      await refresh(true);
+    } catch (e) {
+      flash((e as Error).message, 'err');
+    } finally {
+      setBusy(false);
+    }
+  }, [session, network, refresh, t, flash]);
+
   const submitSend = useCallback(async () => {
     if (!session) return;
     await exclusive.run('send', async () => {
@@ -1693,6 +1907,7 @@ export function useWalletStore() {
         const { hash } = await sendPayment({
           cfg: network,
           secret: await secretOf(session),
+          account: session.publicKey,
           destination: send.to.trim(),
           amount: send.amount,
           memo: send.memo,
@@ -1738,10 +1953,13 @@ export function useWalletStore() {
 
   /* --------------------------- CosmosPay -------------------------- */
   /**
-   * Begin provisioning a CosmosPay account so this wallet can receive payments.
-   * No client secret is used: the wallet signs a nonce with its Stellar secret
-   * (proving account control) and the dev platform emails a confirmation link.
-   * The API key is minted only after the user confirms — see claimReceiving.
+   * Connect this wallet to a Cosmos Pay account — create it, or join the one its email
+   * already has. Step 1: the community server emails a sign-in code to the wallet's email.
+   *
+   * The same sign-in the onboarding uses (`/v1/wallet/auth/*`, through the gateway), ending
+   * in a `finish` WITHOUT a backup: this wallet already exists on the device, so nothing is
+   * backed up — it only proves its key and gets the account's API keys back. No developer
+   * platform in the path; it used to own a separate email-link flow for exactly this.
    */
   const enableReceiving = useCallback(async () => {
     if (!session || !meta) return;
@@ -1749,140 +1967,9 @@ export function useWalletStore() {
       flash(t('cosmospay.needEmail'), 'info');
       return;
     }
-    // Signing the registration needs the secret, so always password-gate it.
-    const epoch = sessionEpochRef.current;
-    const ok = await requestSignature({
-      title: t('cosmospay.enableTitle'),
-      message: t('cosmospay.enableConfirm'),
-    });
-    if (!ok) return;
     setBusy(true);
     try {
-      guardSession(epoch);
-      const res = await registerCosmosAccount({
-        email: meta.email,
-        name: meta.name,
-        stellarAddress: meta.publicKey,
-        secret: await secretOf(session),
-      });
-      if (res.status === 'exists') {
-        // Email already has an account — offer to link this wallet via an access code.
-        setCosmosLink({ stage: 'offer' });
-        flash(t('cosmospay.exists'), 'info');
-        return;
-      }
-      // pending — persist the claim token so the claim survives a reload.
-      const pending: CosmosPayPending = {
-        claimToken: res.claimToken,
-        stellarAddress: meta.publicKey,
-        expiresAt: Date.now() + (res.expiresInSeconds || 0) * 1000,
-        email: meta.email, // remember where it went, to flag mismatches later
-      };
-      await savePendingCosmosPay(meta.id, pending);
-      setCosmosPayPending(pending);
-      flash(t('cosmospay.checkEmail'), 'ok');
-    } catch (e) {
-      flash((e as Error).message || t('cosmospay.error'), 'err');
-    } finally {
-      setBusy(false);
-    }
-  }, [session, meta, requestSignature, guardSession, t, flash]);
-
-  /**
-   * Re-send the confirmation email: drops the stale pending registration (e.g. it
-   * was created with a previous/incorrect email) and registers again using the
-   * wallet's CURRENT email — so a fresh confirmation lands in the right inbox.
-   */
-  const resendReceiving = useCallback(async () => {
-    if (!meta) return;
-    await clearPendingCosmosPay(meta.id);
-    setCosmosPayPending(null);
-    await enableReceiving();
-  }, [meta, enableReceiving]);
-
-  /**
-   * Claim the API key for a pending registration once the user confirmed by
-   * email. `silent` is used by the background poller (no spinner, no "not
-   * confirmed yet" toast). Persists the key sealed (saveCosmosPay) on success.
-   */
-  const claimReceiving = useCallback(
-    async (silent = false) => {
-      if (!session || !meta || !cosmosPayPending) return;
-      const pending = cosmosPayPending;
-      // A background poller drives this every few seconds, so its closure routinely
-      // outlives the session it captured — and it re-seals the CosmosPay bearer key with
-      // that session's vault key. After a password change that key is superseded: the write
-      // would succeed, `getCosmosPay` would swallow the decrypt failure as "none", and the
-      // wallet would show receiving as enabled with a credential nothing can open.
-      const epoch = sessionEpochRef.current;
-      if (!silent) setBusy(true);
-      try {
-        const res = await claimCosmosAccount({
-          stellarAddress: pending.stellarAddress,
-          claimToken: pending.claimToken,
-        });
-        guardSession(epoch);
-        if (res.status === 'ready') {
-          const account: CosmosPayAccount = {
-            keys: res.keys,
-            organizationId: res.organizationId,
-          };
-          const list = await saveCosmosPay(meta.id, account, session.vaultKey);
-          setWallets(list);
-          const entry = list.find((w) => w.id === meta.id);
-          if (entry) setMetaState(entry);
-          setCosmosPay(account);
-          await clearPendingCosmosPay(meta.id);
-          setCosmosPayPending(null);
-          flash(t('cosmospay.created'), 'ok');
-        } else if (res.status === 'claimed') {
-          await clearPendingCosmosPay(meta.id);
-          setCosmosPayPending(null);
-          flash(t('cosmospay.already'), 'info');
-        } else if (res.status === 'expired') {
-          await clearPendingCosmosPay(meta.id);
-          setCosmosPayPending(null);
-          flash(t('cosmospay.expired'), 'err');
-        } else if (!silent) {
-          flash(t('cosmospay.notConfirmed'), 'info');
-        }
-      } catch (e) {
-        if (!silent) flash((e as Error).message || t('cosmospay.error'), 'err');
-      } finally {
-        if (!silent) setBusy(false);
-      }
-    },
-    [session, meta, cosmosPayPending, guardSession, t, flash],
-  );
-
-  /**
-   * Start linking this wallet to an EXISTING account (the email already had one — see the
-   * `exists` branch of enableReceiving). Password-gates the Stellar signature, then asks the
-   * server to email a one-time access code. On success we move to the 'sent' stage.
-   */
-  const linkReceiving = useCallback(async () => {
-    if (!session || !meta || !meta.email) return;
-    const epoch = sessionEpochRef.current;
-    const ok = await requestSignature({
-      title: t('cosmospay.linkTitle'),
-      message: t('cosmospay.linkConfirm'),
-    });
-    if (!ok) return;
-    setBusy(true);
-    try {
-      guardSession(epoch);
-      const res = await linkCosmosAccount({
-        email: meta.email,
-        name: meta.name,
-        stellarAddress: meta.publicKey,
-        secret: await secretOf(session),
-      });
-      if (res.status === 'not_found') {
-        // No account after all — drop back so the user can use the normal create flow.
-        setCosmosLink(null);
-        flash(t('cosmospay.linkNotFound'), 'info');
-        return;
-      }
+      const res = await signInEmailStart(meta.email, await warmPublicKey(networkEnv(network)));
       setCosmosLink({
         stage: 'sent',
         claimToken: res.claimToken,
@@ -1894,71 +1981,172 @@ export function useWalletStore() {
     } finally {
       setBusy(false);
     }
-  }, [session, meta, requestSignature, guardSession, t, flash]);
+  }, [session, meta, network, t, flash]);
 
   /**
-   * Verify the emailed access code. On success, store the linked account's API key sealed
-   * (same as a claim) so receiving/swaps light up. Wrong/expired/locked codes flash and,
-   * for expired/locked, drop back to the 'offer' stage so the user can request a new code.
+   * Step 2: the emailed code. A right code yields a sign-in session; the password then
+   * unlocks the key that signs `finish`, and the account's keys are stored sealed. Wrong
+   * codes flash the attempts left; an expired or locked one drops back to the start.
    */
+  /**
+   * `checkPassword`, reached from above its declaration. It is defined with the signing
+   * gate, far below; naming it in a dependency list up here would read it before it exists.
+   */
+  const checkPasswordRef = useRef<((pwd: string) => Promise<PasswordCheck>) | null>(null);
+
   const submitLinkCode = useCallback(
-    async (code: string) => {
-      if (!session || !meta || !cosmosLink || cosmosLink.stage !== 'sent') return;
+    async (code: string, password = '') => {
+      if (!session || !meta || !metaEntry || !cosmosLink) return;
+      // The canonical account, not this network's view of it: the backup and the sign-in are
+      // filed under it whatever network the device is on.
+      const canonical = metaEntry;
+      const epoch = sessionEpochRef.current;
       setBusy(true);
       try {
-        const res = await verifyCosmosLink({
-          stellarAddress: meta.publicKey,
-          claimToken: cosmosLink.claimToken,
-          code,
-        });
-        if (res.status === 'ready') {
-          const account: CosmosPayAccount = {
-            keys: res.keys,
-            organizationId: res.organizationId,
-          };
-          const list = await saveCosmosPay(meta.id, account, session.vaultKey);
-          setWallets(list);
-          const entry = list.find((w) => w.id === meta.id);
-          if (entry) setMetaState(entry);
-          setCosmosPay(account);
-          setCosmosLink(null);
-          flash(t('cosmospay.linked'), 'ok');
-        } else if (res.status === 'invalid') {
+        const accessKey = await warmPublicKey(networkEnv(network));
+        const res = await signInEmailVerify({ claimToken: cosmosLink.claimToken, code }, accessKey);
+        if (res.status === 'invalid') {
           flash(t('cosmospay.linkInvalid', { n: res.attemptsLeft }), 'err');
-        } else if (res.status === 'locked') {
-          setCosmosLink({ stage: 'offer' });
-          flash(t('cosmospay.linkLocked'), 'err');
-        } else {
-          setCosmosLink({ stage: 'offer' });
-          flash(t('cosmospay.linkExpired'), 'err');
+          return;
         }
+        if (res.status !== 'ready') {
+          setCosmosLink(null);
+          flash(t(res.status === 'locked' ? 'cosmospay.linkLocked' : 'cosmospay.linkExpired'), 'err');
+          return;
+        }
+        // With the app password, this wallet is backed up too — sealed under it, so a
+        // sign-in on the next device brings it back with the others. Without one (a passkey
+        // device runs on a password nobody typed) it connects for keys only, and signing is
+        // gated like every signature.
+        let box: string | undefined;
+        let linkFiled = false;
+        if (password) {
+          const check = await checkPasswordRef.current!(password);
+          if (!check.ok) {
+            flash(check.message, 'err');
+            return;
+          }
+          guardSession(epoch);
+          const vaulted = await openVault(meta.id, session.vaultKey);
+          const recovery = await fileRecovery(vaulted.secret, canonical.publicKey, res.identity.email);
+          box = await sealBackup(
+            { secret: vaulted.secret, mnemonic: vaulted.mnemonic },
+            recovery ? { password, recovery } : password,
+            canonical.publicKey,
+            canonical.rekey?.passphrase,
+          );
+          linkFiled = !!recovery;
+          recovery?.fill(0);
+        } else {
+          const ok = await requestSignature({
+            title: t('cosmospay.enableTitle'),
+            message: t('cosmospay.enableConfirm'),
+          });
+          if (!ok) return;
+        }
+        guardSession(epoch);
+        const done = await finishSignIn({
+          sessionToken: res.sessionToken,
+          email: res.identity.email,
+          secret: await secretOf(session),
+          // The wallet's account, not the key's own address: a recovered wallet signs with
+          // the key that replaced its master.
+          account: canonical.publicKey,
+          network: canonical.rekey ? ledgerName(canonical.rekey.passphrase) : null,
+          ...(box ? { backup: box } : {}),
+          accessKey,
+        });
+        guardSession(epoch);
+        if (done.status !== 'ready') {
+          flash(t('cosmospay.error'), 'err');
+          return;
+        }
+        const account: CosmosPayAccount = { keys: done.keys, organizationId: done.organizationId };
+        let list = await saveCosmosPay(meta.id, account, session.vaultKey);
+        if (box) {
+          list = await updateWalletMeta(meta.id, {
+            cloudBackup: true,
+            ...(linkFiled ? { backupRecoveryEmail: res.identity.email.trim().toLowerCase() } : {}),
+          });
+        }
+        setWallets(list);
+        const entry = list.find((w) => w.id === meta.id);
+        if (entry) setMetaState(entry);
+        setCosmosPay(account);
+        setCosmosLink(null);
+        flash(t(box ? 'cosmospay.linkedBackedUp' : 'cosmospay.linked'), 'ok');
       } catch (e) {
         flash((e as Error).message || t('cosmospay.error'), 'err');
       } finally {
         setBusy(false);
       }
     },
-    [session, meta, cosmosLink, t, flash],
+    [session, meta, metaEntry, cosmosLink, network, requestSignature, guardSession, fileRecovery, t, flash],
   );
 
-  /** Dismiss the link prompt (user changes their mind). */
-  const cancelLink = useCallback(() => setCosmosLink(null), []);
+  /**
+   * The Solana and Monad addresses of the active wallet's recovery phrase, derived once and
+   * kept on its entry. Opens the vault with the session's key — no prompt, nothing leaves the
+   * device — and does nothing for a wallet imported from a bare secret key, which has none.
+   */
+  const ensureChainAddresses = useCallback(async (): Promise<void> => {
+    if (!session || !meta || meta.chainAddresses) return;
+    const epoch = sessionEpochRef.current;
+    try {
+      const vaulted = await openVault(meta.id, session.vaultKey);
+      if (!vaulted.mnemonic) return;
+      const { chainAddressesFromMnemonic } = await chainLib();
+      const chainAddresses = await chainAddressesFromMnemonic(vaulted.mnemonic);
+      guardSession(epoch);
+      const list = await updateWalletMeta(meta.id, { chainAddresses });
+      setWallets(list);
+      const entry = list.find((w) => w.id === meta.id);
+      if (entry) setMetaState(entry);
+    } catch {
+      /* Shown again next time; a derivation failure costs a line on a screen, not a wallet. */
+    }
+  }, [session, meta, guardSession]);
 
-  // Background auto-poll: while a registration is pending (and not yet claimed),
-  // try to claim every 4s for ~1 minute. The user can also click "I've confirmed"
-  // manually (claimReceiving) — we never rely solely on polling.
-  const claimRef = useRef(claimReceiving);
-  claimRef.current = claimReceiving;
+  /**
+   * A wallet recovered before re-keys were recorded carries an account its key may sign for
+   * on only one ledger, and no record of which — so it builds payments on the other one that
+   * fail at submit. Once per unlock, while that is the case: find the one built-in ledger
+   * that lists the key as a signer and record it. Nothing is signed; a node that answers
+   * wrongly can only make the wallet show the wrong address, never spend from one.
+   */
+  const rekeyHealRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!cosmosPayPending || cosmosPay) return;
-    let n = 0;
-    const id = setInterval(() => {
-      n += 1;
-      claimRef.current(true);
-      if (n >= 15) clearInterval(id);
-    }, 4000);
-    return () => clearInterval(id);
-  }, [cosmosPayPending, cosmosPay]);
+    const entry = metaEntry;
+    const live = rawSession;
+    if (!entry || !live || entry.rekey || live.walletId !== entry.id || rekeyHealRef.current === entry.id) return;
+    rekeyHealRef.current = entry.id;
+    const epoch = sessionEpochRef.current;
+    void (async () => {
+      try {
+        const keyAddress = keyAddressOf((await openVault(entry.id, live.vaultKey)).secret);
+        if (keyAddress === entry.publicKey) return;
+        const ledgers = await Promise.all(
+          allNetworks([]).map(async (n) => ({
+            passphrase: n.passphrase,
+            signers: await activeSignersOf(n, entry.publicKey).catch(() => null),
+          })),
+        );
+        const passphrase = ledgerOfRekey(keyAddress, ledgers);
+        if (!passphrase) return;
+        guardSession(epoch);
+        const list = await updateWalletMeta(entry.id, { rekey: { passphrase, keyAddress } });
+        setWallets(list);
+        const next = list.find((w) => w.id === entry.id);
+        if (next) setMetaState((cur) => (cur?.id === entry.id ? next : cur));
+      } catch {
+        // Tried again on the next unlock.
+        rekeyHealRef.current = null;
+      }
+    })();
+  }, [metaEntry, rawSession, guardSession]);
+
+  /** Dismiss the code prompt (user changes their mind). */
+  const cancelLink = useCallback(() => setCosmosLink(null), []);
 
   /**
    * A key for the endpoints that need no account: quotes, envelope builders and
@@ -2152,6 +2340,541 @@ export function useWalletStore() {
       });
     },
     [session, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash],
+  );
+
+  /* ------------------------- cross-chain swaps --------------------- */
+  // One direction, by design: this wallet signs on Stellar only, so it sells from its
+  // Stellar account and receives on its OWN Solana or Monad address — the one its
+  // recovery phrase derives (`meta.chainAddresses`). NEAR Intents settles; mainnet only.
+
+  /** What NEAR Intents can swap. Empty on error: the screen just offers nothing. */
+  const crossChainAssets = useCallback(async (): Promise<CrossChainAsset[]> => {
+    const apiKey = openAccessKey();
+    if (!apiKey) return [];
+    try {
+      return await cpListCrossChainAssets(apiKey);
+    } catch {
+      return [];
+    }
+  }, [openAccessKey]);
+
+  /** The request both the quote and the create send. The recipient is always our own. */
+  const crossChainInput = useCallback(
+    (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset): CrossChainSwapInput | null => {
+      const recipient = meta?.chainAddresses?.[target];
+      if (!session || !recipient) return null;
+      return {
+        originChain: 'stellar',
+        originAsset: from.issuer ? `${from.code}:${from.issuer}` : 'XLM',
+        destinationChain: target,
+        destinationAsset: dest.contract ?? dest.symbol,
+        amount,
+        recipient,
+        refundTo: session.publicKey,
+        slippageBps: CROSS_CHAIN_SLIPPAGE_BPS,
+      };
+    },
+    [session, meta],
+  );
+
+  const quoteCrossChain = useCallback(
+    async (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
+      const apiKey = openAccessKey();
+      const input = crossChainInput(amount, from, target, dest);
+      if (!apiKey || !input) return null;
+      try {
+        return await cpQuoteCrossChainSwap(apiKey, input);
+      } catch (e) {
+        flash((e as Error).message || t('swap.quoteError'), 'err');
+        return null;
+      }
+    },
+    [openAccessKey, crossChainInput, t, flash],
+  );
+
+  /**
+   * Open the swap, then fund it: a Stellar payment of exactly what was typed to the
+   * deposit address NEAR Intents issued, with its memo as a MEMO_TEXT. The wallet builds
+   * and signs that payment itself — nothing from the gateway is signed here.
+   *
+   * What is checked before paying is what the gateway could otherwise redirect: the
+   * output must go to OUR address on the target chain, a refund must come back to OUR
+   * Stellar account, and the amount must be the one on the screen. The deposit address
+   * itself cannot be checked from here — it is NEAR Intents' — which is why the other
+   * three must be.
+   */
+  const submitCrossChain = useCallback(
+    async (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset, quote: CrossChainQuote) => {
+      if (!session) return;
+      const apiKey = openAccessKey();
+      const input = crossChainInput(amount, from, target, dest);
+      if (!apiKey || !input) return;
+      await exclusive.run('swap', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('confirmSig.swapTitle'),
+          message: t('xswap.confirmMsg', { amount, code: from.code, dest: quote.destination.asset, chain: t(`xswap.chain.${target}`) }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const swap = await cpCreateCrossChainSwap(apiKey, input);
+          if (
+            swap.recipient !== input.recipient ||
+            swap.refundTo !== session.publicKey ||
+            swap.originChain !== 'stellar' ||
+            swap.destinationChain !== target ||
+            !sameDecimal(swap.amountIn, amount) ||
+            !swap.depositMemo
+          ) {
+            throw new Error(t('xswap.mismatch'));
+          }
+          guardSession(epoch);
+          const { hash } = await sendPayment({
+            cfg: network,
+            secret: await secretOf(session),
+            account: session.publicKey,
+            destination: swap.depositAddress,
+            amount,
+            memo: swap.depositMemo,
+            memoKind: 'text',
+            asset: toPaymentAsset({ code: from.code, issuer: from.issuer }),
+          });
+          // Best effort: NEAR Intents watches the address anyway; this only starts it sooner.
+          cpReportCrossChainDeposit(apiKey, swap.id, hash).catch(() => {});
+          report(EVENT.swapSubmitted, {
+            category: 'transaction',
+            props: { from: from.code, to: quote.destination.asset, chain: target, amount, received: swap.amountOutEstimated, txHash: hash, crossChain: true },
+          });
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('xswap.success'),
+            msg: t('xswap.successMsg', { chain: t(`xswap.chain.${target}`), seconds: String(swap.timeEstimateSeconds) }),
+            rows: [
+              { label: t('swap.pay'), val: `${amount} ${from.code}` },
+              { label: t('swap.receiveEst'), val: `${swap.amountOutEstimated} ${quote.destination.asset}` },
+              { label: t('xswap.to'), val: `${input.recipient.slice(0, 6)}…${input.recipient.slice(-6)}` },
+            ],
+            hash,
+          });
+          setScreen('success');
+          refresh(true);
+        } catch (e) {
+          reportError(EVENT.swapFailed, e, { from: from.code, to: dest.symbol, amount, crossChain: true });
+          setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: (e as Error).message, rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+        }
+      });
+    },
+    [session, network, openAccessKey, crossChainInput, requestSignature, refresh, exclusive, guardSession, t],
+  );
+
+  /* ------------------ paying from Solana / Monad ------------------- */
+  // The same phrase derives an address on each; the wallet signs there with keys derived
+  // at the moment of signing (`lib/chainKeys.ts`) and checks everything the gateway built
+  // before it does (`lib/chainSwap.ts`). Jupiter / Kuru Flow for a swap on one chain,
+  // NEAR Intents for one that leaves it. Mainnet only.
+
+  /** Our address on `chain`, or null for a wallet imported from a bare Stellar secret. */
+  const chainAddress = useCallback(
+    (chain: CrossChainNetwork): string | null =>
+      chain === 'stellar' ? session?.publicKey ?? null : meta?.chainAddresses?.[chain] ?? null,
+    [session, meta],
+  );
+
+  /** Base-unit balances of the tokens offered on `chain`; null when the node cannot be read. */
+  const chainBalances = useCallback(
+    async (chain: OtherChain): Promise<Record<string, bigint> | null> => {
+      const owner = meta?.chainAddresses?.[chain];
+      if (!owner) return null;
+      try {
+        return await (await chainSwapLib()).chainBalances(chain, owner);
+      } catch {
+        return null;
+      }
+    },
+    [meta],
+  );
+
+  /**
+   * Base-unit balances of the test tokens (`CHAIN_TESTNET_TOKENS`) at this phrase's
+   * address on `chain`'s TEST network — Solana devnet, Monad testnet. Null off a test
+   * network, for a wallet with no phrase, or when the node cannot be read.
+   */
+  const testnetChainBalances = useCallback(
+    async (chain: OtherChain): Promise<Record<string, bigint> | null> => {
+      const owner = meta?.chainAddresses?.[chain];
+      if (!owner || networkEnv(network) !== 'dev') return null;
+      try {
+        return await (await chainSwapLib()).chainBalances(chain, owner, 'testnet');
+      } catch {
+        return null;
+      }
+    },
+    [meta, network],
+  );
+
+  /** Which chain the test-network send screen opens on; set by the Home card. */
+  const [chainSendTarget, setChainSendTarget] = useState<OtherChain>('solana');
+
+  /**
+   * Airdrop 1 devnet SOL to this phrase's Solana address and wait for it to confirm, so
+   * the balance read straight after already includes it. Devnet rate-limits the airdrop
+   * per IP; a refusal says so and points at the web faucet. Nothing is signed.
+   */
+  const airdropTestnetSol = useCallback(async (): Promise<boolean> => {
+    const owner = meta?.chainAddresses?.solana;
+    if (!owner || networkEnv(network) !== 'dev') return false;
+    try {
+      const rpcLib = await chainRpcLib();
+      const sig = await rpcLib.solanaDevnetAirdrop(owner, SOLANA_AIRDROP_LAMPORTS);
+      const deadline = Date.now() + CHAIN_CONFIRM_TIMEOUT_MS;
+      for (;;) {
+        const done = await rpcLib.solanaDevnetConfirmed(sig);
+        if (done === false) throw new Error('airdrop failed on chain');
+        if (done) break;
+        if (Date.now() > deadline) {
+          // Sent but not seen yet: it usually lands; the next balance read will show it.
+          flash(t('testnetChains.airdropPending'), 'info');
+          return true;
+        }
+        await new Promise((r) => setTimeout(r, CHAIN_CONFIRM_POLL_MS));
+      }
+      flash(t('testnetChains.airdropOk'), 'ok');
+      return true;
+    } catch {
+      flash(t('testnetChains.airdropFailed'), 'err');
+      return false;
+    }
+  }, [meta, network, t, flash]);
+
+  /** The signing key of `chain`, checked against the address on screen. */
+  const chainSigner = useCallback(
+    async (chain: OtherChain): Promise<{ owner: string; secret: Uint8Array }> => {
+      const owner = meta?.chainAddresses?.[chain];
+      const missing = () => new Error(t('xswap.noAddress', { chain: t(`xswap.chain.${chain}`) }));
+      if (!session || !owner) throw missing();
+      const { mnemonic } = await openVault(session.walletId, session.vaultKey);
+      if (!mnemonic) throw missing();
+      return { owner, secret: await (await chainKeysLib()).chainSecret(mnemonic, chain, owner) };
+    },
+    [session, meta, t],
+  );
+
+  /** A refusal from `lib/chainSwap.ts` as a sentence; anything else as it came. */
+  const chainSwapMessage = useCallback(
+    (e: unknown): string => {
+      const err = e as { name?: string; code?: string; message?: string };
+      return err?.name === 'ChainSwapRefused' ? t(`xswap.refused.${err.code}`) : err?.message || t('swap.failed');
+    },
+    [t],
+  );
+
+  /**
+   * Send `amount` of `token` on `chain`'s TEST network to `to`, signed with this phrase's
+   * key there. Test networks only: mainnet Solana / Monad money moves through the swap
+   * screen, behind the checks `lib/chainSwap.ts` runs on what the gateway built.
+   */
+  const submitTestnetSend = useCallback(
+    async (chain: OtherChain, token: ChainToken, to: string, amount: string) => {
+      const units = toMinorUnitsBig(amount, token.decimals);
+      const destination = to.trim();
+      if (!session || !units || units <= 0n || networkEnv(network) !== 'dev') return;
+      const net = t(`testnetChains.net.${chain}`);
+      const short = `${destination.slice(0, 6)}…${destination.slice(-6)}`;
+      await exclusive.run('send', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('chainSend.confirmTitle'),
+          message: t('chainSend.confirmMsg', { amount, code: token.symbol, net, to: short }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const lib = await chainSwapLib();
+          if (!lib.isChainAddress(chain, destination)) throw new lib.ChainSwapRefused('address');
+          const { owner, secret } = await chainSigner(chain);
+          guardSession(epoch);
+          let hash: string;
+          try {
+            hash = await lib.sendTransfer({
+              chain,
+              net: 'testnet',
+              secret,
+              owner,
+              asset: token.asset,
+              decimals: token.decimals,
+              to: destination,
+              amount: units,
+            });
+          } finally {
+            secret.fill(0);
+          }
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('chainSend.success'),
+            msg: t('chainSend.successMsg', { net }),
+            rows: [
+              { label: t('chainSend.amount'), val: `${amount} ${token.symbol}` },
+              { label: t('chainSend.to'), val: short },
+            ],
+            hash,
+            explorer: CHAIN_TESTNET_EXPLORER_TX[chain](hash),
+          });
+          setScreen('success');
+        } catch (e) {
+          setSuccessInfo({ kind: 'err', title: t('chainSend.failed'), msg: chainSwapMessage(e), rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+        }
+      });
+    },
+    [session, network, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, t],
+  );
+
+  const quoteChainSwap = useCallback(
+    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken): Promise<SwapQuote | null> => {
+      const apiKey = openAccessKey();
+      if (!apiKey) return null;
+      try {
+        return await cpQuoteSwap(apiKey, {
+          chain,
+          amount,
+          sourceAssetCode: from.asset,
+          destAssetCode: to.asset,
+          slippageBps: CHAIN_SWAP_SLIPPAGE_BPS,
+        });
+      } catch (e) {
+        flash((e as Error).message || t('swap.quoteError'), 'err');
+        return null;
+      }
+    },
+    [openAccessKey, t, flash],
+  );
+
+  /**
+   * A swap on Solana (Jupiter) or Monad (Kuru Flow): the gateway builds it, the wallet
+   * checks and signs it, the gateway relays it. The bounds are the confirmed card's — the
+   * amount typed and the quote's minimum — never the create response's.
+   */
+  const submitChainSwap = useCallback(
+    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, quote: SwapQuote) => {
+      const apiKey = openAccessKey();
+      const owner = meta?.chainAddresses?.[chain];
+      const units = toMinorUnitsBig(amount, from.decimals);
+      const minimum = toMinorUnitsBig(quote.destination.minimum, to.decimals);
+      if (!session || !apiKey || !owner || !units || minimum === null) return;
+      await exclusive.run('swap', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('confirmSig.swapTitle'),
+          message: t('xswap.chainConfirmMsg', { amount, code: from.symbol, dest: to.symbol, chain: t(`xswap.chain.${chain}`) }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const same = (a: string, b: string) => (chain === 'monad' ? a.toLowerCase() === b.toLowerCase() : a === b);
+          const swap = await cpCreateChainSwap(apiKey, {
+            chain,
+            source: owner,
+            amount,
+            sourceAssetCode: from.asset,
+            destAssetCode: to.asset,
+            slippageBps: CHAIN_SWAP_SLIPPAGE_BPS,
+          });
+          if (
+            swap.chain !== chain ||
+            !same(swap.source, owner) ||
+            !same(swap.sendAsset, from.asset) ||
+            !same(swap.destAsset, to.asset) ||
+            !sameDecimal(swap.sendAmount, amount)
+          ) {
+            throw new Error(t('xswap.mismatch'));
+          }
+          const lib = await chainSwapLib();
+          const { secret } = await chainSigner(chain);
+          guardSession(epoch);
+          let signed: string;
+          try {
+            signed =
+              chain === 'solana'
+                ? await lib.signSolanaSwap({ wire: swap.transaction.data, secret, owner, sell: from.asset, buy: to.asset, amount: units, minimum })
+                : await lib.signMonadSwap({
+                    transaction: {
+                      to: swap.transaction.to ?? '',
+                      data: swap.transaction.data,
+                      value: swap.transaction.value ?? '0',
+                      chainId: swap.transaction.chainId ?? 0,
+                    },
+                    approval: swap.approval,
+                    secret,
+                    owner,
+                    sell: from.asset,
+                    amount: units,
+                  });
+          } finally {
+            secret.fill(0);
+          }
+          guardSession(epoch);
+          const res = await cpSubmitChainSwap(apiKey, swap.id, signed);
+          report(EVENT.swapSubmitted, {
+            category: 'transaction',
+            props: { from: from.symbol, to: to.symbol, chain, amount, received: swap.destEstimated, txHash: res.txHash },
+          });
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('xswap.chainSuccess'),
+            msg: t('xswap.chainSuccessMsg', { chain: t(`xswap.chain.${chain}`) }),
+            rows: [
+              { label: t('swap.pay'), val: `${amount} ${from.symbol}` },
+              { label: t('swap.receiveEst'), val: `${swap.destEstimated} ${to.symbol}` },
+            ],
+            hash: res.txHash,
+            explorer: CHAIN_EXPLORER_TX[chain](res.txHash),
+          });
+          setScreen('success');
+        } catch (e) {
+          reportError(EVENT.swapFailed, e, { from: from.symbol, to: to.symbol, amount, chain });
+          setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: chainSwapMessage(e), rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+        }
+      });
+    },
+    [session, meta, openAccessKey, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, t],
+  );
+
+  /** The request a cross-chain swap from Solana / Monad sends: both ends are our own. */
+  const crossChainFromInput = useCallback(
+    (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset): CrossChainSwapInput | null => {
+      const refundTo = chainAddress(origin);
+      const recipient = chainAddress(dest.chain);
+      if (!refundTo || !recipient || dest.chain === origin) return null;
+      return {
+        originChain: origin,
+        originAsset: from.asset === 'native' ? from.symbol : from.asset,
+        destinationChain: dest.chain,
+        destinationAsset:
+          dest.chain === 'stellar' && dest.contract ? `${dest.symbol}:${dest.contract}` : dest.contract ?? dest.symbol,
+        amount,
+        recipient,
+        refundTo,
+        slippageBps: CROSS_CHAIN_SLIPPAGE_BPS,
+      };
+    },
+    [chainAddress],
+  );
+
+  const quoteCrossChainFrom = useCallback(
+    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
+      const apiKey = openAccessKey();
+      const input = crossChainFromInput(origin, amount, from, dest);
+      if (!apiKey || !input) return null;
+      try {
+        return await cpQuoteCrossChainSwap(apiKey, input);
+      } catch (e) {
+        flash((e as Error).message || t('swap.quoteError'), 'err');
+        return null;
+      }
+    },
+    [openAccessKey, crossChainFromInput, t, flash],
+  );
+
+  /**
+   * Open a cross-chain swap from Solana / Monad and fund it with a transfer the wallet
+   * builds itself. Checked first, as from Stellar: the output goes to OUR address, a
+   * refund comes back to OUR origin address, the amount is the one on screen.
+   */
+  const submitCrossChainFrom = useCallback(
+    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset, quote: CrossChainQuote) => {
+      const apiKey = openAccessKey();
+      const input = crossChainFromInput(origin, amount, from, dest);
+      const units = toMinorUnitsBig(amount, from.decimals);
+      if (!session || !apiKey || !input || !units) return;
+      await exclusive.run('swap', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('confirmSig.swapTitle'),
+          message: t('xswap.confirmMsg', { amount, code: from.symbol, dest: quote.destination.asset, chain: t(`xswap.chain.${dest.chain}`) }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const swap = await cpCreateCrossChainSwap(apiKey, input);
+          const same = (a: string, b: string) => (origin === 'monad' ? a.toLowerCase() === b.toLowerCase() : a === b);
+          if (
+            swap.recipient !== input.recipient ||
+            !same(swap.refundTo, input.refundTo) ||
+            swap.originChain !== origin ||
+            swap.destinationChain !== dest.chain ||
+            !sameDecimal(swap.amountIn, amount)
+          ) {
+            throw new Error(t('xswap.mismatch'));
+          }
+          const lib = await chainSwapLib();
+          const { owner, secret } = await chainSigner(origin);
+          guardSession(epoch);
+          let hash: string;
+          try {
+            hash = await lib.sendDeposit({
+              chain: origin,
+              secret,
+              owner,
+              asset: from.asset,
+              decimals: from.decimals,
+              to: swap.depositAddress,
+              amount: units,
+            });
+          } finally {
+            secret.fill(0);
+          }
+          // Best effort: NEAR Intents watches the address anyway; this only starts it sooner.
+          cpReportCrossChainDeposit(apiKey, swap.id, hash).catch(() => {});
+          report(EVENT.swapSubmitted, {
+            category: 'transaction',
+            props: {
+              from: from.symbol,
+              to: quote.destination.asset,
+              origin,
+              chain: dest.chain,
+              amount,
+              received: swap.amountOutEstimated,
+              txHash: hash,
+              crossChain: true,
+            },
+          });
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('xswap.success'),
+            msg: t('xswap.successFromMsg', {
+              origin: t(`xswap.chain.${origin}`),
+              chain: t(`xswap.chain.${dest.chain}`),
+              seconds: String(swap.timeEstimateSeconds),
+            }),
+            rows: [
+              { label: t('swap.pay'), val: `${amount} ${from.symbol}` },
+              { label: t('swap.receiveEst'), val: `${swap.amountOutEstimated} ${quote.destination.asset}` },
+              { label: t('xswap.to'), val: `${input.recipient.slice(0, 6)}…${input.recipient.slice(-6)}` },
+            ],
+            hash,
+            explorer: CHAIN_EXPLORER_TX[origin](hash),
+          });
+          setScreen('success');
+          if (dest.chain === 'stellar') refresh(true);
+        } catch (e) {
+          reportError(EVENT.swapFailed, e, { from: from.symbol, to: dest.symbol, amount, origin, crossChain: true });
+          setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: chainSwapMessage(e), rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+        }
+      });
+    },
+    [session, openAccessKey, crossChainFromInput, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, refresh, t],
   );
 
   /* ------------------------- liquidity pools ---------------------- */
@@ -2463,7 +3186,8 @@ export function useWalletStore() {
    * `code` is the one an email sign-in just sent, and passing it chooses the SPONSORED
    * variant: the operator pays the two signer entries' reserve, which is the only way an
    * account with no spare lumens gets recovery at all. Without it the account pays its
-   * own, and needs no sign-in at all. Both end at the same guard with the same template —
+   * own, needs no sign-in at all, and is stopped before either server hears of the account
+   * when it lacks `RECOVERY_MIN_SPENDABLE_XLM` free. Both end at the same guard with the same template —
    * the sponsorship is a funding arrangement, not a second way of changing an account.
    *
    * The token that the sponsored variant spends never leaves this function, which is why
@@ -2496,6 +3220,15 @@ export function useWalletStore() {
             flash(t('recovery.error.notFunded'), 'err');
             return false;
           }
+          // On the self-paid path the account finds out it cannot pay BEFORE either server
+          // is told about it. A fresh read, not the cached balance the screen showed. The
+          // sponsored path needs nothing free: the operator pays the reserve.
+          const missing = opts.code ? 0 : recoveryShortfall(await getAccountState(network, address));
+          guardSession(epoch);
+          if (missing > 0) {
+            flash(t('recovery.needXlm', { amount: missing }), 'err');
+            return false;
+          }
 
           // Said plainly before anything happens, because this is the bargain: whoever
           // can prove that inbox — to BOTH servers — can put a new key on this account.
@@ -2507,6 +3240,10 @@ export function useWalletStore() {
           guardSession(epoch);
 
           const secret = await secretOf(session);
+          // Before anything is registered: on a recovered account the key that signs is
+          // not the master, and the setup must then leave the master at 0.
+          const deviceKey = await deviceKeyFor(network, address, secret);
+          guardSession(epoch);
           const signers = await registerForRecovery(network, servers, address, secret, email);
           guardSession(epoch);
 
@@ -2521,7 +3258,13 @@ export function useWalletStore() {
             if (!ready) return false; // the slice already said why
             const built = await recoverySetupSponsored(
               ready.sessionToken,
-              { stellarAddress: address, signers, ...signedRecoverySetup(secret, address, signers) },
+              {
+                stellarAddress: address,
+                signers,
+                ...signedRecoverySetup(secret, address, signers),
+                // The ledger to sponsor on: this one, never the operator's default by accident.
+                ...(ledgerName(network.passphrase) ? { network: ledgerName(network.passphrase)! } : {}),
+              },
               await warmPublicKey(networkEnv(network)),
             );
             guardSession(epoch);
@@ -2531,14 +3274,16 @@ export function useWalletStore() {
             // built by the operator, on the sequence it reads for itself.
             const sequence = await sequenceOf(network, address);
             guardSession(epoch);
-            xdr = buildRecoverySetup({ account: address, signers, sequence, networkPassphrase: network.passphrase });
+            xdr = buildRecoverySetup({ account: address, deviceKey, signers, sequence, networkPassphrase: network.passphrase });
           }
 
           // The template, on both variants — including the one this wallet built itself.
           // A builder that checked only the other side's envelope would be trusting its
-          // own code more than the thing that has to be right.
+          // own code more than the thing that has to be right. On a recovered account it
+          // refuses the operator's envelope, which raises the retired master to 10.
           assertSafeToSign(network, xdr, {
             signer: address,
+            deviceKey,
             intent: 'recovery',
             // Nothing leaves. Stating the policy is still required, and this is the
             // honest answer rather than the empty one.
@@ -2616,6 +3361,10 @@ export function useWalletStore() {
         const servers = await loadRecoveryServers(network);
         guardSession(epoch);
         const secret = await secretOf(session);
+        // Asked BEFORE the servers are told to forget the account, so a refusal here leaves
+        // recovery exactly as it was.
+        const deviceKey = await deviceKeyFor(network, address, secret);
+        guardSession(epoch);
         const signers = await signersToRemove(network, servers, address, secret);
         guardSession(epoch);
         if (!signers.length) {
@@ -2625,7 +3374,7 @@ export function useWalletStore() {
 
         const sequence = await sequenceOf(network, address);
         guardSession(epoch);
-        const xdr = buildRecoveryRemoval({ account: address, signers, sequence, networkPassphrase: network.passphrase });
+        const xdr = buildRecoveryRemoval({ account: address, deviceKey, signers, sequence, networkPassphrase: network.passphrase });
         const signed = await signEnvelope(xdr);
         await stellarSubmitXdr(network, signed);
 
@@ -2739,11 +3488,41 @@ export function useWalletStore() {
   /** The two emailed codes a recovery is waiting on, when that is the route it took. */
   const [recoveryCodes, setRecoveryCodes] = useState<{ key: string; email: string; claims: string[] } | null>(null);
 
+  /**
+   * The address whose WHOLE backup the two servers' halves open, once the inbox is proven —
+   * the email door (`lib/backupRecovery.ts`). Preferred over SEP-30 on the screen: it keeps
+   * the seed, and with it the address on every chain. The key itself stays in a ref, keyed
+   * by the sign-in, and is zeroed once used.
+   */
+  const [backupRecoverable, setBackupRecoverable] = useState<string | null>(null);
+  const backupRecoveryKeyRef = useRef<{ key: string; value: Uint8Array } | null>(null);
+
   const listRecoverable = useCallback(
     async (draft: SignInDraft, tokens: string[]) => {
       const servers = await loadRecoveryServers(network);
       recoveryProofRef.current = { key: draft.ready.sessionToken, tokens, at: Date.now() };
-      setRecoverable(await recoverableAccounts(servers, tokens));
+      const backup = draft.ready.backup;
+      let backupKey: Uint8Array | null = null;
+      if (backup && !draft.replace && backupDoorsOf(backup.box)?.recovery) {
+        try {
+          backupKey = await takeBackupRecovery(servers, tokens, backup.stellarAddress);
+        } catch (e) {
+          reportError(EVENT.signInFailed, e, { purpose: draft.purpose, step: 'backup-recovery' });
+        }
+      }
+      if (backupKey) {
+        backupRecoveryKeyRef.current?.value.fill(0);
+        backupRecoveryKeyRef.current = { key: draft.ready.sessionToken, value: backupKey };
+        setBackupRecoverable(backup!.stellarAddress);
+      }
+      // SEP-30 is the fallback here, so a failure to list it must not hide the backup.
+      let accounts: RecoverableAccount[] = [];
+      try {
+        accounts = await recoverableAccounts(servers, tokens);
+      } catch (e) {
+        if (!backupKey) throw e;
+      }
+      setRecoverable(accounts);
     },
     [network],
   );
@@ -2879,10 +3658,15 @@ export function useWalletStore() {
           const mnemonic = createMnemonic();
           const fresh = await accountFromMnemonic(mnemonic);
 
+          // Read once, for both the sequence and the keys to retire: a second recovery's
+          // lost key is the previous replacement, not the master.
+          const ledger = await ledgerAccountOf(network, address);
+          if (!ledger) throw new Error(t('recovery.error.notFunded'));
           const sequence = await sequenceOf(network, address);
           const xdr = buildKeyReplacement({
             account: address,
             newKey: fresh.publicKey,
+            revoke: keysToRevoke(address, ledger, row.signers, fresh.publicKey),
             sequence,
             networkPassphrase: network.passphrase,
           });
@@ -2891,35 +3675,62 @@ export function useWalletStore() {
 
           // Only now is the key real. Everything below is local bookkeeping over an
           // account this device can already sign for.
+          // The re-key happened on THIS ledger only. Recorded on the entry and in the box, so
+          // every other network uses the new key's own address instead (`addressOn`).
+          const rekey: Rekey = { passphrase: network.passphrase, keyAddress: fresh.publicKey };
           const vk = await deriveVaultKey(password, newKdfParams());
           setTelemetryEnabled(consents.metricsOptIn);
-          const box = await sealBackup({ secret: fresh.secret, mnemonic }, password);
-          const res = await finishSignIn({
-            sessionToken: draft.ready.sessionToken,
-            email: draft.ready.identity.email,
-            secret: fresh.secret,
-            // The ACCOUNT, not the new key's own address: what was recovered is the
-            // account, and the server accepts the signature because that key is now one
-            // of its signers — see the community server's account-signers module, which is
-            // in a separate repository and so is named rather than linked.
-            account: address,
-            backup: box,
-            replaceBackup: true,
-            accessKey: await warmPublicKey(networkEnv(network)),
-          });
+          // Sealed WITH the account: the new key's own address is not the account any more,
+          // and `openBackup` on the next device checks the box against the account address
+          // the server hands back. Without it, the backup of a recovered wallet never opens.
+          const recovery = await fileRecovery(fresh.secret, address, draft.ready.identity.email);
+          const box = await sealBackup(
+            { secret: fresh.secret, mnemonic },
+            recovery ? { password, recovery } : password,
+            address,
+            rekey.passphrase,
+          );
+          recovery?.fill(0);
+          const accessKey = await warmPublicKey(networkEnv(network));
+          // Retried, unlike every other call that follows a signature, because the key is
+          // ALREADY on the ledger and exists nowhere but in this closure: a dropped
+          // connection here would throw away the only copy of a key that now controls the
+          // account. Only failures that never got an HTTP answer are retried — a refusal
+          // is the server's decision and repeating it changes nothing. A repeat cannot
+          // duplicate anything either: it replaces the same account's backup with the same
+          // box.
+          const res = await retryOnNetworkError(() =>
+            finishSignIn({
+              sessionToken: draft.ready.sessionToken,
+              email: draft.ready.identity.email,
+              secret: fresh.secret,
+              // The ACCOUNT, not the new key's own address: what was recovered is the
+              // account, and the server accepts the signature because that key is now one
+              // of its signers — see the community server's account-signers module, which
+              // is in a separate repository and so is named rather than linked.
+              account: address,
+              // ...on THIS ledger, the one the re-key just landed on.
+              network: ledgerName(network.passphrase),
+              backup: box,
+              replaceBackup: true,
+              accessKey,
+            }),
+          );
           if (res.status === 'backup_conflict') {
             flash(t('backup.conflict'), 'err');
             return false;
           }
 
-          await landSignedInWallet({
+          const landed = await landSignedInWallet({
             secret: { secret: fresh.secret, mnemonic },
             publicKey: address,
+            rekey,
             ready: draft.ready,
             account: { keys: res.keys, organizationId: res.organizationId },
             vk,
             consents,
           });
+          if (landed && recovery) await noteBackupRecovery(landed.id, draft.ready.identity.email);
           setSignInDraft(null);
           setRecoverable(null);
           recoveryProofRef.current = null;
@@ -2934,7 +3745,7 @@ export function useWalletStore() {
       });
       return outcome.ran ? outcome.value : false;
     },
-    [signInDraft, recoverable, network, exclusive, landSignedInWallet, draftMetricsOptIn, draftPromoOptIn, flash, t],
+    [signInDraft, recoverable, network, exclusive, landSignedInWallet, fileRecovery, noteBackupRecovery, draftMetricsOptIn, draftPromoOptIn, flash, t],
   );
 
   /** Browse on-chain liquidity pools (Horizon proxy). Returns [] on error / not enabled. */
@@ -3229,7 +4040,6 @@ export function useWalletStore() {
     const entry = list.find((w) => w.id === meta.id);
     if (entry) setMetaState(entry);
     setCosmosPay(null);
-    setCosmosPayPending(null);
     setCosmosLink(null);
     flash(t('cosmospay.unlinked'), 'ok');
   }, [meta, t, flash]);
@@ -3543,6 +4353,7 @@ export function useWalletStore() {
     },
     [claimAttempt, t],
   );
+  checkPasswordRef.current = checkPassword;
 
   /**
    * The same check, answered by the phone's lock screen instead of a keyboard.
@@ -3936,16 +4747,44 @@ export function useWalletStore() {
         let committed = false;
         try {
           const live = sessionRef.current;
-          const backups: { name: string; secret: string; account: string; box: string }[] = [];
+          // A wallet whose backup has an email-recovery door gets a second box with a NEW
+          // one beside the plain box: its halves are filed only after the commit, and if
+          // that fails the plain box goes up instead — never a door the servers cannot open.
+          const backups: {
+            id: string;
+            name: string;
+            secret: string;
+            account: string;
+            box: string;
+            recovery: { email: string; key: Uint8Array; box: string } | null;
+            /** The ledger a re-keyed `account` lists this key on — see `lib/accountAddress.ts`. */
+            ledger: LedgerName | null;
+          }[] = [];
           if (live) {
             for (const w of wallets) {
               if (!w.cloudBackup) continue;
               const secret = await openVault(w.id, live.vaultKey);
+              const recoveryKey = w.backupRecoveryEmail ? newRecoveryKey() : null;
               backups.push({
+                id: w.id,
+                recovery:
+                  recoveryKey && w.backupRecoveryEmail
+                    ? {
+                        email: w.backupRecoveryEmail,
+                        key: recoveryKey,
+                        box: await sealBackup(
+                          secret,
+                          { ...(typeof input.doors === 'string' ? { password: input.doors } : input.doors), recovery: recoveryKey },
+                          w.publicKey,
+                          w.rekey?.passphrase,
+                        ),
+                      }
+                    : null,
                 name: w.name,
                 secret: secret.secret,
                 account: w.publicKey,
-                box: await sealBackup(secret, input.doors, w.publicKey),
+                ledger: w.rekey ? ledgerName(w.rekey.passphrase) : null,
+                box: await sealBackup(secret, input.doors, w.publicKey, w.rekey?.passphrase),
               });
             }
           }
@@ -3970,10 +4809,27 @@ export function useWalletStore() {
           const stale: string[] = [];
           for (const b of backups) {
             try {
+              let box = b.box;
+              if (b.recovery) {
+                let filed = false;
+                try {
+                  if (await recoveryReachable(network)) {
+                    await fileBackupRecovery(network, b.secret, b.account, b.recovery.email, b.recovery.key);
+                    filed = true;
+                  }
+                } catch (e) {
+                  reportError(EVENT.backupUpdateFailed, e);
+                } finally {
+                  b.recovery.key.fill(0);
+                }
+                if (filed) box = b.recovery.box;
+                else setWallets(await updateWalletMeta(b.id, { backupRecoveryEmail: undefined }));
+              }
               await storeBackupBox({
                 secret: b.secret,
-                box: b.box,
+                box,
                 account: b.account,
+                network: b.ledger,
                 accessKey: await warmPublicKey(networkEnv(network)),
               });
             } catch (e) {
@@ -4116,6 +4972,85 @@ export function useWalletStore() {
       });
     },
     [session, rekeyDevice, flashPasskey, flash, t],
+  );
+
+  /**
+   * Give THIS wallet's backup an email-recovery door, from Settings — for a wallet backed up
+   * before the door existed, which gets one otherwise only at its next restore.
+   *
+   * The box is re-sealed behind this device's doors — the password (or, on a passkey device,
+   * the password its passkey holds plus that passkey) and the new recovery door — exactly as
+   * a password change re-seals it. The halves are filed first and the box uploaded after, so
+   * a box never names a key the servers do not hold.
+   */
+  const enableBackupRecovery = useCallback(
+    async (password?: string): Promise<boolean> => {
+      const live = sessionRef.current;
+      // The canonical account: a backup is filed under it whatever network is active.
+      const canonical = metaEntry;
+      if (!live || !canonical?.cloudBackup) return false;
+      const email = canonical.email.trim().toLowerCase();
+      if (!email) {
+        flash(t('recovery.error.noEmail'), 'err');
+        return false;
+      }
+      let doors: BackupDoors;
+      let secrets: PasskeySecrets | null = null;
+      if (passkey.passkeyUnlock) {
+        try {
+          const opened = await openDeviceWithPasskey();
+          secrets = opened.secrets;
+          doors = { password: opened.password, passkey: { id: secrets.credentialId, secret: secrets.backup } };
+        } catch (e) {
+          flashPasskey(e);
+          return false;
+        }
+      } else {
+        const check = await checkPassword(password ?? '');
+        if (!check.ok) {
+          flash(check.message, 'err');
+          return false;
+        }
+        doors = { password: password as string };
+      }
+      setBusy(true);
+      try {
+        if (!(await recoveryReachable(network))) {
+          flash(t('recovery.error.unreachable'), 'err');
+          return false;
+        }
+        const vaulted = await openVault(canonical.id, live.vaultKey);
+        const recovery = await fileRecovery(vaulted.secret, canonical.publicKey, email);
+        if (!recovery) {
+          flash(t('backupRecovery.failed'), 'err');
+          return false;
+        }
+        let box: string;
+        try {
+          box = await sealBackup(vaulted, { ...doors, recovery }, canonical.publicKey, canonical.rekey?.passphrase);
+        } finally {
+          recovery.fill(0);
+        }
+        await storeBackupBox({
+          secret: vaulted.secret,
+          box,
+          account: canonical.publicKey,
+          network: canonical.rekey ? ledgerName(canonical.rekey.passphrase) : null,
+          accessKey: await warmPublicKey(networkEnv(network)),
+        });
+        await noteBackupRecovery(canonical.id, email);
+        flash(t('backupRecovery.enabled', { email }), 'ok');
+        return true;
+      } catch (e) {
+        reportError(EVENT.backupUpdateFailed, e);
+        flash(errLine(e), 'err');
+        return false;
+      } finally {
+        if (secrets) wipePasskeySecrets(secrets);
+        setBusy(false);
+      }
+    },
+    [metaEntry, passkey, network, checkPassword, fileRecovery, noteBackupRecovery, flashPasskey, errLine, flash, t],
   );
 
   /** Open the liquidity deposit form, optionally preset with a pair (e.g. from the explorer). */
@@ -4331,7 +5266,7 @@ export function useWalletStore() {
             flash(blocked, 'err');
             return false;
           }
-          let secret: VaultSecret;
+          let secret: Awaited<ReturnType<typeof openBackup>>;
           try {
             secret = await openBackup(backup.box, password, backup.stellarAddress);
           } catch (e) {
@@ -4354,15 +5289,46 @@ export function useWalletStore() {
               });
               door = { secrets, devicePassword: newDevicePassword() };
               upgradedBox = await sealBackup(
-                secret,
+                { secret: secret.secret, mnemonic: secret.mnemonic },
                 { password, passkey: { id: secrets.credentialId, secret: secrets.backup } },
                 backup.stellarAddress,
+                secret.rekeyedOn,
               );
             } catch (e) {
               // Dismissed or unsupported: finish with the password. Only a real failure says so.
               flashPasskey(e);
               if (door) wipePasskeySecrets(door.secrets);
               door = null;
+            }
+          }
+
+          // A box from before Argon2id (v2/v3, PBKDF2) is re-sealed as v4 on the way through,
+          // with the password that just opened it — in the same request, like the passkey
+          // upgrade. Never a box with a passkey door: this password cannot reproduce it.
+          if (!upgradedBox && backupNeedsUpgrade(backup.box)) {
+            upgradedBox = await sealBackup(
+              { secret: secret.secret, mnemonic: secret.mnemonic },
+              password,
+              backup.stellarAddress,
+              secret.rekeyedOn,
+            );
+          }
+
+          // An email-recovery door for a backup that has none, on the SAME data key — so a
+          // passkey door another device filed survives. Best effort, like the upgrades above:
+          // a box this cannot extend (a v3 one with a passkey door) keeps the doors it has.
+          let recoveryFiled = false;
+          if (!backupDoors(upgradedBox ?? backup.box).recovery) {
+            const recovery = await fileRecovery(secret.secret, backup.stellarAddress, draft.ready.identity.email);
+            if (recovery) {
+              try {
+                upgradedBox = await addRecoveryDoor(upgradedBox ?? backup.box, password, recovery);
+                recoveryFiled = true;
+              } catch (e) {
+                reportError(EVENT.backupUpdateFailed, e);
+              } finally {
+                recovery.fill(0);
+              }
             }
           }
 
@@ -4374,6 +5340,7 @@ export function useWalletStore() {
             // key's own — see `finishSignIn`. For every other wallet the two are equal and
             // passing it changes nothing.
             account: backup.stellarAddress,
+            network: secret.rekeyedOn ? ledgerName(secret.rekeyedOn) : null,
             ...(upgradedBox ? { backup: upgradedBox } : {}),
             accessKey: await warmPublicKey(networkEnv(network)),
           });
@@ -4394,13 +5361,23 @@ export function useWalletStore() {
             // `publicKey`, just below), not inside the sealed secret this device writes.
             secret: { secret: secret.secret, mnemonic: secret.mnemonic },
             publicKey: backup.stellarAddress,
+            rekey: rekeyOfBackup(secret),
             ready: draft.ready,
             account: { keys: res.keys, organizationId: res.organizationId },
             vk,
             consents,
             epoch,
           });
+          if (entry && recoveryFiled) await noteBackupRecovery(entry.id, draft.ready.identity.email);
           report(EVENT.backupRestored, { category: 'lifecycle', props: { purpose: draft.purpose, passkey: !!door } });
+          await restoreOtherBackups({
+            ready: draft.ready,
+            key: password,
+            vk,
+            primary: entry,
+            account: { keys: res.keys, organizationId: res.organizationId },
+            consents,
+          });
         } else {
           // A NEW wallet on a device that already has a password: that password seals the
           // backup too, so the person keeps one. Proven first — a typo here would lock them
@@ -4443,6 +5420,8 @@ export function useWalletStore() {
       landSignedInWallet,
       createFromSignIn,
       settleSignIn,
+      fileRecovery,
+      noteBackupRecovery,
       flashPasskey,
       passkey,
       errLine,
@@ -4467,6 +5446,77 @@ export function useWalletStore() {
    * No attempt ladder on either: nothing is typed, and a passkey that does not match is a
    * `BackupPasskeyError` or a stale door, never a guess.
    */
+  /**
+   * Restore the signed-in account's backup with the key the two recovery servers returned,
+   * and give it a NEW password — the whole point: the old one is forgotten. The seed comes
+   * back as it was, so the address (on every chain) is the same one; nothing changes on the
+   * ledger. The recovery door stays: its halves still open it next time.
+   */
+  const recoverBackup = useCallback(
+    async (password: string): Promise<boolean> => {
+      const draft = signInDraft;
+      const backup = draft?.ready.backup;
+      const held = backupRecoveryKeyRef.current;
+      if (!draft || !backup || !held || held.key !== draft.ready.sessionToken) return false;
+      const live = sessionRef.current;
+      if (draft.purpose !== 'onboarding' && !live) return false;
+      if (!appPasswordOk(password)) {
+        flash(t('pwd.weak', { n: MIN_APP_PWD_LEN }), 'err');
+        return false;
+      }
+      const epoch = draft.purpose === 'onboarding' ? undefined : sessionEpochRef.current;
+      const consents = signInConsents(draft);
+
+      const outcome = await exclusive.run('recovery', async () => {
+        setBusy(true);
+        try {
+          const secret = await openBackup(backup.box, { recovery: held.value }, backup.stellarAddress);
+          const box = await resetBackupPassword(backup.box, held.value, password);
+          const res = await finishSignIn({
+            sessionToken: draft.ready.sessionToken,
+            email: draft.ready.identity.email,
+            secret: secret.secret,
+            account: backup.stellarAddress,
+            network: secret.rekeyedOn ? ledgerName(secret.rekeyedOn) : null,
+            backup: box,
+            accessKey: await warmPublicKey(networkEnv(network)),
+          });
+          if (res.status !== 'ready') throw new Error(t('backup.conflict'));
+          // On a first run the new password is this device's too, exactly as a restore does.
+          const vk = draft.purpose === 'onboarding' ? await deriveVaultKey(password, newKdfParams()) : live!.vaultKey;
+          if (draft.purpose === 'onboarding') setTelemetryEnabled(consents.metricsOptIn);
+          const entry = await landSignedInWallet({
+            secret: { secret: secret.secret, mnemonic: secret.mnemonic },
+            publicKey: backup.stellarAddress,
+            rekey: rekeyOfBackup(secret),
+            ready: draft.ready,
+            account: { keys: res.keys, organizationId: res.organizationId },
+            vk,
+            consents,
+            epoch,
+          });
+          report(EVENT.backupRestored, { category: 'lifecycle', props: { purpose: draft.purpose, emailRecovery: true } });
+          held.value.fill(0);
+          backupRecoveryKeyRef.current = null;
+          setBackupRecoverable(null);
+          setRecoverable(null);
+          recoveryProofRef.current = null;
+          await settleSignIn(draft, entry);
+          flash(t('backup.recoveredByEmail'), 'ok');
+          return true;
+        } catch (e) {
+          reportError(EVENT.signInFailed, e, { purpose: draft.purpose, step: 'backup-recovery' });
+          flash(errLine(e), 'err');
+          return false;
+        } finally {
+          setBusy(false);
+        }
+      });
+      return outcome.ran ? outcome.value : false;
+    },
+    [signInDraft, network, exclusive, signInConsents, landSignedInWallet, settleSignIn, errLine, flash, t],
+  );
+
   const completeSignInWithPasskey = useCallback(async (): Promise<boolean> => {
     const draft = signInDraft;
     if (!draft) return false;
@@ -4500,11 +5550,31 @@ export function useWalletStore() {
           { passkey: { id: secrets.credentialId, secret: secrets.backup } },
           backup.stellarAddress,
         );
+        // The same email-recovery door the password restore adds, opened with this passkey.
+        let passkeyBox: string | undefined;
+        if (!backupDoors(backup.box).recovery) {
+          const recovery = await fileRecovery(secret.secret, backup.stellarAddress, draft.ready.identity.email);
+          if (recovery) {
+            try {
+              passkeyBox = await addRecoveryDoor(
+                backup.box,
+                { passkey: { id: secrets.credentialId, secret: secrets.backup } },
+                recovery,
+              );
+            } catch (e) {
+              reportError(EVENT.backupUpdateFailed, e);
+            } finally {
+              recovery.fill(0);
+            }
+          }
+        }
         const res = await finishSignIn({
           sessionToken: draft.ready.sessionToken,
           email: draft.ready.identity.email,
           secret: secret.secret,
           account: backup.stellarAddress,
+          network: secret.rekeyedOn ? ledgerName(secret.rekeyedOn) : null,
+          ...(passkeyBox ? { backup: passkeyBox } : {}),
           accessKey: await warmPublicKey(networkEnv(network)),
         });
         if (res.status !== 'ready') throw new Error(t('backup.conflict'));
@@ -4521,13 +5591,23 @@ export function useWalletStore() {
         entry = await landSignedInWallet({
           secret: { secret: secret.secret, mnemonic: secret.mnemonic },
           publicKey: backup.stellarAddress,
+          rekey: rekeyOfBackup(secret),
           ready: draft.ready,
           account: { keys: res.keys, organizationId: res.organizationId },
           vk,
           consents,
           epoch,
         });
+        if (entry && passkeyBox) await noteBackupRecovery(entry.id, draft.ready.identity.email);
         report(EVENT.backupRestored, { category: 'lifecycle', props: { purpose: draft.purpose, passkey: true } });
+        await restoreOtherBackups({
+          ready: draft.ready,
+          key: { passkey: { id: secrets.credentialId, secret: secrets.backup } },
+          vk,
+          primary: entry,
+          account: { keys: res.keys, organizationId: res.organizationId },
+          consents,
+        });
       } else {
         let opened: { password: string; secrets: PasskeySecrets };
         try {
@@ -4575,6 +5655,8 @@ export function useWalletStore() {
     landSignedInWallet,
     createFromSignIn,
     settleSignIn,
+    fileRecovery,
+    noteBackupRecovery,
     flashPasskey,
     passkey,
     flash,
@@ -4707,7 +5789,6 @@ export function useWalletStore() {
     signRawXdr,
     revealBackup,
     cosmosPay,
-    cosmosPayPending,
     // True while the wallet is swapping on the shared public key. Screens read it
     // to show the public commission and the offer to lower it; the fee itself is
     // always the one the gateway returned in the quote, never this.
@@ -4765,8 +5846,9 @@ export function useWalletStore() {
      */
     recovery,
     loadRecovery,
-    startRecoveryCode,
     enableRecovery,
+    topUpTestnet,
+    startRecoveryCode,
     disableRecovery,
     updateRecoveryEmail,
 
@@ -4873,13 +5955,28 @@ export function useWalletStore() {
     fund,
     submitSend,
     enableReceiving,
-    resendReceiving,
-    claimReceiving,
-    linkReceiving,
     submitLinkCode,
+    ensureChainAddresses,
     cancelLink,
     quoteSwap,
     submitSwap,
+    crossChainAssets,
+    quoteCrossChain,
+    submitCrossChain,
+    backupRecoverable,
+    recoverBackup,
+    enableBackupRecovery,
+    chainAddress,
+    chainBalances,
+    testnetChainBalances,
+    chainSendTarget,
+    setChainSendTarget,
+    submitTestnetSend,
+    airdropTestnetSol,
+    quoteChainSwap,
+    submitChainSwap,
+    quoteCrossChainFrom,
+    submitCrossChainFrom,
     // liquidity pools
     lpTarget,
     listPools,
@@ -4937,11 +6034,11 @@ export function useWalletStore() {
 }
 
 /** A backup's doors, for a screen — null when there is no backup or it will not parse. */
-function backupDoorsOf(box: string | null): { password: boolean; passkeys: number } | null {
+function backupDoorsOf(box: string | null): { password: boolean; passkeys: number; recovery: boolean } | null {
   if (!box) return null;
   try {
     const d = backupDoors(box);
-    return { password: d.password, passkeys: d.passkeys.length };
+    return { password: d.password, passkeys: d.passkeys.length, recovery: d.recovery };
   } catch {
     return null;
   }

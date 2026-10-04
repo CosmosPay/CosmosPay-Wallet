@@ -32,3 +32,11 @@ export const RETRY_AFTER_CAP_S = 3600;
  * on its way to being deleted; the compiled-in value covers the gap either way.
  */
 export const PUBLIC_KEY_TTL_MS = 5 * 60 * 1000;
+
+/**
+ * `retryOnNetworkError` (`src/lib/retryNetwork.ts`): how many times a call that got no
+ * HTTP answer is tried in all, and the first wait between tries (it grows linearly).
+ * Only for the writes where giving up loses more than repeating — see that module.
+ */
+export const NETWORK_RETRY_ATTEMPTS = 4;
+export const NETWORK_RETRY_BASE_MS = 1_500;

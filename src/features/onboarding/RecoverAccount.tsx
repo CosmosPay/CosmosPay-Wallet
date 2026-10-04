@@ -31,6 +31,11 @@ import '@/styles/features/onboarding/recover-account.css';
  * them knows cannot be recovered — one signature never reaches the threshold — so showing
  * it would be offering a button that fails at the last step.
  *
+ * When the signed-in account's BACKUP has an email door and both servers hand its halves
+ * back, that comes first and replaces the list: it restores the wallet itself — the same
+ * recovery phrase and the same address on every chain — under a new password, and nothing
+ * about the account changes. SEP-30 is what is left when the backup has no such door.
+ *
  * Before the list, each server has to be convinced of the inbox ON ITS OWN. A sign-in
  * through Cosmos Pay's Authentik carries an ID token both can verify, and this screen asks
  * nothing. Any other sign-in ends here with two codes, one from each server: two prompts
@@ -58,6 +63,9 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.signInPending]);
 
+  // The whole backup, when both servers returned its halves for THIS sign-in's backup.
+  const backupAddress = store.signInPending?.backupAddress ?? null;
+  const wholeBackup = !!backupAddress && store.backupRecoverable === backupAddress;
   const only = accounts?.length === 1 ? accounts[0].address : null;
   const address = chosen ?? only;
   const ready = !!address && !!pwd && ack && !store.busy;
@@ -89,6 +97,15 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
             {store.busy ? <Spinner /> : t('recover.codesCta')}
           </PrimaryButton>
         </div>
+      ) : wholeBackup ? (
+        <>
+          <div className="glass-soft col g8 recover-codes">
+            <div className="recover-codes-title">{t('recover.backupTitle')}</div>
+            <div className="desc">{t('recover.backupDesc', { address: shortAddr(backupAddress ?? '', 8, 8) })}</div>
+          </div>
+          <Field password label={t('recover.newPwdLabel')} value={pwd} onChange={setPwd} />
+          <OptionalConsents store={store} />
+        </>
       ) : accounts === null ? (
         <div className="row recover-loading">
           <Spinner />
@@ -116,6 +133,7 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
 
           <div className="glass-soft col g8 recover-warn">
             <div className="recover-warn-text">{t('recover.phraseWarn')}</div>
+            <div className="recover-warn-text">{t('recover.otherNetworks', { network: store.network.label })}</div>
             <CheckRow on={ack} onToggle={() => setAck(!ack)}>
               {t('recover.phraseAck')}
             </CheckRow>
@@ -124,7 +142,14 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
       )}
 
       <div className="spacer" />
-      {!pendingCodes && (
+      {!pendingCodes && wholeBackup && (
+        <div className="kb-dock">
+          <PrimaryButton disabled={!pwd || store.busy} onClick={() => void store.recoverBackup(pwd)}>
+            {store.busy ? <Spinner /> : t('recover.backupCta')}
+          </PrimaryButton>
+        </div>
+      )}
+      {!pendingCodes && !wholeBackup && (
         <div className="kb-dock">
           <PrimaryButton disabled={!ready} onClick={() => address && void store.recoverWallet(address, pwd)}>
             {store.busy ? <Spinner /> : t('recover.cta')}

@@ -31,8 +31,6 @@ const APP_VERSION = (
 // Dev-proxy targets (Node-side only — never shipped to the client). The empty
 // prefix makes loadEnv read non-PUBLIC_ vars too, so these stay server-side.
 const env = loadEnv(process.env.NODE_ENV || 'development', process.cwd(), '');
-// Developer-Platform (Astro) serves /api/wallet/* — `astro dev` defaults to 4321.
-const DEV_PLATFORM_TARGET = env.COSMOS_DEV_PLATFORM_PROXY || 'http://localhost:4321';
 // APISIX gateway fronts the payments service (/v1/*) — community-server is on 3000
 // behind it, but the wallet must go through the gateway so the API key is validated.
 const GATEWAY_TARGET = env.COSMOS_GATEWAY_PROXY || 'http://localhost:9080';
@@ -169,13 +167,12 @@ export default defineConfig({
         'bip39',
       ],
     },
-    // Dev-only reverse proxy: the browser hits same-origin /api and /v1, Vite
+    // Dev-only reverse proxy: the browser hits same-origin /cosmos-api, Vite
     // forwards them to the local backends server-side — so there's no CORS
     // preflight. Production / native builds bypass this (set PUBLIC_COSMOS_*_URL
     // to absolute URLs; the relative paths below only resolve via this proxy).
     server: {
       proxy: {
-        '/api': devProxy('cosmos dev-platform', DEV_PLATFORM_TARGET, 'COSMOS_DEV_PLATFORM_PROXY'),
         // The gateway exposes the payments API at /cosmos-api/* (APISIX strips that
         // prefix itself before forwarding upstream), so forward the prefix as-is.
         '/cosmos-api': devProxy('cosmos gateway (APISIX)', GATEWAY_TARGET, 'COSMOS_GATEWAY_PROXY'),

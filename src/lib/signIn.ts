@@ -30,6 +30,7 @@
  * opens and a reopened wallet picks it up. It holds the PKCE verifier, which is what makes a
  * `state` seen in a browser worth nothing to anyone else.
  */
+import type { LedgerName } from '@/lib/stellar';
 import { Keypair } from '@stellar/stellar-sdk';
 import { ApiRequestError } from '@/lib/apiError';
 import { walletApiBase } from '@/lib/endpoints';
@@ -260,6 +261,11 @@ export async function finishSignIn(input: {
    * off and gets the key's own address, which is the only safe default.
    */
   account?: string;
+  /**
+   * The ledger `account` was re-keyed on, when it was: the server reads the account's
+   * signers there, and only there. Absent for every wallet whose key is its address.
+   */
+  network?: LedgerName | null;
   backup?: string;
   replaceBackup?: boolean;
   /** Presented only when the community server serves the sign-in — see `signInHeaders`. */
@@ -273,6 +279,7 @@ export async function finishSignIn(input: {
     signature: signChallenge(input.secret, finishMessage(input.email, stellarAddress, signedAt)),
     ...(input.backup !== undefined ? { backup: input.backup } : {}),
     ...(input.replaceBackup ? { replaceBackup: true } : {}),
+    ...(input.network ? { network: input.network } : {}),
   },
   input.accessKey ?? null);
 }
@@ -282,6 +289,8 @@ export async function replaceBackup(input: {
   secret: string;
   box: string;
   account?: string;
+  /** As in `finishSignIn`: the ledger a re-keyed `account` lists this key on. */
+  network?: LedgerName | null;
   accessKey?: string | null;
 }): Promise<void> {
   // `account` for a recovered wallet, exactly as in `finishSignIn` above.
@@ -293,6 +302,7 @@ export async function replaceBackup(input: {
       box: input.box,
       signedAt,
       signature: signChallenge(input.secret, await backupMessage(stellarAddress, input.box, signedAt)),
+      ...(input.network ? { network: input.network } : {}),
     },
     input.accessKey ?? null,
   );

@@ -23,7 +23,7 @@
  * `[[CURRENCIES]]` block is a different key with the same name. Anything it does not
  * understand is absent, and absent is a refusal upstream rather than a default.
  */
-import { isHttpsUrl } from '@/lib/validate';
+import { isSecureOrLoopbackUrl } from '@/lib/validate';
 
 /** The first `[[RECOVERY_SERVERS]]` entry, as far as the wallet reads it. */
 export interface TomlRecoveryServer {
@@ -110,20 +110,20 @@ export function parseStellarToml(text: string): StellarToml {
     const { value, quoted } = read;
 
     if (section === 'recovery' && out.recovery) {
-      if (key === 'ENDPOINT' && isHttpsUrl(value)) out.recovery.endpoint = value;
+      if (key === 'ENDPOINT' && isSecureOrLoopbackUrl(value)) out.recovery.endpoint = value;
       else if (key === 'ROLE') out.recovery.role = value;
-      else if (key === 'OIDC_ISSUER' && isHttpsUrl(value)) out.recovery.oidcIssuer = value;
+      else if (key === 'OIDC_ISSUER' && isSecureOrLoopbackUrl(value)) out.recovery.oidcIssuer = value;
       // A bare boolean only: `"true"` in quotes is a string, and a string is not a claim
       // this parser turns into a capability.
       else if (key === 'EMAIL_CODES' && !quoted) out.recovery.emailCodes = value === 'true';
       continue;
     }
 
-    if (key === 'WEB_AUTH_ENDPOINT' && isHttpsUrl(value)) out.webAuthEndpoint = value;
+    if (key === 'WEB_AUTH_ENDPOINT' && isSecureOrLoopbackUrl(value)) out.webAuthEndpoint = value;
     else if (key === 'SIGNING_KEY' && isAccountId(value)) out.signingKey = value;
     else if (key === 'HOME_DOMAIN') out.homeDomain = value;
     else if (key === 'NETWORK_PASSPHRASE') out.networkPassphrase = value;
-    else if (key === 'HORIZON_URL' && isHttpsUrl(value)) out.horizonUrl = value;
+    else if (key === 'HORIZON_URL' && isSecureOrLoopbackUrl(value)) out.horizonUrl = value;
   }
   return out;
 }
@@ -136,10 +136,14 @@ export function parseStellarToml(text: string): StellarToml {
  * What is never done is inventing a value — a guessed key is a check that passes against
  * whoever answered.
  */
-export async function fetchStellarToml(origin: string): Promise<StellarToml | null> {
+export async function fetchStellarToml(origin: string, network?: string | null): Promise<StellarToml | null> {
   let url: string;
   try {
-    url = new URL('/.well-known/stellar.toml', origin).toString();
+    const target = new URL('/.well-known/stellar.toml', origin);
+    // One recovery server serves several ledgers, each with its own TOML. A server that
+    // serves one ignores the parameter, and its TOML's NETWORK_PASSPHRASE says which.
+    if (network) target.searchParams.set('network', network);
+    url = target.toString();
   } catch {
     return null;
   }

@@ -9,6 +9,7 @@ import { EyeIcon } from '@/ui/EyeIcon';
 import { LangSelect } from '@/ui/LangSelect';
 import { getGreeting } from '@/lib/greeting';
 import { shortAddr } from '@/lib/format';
+import { addressOn } from '@/lib/accountAddress';
 import { cx } from '@/lib/cx';
 import '@/styles/features/wallet/unlock.css';
 
@@ -204,7 +205,7 @@ export function Unlock({ store }: { store: WalletStore }) {
                             </div>
                             <div className="unlock-wallet-meta">
                               <div className="unlock-wallet-name">{w.name}</div>
-                              <div className="unlock-wallet-addr">{shortAddr(w.publicKey, 5, 5)}</div>
+                              <div className="unlock-wallet-addr">{shortAddr(addressOn(w, store.network.passphrase), 5, 5)}</div>
                             </div>
                           </div>
                           {active && <span className="unlock-wallet-check">✓</span>}

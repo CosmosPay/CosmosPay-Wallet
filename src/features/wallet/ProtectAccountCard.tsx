@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { Spinner } from '@/ui/Spinner';
 import { useBusy } from '@/hooks/useBusy';
-import { spendableXlm } from '@/lib/balances';
+import { recoveryShortfall } from '@/lib/balances';
 import { isAccessCode, normalizeAccessCode } from '@/lib/validate';
-import { RECOVERY_OFFER_DISMISSED_PREFIX, RECOVERY_RESERVE_XLM } from '@/constants/recovery';
+import { RECOVERY_OFFER_DISMISSED_PREFIX } from '@/constants/recovery';
 import '@/styles/features/wallet/home.css';
 
 /** Read and write the per-account "not now". Browser storage can be absent or refuse. */
@@ -35,8 +35,9 @@ function rememberDismissed(address: string): void {
  *
  * One tap when the account can pay the two signers' reserve itself: the confirmation that
  * follows names the email, because that is the whole bargain (see `RecoverySection`).
- * When it cannot, the operator sponsors the reserve, and that path needs the emailed code
- * the store sends — asked for right here, not on another screen.
+ * When it cannot, the card says how much is missing and the operator sponsors the reserve
+ * — that path needs the emailed code the store sends, asked for right here, not on another
+ * screen — with a way to cover the shortfall and pay it yourself beside it.
  *
  * "Not now" is remembered per account, and Settings keeps the same controls for later.
  */
@@ -66,7 +67,8 @@ export function ProtectAccountCard({ store }: { store: WalletStore }) {
   // already protected, or not yet funded, would offer something that cannot happen.
   if (dismissed || !email || !state || !state.exists || state.enabled) return null;
 
-  const affordable = spendableXlm(store.account) >= RECOVERY_RESERVE_XLM;
+  const missing = recoveryShortfall(store.account);
+  const affordable = missing === 0;
   const dismiss = () => {
     rememberDismissed(address);
     setDismissed(true);
@@ -82,13 +84,26 @@ export function ProtectAccountCard({ store }: { store: WalletStore }) {
           {busy ? <Spinner /> : t('recoveryCard.cta')}
         </button>
       ) : !sent ? (
-        <button
-          disabled={busy}
-          onClick={() => run(async () => setSent(await store.startRecoveryCode()))}
-          className="home-activate-btn"
-        >
-          {busy ? <Spinner /> : t('recoveryCard.cta')}
-        </button>
+        <>
+          <div className="home-activate-desc">{t('recovery.needXlm', { amount: missing })}</div>
+          <button
+            disabled={busy}
+            onClick={() => run(async () => setSent(await store.startRecoveryCode()))}
+            className="home-activate-btn"
+          >
+            {busy ? <Spinner /> : t('recoveryCard.cta')}
+          </button>
+          {/* The alternative to sponsorship: cover the shortfall and pay it yourself. */}
+          {store.network.friendbot ? (
+            <button type="button" disabled={busy} onClick={() => run(() => store.topUpTestnet())} className="home-protect-later">
+              {t('recovery.topUpTestnet')}
+            </button>
+          ) : (
+            <button type="button" onClick={() => store.go('receive')} className="home-protect-later">
+              {t('receive.title')}
+            </button>
+          )}
+        </>
       ) : (
         <>
           <div className="home-activate-desc">{t('signin.codeDesc', { email })}</div>

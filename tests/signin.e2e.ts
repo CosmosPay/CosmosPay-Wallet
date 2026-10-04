@@ -129,8 +129,18 @@ try {
   ok(fa?.body.stellarAddress === addr && typeof fa?.body.signature === 'string', 'finish is signed by the new address');
   const rawBox = typeof fa?.body.backup === 'string' ? fa.body.backup : '';
   const box = rawBox ? (JSON.parse(rawBox) as Record<string, unknown>) : null;
+  // A `v: 4` box: the seed under a data key, sealed once per door. A password-only sign-in
+  // has exactly one door, Argon2id at `BACKUP_ARGON2`.
+  const doors = Array.isArray(box?.slots) ? (box.slots as Record<string, unknown>[]) : [];
   ok(
-    box?.v === 2 && box?.iter === 1_000_000 && !rawBox.includes(PASSWORD),
+    box?.v === 4 &&
+      doors.length === 1 &&
+      doors[0].kind === 'password' &&
+      doors[0].kdf === 'argon2id' &&
+      doors[0].m === 65_536 &&
+      doors[0].t === 2 &&
+      doors[0].p === 1 &&
+      !rawBox.includes(PASSWORD),
     'the backup is a sealed box at the backup cost, with nothing readable in it',
   );
 

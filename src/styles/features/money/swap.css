@@ -13,3 +13,14 @@
 .swap-receive.is-empty { color: var(--dim); }
 .swap-rate { text-align: right; margin-top: 10px; color: var(--dim); font-size: 12px; font-weight: 600; }
 .swap-quoting { margin-top: 14px; font-size: 12px; color: var(--dim); font-weight: 600; } /* on .center.g8 */
+
+/* "Receive on" — which network the output lands on. Stellar is a path payment; the
+   other two are cross-chain swaps settled by NEAR Intents. A pill row, like the chips
+   on the receive screen, so the choice reads before the amounts. */
+.swap-target { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.swap-target-label { width: 100%; font-size: 12px; font-weight: 700; color: var(--dim); }
+.swap-target-btn { padding: 8px 14px; border-radius: 30px; font-size: 13px; font-weight: 700; color: var(--dim); cursor: pointer; background: var(--glass-soft-bg); border: 1px solid var(--glass-soft-border); }
+.swap-target-btn.is-on { color: var(--text); border-color: var(--accent); }
+
+/* The assets a cross-chain swap can deliver, as pills in the "to" card. */
+.swap-dest-chips { display: flex; gap: 6px; flex-wrap: wrap; }

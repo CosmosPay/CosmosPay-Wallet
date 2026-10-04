@@ -1,23 +1,19 @@
 /**
  * CosmosPay HTTP client.
  *
- * Two backends are involved:
- *   - The Cosmos Developer Platform (DEV_PLATFORM_URL) provisions a payments
- *     account for a wallet. Its responses are wrapped in an envelope
- *     `{ data, code, status, message }` — we unwrap `.data`.
- *   - The APISIX gateway (COSMOS_GATEWAY_URL) fronts the payments API. Swap
- *     calls go here authenticated with the org's CosmosPay API key
- *     (`Authorization: Bearer <apiKey>`). Paths are URI-versioned (`/v1/...`)
- *     and the responses are the raw shapes documented below (no envelope).
+ * Everything goes to the APISIX gateway (COSMOS_GATEWAY_URL), which fronts the
+ * community server. Calls are authenticated with the account's CosmosPay API key
+ * (`Authorization: Bearer <apiKey>`), or with the shared public key for a wallet
+ * that has none. Paths are URI-versioned (`/v1/...`) and the responses are the
+ * raw shapes documented below (no envelope). The developer platform is not in
+ * the path of anything here: it issues developers' keys and shows data, and
+ * nothing a wallet does may depend on it being up.
  *
- * SECURITY — provisioning carries NO client secret. This wallet is open source,
- * so any embedded credential would be readable by everyone and let attackers
- * mint accounts/API keys. Instead provisioning is gated by two factors the
- * legitimate user controls: a signature from the wallet's Stellar secret key
- * (proves control of the account) plus email verification. The API key is
- * minted only after the user clicks an emailed confirmation link, and is
- * returned only to the wallet that initiated the request — via a one-time
- * claim token handed back at registration. No `X-Provisioning-Key` exists.
+ * SECURITY — connecting an account carries NO client secret. This wallet is open
+ * source, so any embedded credential would be readable by everyone. Instead the
+ * account's keys come from the wallet sign-in (`/v1/wallet/auth/*`), gated by two
+ * factors the legitimate user controls: the emailed (or provider-proven) identity
+ * and a signature from the wallet's own Stellar key.
  *
  * The wallet stays non-custodial: createSwap returns an unsigned XDR which we
  * sign locally (see signXdr in stellar.ts) and hand back via submitSwap — the
@@ -30,12 +26,12 @@
  * production / native builds. See `.env.example`. Never put secrets in PUBLIC_*
  * vars — they ship to the client.
  */
-import { Keypair } from '@stellar/stellar-sdk';
 // Endpoint bases (dev-platform + APISIX gateway) live in lib/endpoints: resolved
 // per request as developer-mode override -> PUBLIC_* env -> same-origin default,
 // so a dev can repoint them live from Settings without rebuilding. The gateway
 // still exposes the payments API behind an entry prefix (default `/cosmos-api`).
-import { devPlatformUrl, gatewayApi, walletApiBase } from '@/lib/endpoints';
+import type { LedgerName } from '@/lib/stellar';
+import { gatewayApi, walletApiBase } from '@/lib/endpoints';
 import { newTraceId } from '@/lib/trace';
 
 /** Default slippage tolerance for swaps (0.5%). */
@@ -57,43 +53,12 @@ export function usdcIssuer(networkId: string): string | undefined {
 
 /* ------------------------------- types --------------------------------- */
 
-/**
- * Result of a registration request. `pending` means an email was sent and the
- * caller must poll `claimCosmosAccount` with the one-time `claimToken` after
- * the user confirms; `exists` means an account already exists for that email.
- */
-export type RegisterResult =
-  | { status: 'pending'; claimToken: string; expiresInSeconds: number }
-  | { status: 'exists' };
-
 /** Both swap keys for an account: dev (testnet) + prod (mainnet). The wallet uses the one
  *  matching its current network. Either can be null if that environment's mint failed. */
 export interface CosmosKeys {
   dev: string | null;
   prod: string | null;
 }
-
-/** Result of a claim attempt against a pending registration. */
-export type ClaimResult =
-  | { status: 'pending' } // email not confirmed yet
-  | { status: 'ready'; organizationId: string; keys: CosmosKeys }
-  | { status: 'claimed' } // already claimed (token spent)
-  | { status: 'expired' }; // token / registration expired
-
-/**
- * Result of starting an account LINK — used when registration reported `exists`. The
- * server emails a one-time access code and returns a claim token the wallet keeps.
- */
-export type LinkStartResult =
-  | { status: 'sent'; claimToken: string; expiresInSeconds: number }
-  | { status: 'not_found' }; // no account for this email after all — register instead
-
-/** Result of verifying the emailed access code to finish linking. */
-export type LinkVerifyResult =
-  | { status: 'ready'; organizationId: string; keys: CosmosKeys }
-  | { status: 'invalid'; attemptsLeft: number } // wrong code
-  | { status: 'expired' } // code expired / unknown
-  | { status: 'locked' }; // too many wrong attempts — request a new code
 
 export interface PathHop {
   code: string;
@@ -152,6 +117,8 @@ export interface SubmitResult {
 }
 
 export interface QuoteSwapInput {
+  /** Omitted = Stellar. solana → Jupiter, monad → Kuru Flow (mainnet only). */
+  chain?: 'stellar' | CrossChainTarget;
   amount: string;
   sourceAssetCode?: string;
   sourceAssetIssuer?: string;
@@ -173,9 +140,6 @@ import {
   AuthorizePayoutShape,
   BankAccountListShape,
   BankAccountShape,
-  ClaimResultShape,
-  LinkStartResultShape,
-  LinkVerifyResultShape,
   LiquidityOpListShape,
   LiquidityOperationShape,
   LiquidityPoolListShape,
@@ -192,7 +156,6 @@ import {
   RailsShape,
   ReceiverListShape,
   ReceiverShape,
-  RegisterResultShape,
   RegisteredWalletListShape,
   RegisteredWalletShape,
   SignMessageShape,
@@ -200,6 +163,13 @@ import {
   SwapListShape,
   SwapQuoteShape,
   SwapShape,
+  CrossChainAssetListShape,
+  CrossChainQuoteShape,
+  CrossChainSwapShape,
+  RecoveryShareFiledShape,
+  RecoveryShareShape,
+  ChainSwapShape,
+  ChainSwapSubmitResultShape,
   TosShape,
   TrustlineTxShape,
   VirtualAccountListShape,
@@ -356,138 +326,6 @@ async function postJson<T>(
   return payload as T;
 }
 
-/* --------------------------- provisioning ------------------------------ */
-
-/** Cryptographically-random hex nonce (NOT Math.random) to bind a registration. */
-export function makeNonce(bytes = 16): string {
-  const buf = new Uint8Array(bytes);
-  crypto.getRandomValues(buf);
-  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/**
- * Sign the canonical registration message with the wallet's Stellar secret key,
- * proving control of `stellarAddress`. The server verifies this signature
- * against the public key before emailing a confirmation link. Returns the
- * base64 signature. The message format is fixed and must match the server.
- */
-export function signRegistrationMessage(
-  secret: string,
-  email: string,
-  stellarAddress: string,
-  nonce: string,
-): string {
-  const message = `Cosmos Pay Wallet account registration\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Buffer.from(Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'))).toString('base64');
-}
-
-/**
- * Begin provisioning: prove control of the Stellar account by signing a nonce,
- * then ask the dev platform to email a confirmation link. No client secret is
- * sent. Returns `pending` (with a one-time claim token) or `exists`.
- */
-export async function registerCosmosAccount(input: {
-  email: string;
-  name: string;
-  stellarAddress: string;
-  secret: string;
-}): Promise<RegisterResult> {
-  const nonce = makeNonce();
-  const signature = signRegistrationMessage(input.secret, input.email, input.stellarAddress, nonce);
-  return postJson<RegisterResult>(
-    `${devPlatformUrl()}/api/wallet/register`,
-    {
-      email: input.email,
-      name: input.name,
-      stellarAddress: input.stellarAddress,
-      nonce,
-      signature,
-    },
-    {},
-    true,
-    RegisterResultShape,
-  );
-}
-
-/**
- * Claim the API key for a pending registration once the user has confirmed via
- * email. The claim token is single-use and bound to `stellarAddress`, so the
- * key is only ever returned to the wallet that initiated the registration.
- */
-export async function claimCosmosAccount(input: {
-  stellarAddress: string;
-  claimToken: string;
-}): Promise<ClaimResult> {
-  return postJson<ClaimResult>(
-    `${devPlatformUrl()}/api/wallet/claim`,
-    { stellarAddress: input.stellarAddress, claimToken: input.claimToken },
-    {},
-    true,
-    ClaimResultShape,
-  );
-}
-
-/**
- * Sign the canonical account-LINK message. Distinct prefix from the registration message
- * so a signature for one flow can't be replayed in the other — must match the server's
- * linkMessage() byte-for-byte. Returns the base64 signature.
- */
-export function signLinkMessage(
-  secret: string,
-  email: string,
-  stellarAddress: string,
-  nonce: string,
-): string {
-  const message = `Cosmos Pay Wallet account link\nemail: ${email.trim().toLowerCase()}\naccount: ${stellarAddress}\nnonce: ${nonce}`;
-  return Buffer.from(Keypair.fromSecret(secret).sign(Buffer.from(message, 'utf8'))).toString('base64');
-}
-
-/**
- * Begin linking the wallet to an EXISTING account (the email already has one). Proves
- * control of the Stellar account by signing a nonce; the server emails a one-time access
- * code. Returns `sent` (with a claim token to keep) or `not_found`.
- */
-export async function linkCosmosAccount(input: {
-  email: string;
-  name: string;
-  stellarAddress: string;
-  secret: string;
-}): Promise<LinkStartResult> {
-  const nonce = makeNonce();
-  const signature = signLinkMessage(input.secret, input.email, input.stellarAddress, nonce);
-  return postJson<LinkStartResult>(
-    `${devPlatformUrl()}/api/wallet/link`,
-    {
-      email: input.email,
-      name: input.name,
-      stellarAddress: input.stellarAddress,
-      nonce,
-      signature,
-    },
-    {},
-    true,
-    LinkStartResultShape,
-  );
-}
-
-/**
- * Finish linking: exchange the emailed access code (+ the claim token from linkCosmosAccount)
- * for the existing account's API key. Returns `ready` with the key, or a failure status.
- */
-export async function verifyCosmosLink(input: {
-  stellarAddress: string;
-  claimToken: string;
-  code: string;
-}): Promise<LinkVerifyResult> {
-  return postJson<LinkVerifyResult>(
-    `${devPlatformUrl()}/api/wallet/link/verify`,
-    { stellarAddress: input.stellarAddress, claimToken: input.claimToken, code: input.code },
-    {},
-    true,
-    LinkVerifyResultShape,
-  );
-}
-
 /* ---------------------------- wallet sign-in ----------------------------- */
 
 /**
@@ -506,8 +344,10 @@ export interface SignInIdentity {
   method: SignInMethod;
 }
 
-/** A backup the platform keeps for this account: the sealed seed and where it restores to. */
+/** A backup the community server keeps for this account: the sealed seed and where it restores to. */
 export interface StoredBackup {
+  /** Absent from servers older than the per-wallet backups: `stellar`. */
+  chain?: string;
   stellarAddress: string;
   box: string;
   updatedAt: string;
@@ -519,6 +359,11 @@ export interface SignInReady {
   identity: SignInIdentity;
   account: 'existing' | 'new';
   backup: StoredBackup | null;
+  /**
+   * Every wallet the account keeps a backup of, newest first (`backup` is the first). Absent
+   * from a server older than per-wallet backups, where `backup` is the only one.
+   */
+  backups?: StoredBackup[];
   sessionToken: string;
   expiresInSeconds: number;
   /**
@@ -617,7 +462,14 @@ const walletSession = (token: string): Record<string, string> => ({ 'X-Wallet-Se
 /** `POST {walletApiBase}/auth/finish` — the session token plus a signature by `stellarAddress`. */
 export async function signInFinish(
   sessionToken: string,
-  body: { stellarAddress: string; signedAt: string; signature: string; backup?: string; replaceBackup?: boolean },
+  body: {
+    stellarAddress: string;
+    signedAt: string;
+    signature: string;
+    backup?: string;
+    replaceBackup?: boolean;
+    network?: LedgerName;
+  },
   accessKey: string | null = null,
 ): Promise<SignInFinish> {
   return postJson(
@@ -636,6 +488,7 @@ export async function putBackup(
     box: string;
     signedAt: string;
     signature: string;
+    network?: LedgerName;
   },
   accessKey: string | null = null,
 ): Promise<{ status: 'updated' }> {
@@ -768,6 +621,32 @@ export async function recoveryUpdateIdentities(
   );
 }
 
+/**
+ * File THIS server's half of a backup's recovery key (`lib/backupRecovery.ts`). The
+ * account's SEP-10 token is the credential; `email` is who may take the half back. A Cosmos
+ * extension beside SEP-30, under its base: `${base}/shares/<address>`.
+ */
+export async function recoveryShareFile(base: string, token: string, address: string, share: string, email: string): Promise<void> {
+  await postJson(
+    `${base}/shares/${encodeURIComponent(address)}`,
+    { share, email },
+    bearer(token),
+    false,
+    RecoveryShareFiledShape,
+    'PUT',
+  );
+}
+
+/** Take THIS server's half back with its identity token for the filed email. */
+export async function recoveryShareTake(base: string, token: string, address: string): Promise<string> {
+  const res = await getPlatformJson<{ share: string }>(
+    `${base}/shares/${encodeURIComponent(address)}`,
+    RecoveryShareShape,
+    bearer(token),
+  );
+  return res.share;
+}
+
 /** One protected account as THIS server describes it, or null when it does not know it. */
 export async function recoveryAccount(base: string, token: string, address: string): Promise<RecoveryAccount | null> {
   try {
@@ -844,7 +723,8 @@ export async function recoverySetupSponsored(
   sessionToken: string,
   // `stellarAddress`, not `account`: the field name is the server's, and the two repos
   // only find a rename like that at runtime.
-  body: { stellarAddress: string; signers: [string, string]; signedAt: string; signature: string },
+  // `network` picks the ledger the operator builds and sponsors on; none is its default.
+  body: { stellarAddress: string; signers: [string, string]; signedAt: string; signature: string; network?: LedgerName },
   accessKey: string | null,
 ): Promise<{ transaction: string; sponsor: string; network_passphrase: string }> {
   return postJson(
@@ -916,6 +796,152 @@ export async function quoteSwap(apiKey: string, input: QuoteSwapInput): Promise<
 /** Create a swap. The returned Swap carries the unsigned `xdr` to sign locally. */
 export async function createSwap(apiKey: string, input: CreateSwapInput): Promise<Swap> {
   return postJson<Swap>(`${gatewayApi()}/v1/swaps`, input, authHeaders(apiKey), false, SwapShape);
+}
+
+/* ------------------------- cross-chain swaps ---------------------------- */
+/*
+ * Stellar ⇄ Solana ⇄ Monad, settled by NEAR Intents behind the gateway. The wallet pays
+ * a deposit address from its account on the origin chain — a payment it builds and
+ * signs itself — and NEAR Intents pays the output to the wallet's own address on the
+ * destination chain (all three derive from the same recovery phrase). Mainnet only —
+ * the gateway refuses a testnet key.
+ */
+
+/** The chains besides Stellar: a Jupiter / Kuru swap, or one end of a cross-chain one. */
+export type CrossChainTarget = 'solana' | 'monad';
+/** Any end of a cross-chain swap. */
+export type CrossChainNetwork = 'stellar' | CrossChainTarget;
+
+export interface CrossChainAsset {
+  chain: CrossChainNetwork;
+  symbol: string;
+  assetId: string;
+  decimals: number;
+  /** SPL mint / ERC-20 / Stellar issuer; null for the native coin. */
+  contract: string | null;
+}
+
+export interface CrossChainQuote {
+  fee: { amount: string; bps: number; asset: string };
+  destination: { amount: string; minimum: string; asset: string };
+  timeEstimateSeconds: number;
+}
+
+export interface CrossChainSwapInput {
+  originChain: CrossChainNetwork;
+  originAsset: string;
+  destinationChain: CrossChainNetwork;
+  destinationAsset: string;
+  amount: string;
+  recipient: string;
+  refundTo: string;
+  slippageBps?: number;
+}
+
+export interface CrossChainSwap {
+  id: string;
+  status: string;
+  originChain: string;
+  destinationChain: string;
+  amountIn: string;
+  amountOutEstimated: string;
+  depositAddress: string;
+  /** Required on Stellar: attach it as a MEMO_TEXT. */
+  depositMemo: string | null;
+  recipient: string;
+  refundTo: string;
+  timeEstimateSeconds: number;
+}
+
+/** What NEAR Intents can swap, on every chain. */
+export async function listCrossChainAssets(apiKey: string): Promise<CrossChainAsset[]> {
+  const res = await getJson<{ data: CrossChainAsset[] }>(
+    `${gatewayApi()}/v1/cross-chain-swaps/assets`,
+    apiKey,
+    CrossChainAssetListShape,
+  );
+  return res.data;
+}
+
+export async function quoteCrossChainSwap(apiKey: string, input: CrossChainSwapInput): Promise<CrossChainQuote> {
+  return postJson<CrossChainQuote>(
+    `${gatewayApi()}/v1/cross-chain-swaps/quote`,
+    input,
+    authHeaders(apiKey),
+    false,
+    CrossChainQuoteShape,
+  );
+}
+
+/** Open the swap: the answer carries the deposit address (and memo) to pay. */
+export async function createCrossChainSwap(apiKey: string, input: CrossChainSwapInput): Promise<CrossChainSwap> {
+  return postJson<CrossChainSwap>(
+    `${gatewayApi()}/v1/cross-chain-swaps`,
+    input,
+    authHeaders(apiKey),
+    false,
+    CrossChainSwapShape,
+  );
+}
+
+/** Point NEAR Intents at the payment that funded the swap (optional; it speeds it up). */
+export async function reportCrossChainDeposit(apiKey: string, id: string, txHash: string): Promise<CrossChainSwap> {
+  return postJson<CrossChainSwap>(
+    `${gatewayApi()}/v1/cross-chain-swaps/${encodeURIComponent(id)}/deposit`,
+    { txHash },
+    authHeaders(apiKey),
+    false,
+    CrossChainSwapShape,
+  );
+}
+
+/* ------------------------- Solana / Monad swaps -------------------------- */
+
+/**
+ * A Jupiter (Solana) or Kuru Flow (Monad) swap. `transaction` is what gets signed —
+ * Solana: `{ encoding: 'base64', data }`, the unsigned wire bytes; Monad: the router
+ * call `{ to, data, value, chainId }`. `approval`, on Monad only, is the exact ERC-20
+ * approve to send first. `lib/chainSwap.ts` checks both before any signature exists.
+ */
+export interface ChainSwap {
+  id: string;
+  chain: CrossChainTarget;
+  status: string;
+  source: string;
+  sendAsset: string;
+  sendAmount: string;
+  destAsset: string;
+  destEstimated: string;
+  destMin: string;
+  transaction: { encoding?: string; data: string; to?: string; value?: string; chainId?: number };
+  approval: { to: string; data: string; value: string; chainId: number } | null;
+  txHash: string | null;
+}
+
+export interface ChainSwapSubmitResult {
+  submitted: boolean;
+  status: string;
+  txHash: string;
+  swap: ChainSwap;
+}
+
+/** Build a Solana / Monad swap for `source` (the output always comes back to it). */
+export async function createChainSwap(
+  apiKey: string,
+  input: QuoteSwapInput & { chain: CrossChainTarget; source: string },
+): Promise<ChainSwap> {
+  return postJson<ChainSwap>(`${gatewayApi()}/v1/swaps`, input, authHeaders(apiKey), false, ChainSwapShape);
+}
+
+/** Hand back the signed swap: base64 wire bytes (Solana) or the raw 0x transaction (Monad). */
+export async function submitChainSwap(apiKey: string, id: string, signedTransaction: string): Promise<ChainSwapSubmitResult> {
+  return postJson<ChainSwapSubmitResult>(
+    `${gatewayApi()}/v1/swaps/${encodeURIComponent(id)}/submit`,
+    { signedTransaction },
+    authHeaders(apiKey),
+    false,
+    ChainSwapSubmitResultShape,
+  );
 }
 
 /** Submit a locally signed XDR for an existing swap. */

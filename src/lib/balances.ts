@@ -9,6 +9,7 @@
 import type { AccountState, TokenBalance } from '@/lib/stellar';
 import { findAsset, type AssetRef } from '@/lib/asset';
 import { STELLAR_DECIMALS } from '@/lib/amount';
+import { RECOVERY_MIN_SPENDABLE_XLM } from '@/constants/recovery';
 
 /**
  * XLM the wallet can actually spend: the balance minus Stellar's base reserve
@@ -19,6 +20,20 @@ export function spendableXlm(account: AccountState | null): number {
   if (!account || !account.exists) return 0;
   const minBalance = (2 + account.subentryCount) * 0.5; // base reserve
   return Math.max(0, account.xlm - minBalance - 0.001);
+}
+
+/**
+ * XLM still missing before recovery can be turned on — 0 when the account can pay it.
+ *
+ * The account pays the two signer entries' reserve itself (there is no sponsored path), and
+ * keeps a margin for the fees after it. The screens use this to say how much is missing;
+ * `enableRecovery` asks it again, on a fresh ledger read, before registering with either
+ * server — a disabled button is a hint, and registering first left both servers holding an
+ * account whose setup then failed on chain for want of a reserve.
+ */
+export function recoveryShortfall(account: AccountState | null): number {
+  const missing = RECOVERY_MIN_SPENDABLE_XLM - spendableXlm(account);
+  return missing > 0 ? Math.ceil(missing * 100) / 100 : 0;
 }
 
 /** Assets the wallet can send: native XLM (always present) + any trustline balances. */
