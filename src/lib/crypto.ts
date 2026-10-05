@@ -311,8 +311,10 @@ export async function open(box: SealedBox, password: string): Promise<string> {
 }
 
 /**
- * Seal under a human password for a copy that leaves the device: the cloud backup
- * (`lib/cloudBackup.ts`), opened on the next device with plain `open`.
+ * Seal under a human password at the backup's PBKDF2 cost: the `v: 2` cloud backup shape,
+ * opened on the next device with plain `open`. Nothing writes that shape any more —
+ * `sealBackup` in `lib/cloudBackup.ts` seals `v: 4` under Argon2id — so this survives to
+ * build the legacy boxes the restore path must still open (`tests/unit/cloudBackup.test.ts`).
  *
  * Its own function rather than a cost argument on `seal`, for the reason `assertWrapKey`
  * gives below: an optional cost is only as careful as its laziest caller, and here the cost
