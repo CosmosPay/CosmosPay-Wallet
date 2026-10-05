@@ -64,7 +64,13 @@ import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
 import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
 import { retryOnNetworkError } from '@/lib/retryNetwork';
 import { CROSS_CHAIN_SLIPPAGE_BPS } from '@/constants/swap';
-import { fileBackupRecovery, newRecoveryKey, takeBackupRecovery } from '@/lib/backupRecovery';
+import {
+  fileBackupRecovery,
+  newRecoveryKey,
+  pickRecoveryPrimary,
+  signInBackups,
+  takeAllBackupRecovery,
+} from '@/lib/backupRecovery';
 import {
   CHAIN_CONFIRM_POLL_MS,
   CHAIN_CONFIRM_TIMEOUT_MS,
@@ -1104,6 +1110,13 @@ export function useWalletStore() {
       primary: WalletEntry;
       account: CosmosPayAccount;
       consents: ConsentAnswers;
+      /**
+       * After an email recovery: the key the two servers returned for each backup, by
+       * address. A box with one opens with it and goes back up under `key`, the NEW
+       * password, in place of the forgotten one; a box without one is tried with `key` as
+       * usual. The caller zeroes them once this resolves, so nothing here outlives it.
+       */
+      recoveryKeys?: ReadonlyMap<string, Uint8Array>;
     }): Promise<void> => {
       const others = (input.ready.backups ?? []).filter(
         (b) => (b.chain ?? 'stellar') === 'stellar' && b.stellarAddress !== input.primary.publicKey,
@@ -1115,7 +1128,11 @@ export function useWalletStore() {
       let closed = 0;
       for (const b of others) {
         try {
-          const secret = await openBackup(b.box, input.key, b.stellarAddress);
+          const recovery = input.recoveryKeys?.get(b.stellarAddress);
+          const secret = await openBackup(b.box, recovery ? { recovery } : input.key, b.stellarAddress);
+          // Re-sealed now, not in the upload below: the caller zeroes `recovery` on return.
+          const reset =
+            recovery && typeof input.key === 'string' ? await resetBackupPassword(b.box, recovery, input.key) : null;
           const entry = await vaultAddWallet(
             { secret: secret.secret, mnemonic: secret.mnemonic },
             {
@@ -1134,9 +1151,23 @@ export function useWalletStore() {
           if (!entry.cloudBackup) await updateWalletMeta(entry.id, { cloudBackup: true });
           await saveCosmosPay(entry.id, input.account, input.vk);
           restored += 1;
-          // The same Argon2id upgrade the newest box got, best-effort: a failure leaves the
-          // old box, which still opens.
-          if (typeof input.key === 'string' && backupNeedsUpgrade(b.box)) {
+          // Its door survives the reset, so the wallet records the inbox that opens it.
+          if (recovery) await noteBackupRecovery(entry.id, identity.email);
+          if (reset) {
+            // Best-effort like the upgrade below: a failure leaves the box under the forgotten
+            // password, and its recovery door — the halves are untouched — still opens it.
+            void (async () => {
+              await storeBackupBox({
+                secret: secret.secret,
+                box: reset,
+                account: b.stellarAddress,
+                network: secret.rekeyedOn ? ledgerName(secret.rekeyedOn) : null,
+                accessKey: await warmPublicKey(networkEnv(network)),
+              });
+            })().catch((e) => reportError(EVENT.backupUpdateFailed, e));
+          } else if (typeof input.key === 'string' && backupNeedsUpgrade(b.box)) {
+            // The same Argon2id upgrade the newest box got, best-effort: a failure leaves the
+            // old box, which still opens.
             const password = input.key;
             void (async () => {
               await storeBackupBox({
@@ -1162,7 +1193,7 @@ export function useWalletStore() {
       if (restored) flash(t('backup.restoredMore', { n: restored }), 'ok');
       if (closed) flash(t('backup.otherPassword', { n: closed }), 'info');
     },
-    [flash, t, network],
+    [flash, t, network, noteBackupRecovery],
   );
 
   /**
@@ -3491,36 +3522,42 @@ export function useWalletStore() {
   /**
    * The address whose WHOLE backup the two servers' halves open, once the inbox is proven —
    * the email door (`lib/backupRecovery.ts`). Preferred over SEP-30 on the screen: it keeps
-   * the seed, and with it the address on every chain. The key itself stays in a ref, keyed
-   * by the sign-in, and is zeroed once used.
+   * the seed, and with it the address on every chain. `address` is the wallet the person
+   * lands in — the newest backup with a key — and `count` every wallet coming back with it.
+   * The keys themselves, one per backup, stay in a ref keyed by the sign-in and are zeroed
+   * once used.
    */
-  const [backupRecoverable, setBackupRecoverable] = useState<string | null>(null);
-  const backupRecoveryKeyRef = useRef<{ key: string; value: Uint8Array } | null>(null);
+  const [backupRecoverable, setBackupRecoverable] = useState<{ address: string; count: number } | null>(null);
+  const backupRecoveryKeyRef = useRef<{ key: string; value: Map<string, Uint8Array> } | null>(null);
 
   const listRecoverable = useCallback(
     async (draft: SignInDraft, tokens: string[]) => {
       const servers = await loadRecoveryServers(network);
       recoveryProofRef.current = { key: draft.ready.sessionToken, tokens, at: Date.now() };
-      const backup = draft.ready.backup;
-      let backupKey: Uint8Array | null = null;
-      if (backup && !draft.replace && backupDoorsOf(backup.box)?.recovery) {
+      const backups = signInBackups(draft.ready);
+      let backupKeys: Map<string, Uint8Array> | null = null;
+      let primary: string | null = null;
+      if (!draft.replace && backups.some((b) => backupDoorsOf(b.box)?.recovery)) {
         try {
-          backupKey = await takeBackupRecovery(servers, tokens, backup.stellarAddress);
+          const all = await takeAllBackupRecovery(servers, tokens);
+          primary = pickRecoveryPrimary(backups, all);
+          if (primary) backupKeys = all;
+          else all.forEach((key) => key.fill(0));
         } catch (e) {
           reportError(EVENT.signInFailed, e, { purpose: draft.purpose, step: 'backup-recovery' });
         }
       }
-      if (backupKey) {
-        backupRecoveryKeyRef.current?.value.fill(0);
-        backupRecoveryKeyRef.current = { key: draft.ready.sessionToken, value: backupKey };
-        setBackupRecoverable(backup!.stellarAddress);
+      if (backupKeys && primary) {
+        backupRecoveryKeyRef.current?.value.forEach((key) => key.fill(0));
+        backupRecoveryKeyRef.current = { key: draft.ready.sessionToken, value: backupKeys };
+        setBackupRecoverable({ address: primary, count: backupKeys.size });
       }
       // SEP-30 is the fallback here, so a failure to list it must not hide the backup.
       let accounts: RecoverableAccount[] = [];
       try {
         accounts = await recoverableAccounts(servers, tokens);
       } catch (e) {
-        if (!backupKey) throw e;
+        if (!backupKeys) throw e;
       }
       setRecoverable(accounts);
     },
@@ -5455,9 +5492,11 @@ export function useWalletStore() {
   const recoverBackup = useCallback(
     async (password: string): Promise<boolean> => {
       const draft = signInDraft;
-      const backup = draft?.ready.backup;
+      const target = backupRecoverable?.address;
+      const backup = draft && target ? signInBackups(draft.ready).find((b) => b.stellarAddress === target) : undefined;
       const held = backupRecoveryKeyRef.current;
-      if (!draft || !backup || !held || held.key !== draft.ready.sessionToken) return false;
+      const key = backup ? held?.value.get(backup.stellarAddress) : undefined;
+      if (!draft || !backup || !held || !key || held.key !== draft.ready.sessionToken) return false;
       const live = sessionRef.current;
       if (draft.purpose !== 'onboarding' && !live) return false;
       if (!appPasswordOk(password)) {
@@ -5470,8 +5509,8 @@ export function useWalletStore() {
       const outcome = await exclusive.run('recovery', async () => {
         setBusy(true);
         try {
-          const secret = await openBackup(backup.box, { recovery: held.value }, backup.stellarAddress);
-          const box = await resetBackupPassword(backup.box, held.value, password);
+          const secret = await openBackup(backup.box, { recovery: key }, backup.stellarAddress);
+          const box = await resetBackupPassword(backup.box, key, password);
           const res = await finishSignIn({
             sessionToken: draft.ready.sessionToken,
             email: draft.ready.identity.email,
@@ -5496,7 +5535,20 @@ export function useWalletStore() {
             epoch,
           });
           report(EVENT.backupRestored, { category: 'lifecycle', props: { purpose: draft.purpose, emailRecovery: true } });
-          held.value.fill(0);
+          // The rest of this inbox's backups, each with its own key and given the same new
+          // password: the forgotten one sealed all of them, not just the newest.
+          if (entry) {
+            await restoreOtherBackups({
+              ready: draft.ready,
+              key: password,
+              vk,
+              primary: entry,
+              account: { keys: res.keys, organizationId: res.organizationId },
+              consents,
+              recoveryKeys: held.value,
+            });
+          }
+          held.value.forEach((k) => k.fill(0));
           backupRecoveryKeyRef.current = null;
           setBackupRecoverable(null);
           setRecoverable(null);
@@ -5514,7 +5566,19 @@ export function useWalletStore() {
       });
       return outcome.ran ? outcome.value : false;
     },
-    [signInDraft, network, exclusive, signInConsents, landSignedInWallet, settleSignIn, errLine, flash, t],
+    [
+      signInDraft,
+      backupRecoverable,
+      network,
+      exclusive,
+      signInConsents,
+      landSignedInWallet,
+      restoreOtherBackups,
+      settleSignIn,
+      errLine,
+      flash,
+      t,
+    ],
   );
 
   const completeSignInWithPasskey = useCallback(async (): Promise<boolean> => {

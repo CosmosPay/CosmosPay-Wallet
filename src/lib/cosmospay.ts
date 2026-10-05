@@ -167,7 +167,7 @@ import {
   CrossChainQuoteShape,
   CrossChainSwapShape,
   RecoveryShareFiledShape,
-  RecoveryShareShape,
+  RecoveryShareListShape,
   ChainSwapShape,
   ChainSwapSubmitResultShape,
   TosShape,
@@ -637,14 +637,13 @@ export async function recoveryShareFile(base: string, token: string, address: st
   );
 }
 
-/** Take THIS server's half back with its identity token for the filed email. */
-export async function recoveryShareTake(base: string, token: string, address: string): Promise<string> {
-  const res = await getPlatformJson<{ share: string }>(
-    `${base}/shares/${encodeURIComponent(address)}`,
-    RecoveryShareShape,
-    bearer(token),
-  );
-  return res.share;
+/** One page of THIS server's halves for the inbox its identity token proves. */
+export async function recoveryShares(
+  base: string,
+  token: string,
+  after?: string,
+): Promise<{ shares: { address: string; share: string }[] }> {
+  return getPlatformJson(withQuery(`${base}/shares`, { after }), RecoveryShareListShape, bearer(token));
 }
 
 /** One protected account as THIS server describes it, or null when it does not know it. */

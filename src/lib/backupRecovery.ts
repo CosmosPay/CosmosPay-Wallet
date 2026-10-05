@@ -21,9 +21,8 @@
  * Filing happens with the key in hand (a sign-in, a restore, a password change); taking
  * back happens with the identity proof the recovery screen already gathers.
  */
-import { BACKUP_RECOVERY_KEY_BYTES } from '@/constants/recovery';
-import { ApiRequestError } from '@/lib/apiError';
-import { recoveryShareFile, recoveryShareTake } from '@/lib/cosmospay';
+import { BACKUP_RECOVERY_KEY_BYTES, RECOVERY_LIST_MAX_PAGES } from '@/constants/recovery';
+import { recoveryShareFile, recoveryShares, type SignInReady, type StoredBackup } from '@/lib/cosmospay';
 import { fromBase64, toBase64 } from '@/lib/crypto';
 import { authenticate, loadRecoveryServers, RecoveryError, type RecoveryServer } from '@/lib/recovery';
 import type { NetConfig } from '@/lib/stellar';
@@ -77,25 +76,96 @@ export async function fileBackupRecovery(
 }
 
 /**
- * The recovery key for `address`, from both servers, with the identity tokens the recovery
- * screen proved (one per server, in role order). Null when either server holds no half for
- * this inbox — the backup has no email door, or it was filed under another email.
+ * Every half one server holds for the proven inbox, following its cursor to the end.
+ *
+ * Reading one page would bring back some of a person's wallets and leave the rest behind a
+ * password they no longer have — with nothing on screen to say any were missed. The walk
+ * stops on the same three terms as the SEP-30 listing in `lib/recovery.ts`: an empty page,
+ * a page that adds nothing new, and `RECOVERY_LIST_MAX_PAGES`.
  */
-export async function takeBackupRecovery(
+async function allSharesOf(server: RecoveryServer, token: string): Promise<Map<string, string>> {
+  const seen = new Map<string, string>();
+  let after: string | undefined;
+  for (let page = 0; page < RECOVERY_LIST_MAX_PAGES; page++) {
+    const { shares } = await recoveryShares(server.sep30Base, token, after);
+    if (!shares.length) break;
+    const before = seen.size;
+    for (const s of shares) if (!seen.has(s.address)) seen.set(s.address, s.share);
+    if (seen.size === before) break; // the same page again: the cursor is not moving
+    after = shares[shares.length - 1].address;
+  }
+  return seen;
+}
+
+/**
+ * Join two servers' listings into one key per address. Only an address BOTH listed gets
+ * one: a single half is random noise, and offering its backup would be a door that opens
+ * nothing. A half of the wrong length is dropped for that address alone rather than
+ * failing the rest — it is a key this wallet never filed, and the others are still good.
+ */
+export function joinShares(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, string>): Map<string, Uint8Array> {
+  const keys = new Map<string, Uint8Array>();
+  for (const [address, shareA] of a) {
+    const shareB = b.get(address);
+    if (shareB === undefined) continue;
+    const halves = [fromBase64(shareA), fromBase64(shareB)];
+    try {
+      keys.set(address, joinKey(halves[0], halves[1]));
+    } catch {
+      // Not a half this wallet wrote: that backup keeps its other doors, nothing more.
+    } finally {
+      halves.forEach((h) => h.fill(0));
+    }
+  }
+  return keys;
+}
+
+/**
+ * The Stellar backups a sign-in brought back, newest first. `backups` is absent from a
+ * server older than per-wallet backups, where `backup` is the only one. Other chains'
+ * boxes are left out: this wallet keeps none of its own — those addresses come back with
+ * the phrase (`lib/chainAddresses.ts`).
+ */
+export function signInBackups(ready: Pick<SignInReady, 'backup' | 'backups'>): StoredBackup[] {
+  const all = ready.backups ?? (ready.backup ? [ready.backup] : []);
+  return all.filter((b) => (b.chain ?? 'stellar') === 'stellar');
+}
+
+/**
+ * Which wallet an email recovery lands in, and which keys are worth keeping.
+ *
+ * Keys for an address with no box among `backups` are zeroed and DROPPED from `keys`: a
+ * half filed for a wallet whose backup is gone opens nothing, and keeping it would only be
+ * keeping a key. Of the rest, the newest backup with a key is the one the person lands in —
+ * not necessarily the newest backup, which may predate the door while an older one has it.
+ * Null when no backup this account holds has a key.
+ */
+export function pickRecoveryPrimary(
+  backups: readonly Pick<StoredBackup, 'stellarAddress'>[],
+  keys: Map<string, Uint8Array>,
+): string | null {
+  const held = new Set(backups.map((b) => b.stellarAddress));
+  for (const [address, key] of keys) {
+    if (held.has(address)) continue;
+    key.fill(0);
+    keys.delete(address);
+  }
+  return backups.find((b) => keys.has(b.stellarAddress))?.stellarAddress ?? null;
+}
+
+/**
+ * The recovery key of EVERY backup filed under the inbox the recovery screen proved, keyed
+ * by address, with the identity tokens it holds (one per server, in role order).
+ *
+ * One proof per server, however many wallets the person backed up: forgetting the password
+ * forgets it for all of them, so recovering one and leaving the rest sealed under it was a
+ * recovery that lost wallets. Empty when neither server holds a half for this inbox.
+ */
+export async function takeAllBackupRecovery(
   servers: readonly RecoveryServer[],
   tokens: readonly string[],
-  address: string,
-): Promise<Uint8Array | null> {
-  const halves: Uint8Array[] = [];
-  try {
-    for (const [i, server] of servers.entries()) {
-      halves.push(fromBase64(await recoveryShareTake(server.sep30Base, tokens[i], address)));
-    }
-  } catch (e) {
-    if (e instanceof ApiRequestError && e.status === 404) return null;
-    throw e;
-  }
-  const key = joinKey(halves[0], halves[1]);
-  halves.forEach((h) => h.fill(0));
-  return key;
+): Promise<Map<string, Uint8Array>> {
+  if (servers.length !== 2) throw new RecoveryError('recovery.error.generic');
+  const [a, b] = await Promise.all(servers.map((s, i) => allSharesOf(s, tokens[i])));
+  return joinShares(a, b);
 }
