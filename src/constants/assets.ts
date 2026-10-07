@@ -19,4 +19,8 @@ export const ASSET_META: Record<string, { name: string; glyph: string; tone: Tok
   EURC: { name: 'Euro Coin', glyph: '€', tone: 'base' },
   yXLM: { name: 'yieldXLM', glyph: 'y', tone: 'base' },
   AQUA: { name: 'Aquarius', glyph: 'A', tone: 'base' },
+  SOL: { name: 'Solana', glyph: 'S', tone: 'base' },
+  MON: { name: 'Monad', glyph: 'M', tone: 'base' },
+  USDT: { name: 'Tether USD', glyph: '$', tone: 'base' },
+  USDT0: { name: 'USDT0', glyph: '$', tone: 'base' },
 };

@@ -1,5 +1,19 @@
 # CosmosPay Wallet — working agreement
 
+## Commands
+
+```bash
+npm run dev               # web build, astro dev server
+npm run check             # astro/TS type check
+npm run test:unit         # node:test, pure modules — runs in CI before the build
+npm run test:e2e          # Playwright (also :signin, :passkey — passkey needs a localhost E2E_URL)
+npm run test:responsive   # column width 320px → 1920px, probes either side of --desk-min
+npm run build:ext         # MV3 extension (build:ext:firefox for Firefox)
+npm run desktop:dev       # Tauri desktop — never plain `tauri dev` (skips the dev icon overlay)
+npm run android:dev       # also ios:dev; *:init regenerates src-tauri/gen/
+npm run openapi:check     # is openapi/community-server.json stale vs the server's spec? (openapi:sync copies it)
+```
+
 ## Styling: no inline styles, ever
 
 **The `style` attribute is banned in every `.tsx` and `.astro` file.** All styling
@@ -398,12 +412,12 @@ from their own fingerprint. Do not patch the session's `vaultKey` instead of loc
 partially applied change would make the store assert a key true of some wallets and not
 others.
 
-## Signing in keeps the key here; the backup only the password opens
+## Signing in keeps the key here; the backup only its doors open
 
 "Continue with Cosmos Pay / Google / GitHub / email" (`src/lib/signIn.ts`) proves WHO someone
 is. It never touches a key: a new wallet's seed is generated on the device, and a returning
 person gets back the box `src/lib/cloudBackup.ts` sealed on their last device — which only
-their password opens, and which the COMMUNITY SERVER (its wallet-auth module, a separate
+its doors open (their password, a passkey, or both recovery servers together), and which the COMMUNITY SERVER (its wallet-auth module, a separate
 repository) stores without being able to read. The key never leaves the device. The old Pollar
 login (custodial) is gone; `purgeLegacyPollar` in `lib/vault.ts` removes its wallets from a
 device once, at startup, and keeps the seed wallets they were paired with.
@@ -435,10 +449,11 @@ Eight rules:
   from `email/verify` (never from a claim on the provider's word alone), and the wallet keeps
   it in memory with the rest of the draft. A claim with `purpose: 'recovery'` forces the code
   even for a new email.
-- **The backup's cost is not a caller's choice.** `sealForBackup` owns
-  `BACKUP_PBKDF2_ITERATIONS`, higher than the vault's because whoever reads the server's
-  table gets unlimited offline guesses at every box in it; the server refuses a box under
-  its own floor. `openBackup` also checks the result against the address the box was filed
+- **The backup's cost is not a caller's choice.** `sealBackup` owns `BACKUP_ARGON2`
+  (Argon2id, 64 MiB × 2 passes), because whoever reads the server's table gets unlimited
+  offline guesses at every box in it, on GPUs; the server refuses a v4 password door under
+  its own floor. `BACKUP_PBKDF2_ITERATIONS` survives only to OPEN `v: 2`/`v: 3` boxes, and
+  `backupNeedsUpgrade` says when a restore should re-seal one. `openBackup` also checks the result against the address the box was filed
   under — a genuine box for the wrong wallet is refused, not restored.
 - **The server is told before the wallet is written.** `finishSignIn` goes first, signed by
   the key just generated or decrypted; the local write follows. The other order could leave
@@ -510,12 +525,18 @@ Seven rules, each one a way this breaks:
   leave a device whose password is still a typed one; a screen with no field would strand it.
   Never auto-drop the door on a failed passkey unlock for the same reason — a half-committed
   change can leave some wallets on each password.
-- **The backup has doors, and its doors follow the device.** `cloudBackup.ts` writes `v: 2` for a
-  bare password (what an older server accepts) and `v: 3` — a random data key sealed once per
-  door — whenever a passkey is involved. Turning a passkey on keeps the typed password as a second
-  door (it is how the person restores where passkeys do not work); turning it off writes a plain
-  password box again. The community server's `isBackupBox` validates both shapes and holds every
-  password door to the same PBKDF2 floor — change the format on one side and the other refuses it.
+- **The backup has doors, and its doors follow the device.** `cloudBackup.ts` writes only `v: 4`
+  — a random data key sealed once per door, the password door under Argon2id — and still OPENS
+  `v: 2` (seed straight under a PBKDF2 password) and `v: 3` (slots with a PBKDF2 password door).
+  Turning a passkey on keeps the typed password as a second door (it is how the person restores
+  where passkeys do not work); turning it off seals a password-only box again. The community
+  server's `isBackupBox` validates all three shapes and holds each password door to its own
+  floor — change the format on one side and the other refuses it.
+- **The recovery door is never alone, and never one server's.** `lib/backupRecovery.ts` seals
+  the data key under a random 32-byte key split by XOR between the two recovery servers; each
+  hands its half back only to an inbox proven to IT. It is how "forgot my password, no passkey
+  here" gets the whole wallet back (`resetBackupPassword`), and either half alone is noise — a
+  single server holding the whole key would be a custodian.
 - **A passkey mismatch is never a guess.** `BackupPasskeyError` and `PasskeyUnlockStaleError`
   are not `WrongPasswordError` and must not walk anyone up the attempt ladder; a dismissed sheet
   (`PasskeyError` `cancelled`) says nothing at all.
@@ -1038,6 +1059,11 @@ reads like a version and is not one.
 Swaps and liquidity operations are **not** covered by this: their envelope is built by
 the gateway, whose `memo` field is a numeric MEMO_ID and whose own commission memo
 already labels those transactions. Do not send a text memo there.
+
+The cross-chain swap (NEAR Intents, `submitCrossChain` in the store) is the exception that
+proves the rule: the wallet builds that payment itself, and the deposit address's memo is a
+memo it was GIVEN — carried as MEMO_TEXT exactly like a SEP-7 one, never replaced by the
+default.
 
 ## Consolidating components
 

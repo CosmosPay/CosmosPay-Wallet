@@ -25,7 +25,11 @@ import '@/styles/features/onboarding/recover-account.css';
  * people who have just got their money back:
  *
  *  - the recovery phrase changes, and the new one restores a KEY, not this account;
- *  - the old phrase, if it ever turns up, no longer signs for the account.
+ *  - the old phrase, if it ever turns up, no longer signs for the account;
+ *  - the Solana and Monad addresses were the OLD phrase's, so nothing here brings them back.
+ *
+ * When the inbox holds several backups, ONE proof brings back every one that has an email
+ * door, each under the same new password — forgetting the password forgot it for all of them.
  *
  * The list is the INTERSECTION of what both servers will act for. An account only one of
  * them knows cannot be recovered — one signature never reaches the threshold — so showing
@@ -63,9 +67,10 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.signInPending]);
 
-  // The whole backup, when both servers returned its halves for THIS sign-in's backup.
-  const backupAddress = store.signInPending?.backupAddress ?? null;
-  const wholeBackup = !!backupAddress && store.backupRecoverable === backupAddress;
+  // The whole backup — and every other one filed under this inbox — when both servers
+  // returned their halves. The store keeps it per sign-in, so nothing stale shows here.
+  const whole = store.backupRecoverable;
+  const wholeBackup = !!whole;
   const only = accounts?.length === 1 ? accounts[0].address : null;
   const address = chosen ?? only;
   const ready = !!address && !!pwd && ack && !store.busy;
@@ -101,7 +106,8 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
         <>
           <div className="glass-soft col g8 recover-codes">
             <div className="recover-codes-title">{t('recover.backupTitle')}</div>
-            <div className="desc">{t('recover.backupDesc', { address: shortAddr(backupAddress ?? '', 8, 8) })}</div>
+            <div className="desc">{t('recover.backupDesc', { address: shortAddr(whole?.address ?? '', 8, 8) })}</div>
+            {whole && whole.count > 1 && <div className="desc">{t('recover.backupMore', { n: whole.count - 1 })}</div>}
           </div>
           <Field password label={t('recover.newPwdLabel')} value={pwd} onChange={setPwd} />
           <OptionalConsents store={store} />
@@ -134,6 +140,7 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
           <div className="glass-soft col g8 recover-warn">
             <div className="recover-warn-text">{t('recover.phraseWarn')}</div>
             <div className="recover-warn-text">{t('recover.otherNetworks', { network: store.network.label })}</div>
+            <div className="recover-warn-text">{t('recover.otherChains')}</div>
             <CheckRow on={ack} onToggle={() => setAck(!ack)}>
               {t('recover.phraseAck')}
             </CheckRow>

@@ -66,7 +66,12 @@ export function Swap({ store }: { store: WalletStore }) {
 
   // Cross-chain state: the network the output lands on, what NEAR Intents lists, the
   // chosen destination asset and its quote.
-  const [origin, setOrigin] = useState<Origin>('stellar');
+  // Opens on the chain the Home card asked for, once: the next visit starts from Stellar.
+  const [origin, setOrigin] = useState<Origin>(store.swapOrigin);
+  const { setSwapOrigin } = store;
+  useEffect(() => {
+    setSwapOrigin('stellar');
+  }, [setSwapOrigin]);
   const [target, setTarget] = useState<Target>('stellar');
   const [xAssets, setXAssets] = useState<CrossChainAsset[]>([]);
   const [xDestId, setXDestId] = useState<string | null>(null);

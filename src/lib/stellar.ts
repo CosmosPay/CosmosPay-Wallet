@@ -624,9 +624,11 @@ export interface PriceInfo {
   change24h: number; // percent
 }
 
-// Stellar-ecosystem assets only. Base is dev-mode-overridable (see lib/endpoints).
+// Stellar-ecosystem assets, plus the native coins of the other chains the phrase holds
+// (Solana, Monad) so their balances count toward the portfolio. Base is dev-mode-overridable
+// (see lib/endpoints).
 const COINGECKO_PATH =
-  '/api/v3/simple/price?ids=stellar,usd-coin,euro-coin,aquarius&vs_currencies=usd&include_24hr_change=true';
+  '/api/v3/simple/price?ids=stellar,usd-coin,euro-coin,aquarius,solana,monad&vs_currencies=usd&include_24hr_change=true';
 
 // USDT does not exist as a native Stellar asset — Stellar's fiat stables are USDC & EURC.
 const CG_IDS: Record<string, string> = {
@@ -634,6 +636,8 @@ const CG_IDS: Record<string, string> = {
   USDC: 'usd-coin',
   EURC: 'euro-coin',
   AQUA: 'aquarius',
+  SOL: 'solana',
+  MON: 'monad',
 };
 
 /** Best-effort price fetch. Returns {} on failure (offline / rate-limited). */

@@ -18,10 +18,8 @@
 .receive-paylink-title { font-size: 14px; font-weight: 800; }
 .receive-paylink-desc { font-size: 12px; color: var(--muted); font-weight: 600; }
 .receive-paylink-chev { color: var(--dim); font-size: 18px; }
-/* The phrase's Solana and Monad addresses (lib/chainAddresses.ts). */
-.receive-chains { margin-top: 22px; }
-.receive-chains-title { font-size: 14px; font-weight: 800; margin-bottom: 4px; }
-.receive-chains-desc { font-size: 12px; color: var(--muted); font-weight: 600; line-height: 1.45; margin-bottom: 12px; }
-.receive-chain-row { border-radius: 16px; padding: 14px 16px; margin-bottom: 10px; } /* on .glass.row.between.g12 */
-.receive-chain-copy { flex-shrink: 0; border: none; border-radius: 999px; padding: 8px 14px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 800; cursor: pointer; }
-.receive-chain-copy.is-copied { color: var(--accent); }
+/* One tab per network the phrase holds an address on (lib/chainAddresses.ts). */
+.receive-tabs { display: flex; gap: 6px; padding: 4px; margin-top: 14px; border-radius: 999px; background: var(--surface); }
+.receive-tab { flex: 1; min-width: 0; height: 36px; border: none; border-radius: 999px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 800; cursor: pointer; }
+.receive-tab.is-on { background: var(--accent); color: var(--on-accent); }
+.receive-warn { margin: -4px 0 14px; font-size: 12px; font-weight: 700; color: var(--text-soft); line-height: 1.45; text-align: center; }

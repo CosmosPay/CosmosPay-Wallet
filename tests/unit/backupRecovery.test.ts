@@ -13,7 +13,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@stellar/stellar-sdk';
-import { joinKey, newRecoveryKey, splitKey } from '@/lib/backupRecovery';
+import {
+  joinKey,
+  joinShares,
+  newRecoveryKey,
+  pickRecoveryPrimary,
+  signInBackups,
+  splitKey,
+} from '@/lib/backupRecovery';
 import {
   addRecoveryDoor,
   BackupRecoveryError,
@@ -39,6 +46,68 @@ test('a key splits into two halves that each look like nothing and join back', (
   // A fresh split of the same key gives different halves: a half is not a function of it.
   assert.notDeepEqual(splitKey(key)[0], a);
   assert.throws(() => joinKey(a, new Uint8Array(16)));
+});
+
+test("one inbox's listings join into a key per wallet, only where both servers hold a half", () => {
+  const one = newRecoveryKey();
+  const two = newRecoveryKey();
+  const [a1, b1] = splitKey(one);
+  const [a2, b2] = splitKey(two);
+  const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString('base64');
+  const A = 'GA_ONE';
+  const B = 'GB_TWO';
+  const ONLY_A = 'GC_ONLY_ON_SERVER_A';
+  const BAD = 'GD_WRONG_LENGTH';
+
+  const keys = joinShares(
+    new Map([
+      [A, b64(a1)],
+      [B, b64(a2)],
+      [ONLY_A, b64(newRecoveryKey())],
+      [BAD, b64(newRecoveryKey())],
+    ]),
+    new Map([
+      [B, b64(b2)],
+      [A, b64(b1)],
+      [BAD, b64(new Uint8Array(16))],
+    ]),
+  );
+
+  // Every wallet comes back, whatever order the servers listed them in.
+  assert.deepEqual(keys.get(A), one);
+  assert.deepEqual(keys.get(B), two);
+  // One half is noise, and a malformed one costs that wallet alone — never the others.
+  assert.equal(keys.has(ONLY_A), false);
+  assert.equal(keys.has(BAD), false);
+  assert.equal(keys.size, 2);
+});
+
+test('an email recovery lands in the newest backup that has a key, and drops keys for boxes gone', () => {
+  const newest = { stellarAddress: 'G_NEWEST_NO_DOOR' };
+  const older = { stellarAddress: 'G_OLDER_WITH_DOOR' };
+  const orphan = newRecoveryKey();
+  const keys = new Map([
+    [older.stellarAddress, newRecoveryKey()],
+    ['G_BACKUP_DELETED', orphan],
+  ]);
+
+  // The newest box predates the door; the older one has it, so the person lands there.
+  assert.equal(pickRecoveryPrimary([newest, older], keys), older.stellarAddress);
+  // A half filed for a wallet the account no longer backs up is zeroed and dropped.
+  assert.equal(keys.has('G_BACKUP_DELETED'), false);
+  assert.ok(orphan.every((b) => b === 0));
+
+  assert.equal(pickRecoveryPrimary([newest], new Map()), null);
+});
+
+test("a sign-in's backups: the list when the server sends one, the single box otherwise, Stellar only", () => {
+  const box = (stellarAddress: string, chain?: string) => ({ stellarAddress, box: '{}', updatedAt: '', ...(chain ? { chain } : {}) });
+  assert.deepEqual(signInBackups({ backup: box('G1'), backups: undefined }), [box('G1')]);
+  assert.deepEqual(signInBackups({ backup: null, backups: undefined }), []);
+  assert.deepEqual(
+    signInBackups({ backup: box('G1'), backups: [box('G1'), box('SOL', 'solana'), box('G2', 'stellar')] }),
+    [box('G1'), box('G2', 'stellar')],
+  );
 });
 
 test('a box sealed with a recovery door opens with the key, and with nothing else it names', async () => {

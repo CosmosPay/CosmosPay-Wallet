@@ -62,6 +62,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   receive: lazy(() => import('@/features/money/Receive').then((m) => ({ default: m.Receive }))),
   send: lazy(() => import('@/features/money/Send').then((m) => ({ default: m.Send }))),
   'chain-send': lazy(() => import('@/features/money/ChainSend').then((m) => ({ default: m.ChainSend }))),
+  'chain-asset': lazy(() => import('@/features/wallet/ChainAsset').then((m) => ({ default: m.ChainAsset }))),
   swap: lazy(() => import('@/features/money/Swap').then((m) => ({ default: m.Swap }))),
   select: lazy(() => import('@/features/money/Send').then((m) => ({ default: m.Send }))),
   confirm: lazy(() => import('@/features/money/Confirm').then((m) => ({ default: m.Confirm }))),

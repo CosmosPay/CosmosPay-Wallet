@@ -156,3 +156,15 @@ export const CHAIN_EXPLORER_TX: Record<OtherChain, (id: string) => string> = {
   solana: (id) => `https://solscan.io/tx/${id}`,
   monad: (id) => `https://monadscan.com/tx/${id}`,
 };
+
+/** Where the Home card links an address on each chain's mainnet. */
+export const CHAIN_EXPLORER_ADDRESS: Record<OtherChain, (address: string) => string> = {
+  solana: (a) => `https://solscan.io/account/${a}`,
+  monad: (a) => `https://monadscan.com/address/${a}`,
+};
+
+/** The address explorers of each network. */
+export const CHAIN_EXPLORER_ADDRESS_BY_NET: Record<ChainNet, Record<OtherChain, (address: string) => string>> = {
+  mainnet: CHAIN_EXPLORER_ADDRESS,
+  testnet: CHAIN_TESTNET_EXPLORER_ADDRESS,
+};

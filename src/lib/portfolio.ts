@@ -1,6 +1,8 @@
 /** Turn raw Horizon balances + a price map into display rows + a USD total. */
 import type { AccountState, PriceInfo } from '@/lib/stellar';
 import { findRegistryAsset, registrySnapshot } from '@/lib/assetRegistry';
+import { fromMinorUnits } from '@/lib/amount';
+import { CHAIN_TOKENS_BY_NET, OTHER_CHAINS, type ChainNet, type OtherChain } from '@/constants/chains';
 
 export interface AssetRow {
   code: string;
@@ -9,6 +11,57 @@ export interface AssetRow {
   price: number | null; // USD per unit, null when unknown
   value: number | null; // amount * price, null when unknown
   isNative: boolean;
+  /** Set on a Solana / Monad holding; absent on a Stellar one. */
+  chain?: OtherChain;
+  /** The token on `chain`: `native`, or its SPL mint / ERC-20 address. */
+  asset?: string;
+}
+
+/** A row's identity. A code is not one: USDC on Stellar and USDC on Solana are two rows. */
+export const rowKey = (r: AssetRow): string => (r.chain ? `${r.chain}:${r.asset}` : `${r.code}:${r.issuer ?? ''}`);
+
+/**
+ * Base-unit balances of the phrase's Solana and Monad tokens, per chain. A chain whose node
+ * could not be read is `null`, and contributes no rows — a zero would read as "emptied".
+ */
+export type ChainHoldings = Partial<Record<OtherChain, Record<string, bigint> | null>>;
+
+/**
+ * Dollar stablecoins on the other chains. Unlike a Stellar code these are safe to price by
+ * symbol: `CHAIN_TOKENS_BY_NET` lists only the issuers' canonical contracts, and a balance
+ * is only ever read for a contract in that list.
+ */
+const CHAIN_STABLE = new Set(['USDC', 'USDT', 'USDT0']);
+
+/**
+ * The Solana / Monad holdings as portfolio rows: each chain's native coin always (so the
+ * account is visible before it is funded), its tokens only when held.
+ */
+export function chainRows(holdings: ChainHoldings | null, net: ChainNet, prices: Record<string, PriceInfo>): AssetRow[] {
+  if (!holdings) return [];
+  const rows: AssetRow[] = [];
+  for (const chain of OTHER_CHAINS) {
+    const balances = holdings[chain];
+    if (!balances) continue;
+    for (const token of CHAIN_TOKENS_BY_NET[net][chain]) {
+      const units = balances[token.asset] ?? 0n;
+      const native = token.asset === 'native';
+      if (!native && units === 0n) continue;
+      const amount = parseFloat(fromMinorUnits(units, token.decimals) ?? '0') || 0;
+      const price = prices[token.symbol]?.usd ?? (CHAIN_STABLE.has(token.symbol) ? 1 : null);
+      rows.push({
+        code: token.symbol,
+        issuer: null,
+        amount,
+        price,
+        value: price !== null ? amount * price : null,
+        isNative: false,
+        chain,
+        asset: token.asset,
+      });
+    }
+  }
+  return rows;
 }
 
 // USD-pegged stables assumed at $1 when no live price is available.
@@ -58,11 +111,10 @@ export function computePortfolio(
   prices: Record<string, PriceInfo>,
   /** Needed to tell a real stablecoin issuer from a look-alike. */
   networkId?: string,
+  /** Holdings on the phrase's other chains (`chainRows`), counted in the same total. */
+  extra: AssetRow[] = [],
 ): { total: number; rows: AssetRow[]; changePct: number; deltaUsd: number } {
-  if (!account || !account.balances.length) {
-    return { total: 0, rows: [nativeRow(prices)], changePct: 0, deltaUsd: 0 };
-  }
-  const rows: AssetRow[] = account.balances.map((b) => {
+  const stellarRows: AssetRow[] = !account || !account.balances.length ? [nativeRow(prices)] : account.balances.map((b) => {
     const amount = parseFloat(b.balance) || 0;
     let price: number | null = prices[b.code]?.usd ?? null;
     // Parity is assumed only for a stablecoin from its recognised issuer.
@@ -70,6 +122,7 @@ export function computePortfolio(
     const value = price !== null ? amount * price : null;
     return { code: b.code, issuer: b.issuer, amount, price, value, isNative: b.isNative };
   });
+  const rows = [...stellarRows, ...extra];
   // native first, then by value desc
   rows.sort((a, b) => {
     if (a.isNative) return -1;

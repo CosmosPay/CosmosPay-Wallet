@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { WalletStore } from '@/state/store';
+import type { RevealedBackup, WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
@@ -10,11 +10,16 @@ import { useCopied } from '@/hooks/useCopied';
 import '@/styles/features/settings/export.css';
 
 /* ------------------------------ EXPORT ------------------------------ */
+/**
+ * Every key the wallet holds, behind one password check: the phrase (which restores all of
+ * them at once), then each chain's own key in the form its reference wallet imports —
+ * Stellar's S…, Solana's base58 keypair for Phantom, Monad's 0x key for MetaMask.
+ */
 export function Export({ store }: { store: WalletStore }) {
   const t = store.t;
   const [pwd, setPwd] = useState('');
   // Held only while this screen is open, and only after the password check.
-  const [backup, setBackup] = useState<{ secret: string; mnemonic: string | null } | null>(null);
+  const [backup, setBackup] = useState<RevealedBackup | null>(null);
   const [busy, run] = useBusy();
   const [copied, copy] = useCopied();
 
@@ -37,6 +42,7 @@ export function Export({ store }: { store: WalletStore }) {
 
   const mnemonic = backup?.mnemonic ?? null;
   const secret = backup?.secret ?? '';
+  const chainKeys = backup?.chainKeys ?? null;
 
   return (
     <div className="scr screen col pb-30">
@@ -79,10 +85,19 @@ export function Export({ store }: { store: WalletStore }) {
               {t('export.noPhrase')}
             </div>
           )}
+          {mnemonic && <div className="export-compat">{t('export.phraseRestoresAll')}</div>}
           <Reveal title={t('export.secretTitle')} value={secret} mono copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'secret'} onCopy={() => copy(secret, 'secret')} />
           <div className="export-compat">
             {t('export.compat')}
           </div>
+          {chainKeys && (
+            <>
+              <Reveal title={t('export.solanaTitle')} value={chainKeys.solana} mono copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'solana'} onCopy={() => copy(chainKeys.solana, 'solana')} />
+              <div className="export-compat">{t('export.solanaCompat')}</div>
+              <Reveal title={t('export.monadTitle')} value={chainKeys.monad} mono copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'monad'} onCopy={() => copy(chainKeys.monad, 'monad')} />
+              <div className="export-compat">{t('export.monadCompat')}</div>
+            </>
+          )}
         </>
       )}
     </div>
