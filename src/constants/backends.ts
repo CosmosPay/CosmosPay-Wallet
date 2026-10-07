@@ -35,8 +35,8 @@ export const DEFAULT_GATEWAY_ENTRY = '/cosmos-api';
  * two names, which is the single thing this design is built to avoid. A build that changes
  * one must change the other.
  */
-export const DEFAULT_RECOVERY_A_URL = 'https://recovery-a.cosmospay.lat';
-export const DEFAULT_RECOVERY_B_URL = 'https://recovery-b.cosmospay.lat';
+export const DEFAULT_RECOVERY_A_URL = 'https://reserv001.cosmospay.lat';
+export const DEFAULT_RECOVERY_B_URL = 'https://reserv002.cosmospay.lat';
 
 /**
  * The Solana and Monad nodes the swap screen reads balances from, simulates with and
