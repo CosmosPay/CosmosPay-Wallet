@@ -77,10 +77,14 @@ import {
   CHAIN_EXPLORER_TX,
   CHAIN_SWAP_SLIPPAGE_BPS,
   CHAIN_TESTNET_EXPLORER_TX,
+  OTHER_CHAINS,
   SOLANA_AIRDROP_LAMPORTS,
+  type ChainNet,
   type ChainToken,
   type OtherChain,
 } from '@/constants/chains';
+import type { ChainExportKeys } from '@/lib/chainKeys';
+import type { ChainHoldings } from '@/lib/portfolio';
 import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
@@ -120,6 +124,7 @@ import {
   RECOVERY_PREFIX,
   TTL,
   accountKey,
+  chainsKey,
   historyKey,
   opsKey,
   recoveryKey,
@@ -304,6 +309,17 @@ async function secretOf(s: Session): Promise<string> {
  * turns into. `onboarding`: a first run, no vault yet. `add`: another wallet on an unlocked
  * device.
  */
+/**
+ * What the Export screen shows after the password check: the phrase, the Stellar key, and
+ * the phrase's Solana / Monad keys — null for a wallet imported from a bare secret, which
+ * has no phrase to derive them from.
+ */
+export interface RevealedBackup {
+  secret: string;
+  mnemonic: string | null;
+  chainKeys: ChainExportKeys | null;
+}
+
 export type SignInPurpose = 'onboarding' | 'add';
 
 /**
@@ -561,6 +577,7 @@ export function useWalletStore() {
   const accountK = accountKey(scope.net, scope.pub);
   const historyK = historyKey(scope.net, scope.pub);
   const account = useQueryValue<AccountState>(accountK) ?? null;
+  const chainHoldings = useQueryValue<ChainHoldings>(chainsKey(scope.net, scope.pub)) ?? null;
   const prices = useQueryValue<Record<string, PriceInfo>>(PRICES_KEY) ?? EMPTY_PRICES;
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -2506,7 +2523,12 @@ export function useWalletStore() {
   // The same phrase derives an address on each; the wallet signs there with keys derived
   // at the moment of signing (`lib/chainKeys.ts`) and checks everything the gateway built
   // before it does (`lib/chainSwap.ts`). Jupiter / Kuru Flow for a swap on one chain,
-  // NEAR Intents for one that leaves it. Mainnet only.
+  // NEAR Intents for one that leaves it — mainnet only, since none of the three has a
+  // testnet. Receiving and sending follow the Stellar network instead: a test Stellar
+  // network means Solana devnet and Monad testnet, mainnet means mainnet.
+
+  /** Which of the other chains' networks goes with the selected Stellar network. */
+  const chainNet: ChainNet = networkEnv(network) === 'dev' ? 'testnet' : 'mainnet';
 
   /** Our address on `chain`, or null for a wallet imported from a bare Stellar secret. */
   const chainAddress = useCallback(
@@ -2515,40 +2537,73 @@ export function useWalletStore() {
     [session, meta],
   );
 
-  /** Base-unit balances of the tokens offered on `chain`; null when the node cannot be read. */
+  /**
+   * Base-unit balances of the tokens offered on `chain` (`CHAIN_TOKENS_BY_NET[chainNet]`) at
+   * this phrase's address there, on the network that goes with the Stellar one. Null for a
+   * wallet with no phrase, or when the node cannot be read.
+   */
   const chainBalances = useCallback(
     async (chain: OtherChain): Promise<Record<string, bigint> | null> => {
       const owner = meta?.chainAddresses?.[chain];
       if (!owner) return null;
       try {
-        return await (await chainSwapLib()).chainBalances(chain, owner);
+        return await (await chainSwapLib()).chainBalances(chain, owner, chainNet);
       } catch {
         return null;
       }
     },
-    [meta],
+    [meta, chainNet],
   );
 
   /**
-   * Base-unit balances of the test tokens (`CHAIN_TESTNET_TOKENS`) at this phrase's
-   * address on `chain`'s TEST network — Solana devnet, Monad testnet. Null off a test
-   * network, for a wallet with no phrase, or when the node cannot be read.
+   * The Solana / Monad balances Home lists beside the Stellar ones, through the keyed cache
+   * like every other read — on unlock, every 30s while unlocked, and forced after a flow that
+   * moved them. Each chain is read on its own, so one unreachable node costs its own rows only.
    */
-  const testnetChainBalances = useCallback(
-    async (chain: OtherChain): Promise<Record<string, bigint> | null> => {
-      const owner = meta?.chainAddresses?.[chain];
-      if (!owner || networkEnv(network) !== 'dev') return null;
+  const loadChainHoldings = useCallback(
+    async (force = false): Promise<void> => {
+      const addrs = meta?.chainAddresses;
+      if (!session || !meta || !addrs) return;
+      const net = chainNet;
       try {
-        return await (await chainSwapLib()).chainBalances(chain, owner, 'testnet');
+        await run(
+          {
+            key: chainsKey(networkId, meta.publicKey),
+            fetcher: async () => {
+              const lib = await chainSwapLib();
+              const read = await Promise.all(
+                OTHER_CHAINS.map(async (c) => [c, await lib.chainBalances(c, addrs[c], net).catch(() => null)] as const),
+              );
+              return Object.fromEntries(read) as ChainHoldings;
+            },
+            ttl: TTL.chains,
+          },
+          force,
+        );
       } catch {
-        return null;
+        /* The rows stay as they were; the next poll tries again. */
       }
     },
-    [meta, network],
+    [session, meta, chainNet, networkId],
   );
 
-  /** Which chain the test-network send screen opens on; set by the Home card. */
-  const [chainSendTarget, setChainSendTarget] = useState<OtherChain>('solana');
+  // The addresses are derived once per wallet (`ensureChainAddresses`), then read like a balance.
+  useEffect(() => {
+    void ensureChainAddresses();
+  }, [ensureChainAddresses]);
+  useEffect(() => {
+    if (!session) return;
+    void loadChainHoldings();
+    const id = setInterval(() => void loadChainHoldings(), 30_000);
+    return () => clearInterval(id);
+  }, [session, loadChainHoldings]);
+
+  /** The Solana / Monad holding Home opened, and the one the send screen starts on. */
+  const [chainAsset, setChainAsset] = useState<{ chain: OtherChain; asset: string }>({ chain: 'solana', asset: 'native' });
+  /** Which chain the swap screen pays from when it opens; the Home card sets it, Swap clears it. */
+  const [swapOrigin, setSwapOrigin] = useState<CrossChainNetwork>('stellar');
+  /** Which network's tab the receive screen opens on; the Home card sets it, Receive clears it. */
+  const [receiveNet, setReceiveNet] = useState<CrossChainNetwork>('stellar');
 
   /**
    * Airdrop 1 devnet SOL to this phrase's Solana address and wait for it to confirm, so
@@ -2568,15 +2623,15 @@ export function useWalletStore() {
         if (done) break;
         if (Date.now() > deadline) {
           // Sent but not seen yet: it usually lands; the next balance read will show it.
-          flash(t('testnetChains.airdropPending'), 'info');
+          flash(t('chains.airdropPending'), 'info');
           return true;
         }
         await new Promise((r) => setTimeout(r, CHAIN_CONFIRM_POLL_MS));
       }
-      flash(t('testnetChains.airdropOk'), 'ok');
+      flash(t('chains.airdropOk'), 'ok');
       return true;
     } catch {
-      flash(t('testnetChains.airdropFailed'), 'err');
+      flash(t('chains.airdropFailed'), 'err');
       return false;
     }
   }, [meta, network, t, flash]);
@@ -2604,16 +2659,18 @@ export function useWalletStore() {
   );
 
   /**
-   * Send `amount` of `token` on `chain`'s TEST network to `to`, signed with this phrase's
-   * key there. Test networks only: mainnet Solana / Monad money moves through the swap
-   * screen, behind the checks `lib/chainSwap.ts` runs on what the gateway built.
+   * Send `amount` of `token` on `chain` to `to`, signed with this phrase's key there, on the
+   * network that goes with the Stellar one. The wallet builds this transfer itself — no
+   * counterparty envelope, so nothing for `lib/chainSwap.ts` to check beyond the address —
+   * and the password prompt is what stands between it and the key, as for a Stellar send.
    */
-  const submitTestnetSend = useCallback(
+  const submitChainSend = useCallback(
     async (chain: OtherChain, token: ChainToken, to: string, amount: string) => {
       const units = toMinorUnitsBig(amount, token.decimals);
       const destination = to.trim();
-      if (!session || !units || units <= 0n || networkEnv(network) !== 'dev') return;
-      const net = t(`testnetChains.net.${chain}`);
+      if (!session || !units || units <= 0n) return;
+      const sendNet = chainNet;
+      const net = t(`chains.net.${sendNet}.${chain}`);
       const short = `${destination.slice(0, 6)}…${destination.slice(-6)}`;
       await exclusive.run('send', async () => {
         const epoch = sessionEpochRef.current;
@@ -2632,7 +2689,7 @@ export function useWalletStore() {
           try {
             hash = await lib.sendTransfer({
               chain,
-              net: 'testnet',
+              net: sendNet,
               secret,
               owner,
               asset: token.asset,
@@ -2652,7 +2709,7 @@ export function useWalletStore() {
               { label: t('chainSend.to'), val: short },
             ],
             hash,
-            explorer: CHAIN_TESTNET_EXPLORER_TX[chain](hash),
+            explorer: (sendNet === 'testnet' ? CHAIN_TESTNET_EXPLORER_TX : CHAIN_EXPLORER_TX)[chain](hash),
           });
           setScreen('success');
         } catch (e) {
@@ -2660,10 +2717,11 @@ export function useWalletStore() {
           setScreen('success');
         } finally {
           setBusy(false);
+          void loadChainHoldings(true);
         }
       });
     },
-    [session, network, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, t],
+    [session, chainNet, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, loadChainHoldings, t],
   );
 
   const quoteChainSwap = useCallback(
@@ -2773,10 +2831,11 @@ export function useWalletStore() {
           setScreen('success');
         } finally {
           setBusy(false);
+          void loadChainHoldings(true);
         }
       });
     },
-    [session, meta, openAccessKey, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, t],
+    [session, meta, openAccessKey, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, loadChainHoldings, t],
   );
 
   /** The request a cross-chain swap from Solana / Monad sends: both ends are our own. */
@@ -2902,10 +2961,11 @@ export function useWalletStore() {
           setScreen('success');
         } finally {
           setBusy(false);
+          void loadChainHoldings(true);
         }
       });
     },
-    [session, openAccessKey, crossChainFromInput, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, refresh, t],
+    [session, openAccessKey, crossChainFromInput, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, refresh, loadChainHoldings, t],
   );
 
   /* ------------------------- liquidity pools ---------------------- */
@@ -5157,7 +5217,7 @@ export function useWalletStore() {
    * whose password is right.
    */
   const revealBackup = useCallback(
-    async (password: string): Promise<{ secret: string; mnemonic: string | null } | null> => {
+    async (password: string): Promise<RevealedBackup | null> => {
       if (!meta) return null;
       const blocked = await claimAttempt();
       if (blocked) {
@@ -5167,7 +5227,18 @@ export function useWalletStore() {
       try {
         const v = await unlockWallet(meta.id, password);
         await noteAttemptSuccess();
-        return { secret: v.secret, mnemonic: v.mnemonic };
+        // The same phrase's Solana and Monad keys, so one screen restores every chain it
+        // holds. A derivation that disagrees with the addresses on screen drops them rather
+        // than the whole reveal: the phrase and the Stellar key are still right.
+        let chainKeys: ChainExportKeys | null = null;
+        if (v.mnemonic) {
+          try {
+            chainKeys = await (await chainKeysLib()).chainExportKeys(v.mnemonic, meta.chainAddresses);
+          } catch {
+            chainKeys = null;
+          }
+        }
+        return { secret: v.secret, mnemonic: v.mnemonic, chainKeys };
       } catch (err) {
         // Counted by `claimAttempt` before the derivation; released again when the throw
         // was a missing or corrupt vault rather than a wrong guess.
@@ -6031,11 +6102,17 @@ export function useWalletStore() {
     recoverBackup,
     enableBackupRecovery,
     chainAddress,
+    chainNet,
     chainBalances,
-    testnetChainBalances,
-    chainSendTarget,
-    setChainSendTarget,
-    submitTestnetSend,
+    chainHoldings,
+    loadChainHoldings,
+    chainAsset,
+    setChainAsset,
+    swapOrigin,
+    setSwapOrigin,
+    receiveNet,
+    setReceiveNet,
+    submitChainSend,
     airdropTestnetSol,
     quoteChainSwap,
     submitChainSwap,

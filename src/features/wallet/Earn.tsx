@@ -2,7 +2,7 @@ import type { WalletStore } from '@/state/store';
 import { NavMenu } from '@/app/NavMenu';
 import { TokenAvatar } from '@/ui/TokenAvatar';
 import { buildKind } from '@/lib/platform';
-import { computePortfolio } from '@/lib/portfolio';
+import { chainRows, computePortfolio } from '@/lib/portfolio';
 import { fmt } from '@/lib/format';
 import { BackCircle } from '@/features/wallet/BackCircle';
 import '@/styles/features/wallet/tab-header.css';
@@ -11,7 +11,7 @@ import '@/styles/features/wallet/earn.css';
 /* ------------------------------- EARN -------------------------------- */
 export function Earn({ store }: { store: WalletStore }) {
   const t = store.t;
-  const { total } = computePortfolio(store.account, store.prices, store.network.id);
+  const { total } = computePortfolio(store.account, store.prices, store.network.id, chainRows(store.chainHoldings, store.chainNet, store.prices));
   const protocols = [
     {
       name: 'DeFindex',

@@ -8,49 +8,50 @@ import { trim } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import { fromMinorUnits, sanitizeDecimalInput, toMinorUnitsBig } from '@/lib/amount';
 import { isChainAddress } from '@/lib/chainSwap';
-import { networkEnv } from '@/lib/stellar';
-import { CHAIN_TESTNET_TOKENS, NATIVE_RESERVE, OTHER_CHAINS, type OtherChain } from '@/constants/chains';
+import { CHAIN_TOKENS_BY_NET, NATIVE_RESERVE, OTHER_CHAINS, type OtherChain } from '@/constants/chains';
 import '@/styles/features/money/chain-send.css';
 
 /**
- * Send test SOL / MON / USDC on Solana devnet or Monad testnet, from the phrase's own
- * address there. Reached from the Home card, which only exists on a test network; the
- * screen checks again and refuses to offer anything on mainnet.
+ * Send SOL / MON / USDC from the phrase's own address on Solana or Monad. The network
+ * follows the Stellar one (`store.chainNet`): a test Stellar network sends on Solana devnet
+ * and Monad testnet, mainnet on mainnet. Reached from a Solana / Monad holding on Home.
  */
 export function ChainSend({ store }: { store: WalletStore }) {
   const t = store.t;
-  const testnet = networkEnv(store.network) === 'dev';
-  const [chain, setChain] = useState<OtherChain>(store.chainSendTarget);
-  const tokens = CHAIN_TESTNET_TOKENS[chain];
-  const [asset, setAsset] = useState(tokens[0].asset);
+  const net = store.chainNet;
+  const [chain, setChain] = useState<OtherChain>(store.chainAsset.chain);
+  const tokens = CHAIN_TOKENS_BY_NET[net][chain];
+  const [asset, setAsset] = useState(store.chainAsset.asset);
   const [to, setTo] = useState('');
   const [amount, setAmount] = useState('');
   const [balances, setBalances] = useState<Record<string, bigint> | null | undefined>(undefined);
   const owner = store.meta?.chainAddresses?.[chain] ?? null;
-  const { ensureChainAddresses, testnetChainBalances } = store;
+  const { ensureChainAddresses, chainBalances } = store;
 
   useEffect(() => {
     void ensureChainAddresses();
   }, [ensureChainAddresses]);
 
-  // A different chain is a different token list: start from its native coin.
+  // A different chain or network is a different token list: start from its native coin,
+  // unless the token already chosen (the one Home opened) is on it.
   useEffect(() => {
-    setAsset(CHAIN_TESTNET_TOKENS[chain][0].asset);
+    const list = CHAIN_TOKENS_BY_NET[net][chain];
+    setAsset((a) => (list.some((tk) => tk.asset === a) ? a : list[0].asset));
     setTo('');
     setAmount('');
-  }, [chain]);
+  }, [chain, net]);
 
   useEffect(() => {
-    if (!owner || !testnet) return;
+    if (!owner) return;
     let cancelled = false;
     setBalances(undefined);
-    testnetChainBalances(chain).then((b) => {
+    chainBalances(chain).then((b) => {
       if (!cancelled) setBalances(b);
     });
     return () => {
       cancelled = true;
     };
-  }, [chain, owner, testnet, testnetChainBalances]);
+  }, [chain, owner, chainBalances]);
 
   const token = tokens.find((tk) => tk.asset === asset) ?? tokens[0];
   const native = tokens[0];
@@ -65,7 +66,7 @@ export function ChainSend({ store }: { store: WalletStore }) {
   const addrValid = isChainAddress(chain, to.trim());
   const self = !!owner && (chain === 'monad' ? to.trim().toLowerCase() === owner.toLowerCase() : to.trim() === owner);
   const tooMuch = !!units && units > avail;
-  const ready = testnet && !!owner && addrValid && !self && !!units && units > 0n && !tooMuch && !noGas && !store.busy;
+  const ready = !!owner && addrValid && !self && !!units && units > 0n && !tooMuch && !noGas && !store.busy;
 
   const paste = async () => {
     const txt = (await readText())?.trim();
@@ -84,14 +85,13 @@ export function ChainSend({ store }: { store: WalletStore }) {
       <div className="chain-send-tabs">
         {OTHER_CHAINS.map((c) => (
           <button key={c} className={cx('chain-send-tab', chain === c && 'is-on')} onClick={() => setChain(c)}>
-            {t(`testnetChains.net.${c}`)}
+            {t(`chains.net.${net}.${c}`)}
           </button>
         ))}
       </div>
 
-      {!testnet && <div className="chain-send-guard">{t('chainSend.testnetOnly')}</div>}
-      {testnet && !owner && <div className="chain-send-guard">{t('xswap.noAddress', { chain: t(`xswap.chain.${chain}`) })}</div>}
-      {testnet && owner && balances === null && <div className="chain-send-guard">{t('testnetChains.unreachable')}</div>}
+      {!owner && <div className="chain-send-guard">{t('xswap.noAddress', { chain: t(`xswap.chain.${chain}`) })}</div>}
+      {owner && balances === null && <div className="chain-send-guard">{t('chains.unreachable')}</div>}
 
       <div className="label-up chain-send-label">{t('chainSend.token')}</div>
       <div className="chain-send-tabs">
@@ -133,7 +133,7 @@ export function ChainSend({ store }: { store: WalletStore }) {
         <button onClick={setMax} disabled={!avail} className="glass-soft chain-send-paste">{t('chainSend.max')}</button>
       </div>
       <div className="chain-send-balance">
-        {t('swap.balance')}: {balances === undefined && owner && testnet ? '…' : human(balance, token.decimals)} {token.symbol}
+        {t('swap.balance')}: {balances === undefined && owner ? '…' : human(balance, token.decimals)} {token.symbol}
       </div>
       {tooMuch && <div className="chain-send-note is-invalid">{t('chainSend.tooMuch')}</div>}
       {noGas && balances && (
@@ -143,7 +143,7 @@ export function ChainSend({ store }: { store: WalletStore }) {
       <div className="spacer" />
       <PrimaryButton
         disabled={!ready}
-        onClick={() => store.submitTestnetSend(chain, token, to, amount)}
+        onClick={() => store.submitChainSend(chain, token, to, amount)}
       >
         {store.busy ? <Spinner /> : t('chainSend.submit', { code: token.symbol })}
       </PrimaryButton>

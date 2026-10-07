@@ -11,10 +11,8 @@ import { HomeAction } from '@/features/wallet/HomeAction';
 import { AssetListRow } from '@/features/wallet/AssetListRow';
 import { ActivateCard } from '@/features/wallet/ActivateCard';
 import { ProtectAccountCard } from '@/features/wallet/ProtectAccountCard';
-import { TestnetChainsCard } from '@/features/wallet/TestnetChainsCard';
-import { networkEnv } from '@/lib/stellar';
 import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
-import { computePortfolio } from '@/lib/portfolio';
+import { chainRows, computePortfolio, rowKey } from '@/lib/portfolio';
 import { fmt, splitMoney, pct } from '@/lib/format';
 import { getGreeting, ageFromBirthdate } from '@/lib/greeting';
 import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
@@ -33,7 +31,9 @@ function shortName(name: string, max = 12): string {
 /* ------------------------------- HOME -------------------------------- */
 export function Home({ store }: { store: WalletStore }) {
   const t = store.t;
-  const { total, rows, changePct, deltaUsd } = computePortfolio(store.account, store.prices, store.network.id);
+  // Stellar balances and the same phrase's Solana / Monad ones are one list and one total.
+  const extra = chainRows(store.chainHoldings, store.chainNet, store.prices);
+  const { total, rows, changePct, deltaUsd } = computePortfolio(store.account, store.prices, store.network.id, extra);
   // Every portfolio number eases towards its live value, so price fluctuations
   // visibly tick up/down instead of jumping (colors/arrows follow the real target).
   const money = splitMoney(useAnimatedNumber(total));
@@ -69,7 +69,9 @@ export function Home({ store }: { store: WalletStore }) {
   // stay visible among those 5. "Ver todo" expands the full list inline.
   const [showAllAssets, setShowAllAssets] = useState(false);
   const favSet = new Set(store.favorites);
-  const sortedRows = [...rows].sort((a, b) => (favSet.has(b.code) ? 1 : 0) - (favSet.has(a.code) ? 1 : 0));
+  // Favourites are Stellar codes; a Solana / Monad row never matches one.
+  const isFav = (r: (typeof rows)[number]) => !r.chain && favSet.has(r.code);
+  const sortedRows = [...rows].sort((a, b) => (isFav(b) ? 1 : 0) - (isFav(a) ? 1 : 0));
   const visibleRows = showAllAssets ? sortedRows : sortedRows.slice(0, 5);
 
   return (
@@ -169,8 +171,6 @@ export function Home({ store }: { store: WalletStore }) {
       {/* Recovery can only go on a funded account. The card itself decides from the ledger. */}
       {!notActivated && recoveryUp && <ProtectAccountCard store={store} />}
       {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
-      {/* Test SOL / test MON beside test XLM — a test network is a developer's network. */}
-      {networkEnv(store.network) === 'dev' && <TestnetChainsCard store={store} />}
 
       <div className="home-assets">
         <div className="row between home-assets-head">
@@ -183,13 +183,23 @@ export function Home({ store }: { store: WalletStore }) {
         </div>
         {visibleRows.map((r, i) => (
           <AssetListRow
-            key={r.code}
+            key={rowKey(r)}
             row={r}
             chg={store.prices[r.code]?.change24h}
-            fav={store.favorites.includes(r.code)}
-            onFav={() => store.toggleFavorite(r.code)}
+            fav={!r.chain && store.favorites.includes(r.code)}
+            onFav={r.chain ? undefined : () => store.toggleFavorite(r.code)}
             index={i}
-            onClick={() => { store.setSelectedAsset(r.code); store.setScreen('asset'); }}
+            network={r.chain ? t(`chains.net.${store.chainNet}.${r.chain}`) : undefined}
+            onClick={() => {
+              const { chain, asset } = r;
+              if (chain && asset) {
+                store.setChainAsset({ chain, asset });
+                store.setScreen('chain-asset');
+              } else {
+                store.setSelectedAsset(r.code);
+                store.setScreen('asset');
+              }
+            }}
           />
         ))}
         <div onClick={() => store.setScreen('add-asset')} className="tap home-add-asset">

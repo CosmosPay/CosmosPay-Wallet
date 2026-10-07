@@ -5,7 +5,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computePortfolio } from '@/lib/portfolio';
+import { chainRows, computePortfolio, rowKey } from '@/lib/portfolio';
+import { CHAIN_TOKENS } from '@/constants/chains';
 import type { AccountState } from '@/lib/stellar';
 
 const REAL_USDC_PUBLIC = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
@@ -121,4 +122,30 @@ test('a LISTED but unverified issuer gets no parity assumption', () => {
     'public',
   );
   assert.equal(rows[0].price, null);
+});
+
+/* ------------------------- Solana / Monad holdings ------------------------- */
+
+const SOL_USDC = CHAIN_TOKENS.solana[1].asset;
+
+test('a chain lists its native coin always and a token only when held', () => {
+  const rows = chainRows({ solana: { native: 0n, [SOL_USDC]: 0n }, monad: { native: 2_000_000_000_000_000_000n } }, 'mainnet', {});
+  assert.deepEqual(rows.map((r) => `${r.chain}:${r.code}:${r.amount}`), ['solana:SOL:0', 'monad:MON:2']);
+});
+
+test('an unreadable chain contributes no rows rather than a zero', () => {
+  assert.deepEqual(chainRows({ solana: null }, 'mainnet', {}), []);
+});
+
+test('chain holdings count toward the same total, and USDC on two chains stays two rows', () => {
+  const extra = chainRows({ solana: { native: 1_000_000_000n, [SOL_USDC]: 5_000_000n } }, 'mainnet', { SOL: { usd: 150, change24h: 0 } });
+  const { total, rows } = computePortfolio(
+    account([{ code: 'USDC', issuer: REAL_USDC_PUBLIC, balance: '10', isNative: false } as AccountState['balances'][number]]),
+    {},
+    'public',
+    extra,
+  );
+  assert.equal(total, 10 + 150 + 5);
+  const keys = rows.filter((r) => r.code === 'USDC').map(rowKey);
+  assert.equal(new Set(keys).size, 2);
 });

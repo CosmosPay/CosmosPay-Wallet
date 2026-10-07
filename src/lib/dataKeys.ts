@@ -25,6 +25,13 @@ export const historyKey = (networkId: string, publicKey: string) => `history${sc
  */
 export const recoveryKey = (networkId: string, publicKey: string) => `recovery${scopeKey(networkId, publicKey)}`;
 
+/**
+ * The phrase's Solana and Monad balances, on the network that goes with this Stellar one.
+ * Scoped by the Stellar network and account like everything else: the addresses come from
+ * that wallet's phrase, and the Stellar network decides mainnet or the test networks.
+ */
+export const chainsKey = (networkId: string, publicKey: string) => `chains${scopeKey(networkId, publicKey)}`;
+
 /** Prices are global — the same USD quote regardless of which wallet is open. */
 export const PRICES_KEY = 'prices';
 
@@ -46,6 +53,7 @@ export const ACCOUNT_PREFIX = 'account|';
 export const RECOVERY_PREFIX = 'recovery|';
 export const HISTORY_PREFIX = 'history|';
 export const OPS_PREFIX = 'ops:';
+export const CHAINS_PREFIX = 'chains|';
 
 /**
  * How long each read stays fresh. Balances are short: a payment must show up
@@ -60,6 +68,8 @@ export const TTL = {
    */
   recovery: 5 * 60_000,
   history: 30_000,
+  /** Solana / Monad balances: two JSON-RPC nodes per read, so no more often than history. */
+  chains: 30_000,
   prices: 60_000,
   /**
    * Gateway operations. Longer than a balance because these rows change on the

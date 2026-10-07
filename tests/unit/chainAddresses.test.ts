@@ -7,7 +7,9 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { base58 } from '@scure/base';
 import { chainAddressesFromMnemonic, toChecksumAddress } from '@/lib/chainAddresses';
+import { chainExportKeys } from '@/lib/chainKeys';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 
@@ -30,4 +32,20 @@ test('EIP-55 checksums match the specification’s examples', () => {
   ]) {
     assert.equal(toChecksumAddress(addr.toLowerCase()), addr);
   }
+});
+
+test('the exported keys are the ones Phantom and MetaMask import for the same addresses', async () => {
+  const addresses = await chainAddressesFromMnemonic(PHRASE);
+  const keys = await chainExportKeys(PHRASE, addresses);
+  // MetaMask's first account for the BIP-39 test phrase.
+  assert.equal(keys.monad, '0x1ab42cc412b618bdea3a599e3c9bae199ebf030895b039e9db1e30dafb12b727');
+  // Phantom's format is seed ‖ public key; the second half IS the address.
+  const pair = base58.decode(keys.solana);
+  assert.equal(pair.length, 64);
+  assert.equal(base58.encode(pair.subarray(32)), addresses.solana);
+});
+
+test('an export that disagrees with the address on screen is refused', async () => {
+  await assert.rejects(chainExportKeys(PHRASE, { monad: '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed' }));
+  await assert.rejects(chainExportKeys(PHRASE, { solana: 'So11111111111111111111111111111111111111112' }));
 });
