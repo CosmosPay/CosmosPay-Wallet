@@ -2,6 +2,11 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.13.1] - 2026-10-07
+
+### Miscellaneous
+- Point the default recovery servers at reserv001 / reserv002 (a9c2986)
+
 ## [1.13.0] - 2026-10-07
 
 ### Features
