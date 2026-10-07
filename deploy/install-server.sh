@@ -1,45 +1,58 @@
 #!/usr/bin/env bash
-# One-time setup of the server side of .github/workflows/deploy-server.yml.
-# Run as root on the server, from a checkout of this repo:
+# One-time setup on the server that serves https://cosmospay.lat/wallet/.
+# Run as root from a checkout of this repo:
 #
-#   sudo bash deploy/install-server.sh "ssh-ed25519 AAAA... wallet-deploy"
+#   sudo bash deploy/install-server.sh
 #
-# It creates the deploy user (no password, no shell use beyond the forced
-# command), installs receive-wallet-web.sh, pins the given public key to it,
-# seeds the release directory from the build nginx serves today and points nginx
-# at $ROOT/current/. Idempotent.
+# Installs update-wallet-web.sh and its systemd timer (checks GitHub for a new
+# release every 5 minutes, as an unprivileged `walletweb` user), seeds the
+# release directory with the build nginx serves today, points nginx at
+# $ROOT/current/ and runs the first update. Idempotent.
 set -euo pipefail
 
-PUBKEY=${1:?usage: install-server.sh "<ssh public key>"}
-DEPLOY_USER=${DEPLOY_USER:-walletdeploy}
-ROOT=${WALLET_WEB_ROOT:-/var/www/cosmos-wallet-releases}
+HERE=$(cd "$(dirname "$0")" && pwd)
+STATE=/opt/cosmos-wallet-web
+ROOT=/var/www/cosmos-wallet-releases
 OLD=${OLD_WEB_DIR:-/var/www/cosmos-wallet}
 NGINX_SITE=${NGINX_SITE:-/etc/nginx/sites-enabled/base.conf}
-HERE=$(cd "$(dirname "$0")" && pwd)
+GATEWAY=${PUBLIC_COSMOS_GATEWAY_URL:-https://api.cosmospay.lat}
 
-[[ "$PUBKEY" =~ ^ssh-ed25519\ [A-Za-z0-9+/=]+ ]] || { echo "expected an ssh-ed25519 public key" >&2; exit 2; }
+id walletweb >/dev/null 2>&1 || useradd --system --home-dir "$STATE" --shell /usr/sbin/nologin walletweb
+install -d -m 755 -o walletweb -g walletweb "$STATE" "$ROOT"
 
-id "$DEPLOY_USER" >/dev/null 2>&1 || useradd --system --create-home --shell /bin/bash "$DEPLOY_USER"
-passwd -l "$DEPLOY_USER" >/dev/null
+install -m 755 "$HERE/update-wallet-web.sh" /usr/local/bin/update-wallet-web.sh
+install -m 644 "$HERE/cosmos-wallet-web.service" "$HERE/cosmos-wallet-web.timer" /etc/systemd/system/
 
-install -m 755 "$HERE/receive-wallet-web.sh" /usr/local/bin/receive-wallet-web.sh
+# Build-time settings (the same as the Pages workflow's repository variables).
+if [ ! -f /etc/cosmos-wallet-web.env ]; then
+  cat > /etc/cosmos-wallet-web.env <<ENV
+# Read by cosmos-wallet-web.service at build time. Public values only: every
+# PUBLIC_* ends up in the browser bundle.
+PUBLIC_COSMOS_GATEWAY_URL=$GATEWAY
+#PUBLIC_COSMOS_GATEWAY_ENTRY=
+#PUBLIC_COSMOS_RECOVERY_A_URL=
+#PUBLIC_COSMOS_RECOVERY_B_URL=
+ENV
+  chmod 644 /etc/cosmos-wallet-web.env
+fi
 
-install -d -m 700 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh"
-printf 'restrict,command="/usr/local/bin/receive-wallet-web.sh" %s\n' "$PUBKEY" > "/home/$DEPLOY_USER/.ssh/authorized_keys"
-chown "$DEPLOY_USER:$DEPLOY_USER" "/home/$DEPLOY_USER/.ssh/authorized_keys"
-chmod 600 "/home/$DEPLOY_USER/.ssh/authorized_keys"
-
-install -d -m 755 -o "$DEPLOY_USER" -g "$DEPLOY_USER" "$ROOT"
+# Seed: the build nginx serves today becomes the first release, so nothing
+# changes for visitors until a real release replaces it.
 if [ ! -e "$ROOT/current" ] && [ -d "$OLD" ]; then
   cp -a "$OLD" "$ROOT/manual-$(date +%Y%m%d)"
   ln -sfn "$ROOT/manual-$(date +%Y%m%d)" "$ROOT/current"
 fi
-chown -R "$DEPLOY_USER:$DEPLOY_USER" "$ROOT"
+chown -R walletweb:walletweb "$ROOT"
 
 if grep -q "alias $OLD/" "$NGINX_SITE"; then
-  cp "$NGINX_SITE" "$NGINX_SITE.bak-$(date +%Y%m%d%H%M%S)"
+  cp "$NGINX_SITE" "/root/$(basename "$NGINX_SITE").bak-$(date +%Y%m%d%H%M%S)"
   sed -i "s#alias $OLD/assets/;#alias $ROOT/current/assets/;#; s#alias $OLD/;#alias $ROOT/current/;#" "$NGINX_SITE"
   nginx -t && systemctl reload nginx
 fi
 
-echo "ready: $DEPLOY_USER@$(hostname) -> $ROOT/current (nginx: $NGINX_SITE)"
+systemctl daemon-reload
+systemctl enable --now cosmos-wallet-web.timer
+echo "first update (npm ci + build, a minute or two)…"
+systemctl start cosmos-wallet-web.service || true
+journalctl -u cosmos-wallet-web --no-pager -n 5 -o cat
+echo "live: $(readlink "$ROOT/current")"

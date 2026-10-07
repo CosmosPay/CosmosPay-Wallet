@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for a new Cosmos Wallet release every 5 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target
