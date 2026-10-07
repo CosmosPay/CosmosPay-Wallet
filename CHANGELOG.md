@@ -2,6 +2,16 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.13.0] - 2026-10-07
+
+### Features
+- Enhance backup recovery process with new key handling and server integration (fc3c300)
+- Integrate Solana and Monad support into portfolio management (dbbc9bc)
+
+### Bug Fixes
+- Update syn to version 2.0.119 and yoke-derive to version 0.8.4 (2466494)
+- Patch runtime advisories and sync the community server contract (01900e8)
+
 ## [1.12.0] - 2026-10-04
 
 ### Features
