@@ -1,0 +1,16 @@
+{
+  "name": "cosmos-pay-arc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Cosmos Pay payment intents on Arc: a merchant charges in USDC and anyone can verify the receipt on-chain.",
+  "scripts": {
+    "deploy": "node scripts/deploy.mjs",
+    "deploy:testnet": "NETWORK=testnet node scripts/deploy.mjs",
+    "serve": "python3 -m http.server 4173 --directory app"
+  },
+  "dependencies": {
+    "ethers": "^6.13.4",
+    "solc": "^0.8.28"
+  }
+}
