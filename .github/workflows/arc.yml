@@ -1,0 +1,35 @@
+name: arc
+
+# The Arc contract is self-contained under arc/, so it builds and tests on its
+# own instead of riding the wallet's pipeline.
+on:
+  push:
+    branches: [main, arc-microgrant]
+    paths: ["arc/**", ".github/workflows/arc.yml"]
+  pull_request:
+    paths: ["arc/**", ".github/workflows/arc.yml"]
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: arc
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install forge-std
+        run: forge install foundry-rs/forge-std --no-git
+
+      - name: Build
+        run: forge build --sizes
+
+      - name: Test
+        run: forge test -vv
+
+      - name: Check formatting
+        run: forge fmt --check

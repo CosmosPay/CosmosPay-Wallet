@@ -52,11 +52,7 @@ contract CosmosPayIntents {
         if (_intents[id].merchant != address(0)) revert IdTaken();
 
         _intents[id] = Intent({
-            merchant: msg.sender,
-            amount: amount,
-            payer: address(0),
-            createdAt: uint40(block.timestamp),
-            paidAt: 0
+            merchant: msg.sender, amount: amount, payer: address(0), createdAt: uint40(block.timestamp), paidAt: 0
         });
 
         emit IntentCreated(id, msg.sender, amount, memo);
@@ -85,14 +81,8 @@ contract CosmosPayIntents {
     {
         Intent memory intent = _intents[id];
         if (intent.merchant == address(0)) revert UnknownIntent();
-        return (
-            intent.merchant,
-            intent.amount,
-            intent.payer,
-            intent.createdAt,
-            intent.paidAt,
-            intent.payer != address(0)
-        );
+        return
+            (intent.merchant, intent.amount, intent.payer, intent.createdAt, intent.paidAt, intent.payer != address(0));
     }
 
     /// @notice Whether the payer is ready to settle this intent: enough balance

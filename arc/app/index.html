@@ -4,94 +4,138 @@
 <meta charset="utf-8">
 <title>Cosmos Pay on Arc</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Charge in USDC on Arc and settle to the merchant in one transaction. A payment intent from Cosmos Pay, on Circle's USDC-gas L1.">
+<link rel="icon" href="https://cosmospay.lat/brand/isotipo.svg">
 <style>
   :root {
-    --black: #000000; --white: #FFFFFF; --navy: #05064F; --blue: #000877;
-    --bg: var(--white); --ink: var(--black); --muted: #4A4A63; --card: #F2F2F5; --line: #D9D9E3;
+    --navy: #05064F; --blue: #000877;
+    --bg: #FFFFFF; --ink: #000000; --muted: #4A4A63; --card: #F4F4F7; --line: #E2E2EA; --ok: #0B6B3A; --warn: #8A5A00;
   }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: var(--black); --ink: var(--white); --muted: #B9BBD9; --card: #0D0D1A; --line: #2A2A3F; }
+    :root:not([data-theme="light"]) {
+      --bg: #000000; --ink: #FFFFFF; --muted: #B9BBD9; --card: #0C0C18; --line: #24243A; --ok: #4ADE80; --warn: #FBBF24;
+    }
   }
-  :root[data-theme="dark"] { --bg: var(--black); --ink: var(--white); --muted: #B9BBD9; --card: #0D0D1A; --line: #2A2A3F; }
+  :root[data-theme="dark"] { --bg: #000000; --ink: #FFFFFF; --muted: #B9BBD9; --card: #0C0C18; --line: #24243A; --ok: #4ADE80; --warn: #FBBF24; }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  .wrap { max-width: 720px; margin: 0 auto; padding: 48px 16px 80px; }
-  h1 { font-size: 34px; line-height: 1.15; font-weight: 600; margin: 0 0 8px; }
-  .lead { color: var(--muted); margin: 0 0 28px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px; margin: 0 0 16px; }
-  h2 { font-size: 18px; margin: 0 0 12px; }
-  label { display: block; font-size: 14px; color: var(--muted); margin: 12px 0 6px; }
-  input { width: 100%; padding: 12px 14px; font: inherit; color: var(--ink); background: var(--bg);
-          border: 1px solid var(--line); border-radius: 10px; }
-  button { font: inherit; font-weight: 600; padding: 12px 18px; border: 0; border-radius: 10px;
-           background: var(--blue); color: #fff; cursor: pointer; }
-  button:disabled { opacity: .5; cursor: default; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 40px 16px 96px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+  header img { width: 40px; height: 40px; }
+  header b { font-size: 18px; font-weight: 600; }
+  header span { color: var(--muted); font-size: 14px; display: block; }
+  h1 { font-size: clamp(28px, 6vw, 40px); line-height: 1.1; font-weight: 600; margin: 0 0 10px; letter-spacing: -0.01em; }
+  .lead { color: var(--muted); margin: 0 0 24px; max-width: 58ch; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 22px; margin: 0 0 16px; }
+  .card h2 { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 0 0 16px; font-weight: 600; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 14px 0 6px; }
+  label:first-of-type { margin-top: 0; }
+  input { width: 100%; padding: 13px 15px; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 12px; }
+  input:focus { outline: 2px solid var(--blue); outline-offset: 1px; }
+  button { font: inherit; font-weight: 600; padding: 13px 20px; border: 0; border-radius: 12px; background: var(--blue); color: #fff; cursor: pointer; }
+  button:hover:not(:disabled) { filter: brightness(1.15); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
   button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
-  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
-  .out { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; word-break: break-all;
-         white-space: pre-wrap; color: var(--muted); margin-top: 14px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+  .out { font-size: 14px; color: var(--muted); margin-top: 16px; word-break: break-word; }
+  .out code, code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
   a { color: var(--blue); }
-  @media (prefers-color-scheme: dark) { a { color: #9FA3FF; } }
-  .pill { display: inline-block; font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
-          color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; }
+  @media (prefers-color-scheme: dark) { a { color: #A8ACFF; } }
+  .pill { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+          color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.live { background: var(--ok); }
+  .amount { font-size: 44px; font-weight: 600; letter-spacing: -0.02em; margin: 4px 0 2px; }
+  .kv { display: grid; grid-template-columns: 120px 1fr; gap: 8px 16px; font-size: 14px; margin-top: 18px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; word-break: break-all; }
+  .qr { background: #fff; padding: 14px; border-radius: 14px; width: fit-content; margin-top: 18px; }
+  .qr canvas { display: block; }
+  .note { font-size: 13px; color: var(--warn); margin-top: 12px; }
+  .ok { color: var(--ok); }
+  .hidden { display: none; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 36px; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <p class="pill" id="net">Arc</p>
-  <h1>Cosmos Pay on Arc</h1>
-  <p class="lead">A merchant opens a payment intent, a customer settles it in USDC, and the receipt is an event anyone
-    can read on Arc. It is the same object Cosmos Pay uses on Stellar, on a second rail.</p>
-
-  <div class="card">
-    <h2>1. Connect</h2>
-    <div class="row">
-      <button id="connect">Connect wallet</button>
-      <button id="addChain" class="ghost">Add Arc to my wallet</button>
+  <header>
+    <img src="https://cosmospay.lat/brand/isotipo.svg" alt="Cosmos" onerror="this.style.display='none'">
+    <div>
+      <b>Cosmos Pay on Arc</b>
+      <span id="net"><span class="dot"></span> connecting</span>
     </div>
-    <div class="out" id="account"></div>
-  </div>
+  </header>
 
-  <div class="card">
-    <h2>2. Charge</h2>
+  <h1 id="title">Charge in USDC, settle in one transaction</h1>
+  <p class="lead" id="lead">A merchant opens a payment intent, the customer pays it in USDC, and the receipt is an
+    event on Arc that anyone can read. Gas is USDC too, so a merchant never has to hold a second token to get paid.</p>
+
+  <!-- Merchant -->
+  <section class="card" id="merchantCard">
+    <h2>Create a charge</h2>
     <label for="amount">Amount in USDC</label>
-    <input id="amount" inputmode="decimal" placeholder="5.00" value="1.00">
+    <input id="amount" inputmode="decimal" placeholder="5.00" value="1.00" autocomplete="off">
     <label for="memo">What it is for</label>
-    <input id="memo" placeholder="Order #24" value="Order #24">
-    <div class="row"><button id="create" disabled>Create payment link</button></div>
-    <div class="out" id="created"></div>
-  </div>
-
-  <div class="card">
-    <h2>3. Pay</h2>
-    <label for="id">Intent id</label>
-    <input id="id" placeholder="0x…">
+    <input id="memo" placeholder="Order #24" value="Order #24" maxlength="80" autocomplete="off">
     <div class="row">
-      <button id="load" class="ghost">Load</button>
-      <button id="approve" disabled>Approve USDC</button>
+      <button id="connectMerchant">Connect wallet</button>
+      <button id="create" disabled>Create payment link</button>
+    </div>
+    <div class="out" id="created"></div>
+    <div class="qr hidden" id="qr"></div>
+  </section>
+
+  <!-- Payer -->
+  <section class="card hidden" id="payCard">
+    <h2>Pay this charge</h2>
+    <div class="amount" id="payAmount">...</div>
+    <div class="out" id="payMemo"></div>
+    <dl class="kv">
+      <dt>Merchant</dt><dd id="payMerchant">...</dd>
+      <dt>Intent</dt><dd><code id="payId">...</code></dd>
+      <dt>Status</dt><dd id="payStatus">...</dd>
+    </dl>
+    <div class="row">
+      <button id="connectPayer">Connect wallet</button>
+      <button id="approve" class="ghost" disabled>Approve USDC</button>
       <button id="pay" disabled>Pay</button>
     </div>
-    <div class="out" id="status"></div>
-  </div>
+    <div class="out" id="payOut"></div>
+  </section>
 
-  <p class="lead" id="where"></p>
+  <section class="card" id="whatCard">
+    <h2>What this is</h2>
+    <p class="out" style="margin-top:0">Cosmos Pay is a Stellar wallet for Latin America: a phone number works as the
+      account, local currency comes in by bank transfer and goes out through anchors. A payment intent is the object
+      a merchant charges with. This is that same object on Arc, so the rail underneath can change without the merchant
+      noticing. The contract holds no funds: <code>pay</code> moves USDC straight from the payer to the merchant.</p>
+    <dl class="kv">
+      <dt>Contract</dt><dd id="contractAddr">not deployed yet</dd>
+      <dt>Network</dt><dd>Arc mainnet, chain 5042, gas paid in USDC</dd>
+      <dt>Source</dt><dd><a href="https://github.com/CosmosPay/CosmosPay-Wallet/tree/arc-microgrant/arc" target="_blank" rel="noreferrer">github.com/CosmosPay/CosmosPay-Wallet</a></dd>
+    </dl>
+  </section>
+
+  <footer>Built by <a href="https://cosmospay.lat" target="_blank" rel="noreferrer">Cosmos Pay</a>. The contract is 2.1 KB, has no dependencies and no owner.</footer>
 </div>
 
 <script type="module">
-import { BrowserProvider, Contract, JsonRpcProvider, hexlify, randomBytes, parseUnits, formatUnits }
+import { BrowserProvider, Contract, JsonRpcProvider, hexlify, randomBytes, parseUnits, formatUnits, isAddress }
   from "https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.min.js";
+import QRCode from "https://cdn.jsdelivr.net/npm/qrcode@1.5.4/+esm";
 
-// Fill this in after running `npm run deploy`, or pass ?c=0x… to try another deployment.
+/** Filled in after deploying. `?c=0x…` overrides it, which is how a link carries its own contract. */
 const DEPLOYED = "";
-const USDC = "0x3600000000000000000000000000000000000000";
 
 const ARC = {
-  chainIdHex: "0x13b2",            // 5042
   chainId: 5042,
+  chainIdHex: "0x13b2",
   name: "Arc",
   rpc: "https://rpc.mainnet.arc.io",
   explorer: "https://explorer.arc.io",
 };
+const USDC = "0x3600000000000000000000000000000000000000";
 
 const INTENTS_ABI = [
   "function create(bytes32 id, uint96 amount, string memo)",
@@ -104,104 +148,181 @@ const INTENTS_ABI = [
 const USDC_ABI = [
   "function approve(address spender, uint256 value) returns (bool)",
   "function balanceOf(address account) view returns (uint256)",
-  "function decimals() view returns (uint8)",
 ];
 
-const params = new URLSearchParams(location.search);
-const address = params.get("c") || DEPLOYED;
 const $ = (id) => document.getElementById(id);
-const show = (el, text) => { $(el).textContent = text; };
+const params = new URLSearchParams(location.search);
+const contractAddress = params.get("c") || DEPLOYED;
+const intentId = params.get("id");
 
-$("net").textContent = `${ARC.name} · chain ${ARC.chainId} · gas in USDC`;
-$("where").innerHTML = address
-  ? `Contract: <a href="${ARC.explorer}/address/${address}" target="_blank" rel="noreferrer">${address}</a>`
-  : "No contract address set yet. Deploy it, then put the address in <code>DEPLOYED</code> or pass <code>?c=0x…</code>.";
-
-let signer, account;
 const read = new JsonRpcProvider(ARC.rpc, ARC.chainId);
+let signer = null;
+let account = null;
 
-$("addChain").onclick = async () => {
-  if (!window.ethereum) return show("account", "No EVM wallet found in this browser.");
-  await window.ethereum.request({
-    method: "wallet_addEthereumChain",
-    params: [{
-      chainId: ARC.chainIdHex,
-      chainName: ARC.name,
-      nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-      rpcUrls: [ARC.rpc],
-      blockExplorerUrls: [ARC.explorer],
-    }],
-  });
-};
+const short = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`;
+const link = (path, text) => `<a href="${ARC.explorer}${path}" target="_blank" rel="noreferrer">${text}</a>`;
 
-$("connect").onclick = async () => {
-  if (!window.ethereum) return show("account", "No EVM wallet found in this browser.");
+function setNet(text, live) {
+  $("net").innerHTML = `<span class="dot${live ? " live" : ""}"></span> ${text}`;
+}
+
+$("contractAddr").innerHTML = contractAddress
+  ? link(`/address/${contractAddress}`, contractAddress)
+  : "not deployed yet";
+
+// The read provider answers before any wallet is involved, so the page can say
+// whether the network is reachable instead of looking broken while idle.
+read.getBlockNumber()
+  .then((n) => setNet(`Arc mainnet · block ${n.toLocaleString("en-US")}`, true))
+  .catch(() => setNet("Arc mainnet unreachable", false));
+
+async function connect() {
+  if (!window.ethereum) throw new Error("No EVM wallet found in this browser. Install one, then reload.");
   const provider = new BrowserProvider(window.ethereum);
   await provider.send("eth_requestAccounts", []);
+
   const net = await provider.getNetwork();
   if (Number(net.chainId) !== ARC.chainId) {
-    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ARC.chainIdHex }] });
+    try {
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: ARC.chainIdHex }] });
+    } catch (e) {
+      // 4902: the wallet does not know Arc yet, so offer to add it.
+      if (e?.code !== 4902) throw e;
+      await window.ethereum.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: ARC.chainIdHex,
+          chainName: "Arc",
+          nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+          rpcUrls: [ARC.rpc],
+          blockExplorerUrls: [ARC.explorer],
+        }],
+      });
+    }
   }
+
   signer = await provider.getSigner();
   account = await signer.getAddress();
-  const gas = await provider.getBalance(account);
-  const usdc = await new Contract(USDC, USDC_ABI, read).balanceOf(account);
-  show("account", `${account}\ngas balance ${formatUnits(gas, 18)} USDC · token balance ${formatUnits(usdc, 6)} USDC`);
-  $("create").disabled = !address;
+  return account;
+}
+
+function fail(where, e) {
+  const message = e?.shortMessage || e?.info?.error?.message || e?.message || String(e);
+  $(where).innerHTML = `<span class="note">${message}</span>`;
+}
+
+// ── merchant ────────────────────────────────────────────────────────────────
+
+$("connectMerchant").onclick = async () => {
+  try {
+    const who = await connect();
+    const gas = await read.getBalance(who);
+    $("created").innerHTML = `Connected as <code>${short(who)}</code>, gas balance ${formatUnits(gas, 18)} USDC.`;
+    $("create").disabled = !isAddress(contractAddress);
+    if (!isAddress(contractAddress)) {
+      $("created").innerHTML += `<span class="note">No contract address on this page yet.</span>`;
+    }
+  } catch (e) { fail("created", e); }
 };
 
 $("create").onclick = async () => {
-  const id = hexlify(randomBytes(32));
-  const amount = parseUnits($("amount").value || "0", 6);
-  const contract = new Contract(address, INTENTS_ABI, signer);
-  show("created", "Waiting for the wallet…");
-  const tx = await contract.create(id, amount, $("memo").value || "");
-  show("created", `Sent ${tx.hash}\nWaiting for confirmation…`);
-  await tx.wait();
-  const link = `${location.origin}${location.pathname}?c=${address}&id=${id}`;
-  $("id").value = id;
-  $("created").innerHTML =
-    `Intent <code>${id}</code><br>Share this link with the payer:<br><a href="${link}">${link}</a>` +
-    `<br><a href="${ARC.explorer}/tx/${tx.hash}" target="_blank" rel="noreferrer">See the transaction</a>`;
+  try {
+    const amount = parseUnits(($("amount").value || "0").trim(), 6);
+    if (amount <= 0n) throw new Error("Enter an amount above zero.");
+    const id = hexlify(randomBytes(32));
+
+    $("created").textContent = "Confirm in your wallet…";
+    const tx = await new Contract(contractAddress, INTENTS_ABI, signer).create(id, amount, $("memo").value.trim());
+    $("created").innerHTML = `Sent ${link(`/tx/${tx.hash}`, short(tx.hash))}, waiting for the block…`;
+    await tx.wait();
+
+    const url = `${location.origin}${location.pathname}?c=${contractAddress}&id=${id}`;
+    $("created").innerHTML =
+      `Charge for <b>${formatUnits(amount, 6)} USDC</b> is open. Send this link to the payer:<br>` +
+      `<a href="${url}">${url}</a><br>${link(`/tx/${tx.hash}`, "See the transaction on Arc")}`;
+
+    const box = $("qr");
+    box.innerHTML = "";
+    box.classList.remove("hidden");
+    await QRCode.toCanvas(box.appendChild(document.createElement("canvas")), url, { width: 220, margin: 0 });
+  } catch (e) { fail("created", e); }
 };
 
-$("load").onclick = async () => {
-  const id = $("id").value.trim();
-  if (!id) return;
-  const contract = new Contract(address, INTENTS_ABI, read);
-  try {
-    const [merchant, amount, payer, , , paid] = await contract.get(id);
-    const line = `merchant ${merchant}\namount ${formatUnits(amount, 6)} USDC\n${paid ? `paid by ${payer}` : "not paid yet"}`;
-    if (paid || !account) return show("status", line);
-    const [enoughBalance, enoughAllowance] = await contract.canPay(id, account);
-    show("status", `${line}\nbalance ${enoughBalance ? "ok" : "too low"} · allowance ${enoughAllowance ? "ok" : "missing"}`);
-    $("approve").disabled = enoughAllowance;
-    $("pay").disabled = !enoughAllowance || !enoughBalance;
-  } catch {
-    show("status", "No intent with that id on this contract.");
+// ── payer ───────────────────────────────────────────────────────────────────
+
+async function loadIntent() {
+  const contract = new Contract(contractAddress, INTENTS_ABI, read);
+  const [merchant, amount, payer, , paidAt, paid] = await contract.get(intentId);
+
+  $("payAmount").textContent = `${formatUnits(amount, 6)} USDC`;
+  $("payMerchant").innerHTML = link(`/address/${merchant}`, short(merchant));
+  $("payId").textContent = `${intentId.slice(0, 10)}…${intentId.slice(-6)}`;
+
+  const created = await contract.queryFilter(contract.filters.IntentCreated(intentId), 0, "latest").catch(() => []);
+  if (created.length) $("payMemo").textContent = created[0].args.memo;
+
+  if (paid) {
+    $("payStatus").innerHTML = `<span class="ok">paid by ${short(payer)}</span>`;
+    $("payOut").innerHTML = `Settled on ${new Date(Number(paidAt) * 1000).toLocaleString()}. ` +
+      `This charge is closed: a second payment reverts.`;
+    $("approve").disabled = true;
+    $("pay").disabled = true;
+    $("connectPayer").classList.add("hidden");
+    return true;
   }
+
+  $("payStatus").textContent = "waiting for payment";
+  return false;
+}
+
+async function refreshPayButtons() {
+  if (!account) return;
+  const contract = new Contract(contractAddress, INTENTS_ABI, read);
+  const [enoughBalance, enoughAllowance] = await contract.canPay(intentId, account);
+  $("approve").disabled = enoughAllowance;
+  $("pay").disabled = !enoughAllowance || !enoughBalance;
+  $("payOut").innerHTML = enoughBalance
+    ? (enoughAllowance ? "Ready to pay." : "Approve the contract to move the USDC, then pay.")
+    : `<span class="note">Not enough USDC in ${short(account)} for this charge.</span>`;
+}
+
+$("connectPayer").onclick = async () => {
+  try {
+    await connect();
+    $("payOut").textContent = `Connected as ${short(account)}.`;
+    await refreshPayButtons();
+  } catch (e) { fail("payOut", e); }
 };
 
 $("approve").onclick = async () => {
-  const contract = new Contract(address, INTENTS_ABI, read);
-  const [, amount] = await contract.get($("id").value.trim());
-  const tx = await new Contract(USDC, USDC_ABI, signer).approve(address, amount);
-  show("status", `Approving… ${tx.hash}`);
-  await tx.wait();
-  $("approve").disabled = true;
-  $("pay").disabled = false;
-  show("status", "Approved. You can pay now.");
+  try {
+    const [, amount] = await new Contract(contractAddress, INTENTS_ABI, read).get(intentId);
+    const tx = await new Contract(USDC, USDC_ABI, signer).approve(contractAddress, amount);
+    $("payOut").innerHTML = `Approving ${link(`/tx/${tx.hash}`, short(tx.hash))}…`;
+    await tx.wait();
+    await refreshPayButtons();
+  } catch (e) { fail("payOut", e); }
 };
 
 $("pay").onclick = async () => {
-  const tx = await new Contract(address, INTENTS_ABI, signer).pay($("id").value.trim());
-  show("status", `Paying… ${tx.hash}`);
-  await tx.wait();
-  $("status").innerHTML = `Paid. <a href="${ARC.explorer}/tx/${tx.hash}" target="_blank" rel="noreferrer">Receipt on Arc</a>`;
+  try {
+    const tx = await new Contract(contractAddress, INTENTS_ABI, signer).pay(intentId);
+    $("payOut").innerHTML = `Paying ${link(`/tx/${tx.hash}`, short(tx.hash))}…`;
+    await tx.wait();
+    $("payOut").innerHTML = `<span class="ok">Paid.</span> ${link(`/tx/${tx.hash}`, "Receipt on Arc")}`;
+    await loadIntent();
+  } catch (e) { fail("payOut", e); }
 };
 
-const presetId = params.get("id");
-if (presetId) { $("id").value = presetId; }
+// ── routing: a link with an id is the payer's view ──────────────────────────
+
+if (intentId && isAddress(contractAddress)) {
+  $("merchantCard").classList.add("hidden");
+  $("payCard").classList.remove("hidden");
+  $("title").textContent = "You have a charge to pay";
+  $("lead").textContent = "This charge lives on Arc. Paying it moves USDC straight to the merchant and writes the receipt on-chain.";
+  loadIntent().catch((e) => fail("payOut", e));
+}
 </script>
 </body>
 </html>
