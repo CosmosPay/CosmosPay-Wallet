@@ -134,6 +134,7 @@ const RULES = {
   owner: OWNER,
   sell: { asset: 'native', amount: 1_000_000_000n },
   buy: { asset: USDC_SOL, minimum: 150_000_000n },
+  receiveAt: USDC_ACC,
   lamportAllowance: 10_000_000n,
 };
 const PRE = new Map<string, AccountState>([
@@ -181,7 +182,37 @@ test('the output landing in an account the swap opens counts as received', () =>
   pre.set('new-ata', null);
   const after = post({ 'new-ata': token(USDC_SOL, 155_000_000n) });
   after.delete(USDC_ACC);
-  assert.equal(checkSwapEffects(RULES, pre, after), null);
+  assert.equal(checkSwapEffects({ ...RULES, receiveAt: 'new-ata' }, pre, after), null);
+});
+
+// The check reads every account the transaction may write, so it must not believe one
+// that only LOOKS like a token account: data under a program the counterparty controls is
+// that program's to rewrite, and counting it was a way to fake the output.
+test('token-shaped data under any other program is not a balance of ours', () => {
+  const SPOOF_PROGRAM = 'SpoofProgram1111111111111111111111111111111';
+  const spoof = (amount: bigint): AccountState => ({ ...token(USDC_SOL, amount)!, owner: SPOOF_PROGRAM });
+  // The real output account receives nothing; a look-alike "receives" plenty.
+  const pre = new Map(PRE).set('fake-usdc', spoof(0n));
+  const after = post({ [USDC_ACC]: token(USDC_SOL, 5_000_000n), 'fake-usdc': spoof(900_000_000n) });
+  assert.equal(checkSwapEffects(RULES, pre, after), 'short');
+  // Opened by the transaction: the same.
+  const opened = post({ [USDC_ACC]: token(USDC_SOL, 5_000_000n), 'fake-new': spoof(900_000_000n) });
+  assert.equal(checkSwapEffects(RULES, PRE, opened), 'short');
+  // Even sitting at the receive address itself.
+  const atReceive = new Map(PRE).set(USDC_ACC, spoof(5_000_000n));
+  assert.equal(checkSwapEffects(RULES, atReceive, post({ [USDC_ACC]: spoof(900_000_000n) })), 'short');
+});
+
+test('the output counts only in the mint’s associated account', () => {
+  // Another genuine USDC account of ours gains, the associated one does not: short.
+  const pre = new Map(PRE).set('usdc-other', token(USDC_SOL, 0n));
+  const after = post({ [USDC_ACC]: token(USDC_SOL, 5_000_000n), 'usdc-other': token(USDC_SOL, 900_000_000n) });
+  assert.equal(checkSwapEffects(RULES, pre, after), 'short');
+});
+
+test('a token account of ours handed to another program is refused', () => {
+  const reowned: AccountState = { ...token(USDT_SOL, 9_000_000n)!, owner: 'SpoofProgram1111111111111111111111111111111' };
+  assert.equal(checkSwapEffects(RULES, PRE, post({ [USDT_ACC]: reowned })), 'authority');
 });
 
 test('unwrapping by closing a funded wSOL account into the wallet is not a loss', () => {
@@ -191,6 +222,7 @@ test('unwrapping by closing a funded wSOL account into the wallet is not a loss'
   const WSOL_ACC = 'wsol-account';
   const pre = new Map(PRE).set(WSOL_ACC, { ...token(WRAPPED_SOL_MINT, 5_000_000_000n)!, lamports: 5_002_039_280n });
   const rules = { ...RULES, sell: { asset: 'native', amount: 1_000_000_000n } };
+  // (USDC still lands in USDC_ACC in post(), so the minimum is met.)
   // The wallet ends with its own SOL, minus the 1 SOL sold, plus the unwrapped 5 SOL.
   assert.equal(checkSwapEffects(rules, pre, post({ [WSOL_ACC]: null, [OWNER]: wallet(6_002_034_280n) })), null);
   // Closed into someone else: the 5 SOL is gone from the wallet's side of the ledger.

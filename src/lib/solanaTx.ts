@@ -238,6 +238,13 @@ export function decodeTokenAccount(data: Uint8Array): TokenAccount | null {
 
 /* --------------------------- effect of a swap ---------------------------- */
 
+const TOKEN_PROGRAMS = new Set([TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]);
+
+/** An account's token fields, read only when a token program owns it. */
+function tokenAccountOf(state: NonNullable<AccountState>): TokenAccount | null {
+  return TOKEN_PROGRAMS.has(state.owner) ? decodeTokenAccount(state.data) : null;
+}
+
 /** One account before or after a simulation; null when it does not exist. */
 export type AccountState = { lamports: bigint; owner: string; data: Uint8Array } | null;
 
@@ -250,6 +257,12 @@ export interface SwapEffectRules {
   sell: { asset: string; amount: bigint };
   /** What must arrive: `native` or a mint, and at least how much. */
   buy: { asset: string; minimum: bigint };
+  /**
+   * The one account a bought token is counted in: its associated token account, derived
+   * by the caller from the wallet and the mint, never taken from the transaction. Null
+   * when buying SOL.
+   */
+  receiveAt: string | null;
   /** Lamports the transaction may spend on fees and rent besides a SOL sale. */
   lamportAllowance: bigint;
 }
@@ -269,8 +282,12 @@ export interface SwapEffectRules {
  * "loss" and an equal lamport gain — and a close into anyone else's account shows up
  * as the SOL loss it is.
  *
- * `pre` and `post` are keyed by address and cover the wallet and every account of ours
- * the transaction may write to (no other can change). Returns null when it may be signed.
+ * `pre` and `post` are keyed by address and cover the wallet and every account the
+ * transaction may write to (no other can change). A token account is one a TOKEN PROGRAM
+ * owns: data shaped like a token account under any other program is that program's to
+ * rewrite, so it is never read as ours — that is what kept a counterparty from minting a
+ * fake balance into the check. What was bought is counted only at `receiveAt`. Returns
+ * null when it may be signed.
  */
 export function checkSwapEffects(
   rules: SwapEffectRules,
@@ -282,14 +299,16 @@ export function checkSwapEffects(
   let nativeBefore = pre.get(rules.owner)?.lamports ?? 0n;
   let nativeAfter = walletPost.lamports;
 
-  const bought: Record<string, bigint> = {};
+  let bought = 0n;
   for (const [address, before] of pre) {
     if (address === rules.owner || !before) continue;
-    const tokenBefore = decodeTokenAccount(before.data);
+    const tokenBefore = tokenAccountOf(before);
     if (!tokenBefore || tokenBefore.owner !== rules.owner) continue;
     const wrapped = tokenBefore.mint === WRAPPED_SOL_MINT;
     const after = post.get(address);
-    const tokenAfter = after ? decodeTokenAccount(after.data) : null;
+    // Still alive under another program: an account of ours handed to code that may rewrite it.
+    if (after && after.lamports > 0n && after.owner !== before.owner) return 'authority';
+    const tokenAfter = after ? tokenAccountOf(after) : null;
     if (wrapped) nativeBefore += before.lamports;
     if (!tokenAfter) {
       if (!wrapped && tokenBefore.amount !== 0n) return 'drain';
@@ -310,22 +329,22 @@ export function checkSwapEffects(
     const delta = tokenAfter.amount - tokenBefore.amount;
     const floor = tokenBefore.mint === rules.sell.asset ? -rules.sell.amount : 0n;
     if (delta < floor) return 'drain';
-    bought[tokenBefore.mint] = (bought[tokenBefore.mint] ?? 0n) + delta;
+    if (address === rules.receiveAt && tokenBefore.mint === rules.buy.asset) bought += delta;
   }
   // Token accounts the swap opened (the output's ATA, typically).
   for (const [address, after] of post) {
     if (address === rules.owner || !after || pre.get(address)) continue;
-    const token = decodeTokenAccount(after.data);
+    const token = tokenAccountOf(after);
     if (!token || token.owner !== rules.owner) continue;
     if (token.hasDelegate || token.hasCloseAuthority) return 'authority';
     if (token.mint === WRAPPED_SOL_MINT) nativeAfter += after.lamports;
-    else bought[token.mint] = (bought[token.mint] ?? 0n) + token.amount;
+    else if (address === rules.receiveAt && token.mint === rules.buy.asset) bought += token.amount;
   }
 
   const nativeDelta = nativeAfter - nativeBefore;
   const nativeFloor = -(rules.lamportAllowance + (rules.sell.asset === 'native' ? rules.sell.amount : 0n));
   if (nativeDelta < nativeFloor) return 'drain';
-  const received = rules.buy.asset === 'native' ? nativeDelta + rules.lamportAllowance : bought[rules.buy.asset] ?? 0n;
+  const received = rules.buy.asset === 'native' ? nativeDelta + rules.lamportAllowance : bought;
   if (received < rules.buy.minimum) return 'short';
   return null;
 }

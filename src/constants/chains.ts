@@ -138,6 +138,20 @@ export const EVM_GAS_HEADROOM_PCT = 120n;
 /** `maxFeePerGas` = base fee × this + tip: survives two full blocks of base-fee growth. */
 export const EVM_BASE_FEE_MULTIPLIER = 2n;
 
+/**
+ * The most one EVM transaction may commit to in fees, per chain: `maxFeePerGas × gasLimit`.
+ * Both factors come from a node — a public one, or whatever the person set in developer
+ * mode — and nothing else bounds them, so past this the wallet refuses (`fee`) instead of
+ * signing what the node said. Set well above a congested day for a swap: 0.02 ETH on
+ * Ethereum, 0.002 ETH on the rollups, 20 MON. Bitcoin has its own bound (`BITCOIN_MAX_FEE_RATE`).
+ */
+export const EVM_MAX_FEE_WEI: Record<EvmChain, bigint> = {
+  ethereum: 20_000_000_000_000_000n,
+  arbitrum: 2_000_000_000_000_000n,
+  base: 2_000_000_000_000_000n,
+  monad: 20_000_000_000_000_000_000n,
+};
+
 /* ------------------------------- Bitcoin -------------------------------- */
 
 /**

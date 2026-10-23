@@ -15,6 +15,7 @@ import {
   EVM_BASE_FEE_MULTIPLIER,
   EVM_CHAIN_IDS,
   EVM_GAS_HEADROOM_PCT,
+  EVM_MAX_FEE_WEI,
   MONAD_CHAIN_ID,
   NATIVE_RESERVE,
   SOLANA_MAX_READ_ACCOUNTS,
@@ -48,6 +49,7 @@ import {
 import { BitcoinSpendRefused, isBitcoinAddress, signBitcoinPayment } from '@/lib/bitcoinTx';
 import { checkMonadSwapCalls, isEvmAddress, signEip1559, transferCalldata, type EvmCall } from '@/lib/evmTx';
 import {
+  associatedTokenAddress,
   checkSwapEffects,
   isSolanaAddress,
   lookupTableAddresses,
@@ -72,7 +74,7 @@ export type ChainSwapRefusalCode =
   | 'address' // a destination that is not an address on that chain (and network)
   | 'timeout' // the approval did not land in time
   | 'funds' // a Bitcoin payment its outputs cannot cover, fee included
-  | 'fee' // a Bitcoin fee rate outside the bounds the wallet will pay
+  | 'fee' // a Bitcoin fee rate, or an EVM fee ceiling, outside the bounds the wallet will pay
   | 'dust'; // a Bitcoin payment too small to be relayed
 
 export class ChainSwapRefused extends Error {
@@ -155,9 +157,11 @@ async function writableAccounts(message: Uint8Array): Promise<Set<string>> {
 /**
  * Check a Jupiter swap by simulating it with every account it may write to in view, then
  * sign it. Every one, not a listing of ours: `checkSwapEffects` keeps the wallet and the
- * token accounts it owns and ignores the pools', so reading them all also covers an account
- * of ours no listing would have named — and needs no `getTokenAccountsByOwner`, which the
- * public mainnet node refuses. An account the transaction cannot write to cannot change. `sell` / `buy` are `native` or a mint; `amount` and `minimum` are base units — the
+ * token accounts it owns — accounts a TOKEN PROGRAM holds, never look-alike data under some
+ * other program — and ignores the pools', so reading them all also covers an account of
+ * ours no listing would have named, with no `getTokenAccountsByOwner` (which the public
+ * mainnet node refuses). What was bought counts only at the mint's associated account,
+ * derived here. An account the transaction cannot write to cannot change. `sell` / `buy` are `native` or a mint; `amount` and `minimum` are base units — the
  * amount typed and the minimum the confirmed QUOTE showed, not the create response's.
  * Answers the signed wire bytes, base64.
  */
@@ -171,6 +175,8 @@ export async function signSolanaSwap(p: {
   minimum: bigint;
 }): Promise<string> {
   const wire = base64.decode(p.wire);
+  // Where the bought token must land, derived here — never read from the transaction.
+  const receiveAt = p.buy === 'native' ? null : associatedTokenAddress(p.owner, p.buy, await solanaMintProgram(p.buy));
   let writable: Set<string>;
   try {
     writable = await writableAccounts(parseSolanaTx(wire).message);
@@ -188,6 +194,7 @@ export async function signSolanaSwap(p: {
       owner: p.owner,
       sell: { asset: p.sell, amount: p.amount },
       buy: { asset: p.buy, minimum: p.minimum },
+      receiveAt,
       lamportAllowance: NATIVE_RESERVE.solana,
     },
     pre,
@@ -225,13 +232,17 @@ async function signEvmCall(
     evmFees(chain, net),
     evmEstimateGas(chain, { from: owner, ...call }, net),
   ]);
+  const maxFeePerGas = fees.baseFee * EVM_BASE_FEE_MULTIPLIER + fees.tip;
+  const gasLimit = (gas * EVM_GAS_HEADROOM_PCT) / 100n;
+  // The node's fee data and gas estimate are the whole fee: bounded here, refused past it.
+  if (maxFeePerGas * gasLimit > EVM_MAX_FEE_WEI[chain]) throw new ChainSwapRefused('fee');
   return signEip1559(
     {
       chainId: EVM_CHAIN_IDS[net][chain],
       nonce: n,
       maxPriorityFeePerGas: fees.tip,
-      maxFeePerGas: fees.baseFee * EVM_BASE_FEE_MULTIPLIER + fees.tip,
-      gasLimit: (gas * EVM_GAS_HEADROOM_PCT) / 100n,
+      maxFeePerGas,
+      gasLimit,
       to: call.to,
       value: call.value,
       data: call.data,

@@ -16,6 +16,7 @@ import {
   MONAD_CHAIN_ID,
   MONAD_TESTNET_CHAIN_ID,
   SOLANA_RENT_EXEMPT_LAMPORTS,
+  EVM_MAX_FEE_WEI,
 } from '@/constants/chains';
 import { DEFAULT_MONAD_TESTNET_RPC_URL, DEFAULT_SOLANA_TESTNET_RPC_URL } from '@/constants/backends';
 import { T } from '@/lib/i18n';
@@ -145,6 +146,36 @@ test('a Monad test send is signed for Monad testnet’s chain id', async () => {
   const len = bytes[at] - 0x80;
   const chainId = Number(BigInt(`0x${[...bytes.slice(at + 1, at + 1 + len)].map((b) => b.toString(16).padStart(2, '0')).join('')}`));
   assert.equal(chainId, MONAD_TESTNET_CHAIN_ID);
+});
+
+// The fee is the node's word twice over — its fee data and its gas estimate — so a node
+// that inflates either must meet a ceiling, not a signature.
+test('a node quoting an absurd fee gets no signature', async () => {
+  const { evm: monad } = await chainAddressesFromMnemonic(PHRASE);
+  const secret = await chainSecret(PHRASE, 'monad', monad);
+  const send = () =>
+    sendTransfer({ chain: 'monad', net: 'testnet', secret, owner: monad, asset: 'native', decimals: 18, to: EVM_DEST, amount: 1n });
+  const node = (over: Record<string, unknown>) =>
+    stubNode({
+      eth_chainId: hex(MONAD_TESTNET_CHAIN_ID),
+      eth_getTransactionCount: '0x0',
+      eth_maxPriorityFeePerGas: '0x1',
+      eth_getBlockByNumber: { baseFeePerGas: '0x1' },
+      eth_estimateGas: hex(21000),
+      eth_sendRawTransaction: '0xhash',
+      ...over,
+    });
+  // A base fee that would make 21000 gas cost far past the ceiling.
+  let calls = node({ eth_getBlockByNumber: { baseFeePerGas: hex(EVM_MAX_FEE_WEI.monad) } });
+  await refusal(send(), 'fee');
+  assert.ok(!calls.some((c) => c.method === 'eth_sendRawTransaction'));
+  // An inflated tip.
+  calls = node({ eth_maxPriorityFeePerGas: hex(EVM_MAX_FEE_WEI.monad) });
+  await refusal(send(), 'fee');
+  // An inflated gas estimate.
+  calls = node({ eth_estimateGas: hex(EVM_MAX_FEE_WEI.monad) });
+  await refusal(send(), 'fee');
+  assert.ok(!calls.some((c) => c.method === 'eth_sendRawTransaction'));
 });
 
 test('a Monad testnet node that is really mainnet is refused, for sends and for balances', async () => {
