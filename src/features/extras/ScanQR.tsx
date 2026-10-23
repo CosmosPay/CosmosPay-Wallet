@@ -8,6 +8,7 @@ import { canReadClipboardImage } from '@/lib/clipboard';
 import { SCAN_DECODE_MAX_PX } from '@/constants/extras';
 import '@/styles/features/extras/scan-qr.css';
 import { cx } from '@/lib/cx';
+import { Icon } from '@/ui/Icon';
 
 /* ----------------------------- SCAN QR ------------------------------ */
 export function ScanQR({ store }: { store: WalletStore }) {
@@ -225,7 +226,7 @@ export function ScanQR({ store }: { store: WalletStore }) {
                 ? devices.find((d) => d.deviceId === deviceId)?.label || t('scan.device')
                 : `${t('scan.device')} · auto`}
             </span>
-            <span className={cx('shrink0 scan-caret', devOpen && 'is-open')}>▼</span>
+            <Icon name="chevron-down" size={14} className={cx('shrink0 scan-caret', devOpen && 'is-open')} />
           </button>
           {devOpen && (
             <>

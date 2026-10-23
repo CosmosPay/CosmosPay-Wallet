@@ -1,0 +1,80 @@
+/* AssetStats — src/features/wallet/AssetStats.tsx. Two equal cards on the design's flat
+   surface; each rises on the stagger ladder, the share bar grows from the meter primitive. */
+.asset-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.asset-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 14px;
+  border-radius: var(--radius-card);
+  background: var(--surface-0);
+  border: 1px solid var(--hairline);
+  animation: rowIn 0.45s var(--ease-out) both;
+}
+
+.asset-stat-icon {
+  width: 30px;
+  height: 30px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.asset-stat-icon.is-up {
+  background: var(--up-soft);
+  color: var(--up);
+}
+
+.asset-stat-icon.is-down {
+  background: var(--danger-soft);
+  color: var(--down);
+}
+
+.asset-stat-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.asset-stat-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-stat-value.is-up {
+  color: var(--up);
+}
+
+.asset-stat-value.is-down {
+  color: var(--down);
+}
+
+.asset-stat-sub {
+  font-size: 12px;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-stat-meter {
+  margin-top: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .asset-stat {
+    animation: none !important;
+  }
+}

@@ -1,23 +1,18 @@
-/* BottomNav — phone/web bottom tab bar (the extension uses NavMenu instead). */
+/* BottomNav — src/app/BottomNav.tsx. The phone/web bottom bar (the extension uses NavMenu).
+   Geometry is the Figma design's: a 92px band whose lower 58px is the near-black bar, four
+   labelled tabs in it and the 58px scan button rising out of its middle slot. */
 .bottom-nav {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  /* The bar GROWS by the gesture-bar inset instead of eating into itself: with a
-     flat 92px, box-sizing: border-box let the safe padding squeeze the 72px tab
-     content box down to 38px and the 50px active dot spilled out of it. The
-     scroller above it still clears the bar — .shell-content is already inset by
-     --safe-b, so the overlap stays 92px and pb-104/pb-110 keep covering it. */
+  /* The band GROWS by the gesture-bar inset instead of eating into itself; the scroller
+     above it still clears the bar — .shell-content is already inset by --safe-b, so the
+     overlap stays 92px and pb-104/pb-110 keep covering it. */
   height: calc(92px + var(--safe-b));
   z-index: 5;
-  padding: 0 16px calc(20px + var(--safe-b));
-  display: flex;
-  align-items: center;
-  background: var(--nav-bg);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
-  border-top: 1px solid var(--hairline);
+  /* The transparent strip above the bar must not swallow taps meant for the screen. */
+  pointer-events: none;
 }
 
 /* A tab bar is dead weight while the keyboard is up: nothing on it is reachable without
@@ -34,23 +29,50 @@ html.kb-open .bottom-nav {
   transform: translateY(100%);
   opacity: 0;
   visibility: hidden;
+}
+
+html.kb-open .bottom-nav * {
   pointer-events: none;
 }
-/* Sliding active indicator. nav.tsx ships a FIXED five-tab bar, so the width is
-   a constant and the slide is one class per tab index — add a rung here if the
-   tab list ever grows. */
+
+.bottom-nav-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: calc(58px + var(--safe-b));
+  padding: 0 20px var(--safe-b);
+  display: flex;
+  align-items: stretch;
+  background: var(--nav-bg);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border-top: 1px solid var(--hairline);
+  pointer-events: auto;
+  animation: bottomNavIn 0.5s var(--ease-out) both;
+}
+
+/* The short accent bar over the active tab (28 × 2, as drawn). One rung per slot; the
+   bar has five fixed slots, the middle one being the scan button's. */
 .bottom-nav-indicator {
   position: absolute;
-  left: 16px;
-  top: 0;
-  bottom: calc(20px + var(--safe-b));
-  width: calc((100% - 32px) / 5);
-  transition: transform 0.42s cubic-bezier(0.34, 1.3, 0.5, 1);
+  top: -1px;
+  left: 20px;
+  width: calc((100% - 40px) / 5);
+  height: 2px;
   display: flex;
-  align-items: center;
   justify-content: center;
   pointer-events: none;
-  z-index: 1;
+  transition: transform 0.45s var(--ease-spring), opacity 0.2s ease;
+}
+
+.bottom-nav-indicator::before {
+  content: '';
+  width: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 12px var(--accent-glow);
 }
 
 .bottom-nav-indicator.is-tab-0 { transform: translateX(0); }
@@ -58,40 +80,105 @@ html.kb-open .bottom-nav {
 .bottom-nav-indicator.is-tab-2 { transform: translateX(200%); }
 .bottom-nav-indicator.is-tab-3 { transform: translateX(300%); }
 .bottom-nav-indicator.is-tab-4 { transform: translateX(400%); }
-.bottom-nav-dot {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
-  transform: translateY(-10px);
-}
-/* tab item — colour + lift come from .is-on */
+.bottom-nav-indicator.is-none { opacity: 0; }
+
 .bottom-nav-tab {
   flex: 1;
-  position: relative;
-  z-index: 2;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 11px 0 0;
+  border: none;
+  background: none;
   cursor: pointer;
-  color: var(--dim);
-}
-/* Compound selectors so both the spring transition and the resting transform
-   beat the generic `.tap` rules (`.tap:active`'s press-scale included, which is
-   what the old inline transform used to suppress) regardless of sheet order. */
-.tap.bottom-nav-tab {
-  transition: transform 0.42s cubic-bezier(0.34, 1.3, 0.5, 1), color 0.25s ease;
-  transform: none;
+  color: var(--text-soft);
+  /* base.css rounds every button; a tab is a column, not a pill */
+  border-radius: 0 !important;
+  /* buttons pop in on mount app-wide; the bar slides in as one piece instead */
+  animation: none !important;
+  transition: color 0.25s ease, transform 0.13s ease;
 }
 
-.tap.bottom-nav-tab.is-on {
-  color: var(--on-accent);
-  transform: translateY(-10px);
+.bottom-nav-tab.is-on {
+  color: var(--text);
 }
+
+.bottom-nav-tab.is-on .bottom-nav-icon {
+  animation: pop 0.45s var(--ease-spring);
+}
+
 .bottom-nav-label {
+  font-family: 'Nunito', 'Open Sauce One', system-ui, sans-serif;
   font-size: 10px;
   font-weight: 700;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+/* The middle slot carries only the scan button's label, level with the others. */
+.bottom-nav-tab--fab {
+  justify-content: flex-end;
+  padding-bottom: 10px;
+}
+
+.bottom-nav-label.is-fab {
+  color: var(--text);
+}
+
+/* The raised scan button: centred over the bar, 4px below the top of the band. */
+.bottom-nav-fab {
+  position: absolute;
+  top: 4px;
+  left: 50%;
+  width: 58px;
+  height: 58px;
+  margin-left: -29px;
+  padding: 0;
+  border: none;
+  border-radius: 50% !important;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fabPulse 3.2s ease-in-out 0.6s infinite !important;
+  transition: transform 0.2s var(--ease-spring);
+}
+
+/* The export draws its own 4px shadow margin around the 58px disc. */
+.bottom-nav-fab-img {
+  width: 66px;
+  height: 66px;
+  pointer-events: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .bottom-nav-fab:hover {
+    transform: translateY(-2px) scale(1.04);
+  }
+
+  .bottom-nav-tab:not(.is-on):hover {
+    color: var(--text);
+  }
+}
+
+.bottom-nav-fab:active {
+  transform: scale(0.92);
+}
+
+/* This sheet loads after animations.css, so its own `!important` animations need their own
+   reduced-motion override — the global block cannot beat a later rule of equal weight. */
+@media (prefers-reduced-motion: reduce) {
+  .bottom-nav-bar,
+  .bottom-nav-fab,
+  .bottom-nav-tab.is-on .bottom-nav-icon {
+    animation: none !important;
+  }
 }

@@ -9,9 +9,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // is erased at compile time and costs nothing.
 import type { DerivedAccount } from '@/lib/wallet';
 const walletLib = () => import('@/lib/wallet');
-// Solana + Monad derivation (bip32, secp256k1, keccak): only when an address is first shown.
+// Bitcoin / EVM / Solana derivation (bip32, secp256k1, keccak): only when an address is first shown.
 const chainLib = () => import('@/lib/chainAddresses');
-// Signing on Solana / Monad: loaded on the first swap paid from there, not at startup.
+// Signing on the other chains: loaded on the first send or swap paid from there, not at startup.
 const chainKeysLib = () => import('@/lib/chainKeys');
 const chainSwapLib = () => import('@/lib/chainSwap');
 // Solana devnet / Monad testnet balances and the devnet airdrop: only on a test network.
@@ -56,14 +56,16 @@ import { VaultKeyMismatchError, WrongPasswordError, deriveVaultKey, newKdfParams
 import { assertSafeToSign, reviewTx } from '@/lib/txGuard';
 import { MIN_APP_PWD_LEN, appPasswordOk, isAccessCode, isSafeHorizonUrl } from '@/lib/validate';
 import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
-import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
+import { assetRefFromGateway, codeIsAmbiguous, gatewayAssetLabel, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
 import { FIAT_DECIMALS, fromMinorUnits, toMinorUnitsBig } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
 import { recoveryShortfall, sendableAssets, spendableCeiling } from '@/lib/balances';
 import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
 import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
 import { retryOnNetworkError } from '@/lib/retryNetwork';
-import { CROSS_CHAIN_SLIPPAGE_BPS } from '@/constants/swap';
+import { CROSS_CHAIN_SLIPPAGE_BPS, PROVIDER_REFUSED_CODE, PROVIDER_UNAVAILABLE_CODE } from '@/constants/swap';
+import { slippageFor } from '@/lib/slippage';
+import { ApiRequestError } from '@/lib/apiError';
 import {
   fileBackupRecovery,
   newRecoveryKey,
@@ -75,14 +77,17 @@ import {
   CHAIN_CONFIRM_POLL_MS,
   CHAIN_CONFIRM_TIMEOUT_MS,
   CHAIN_EXPLORER_TX,
+  CHAIN_EXPLORER_TX_BY_NET,
   CHAIN_SWAP_SLIPPAGE_BPS,
-  CHAIN_TESTNET_EXPLORER_TX,
   OTHER_CHAINS,
   SOLANA_AIRDROP_LAMPORTS,
+  isEvmChain,
   type ChainNet,
   type ChainToken,
   type OtherChain,
 } from '@/constants/chains';
+import { chainAddressOf, isCompleteChainAddresses } from '@/lib/chainAddressBook';
+import { swapRoute, venueFallback } from '@/lib/swapRoute';
 import type { ChainExportKeys } from '@/lib/chainKeys';
 import type { ChainHoldings } from '@/lib/portfolio';
 import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
@@ -235,6 +240,7 @@ import {
   type CrossChainSwapInput,
   type CrossChainTarget,
   type CrossChainNetwork,
+  type ChainSwapVenueChain,
   recoverySetupSponsored,
 } from '@/lib/cosmospay';
 import { useToast } from '@/state/useToast';
@@ -365,6 +371,11 @@ export interface SuccessInfo {
   /** Explorer link for `hash` when it is not a Stellar transaction (Solana, Monad). */
   explorer?: string;
   kind?: 'ok' | 'err'; // controls the green check / red cross icon
+  /**
+   * A NEAR Intents swap the success screen follows to the end: the deposit address it was
+   * paid at (and its memo, on Stellar), what it should deliver and roughly when.
+   */
+  track?: { depositAddress: string; memo: string | null; asset: string; chain: string; etaSeconds: number };
 }
 
 /**
@@ -609,8 +620,20 @@ export function useWalletStore() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta, network, networkId]);
-  const { theme, setTheme, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics } =
-    usePreferences(useCallback((msg: string) => flash(msg, 'info'), [flash]));
+  const {
+    theme,
+    setTheme,
+    lang,
+    setLang,
+    t,
+    locale,
+    requireConfirm,
+    setRequireConfirm,
+    diagnostics,
+    setDiagnostics,
+    slippageBps,
+    setSlippageBps,
+  } = usePreferences(useCallback((msg: string) => flash(msg, 'info'), [flash]));
 
   // onboarding drafts
   const [draftMnemonic, setDraftMnemonic] = useState<string>('');
@@ -2133,12 +2156,13 @@ export function useWalletStore() {
   );
 
   /**
-   * The Solana and Monad addresses of the active wallet's recovery phrase, derived once and
-   * kept on its entry. Opens the vault with the session's key — no prompt, nothing leaves the
-   * device — and does nothing for a wallet imported from a bare secret key, which has none.
+   * The Bitcoin, EVM and Solana addresses of the active wallet's recovery phrase, derived
+   * once and kept on its entry. Opens the vault with the session's key — no prompt, nothing
+   * leaves the device — and does nothing for a wallet imported from a bare secret key, which
+   * has none. An entry saved before Bitcoin existed (`{ solana, monad }`) is derived again.
    */
   const ensureChainAddresses = useCallback(async (): Promise<void> => {
-    if (!session || !meta || meta.chainAddresses) return;
+    if (!session || !meta || isCompleteChainAddresses(meta.chainAddresses)) return;
     const epoch = sessionEpochRef.current;
     try {
       const vaulted = await openVault(meta.id, session.vaultKey);
@@ -2251,14 +2275,14 @@ export function useWalletStore() {
           sourceAssetIssuer: from.issuer ?? undefined,
           destAssetCode: to.code,
           destAssetIssuer: to.issuer ?? undefined,
-          slippageBps: DEFAULT_SLIPPAGE_BPS,
+          slippageBps: slippageFor(slippageBps, DEFAULT_SLIPPAGE_BPS),
         });
       } catch (e) {
         flash((e as Error).message || t('swap.quoteError'), 'err');
         return null;
       }
     },
-    [cosmosPay, network, t, flash],
+    [cosmosPay, network, slippageBps, t, flash],
   );
 
   /**
@@ -2286,7 +2310,7 @@ export function useWalletStore() {
             destAssetCode: to.code,
             destAssetIssuer: to.issuer ?? undefined,
             source: session.publicKey,
-            slippageBps: DEFAULT_SLIPPAGE_BPS,
+            slippageBps: slippageFor(slippageBps, DEFAULT_SLIPPAGE_BPS),
           });
           // The gateway builds this envelope; we sign it. Verify it actually does what
           // was just confirmed — source, destination, operation set, fee, what leaves
@@ -2351,8 +2375,9 @@ export function useWalletStore() {
               title: t('swap.success'),
               msg: t('swap.successMsg'),
               rows: [
-                { label: t('swap.pay'), val: `${swap.sendAmount} ${swap.sendAsset}` },
-                { label: t('swap.receiveEst'), val: `${swap.destEstimated} ${swap.destAsset}` },
+                // The gateway spells XLM as "native"; the receipt says what the user saw.
+                { label: t('swap.pay'), val: `${swap.sendAmount} ${gatewayAssetLabel(swap.sendAsset)}` },
+                { label: t('swap.receiveEst'), val: `${swap.destEstimated} ${gatewayAssetLabel(swap.destAsset)}` },
               ],
               hash: res.txHash ?? undefined,
             });
@@ -2387,7 +2412,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash],
+    [session, cosmosPay, network, slippageBps, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash],
   );
 
   /* ------------------------- cross-chain swaps --------------------- */
@@ -2409,7 +2434,7 @@ export function useWalletStore() {
   /** The request both the quote and the create send. The recipient is always our own. */
   const crossChainInput = useCallback(
     (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset): CrossChainSwapInput | null => {
-      const recipient = meta?.chainAddresses?.[target];
+      const recipient = chainAddressOf(meta?.chainAddresses, target, 'mainnet');
       if (!session || !recipient) return null;
       return {
         originChain: 'stellar',
@@ -2419,20 +2444,28 @@ export function useWalletStore() {
         amount,
         recipient,
         refundTo: session.publicKey,
-        slippageBps: CROSS_CHAIN_SLIPPAGE_BPS,
+        slippageBps: slippageFor(slippageBps, CROSS_CHAIN_SLIPPAGE_BPS),
       };
     },
-    [session, meta],
+    [session, meta, slippageBps],
   );
 
   const quoteCrossChain = useCallback(
-    async (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
+    async (
+      amount: string,
+      from: SwapAsset,
+      target: CrossChainTarget,
+      dest: CrossChainAsset,
+    ): Promise<CrossChainQuote | 'refused' | null> => {
       const apiKey = openAccessKey();
       const input = crossChainInput(amount, from, target, dest);
       if (!apiKey || !input) return null;
       try {
         return await cpQuoteCrossChainSwap(apiKey, input);
       } catch (e) {
+        // NEAR Intents not quoting this pair or amount is a state of the route, not a
+        // failure: the screen says so in a standing line instead of a toast per refresh.
+        if (e instanceof ApiRequestError && e.code === PROVIDER_REFUSED_CODE) return 'refused';
         flash((e as Error).message || t('swap.quoteError'), 'err');
         return null;
       }
@@ -2468,7 +2501,10 @@ export function useWalletStore() {
         try {
           const swap = await cpCreateCrossChainSwap(apiKey, input);
           if (
-            swap.recipient !== input.recipient ||
+            // The recipient is case-free on an EVM chain (EIP-55) and on Bitcoin (bech32).
+            (isEvmChain(target) || target === 'bitcoin'
+              ? swap.recipient.toLowerCase() !== input.recipient.toLowerCase()
+              : swap.recipient !== input.recipient) ||
             swap.refundTo !== session.publicKey ||
             swap.originChain !== 'stellar' ||
             swap.destinationChain !== target ||
@@ -2504,6 +2540,13 @@ export function useWalletStore() {
               { label: t('xswap.to'), val: `${input.recipient.slice(0, 6)}…${input.recipient.slice(-6)}` },
             ],
             hash,
+            track: {
+              depositAddress: swap.depositAddress,
+              memo: swap.depositMemo,
+              asset: quote.destination.asset,
+              chain: target,
+              etaSeconds: swap.timeEstimateSeconds,
+            },
           });
           setScreen('success');
           refresh(true);
@@ -2533,8 +2576,8 @@ export function useWalletStore() {
   /** Our address on `chain`, or null for a wallet imported from a bare Stellar secret. */
   const chainAddress = useCallback(
     (chain: CrossChainNetwork): string | null =>
-      chain === 'stellar' ? session?.publicKey ?? null : meta?.chainAddresses?.[chain] ?? null,
-    [session, meta],
+      chain === 'stellar' ? session?.publicKey ?? null : chainAddressOf(meta?.chainAddresses, chain, chainNet),
+    [session, meta, chainNet],
   );
 
   /**
@@ -2544,7 +2587,7 @@ export function useWalletStore() {
    */
   const chainBalances = useCallback(
     async (chain: OtherChain): Promise<Record<string, bigint> | null> => {
-      const owner = meta?.chainAddresses?.[chain];
+      const owner = chainAddressOf(meta?.chainAddresses, chain, chainNet);
       if (!owner) return null;
       try {
         return await (await chainSwapLib()).chainBalances(chain, owner, chainNet);
@@ -2571,8 +2614,13 @@ export function useWalletStore() {
             key: chainsKey(networkId, meta.publicKey),
             fetcher: async () => {
               const lib = await chainSwapLib();
+              // A chain with no address yet (an entry from before it existed, until it is
+              // re-derived) reads as unreadable rather than as an empty balance.
               const read = await Promise.all(
-                OTHER_CHAINS.map(async (c) => [c, await lib.chainBalances(c, addrs[c], net).catch(() => null)] as const),
+                OTHER_CHAINS.map(async (c) => {
+                  const owner = chainAddressOf(addrs, c, net);
+                  return [c, owner ? await lib.chainBalances(c, owner, net).catch(() => null) : null] as const;
+                }),
               );
               return Object.fromEntries(read) as ChainHoldings;
             },
@@ -2611,7 +2659,7 @@ export function useWalletStore() {
    * per IP; a refusal says so and points at the web faucet. Nothing is signed.
    */
   const airdropTestnetSol = useCallback(async (): Promise<boolean> => {
-    const owner = meta?.chainAddresses?.solana;
+    const owner = chainAddressOf(meta?.chainAddresses, 'solana', 'testnet');
     if (!owner || networkEnv(network) !== 'dev') return false;
     try {
       const rpcLib = await chainRpcLib();
@@ -2636,15 +2684,15 @@ export function useWalletStore() {
     }
   }, [meta, network, t, flash]);
 
-  /** The signing key of `chain`, checked against the address on screen. */
+  /** The signing key of `chain` on `net`, checked against the address on screen. */
   const chainSigner = useCallback(
-    async (chain: OtherChain): Promise<{ owner: string; secret: Uint8Array }> => {
-      const owner = meta?.chainAddresses?.[chain];
+    async (chain: OtherChain, net: ChainNet = 'mainnet'): Promise<{ owner: string; secret: Uint8Array }> => {
+      const owner = chainAddressOf(meta?.chainAddresses, chain, net);
       const missing = () => new Error(t('xswap.noAddress', { chain: t(`xswap.chain.${chain}`) }));
       if (!session || !owner) throw missing();
       const { mnemonic } = await openVault(session.walletId, session.vaultKey);
       if (!mnemonic) throw missing();
-      return { owner, secret: await (await chainKeysLib()).chainSecret(mnemonic, chain, owner) };
+      return { owner, secret: await (await chainKeysLib()).chainSecret(mnemonic, chain, owner, net) };
     },
     [session, meta, t],
   );
@@ -2682,8 +2730,8 @@ export function useWalletStore() {
         setBusy(true);
         try {
           const lib = await chainSwapLib();
-          if (!lib.isChainAddress(chain, destination)) throw new lib.ChainSwapRefused('address');
-          const { owner, secret } = await chainSigner(chain);
+          if (!lib.isChainAddress(chain, destination, sendNet)) throw new lib.ChainSwapRefused('address');
+          const { owner, secret } = await chainSigner(chain, sendNet);
           guardSession(epoch);
           let hash: string;
           try {
@@ -2709,7 +2757,7 @@ export function useWalletStore() {
               { label: t('chainSend.to'), val: short },
             ],
             hash,
-            explorer: (sendNet === 'testnet' ? CHAIN_TESTNET_EXPLORER_TX : CHAIN_EXPLORER_TX)[chain](hash),
+            explorer: CHAIN_EXPLORER_TX_BY_NET[sendNet][chain](hash),
           });
           setScreen('success');
         } catch (e) {
@@ -2725,7 +2773,12 @@ export function useWalletStore() {
   );
 
   const quoteChainSwap = useCallback(
-    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken): Promise<SwapQuote | null> => {
+    async (
+      chain: ChainSwapVenueChain,
+      amount: string,
+      from: ChainToken,
+      to: ChainToken,
+    ): Promise<SwapQuote | 'unavailable' | null> => {
       const apiKey = openAccessKey();
       if (!apiKey) return null;
       try {
@@ -2734,14 +2787,17 @@ export function useWalletStore() {
           amount,
           sourceAssetCode: from.asset,
           destAssetCode: to.asset,
-          slippageBps: CHAIN_SWAP_SLIPPAGE_BPS,
+          slippageBps: slippageFor(slippageBps, CHAIN_SWAP_SLIPPAGE_BPS),
         });
       } catch (e) {
+        // Jupiter or Kuru Flow not answering at all: the screen hands the pair to NEAR
+        // Intents (`venueFallback`) rather than toasting a timeout every refresh.
+        if (e instanceof ApiRequestError && e.code === PROVIDER_UNAVAILABLE_CODE) return 'unavailable';
         flash((e as Error).message || t('swap.quoteError'), 'err');
         return null;
       }
     },
-    [openAccessKey, t, flash],
+    [openAccessKey, slippageBps, t, flash],
   );
 
   /**
@@ -2750,9 +2806,9 @@ export function useWalletStore() {
    * amount typed and the quote's minimum — never the create response's.
    */
   const submitChainSwap = useCallback(
-    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, quote: SwapQuote) => {
+    async (chain: ChainSwapVenueChain, amount: string, from: ChainToken, to: ChainToken, quote: SwapQuote) => {
       const apiKey = openAccessKey();
-      const owner = meta?.chainAddresses?.[chain];
+      const owner = chainAddressOf(meta?.chainAddresses, chain, 'mainnet');
       const units = toMinorUnitsBig(amount, from.decimals);
       const minimum = toMinorUnitsBig(quote.destination.minimum, to.decimals);
       if (!session || !apiKey || !owner || !units || minimum === null) return;
@@ -2772,7 +2828,7 @@ export function useWalletStore() {
             amount,
             sourceAssetCode: from.asset,
             destAssetCode: to.asset,
-            slippageBps: CHAIN_SWAP_SLIPPAGE_BPS,
+            slippageBps: slippageFor(slippageBps, CHAIN_SWAP_SLIPPAGE_BPS),
           });
           if (
             swap.chain !== chain ||
@@ -2835,16 +2891,21 @@ export function useWalletStore() {
         }
       });
     },
-    [session, meta, openAccessKey, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, loadChainHoldings, t],
+    [session, meta, openAccessKey, slippageBps, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, loadChainHoldings, t],
   );
 
   /** The request a cross-chain swap from Solana / Monad sends: both ends are our own. */
   const crossChainFromInput = useCallback(
-    (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset): CrossChainSwapInput | null => {
+    (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset, fallback = false): CrossChainSwapInput | null => {
       const refundTo = chainAddress(origin);
       const recipient = chainAddress(dest.chain);
-      if (!refundTo || !recipient || dest.chain === origin) return null;
+      // A same-chain pair is only a NEAR swap where the chain has no venue of its own — or,
+      // with `fallback`, where that venue did not answer (Jupiter, Kuru Flow).
+      const route = swapRoute(origin, dest.chain);
+      const viaFallback = fallback && venueFallback(route) === 'intents';
+      if (!refundTo || !recipient || (route !== 'intents' && !viaFallback)) return null;
       return {
+        ...(viaFallback ? { venueFallback: true } : {}),
         originChain: origin,
         originAsset: from.asset === 'native' ? from.symbol : from.asset,
         destinationChain: dest.chain,
@@ -2853,20 +2914,27 @@ export function useWalletStore() {
         amount,
         recipient,
         refundTo,
-        slippageBps: CROSS_CHAIN_SLIPPAGE_BPS,
+        slippageBps: slippageFor(slippageBps, CROSS_CHAIN_SLIPPAGE_BPS),
       };
     },
-    [chainAddress],
+    [chainAddress, slippageBps],
   );
 
   const quoteCrossChainFrom = useCallback(
-    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
+    async (
+      origin: OtherChain,
+      amount: string,
+      from: ChainToken,
+      dest: CrossChainAsset,
+      fallback = false,
+    ): Promise<CrossChainQuote | 'refused' | null> => {
       const apiKey = openAccessKey();
-      const input = crossChainFromInput(origin, amount, from, dest);
+      const input = crossChainFromInput(origin, amount, from, dest, fallback);
       if (!apiKey || !input) return null;
       try {
         return await cpQuoteCrossChainSwap(apiKey, input);
       } catch (e) {
+        if (e instanceof ApiRequestError && e.code === PROVIDER_REFUSED_CODE) return 'refused';
         flash((e as Error).message || t('swap.quoteError'), 'err');
         return null;
       }
@@ -2880,9 +2948,9 @@ export function useWalletStore() {
    * refund comes back to OUR origin address, the amount is the one on screen.
    */
   const submitCrossChainFrom = useCallback(
-    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset, quote: CrossChainQuote) => {
+    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset, quote: CrossChainQuote, fallback = false) => {
       const apiKey = openAccessKey();
-      const input = crossChainFromInput(origin, amount, from, dest);
+      const input = crossChainFromInput(origin, amount, from, dest, fallback);
       const units = toMinorUnitsBig(amount, from.decimals);
       if (!session || !apiKey || !input || !units) return;
       await exclusive.run('swap', async () => {
@@ -2895,10 +2963,12 @@ export function useWalletStore() {
         setBusy(true);
         try {
           const swap = await cpCreateCrossChainSwap(apiKey, input);
-          const same = (a: string, b: string) => (origin === 'monad' ? a.toLowerCase() === b.toLowerCase() : a === b);
+          // EIP-55 and bech32 spell one address in more than one case; base58 and StrKey do not.
+          const caseFree = (c: string) => isEvmChain(c) || c === 'bitcoin';
+          const same = (c: string, a: string, b: string) => (caseFree(c) ? a.toLowerCase() === b.toLowerCase() : a === b);
           if (
-            swap.recipient !== input.recipient ||
-            !same(swap.refundTo, input.refundTo) ||
+            !same(dest.chain, swap.recipient, input.recipient) ||
+            !same(origin, swap.refundTo, input.refundTo) ||
             swap.originChain !== origin ||
             swap.destinationChain !== dest.chain ||
             !sameDecimal(swap.amountIn, amount)
@@ -2952,6 +3022,13 @@ export function useWalletStore() {
             ],
             hash,
             explorer: CHAIN_EXPLORER_TX[origin](hash),
+            track: {
+              depositAddress: swap.depositAddress,
+              memo: swap.depositMemo,
+              asset: quote.destination.asset,
+              chain: dest.chain,
+              etaSeconds: swap.timeEstimateSeconds,
+            },
           });
           setScreen('success');
           if (dest.chain === 'stellar') refresh(true);
@@ -6020,6 +6097,10 @@ export function useWalletStore() {
     // making a privacy opt-out ask for a password is how an opt-out goes unused.
     diagnostics,
     setDiagnostics,
+    // Not gated either: the quote on screen re-prices with it, and the signature stays
+    // bounded by that quote's minimum, whatever the tolerance that produced it.
+    slippageBps,
+    setSlippageBps,
     confirmReq,
     requestSignature,
     resolveConfirm,

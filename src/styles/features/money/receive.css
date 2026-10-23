@@ -1,25 +1,219 @@
-/* Receive screen (src/features/money/Receive.tsx). */
-.receive-desc { text-align: center; color: var(--muted); font-size: 13px; font-weight: 600; margin: 18px 0 22px; }
-.receive-qr { background: #fff; border-radius: 24px; padding: 18px; width: 224px; margin: 0 auto 24px; }
-.receive-qr-img { display: block; width: 188px; height: 188px; margin: 0 auto; }
-.receive-qr-ph { width: 188px; height: 188px; display: flex; align-items: center; justify-content: center; }
-.receive-chip-wrap { margin-bottom: 20px; } /* on .center */
-.receive-chip { display: flex; align-items: center; gap: 8px; padding: 8px 16px 8px 9px; border-radius: 30px; } /* on .glass-soft */
-.receive-chip-label { font-size: 14px; font-weight: 700; }
-.receive-addr-card { border-radius: 16px; padding: 16px; margin-bottom: 14px; } /* on .glass.row.between.g12 */
-.receive-addr-label { font-size: 12px; color: var(--dim); font-weight: 600; margin-bottom: 5px; }
-.receive-addr-value { font-size: 12.5px; font-weight: 600; word-break: break-all; line-height: 1.4; font-family: monospace; }
-.receive-copy { flex-shrink: 0; width: 40px; height: 40px; border-radius: 12px; background: var(--surface); display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--muted); }
-.receive-copy.is-copied { color: var(--accent); }
-.receive-btn { flex: 1; height: 54px; border: none; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; cursor: pointer; color: var(--text); }
-.receive-btn--share { background: var(--accent); color: var(--on-accent); }
-.receive-paylink { padding: 14px; border-radius: 16px; margin-top: 14px; } /* on .tap.glass-soft.row.between */
-.receive-paylink-emoji { font-size: 18px; }
-.receive-paylink-title { font-size: 14px; font-weight: 800; }
-.receive-paylink-desc { font-size: 12px; color: var(--muted); font-weight: 600; }
-.receive-paylink-chev { color: var(--dim); font-size: 18px; }
-/* One tab per network the phrase holds an address on (lib/chainAddresses.ts). */
-.receive-tabs { display: flex; gap: 6px; padding: 4px; margin-top: 14px; border-radius: 999px; background: var(--surface); }
-.receive-tab { flex: 1; min-width: 0; height: 36px; border: none; border-radius: 999px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 800; cursor: pointer; }
-.receive-tab.is-on { background: var(--accent); color: var(--on-accent); }
-.receive-warn { margin: -4px 0 14px; font-size: 12px; font-weight: 700; color: var(--text-soft); line-height: 1.45; text-align: center; }
+/* Receive screen — src/features/money/Receive.tsx. The QR on its white card (it must stay
+   white in both themes to scan), the network's mark at its centre, a glow that turns behind
+   it, the address card that copies on tap, and the two actions. */
+.receive-desc {
+  text-align: center;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 6px 0 22px;
+}
+
+.receive-qr {
+  position: relative;
+  background: #fff;
+  border-radius: 28px;
+  padding: 16px;
+  width: 228px;
+  margin: 0 auto 16px;
+  isolation: isolate;
+  animation: qrIn 0.55s var(--ease-spring) backwards;
+}
+
+/* a slowly turning ring of accent light behind the card */
+.receive-qr-glow {
+  position: absolute;
+  inset: -3px;
+  z-index: -1;
+  border-radius: 31px;
+  background: conic-gradient(from 0deg, var(--accent), transparent 30%, var(--up) 55%, transparent 80%, var(--accent));
+  filter: blur(10px);
+  opacity: 0.55;
+  animation: orbit 6s linear infinite;
+}
+
+.receive-qr-img {
+  display: block;
+  width: 196px;
+  height: 196px;
+  margin: 0 auto;
+  border-radius: 8px;
+}
+
+.receive-qr-ph {
+  width: 196px;
+  height: 196px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* the network's mark over the centre of the code (inside the error-correction margin) */
+.receive-qr-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 44px;
+  height: 44px;
+  margin: -22px 0 0 -22px;
+  border-radius: 50%;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pop 0.5s var(--ease-spring) 0.25s backwards;
+}
+
+.receive-net-name {
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 18px;
+}
+
+.receive-addr-card {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 14px 16px;
+  margin-bottom: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 18px !important;
+  background: var(--surface-0);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+
+.receive-addr-card:hover {
+  border-color: var(--accent);
+}
+
+.receive-addr-card.is-copied {
+  border-color: var(--up);
+}
+
+.receive-addr-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.receive-addr-label {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.receive-addr-value {
+  font-size: 12.5px;
+  font-weight: 500;
+  word-break: break-all;
+  line-height: 1.4;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.receive-copy {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--surface-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.receive-addr-card.is-copied .receive-copy {
+  color: var(--up);
+}
+
+.receive-addr-card.is-copied .icon {
+  animation: pop 0.35s var(--ease-spring);
+}
+
+.receive-btn {
+  flex: 1;
+  height: 52px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  color: var(--text);
+  background: var(--surface-1);
+}
+
+.receive-btn--share {
+  background: var(--accent);
+  color: var(--on-accent);
+  box-shadow: 0 10px 24px -10px var(--accent-glow);
+}
+
+.receive-paylink {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  margin-top: 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 18px !important;
+  background: var(--surface-0);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.receive-paylink-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(153, 69, 255, 0.14);
+  color: #a970ff;
+}
+
+.receive-paylink-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.receive-paylink-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.receive-paylink-desc {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.receive-paylink-chev {
+  color: var(--dim);
+}
+
+.receive-warn {
+  margin: -2px 0 14px;
+  font-size: 12px;
+  color: var(--text-soft);
+  line-height: 1.45;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .receive-qr,
+  .receive-qr-glow,
+  .receive-qr-badge {
+    animation: none !important;
+  }
+}

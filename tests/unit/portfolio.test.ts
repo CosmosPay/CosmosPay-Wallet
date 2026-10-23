@@ -5,7 +5,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chainRows, computePortfolio, rowKey } from '@/lib/portfolio';
+import { chainRows, computePortfolio, holdingStats, rowKey } from '@/lib/portfolio';
 import { CHAIN_TOKENS } from '@/constants/chains';
 import type { AccountState } from '@/lib/stellar';
 
@@ -148,4 +148,19 @@ test('chain holdings count toward the same total, and USDC on two chains stays t
   assert.equal(total, 10 + 150 + 5);
   const keys = rows.filter((r) => r.code === 'USDC').map(rowKey);
   assert.equal(new Set(keys).size, 2);
+});
+
+test('a holding’s own figures: its 24h dollar move and its share, or nothing when unknown', () => {
+  // $110 now after +10% means it was $100: a $10 gain, and 110 of 440 is a quarter.
+  const up = holdingStats(110, 10, 440);
+  assert.ok(Math.abs((up.deltaUsd ?? 0) - 10) < 1e-9);
+  assert.equal(up.share, 0.25);
+  const down = holdingStats(90, -10, 90);
+  assert.ok(Math.abs((down.deltaUsd ?? 0) + 10) < 1e-9);
+  assert.equal(down.share, 1);
+  // No price: no figures, rather than a zero that reads as "flat" or "none of it".
+  assert.deepEqual(holdingStats(null, 5, 100), { deltaUsd: null, share: null });
+  // An empty wallet has no share to speak of; an unknown change has no move.
+  assert.equal(holdingStats(0, 5, 0).share, null);
+  assert.equal(holdingStats(50, null, 100).deltaUsd, null);
 });

@@ -25,10 +25,13 @@ export function ExternalLink({
   href,
   className,
   children,
+  ariaLabel,
 }: {
   href: string;
   className?: string;
   children: ReactNode;
+  /** For an icon-only link, the name a screen reader announces. */
+  ariaLabel?: string;
 }) {
   const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
     e.stopPropagation();
@@ -40,7 +43,7 @@ export function ExternalLink({
   };
 
   return (
-    <a href={href} target="_blank" rel="noreferrer noopener" className={className} onClick={onClick}>
+    <a href={href} target="_blank" rel="noreferrer noopener" className={className} onClick={onClick} aria-label={ariaLabel}>
       {children}
     </a>
   );

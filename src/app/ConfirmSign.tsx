@@ -4,6 +4,7 @@ import { Spinner } from '@/ui/Spinner';
 import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
 import { PasskeyButton } from '@/ui/PasskeyButton';
 import { cx } from '@/lib/cx';
+import { Icon } from '@/ui/Icon';
 import '@/styles/app/confirm-sign.css';
 
 /** Password gate shown before any signing action (toggleable in Settings). */
@@ -65,7 +66,7 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
     <div className="confirm-sign-overlay">
       <div className="glass confirm-sign-card">
         <div className="confirm-sign-icon-row">
-          <div className="glass-soft center confirm-sign-icon">✎</div>
+          <div className="glass-soft center confirm-sign-icon"><Icon name="key" size={22} /></div>
         </div>
         <div className="confirm-sign-title">{req.title}</div>
         {req.message && <div className="confirm-sign-msg">{req.message}</div>}

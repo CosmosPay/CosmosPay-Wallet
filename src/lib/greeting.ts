@@ -53,3 +53,12 @@ export function getGreeting(name: string, birthdate: string, t: TFn, gender?: Ge
   const salutation = isBirthday ? t('greet.birthday', { name: who }).replace(`, ${who}`, '') : picked;
   return { line, salutation, isBirthday, age };
 }
+
+/**
+ * The salutation as the header's first line, which the name follows on the next: "Good
+ * morning," — with the comma only when the salutation does not already end in punctuation
+ * of its own ("Welcome back!" stays as it is).
+ */
+export function salutationLead(salutation: string): string {
+  return /[!?¡¿.,…:]$/.test(salutation.trim()) ? salutation : `${salutation},`;
+}

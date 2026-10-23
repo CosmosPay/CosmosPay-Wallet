@@ -19,24 +19,26 @@
     flex-shrink: 0;
     padding: 26px 16px 20px;
     border-right: 1px solid var(--hairline);
-    background: var(--surface-2);
+    /* The design's bar surface, so the rail reads as the phone bar turned on its side. */
+    background: var(--surface-0);
     /* The vertical device insets are on .shell-content, which the rail is not inside, so
        it clears the status bar itself. Only relevant on a tablet in landscape, which is
        the one non-desktop device that reaches this breakpoint. */
     padding-top: calc(26px + var(--safe-t));
     padding-bottom: calc(20px + var(--safe-b));
+    animation: deskRailIn 0.5s var(--ease-out) both;
   }
 
   .desk-brand {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 0 10px 22px;
+    padding: 0 10px 26px;
   }
 
   .desk-brand-name {
-    font-size: 15px;
-    font-weight: 800;
+    font-size: 16px;
+    font-weight: 700;
     letter-spacing: -0.3px;
     color: var(--text);
   }
@@ -53,42 +55,57 @@
   }
 
   .desk-nav-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
-    height: 44px;
-    padding: 0 12px;
+    height: 46px;
+    padding: 0 14px;
     /* Beats base.css's blanket `button { border-radius: 999px !important }`: a full pill
        under a left-aligned icon-and-label row leaves the icon floating away from the edge
        of its own highlight. Matching !important rather than raising specificity, because
        the base rule is itself !important and nothing else can win against it. */
-    border-radius: 12px !important;
+    border-radius: 14px !important;
     border: none;
     background: transparent;
-    color: var(--dim);
+    color: var(--muted);
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     text-align: left;
-    transition: background-color 0.18s ease, color 0.18s ease;
+    transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s var(--ease-out);
   }
 
   .desk-nav-item:hover {
-    background: var(--glass-soft-bg);
-    color: var(--text-soft);
+    background: var(--surface-1);
+    color: var(--text);
+    transform: translateX(2px);
   }
 
-  /* The active item is a filled slab, the way the bottom bar's active tab is a filled dot:
-     same idea, the shape the layout can afford. */
+  /* The active item: an accent wash and the same short accent bar the phone bar puts over
+     its active tab, turned to stand on the rail's edge. */
   .desk-nav-item.is-on {
-    background: var(--accent);
-    color: var(--on-accent);
+    background: var(--accent-soft);
+    color: var(--text);
   }
 
-  .desk-nav-item.is-on:hover {
+  .desk-nav-item.is-on::before {
+    content: '';
+    position: absolute;
+    left: -16px;
+    top: 50%;
+    width: 3px;
+    height: 22px;
+    margin-top: -11px;
+    border-radius: 0 3px 3px 0;
     background: var(--accent);
-    color: var(--on-accent);
+    box-shadow: 0 0 12px var(--accent-glow);
+    animation: fadeIn 0.3s ease;
+  }
+
+  .desk-nav-item.is-on .icon {
+    color: var(--accent);
   }
 
   .desk-nav-label {
@@ -102,7 +119,7 @@
     padding: 14px 12px 0;
     border-top: 1px solid var(--hairline);
     font-size: 11.5px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--dimmer);
   }
 }

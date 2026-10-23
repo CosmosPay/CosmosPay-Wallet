@@ -106,6 +106,257 @@
   }
 }
 
+/* every screen arrives: a short rise and fade on the spring curve */
+@keyframes screenIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* a row sliding in from the side (lists, activity) */
+@keyframes rowIn {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* the light sweep across the primary button on hover */
+@keyframes btnSheen {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(120%);
+  }
+}
+
+/* skeleton placeholders */
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* the unread dot on the bell: a ring that keeps spreading out */
+@keyframes ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  80%,
+  100% {
+    transform: scale(2.4);
+    opacity: 0;
+  }
+}
+
+/* the QR button breathes a glow, so the one round thing in the bar reads as the main act */
+@keyframes fabPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 var(--accent-glow), 0 10px 24px -8px var(--accent-glow);
+  }
+  50% {
+    box-shadow: 0 0 0 10px transparent, 0 14px 30px -8px var(--accent-glow);
+  }
+}
+
+/* the ambient glow behind the balance drifts slowly */
+@keyframes auroraDrift {
+  0%,
+  100% {
+    transform: translate3d(-6%, -4%, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(6%, 4%, 0) scale(1.12);
+  }
+}
+
+/* a gentle hover/attention bob */
+@keyframes floatY {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* an icon nudged on hover: send leans forward, receive leans in */
+@keyframes nudge {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(2px, -2px);
+  }
+}
+
+/* the success check draws itself */
+@keyframes drawStroke {
+  from {
+    stroke-dashoffset: 48;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* confetti pieces falling past the success mark */
+@keyframes confetti {
+  0% {
+    transform: translate3d(0, -20px, 0) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate3d(var(--drift, 0px), 220px, 0) rotate(540deg);
+    opacity: 0;
+  }
+}
+
+/* a sheet or dialog rising from the bottom */
+@keyframes sheetUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* a value that just changed flashes its colour once */
+@keyframes flashUp {
+  0% {
+    color: var(--up-bright);
+  }
+  100% {
+    color: inherit;
+  }
+}
+
+/* a spinning ring of light around something in progress */
+@keyframes orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* the desktop rail and the phone bar arrive with the shell */
+@keyframes deskRailIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes bottomNavIn {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+/* a screen title settles into place a beat after its header */
+@keyframes titleIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* the back arrow leans the way it goes */
+@keyframes backNudge {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  50% {
+    transform: translateX(-4px);
+  }
+}
+
+/* a meter filling from its left edge */
+@keyframes meterGrow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* a tab panel arriving from the side it was swiped toward */
+@keyframes panelFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes panelFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-28px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* a QR card unfolding into place */
+@keyframes qrIn {
+  from {
+    opacity: 0;
+    transform: scale(0.82) rotate(-4deg);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* intro splash logo */
 @keyframes splashIn {
   0% {
@@ -146,6 +397,22 @@ textarea,
 select,
 .tap {
   animation: popIn 0.36s cubic-bezier(0.2, 0.9, 0.25, 1) !important;
+}
+
+/* a dot travelling the beam between the two tokens of a swap in flight (SwapProgress) */
+@keyframes beamDot {
+  0% {
+    opacity: 0.15;
+    transform: scale(0.6);
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0.15;
+    transform: scale(0.6);
+  }
 }
 
 /* ---------------------- staggered list entrances ----------------------
@@ -218,8 +485,19 @@ button:active,
   .glass-soft,
   .success-ring,
   .toast-card,
-  .toast-ext-card {
+  .toast-ext-card,
+  .screen,
+  .skeleton,
+  .aurora,
+  .home-bell-ping,
+  .bottom-nav-fab,
+  .success-confetti i,
+  .icon {
     animation: none !important;
+  }
+
+  .btn-primary::after {
+    display: none;
   }
 
   /* The keyboard's easing (src/lib/viewport.ts and the sheets that read --kb-h) is

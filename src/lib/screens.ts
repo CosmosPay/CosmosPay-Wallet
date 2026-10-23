@@ -18,7 +18,7 @@
  * reachable from several places returns to where the user actually came from.
  */
 
-export type Tab = 'home' | 'earn' | 'markets' | 'profile';
+export type Tab = 'home' | 'wallet' | 'earn' | 'markets' | 'profile' | 'more';
 
 /** Every screen id. Adding one here forces a row in SCREENS below. */
 export const SCREEN_IDS = [
@@ -68,6 +68,8 @@ export const SCREEN_IDS = [
   'scan',
   'chain-send',
   'chain-asset',
+  'wallet',
+  'more',
 ] as const;
 
 export type Screen = (typeof SCREEN_IDS)[number];
@@ -137,6 +139,10 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   defindex: { back: 'earn' },
   markets: { back: 'home', tab: 'markets', nav: true },
   profile: { back: 'home', tab: 'profile', nav: true },
+  // Every account the phrase holds, chain by chain — the bar's second tab.
+  wallet: { back: 'home', tab: 'wallet', nav: true },
+  // Everything that is not one of the bar's own tabs, in one place.
+  more: { back: 'home', tab: 'more', nav: true },
 
   // money
   receive: { back: 'home' },

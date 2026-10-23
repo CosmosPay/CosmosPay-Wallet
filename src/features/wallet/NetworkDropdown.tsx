@@ -1,19 +1,30 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { StellarMark } from '@/features/wallet/StellarMark';
+import { Icon } from '@/ui/Icon';
+import { networkEnv } from '@/lib/stellar';
 import { cx } from '@/lib/cx';
 import '@/styles/features/wallet/network-dropdown.css';
 
-/** Network selector as a dropdown (lists networks + "add network") — dev fast-access.
- *  The trigger is a circular header button (same 38px form as the profile avatar);
- *  the active network shows as a tooltip and inside the open menu.
+/** Network selector as a dropdown (lists networks + "add network").
+ *  The trigger is a chip naming the active network, with a dot that says at a glance
+ *  whether it is real money (green) or a test network (amber).
  *  `align="right"` opens the menu right-aligned (for placement in the top-right corner). */
 export function NetworkDropdown({ store, align = 'left' }: { store: WalletStore; align?: 'left' | 'right' }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="network-dd">
-      <button onClick={() => setOpen((o) => !o)} title={store.network.label} aria-label={store.network.label} className="glass-soft circle-btn">
-        <StellarMark size={16} />
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        title={store.network.label}
+        aria-label={store.network.label}
+        aria-expanded={open}
+        className={cx('chip network-dd-trigger', open && 'is-open')}
+      >
+        <span className={cx('network-dd-dot', networkEnv(store.network) === 'dev' && 'is-test')} />
+        <span className="network-dd-name">{store.network.label}</span>
+        <Icon name="chevron-down" size={14} className="network-dd-chev" />
       </button>
       {open && (
         <>
@@ -32,7 +43,7 @@ export function NetworkDropdown({ store, align = 'left' }: { store: WalletStore;
                 >
                   <StellarMark size={14} />
                   <span className="f1 network-dd-label">{n.label}</span>
-                  {on && <span className="network-dd-check">✓</span>}
+                  {on && <Icon name="check" size={16} className="network-dd-check" />}
                 </div>
               );
             })}
@@ -43,7 +54,7 @@ export function NetworkDropdown({ store, align = 'left' }: { store: WalletStore;
               }}
               className="tap network-dd-add"
             >
-              <span className="network-dd-plus">+</span>
+              <Icon name="plus" size={16} className="network-dd-plus" />
               {store.t('net.add')}
             </div>
           </div>

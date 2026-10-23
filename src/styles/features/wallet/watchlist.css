@@ -1,0 +1,106 @@
+/* WatchlistPanel — src/features/wallet/WatchlistPanel.tsx. Rows drawn like the asset rows
+   (48px logo, 14px name, 12px secondary), with a gold star that unstars in place. */
+.watch-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  animation: rowIn 0.45s var(--ease-out) backwards;
+}
+
+.watch-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.watch-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+.watch-code {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.watch-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.watch-price {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
+}
+
+.watch-chg {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.watch-star {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  padding: 0;
+  margin-right: -8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: #f7c948;
+  cursor: pointer;
+  transition: transform 0.2s var(--ease-spring);
+}
+
+.watch-star:hover {
+  transform: rotate(-14deg) scale(1.12);
+}
+
+.watch-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 14px 8px;
+}
+
+.watch-empty-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(247, 201, 72, 0.14);
+  color: #f7c948;
+  animation: floatY 3.2s ease-in-out infinite;
+}
+
+.watch-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.watch-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .watch-row,
+  .watch-empty-icon {
+    animation: none !important;
+  }
+}

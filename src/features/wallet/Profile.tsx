@@ -7,6 +7,7 @@ import { getGreeting } from '@/lib/greeting';
 import { useCopied } from '@/hooks/useCopied';
 import { cx } from '@/lib/cx';
 import { BackCircle } from '@/features/wallet/BackCircle';
+import { Icon, type IconName } from '@/ui/Icon';
 import '@/styles/features/wallet/profile.css';
 
 /** Center-crop + downscale an image file to a small JPEG data URL for the avatar. */
@@ -33,14 +34,14 @@ function resizeToDataUrl(file: File, size = 160): Promise<string> {
 export function Profile({ store }: { store: WalletStore }) {
   const t = store.t;
   // Cosmos Pay is an integration (swaps + BlindPay payments) — tap to manage keys/receiver.
-  const cosmosPayRow = { icon: '◇', label: t('cosmospay.manage'), onClick: () => store.setScreen('cosmospay') };
-  const rows = [
-    { icon: '✎', label: t('profile.editProfile'), onClick: () => store.setScreen('edit-profile') },
+  const cosmosPayRow = { icon: 'verified' as IconName, label: t('cosmospay.manage'), onClick: () => store.setScreen('cosmospay') };
+  const rows: { icon: IconName; label: string; onClick: () => void }[] = [
+    { icon: 'user', label: t('profile.editProfile'), onClick: () => store.setScreen('edit-profile') },
     ...(store.meta?.email ? [cosmosPayRow] : []),
-    { icon: '⚷', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') },
-    { icon: '⛁', label: t('profile.receiveAddr'), onClick: () => store.setScreen('receive') },
-    { icon: '⚙', label: t('profile.settings'), onClick: () => store.setScreen('settings') },
-    { icon: '?', label: t('profile.about'), onClick: () => store.setScreen('about') },
+    { icon: 'key', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') },
+    { icon: 'qr', label: t('profile.receiveAddr'), onClick: () => store.setScreen('receive') },
+    { icon: 'settings', label: t('profile.settings'), onClick: () => store.setScreen('settings') },
+    { icon: 'info', label: t('profile.about'), onClick: () => store.setScreen('about') },
   ];
   const pub = store.meta?.publicKey ?? '';
   const name = store.meta?.name || 'Mi wallet';
@@ -124,7 +125,7 @@ export function Profile({ store }: { store: WalletStore }) {
           );
         })}
         <div onClick={() => store.startAddWallet()} className="tap profile-add-wallet">
-          <div className="profile-add-icon">+</div>
+          <div className="profile-add-icon"><Icon name="plus" size={18} /></div>
           <span className="profile-add-label">{t('profile.addWallet')}</span>
         </div>
       </div>
@@ -132,9 +133,9 @@ export function Profile({ store }: { store: WalletStore }) {
       <div className="glass profile-menu">
         {rows.map((r, i) => (
           <div key={i} onClick={r.onClick} className="tap profile-menu-row">
-            <div className="profile-menu-icon">{r.icon}</div>
+            <div className="profile-menu-icon"><Icon name={r.icon} size={18} /></div>
             <span className="profile-menu-label">{r.label}</span>
-            <span className="profile-menu-chev">›</span>
+            <Icon name="chevron-right" size={20} className="profile-menu-chev" />
           </div>
         ))}
       </div>

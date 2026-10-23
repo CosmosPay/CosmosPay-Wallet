@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Icon } from '@/ui/Icon';
 import '@/styles/features/fiat/fiat.css';
 
 /** Big tappable operation card (on-ramp / off-ramp) with a round glyph, title + desc. */
@@ -12,7 +13,7 @@ export function OpCard({ icon, title, desc, onClick }: { icon: ReactNode; title:
         <div className="fiat-title-15">{title}</div>
         <div className="fiat-op-desc">{desc}</div>
       </div>
-      <span className="fiat-op-chev">›</span>
+      <Icon name="chevron-right" size={20} className="fiat-op-chev" />
     </div>
   );
 }

@@ -1,37 +1,206 @@
 /* =====================================================================
-   Money shared molecules: HistoryRow / GenesisRow. Both are the same
-   list row (38px round icon + text + trailing column), so the shape is
-   declared once and each only adds what makes it different.
-   State/direction is expressed with modifier classes.
-   The token dropdown they used to share lives in styles/features/money/asset-select.css.
+   HistoryRow / GenesisRow — src/features/money/HistoryRow.tsx and
+   src/features/money/GenesisRow.tsx. The design's activity row: a 48px disc,
+   the kind over its counterparty, the signed amount over its dollar value,
+   the time at the far right. State and direction are modifier classes.
    ===================================================================== */
 
 /* the row shell — the per-index entrance delay is a
    .stagger-* / .stagger-dense-* class from animations.css */
 .money-hist-row,
-.money-genesis-row { display: flex; align-items: center; gap: 12px; padding: 13px 12px; border-radius: 16px; animation: fadeUp 0.45s ease backwards; }
-/* HistoryRow renders as an <a> when the op has an explorer link */
-.money-hist-row { text-decoration: none; color: inherit; }
+.money-genesis-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  /* 48px row + 12px = the design's 61px pitch, with room for a hover wash */
+  padding: 6px 8px;
+  margin: 0 -8px;
+  border-radius: 16px;
+  animation: rowIn 0.5s var(--ease-out) backwards;
+}
 
-/* the round leading icon (on .glass-soft) */
+/* HistoryRow renders as an <a> when the op has an explorer link */
+.money-hist-row {
+  text-decoration: none;
+  color: inherit;
+  transition: background-color 0.18s ease, transform 0.13s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .money-hist-row:hover {
+    background: var(--surface-1);
+  }
+}
+
+/* the 48px disc: dark for money out, green for money in, Cosmic Blue for a swap */
 .money-hist-icon,
-.money-genesis-icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.money-hist-icon { font-size: 17px; color: var(--text); }
-/* color-mix() needs Safari 16.2+; the plain-token declarations come first so
-   older engines drop only the tinted lines and still get a filled, bordered dot */
-.money-hist-icon--in { color: var(--up); background: var(--surface); border: 1px solid var(--glass-border); background: color-mix(in srgb, var(--up) 14%, transparent); border-color: color-mix(in srgb, var(--up) 30%, transparent); }
-.money-hist-icon--out { color: var(--down); background: var(--surface); border: 1px solid var(--glass-border); background: color-mix(in srgb, var(--down) 14%, transparent); border-color: color-mix(in srgb, var(--down) 30%, transparent); }
-.money-hist-icon.is-failed { opacity: 0.6; }
+.money-genesis-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #ffffff;
+  background: var(--surface-1);
+  transition: transform 0.25s var(--ease-spring);
+}
+
+.money-hist-icon.is-in {
+  background: var(--up);
+}
+
+.money-hist-icon.is-swap {
+  background: var(--accent);
+}
+
+.money-hist-icon.is-out {
+  color: var(--text);
+}
+
+.money-hist-icon.is-failed {
+  opacity: 0.55;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .money-hist-row:hover .money-hist-icon {
+    transform: scale(1.06) rotate(-6deg);
+  }
+}
+
+.money-hist-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .money-hist-title,
-.money-genesis-title { font-size: 14.5px; font-weight: 800; }
-.money-hist-failed-tag { color: var(--danger); font-weight: 700; }
-.money-hist-sub { font-size: 12px; color: var(--dim); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.money-hist-amount { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
-.money-hist-amount--up { color: var(--up); }
-.money-hist-amount--danger { color: var(--danger); }
-.money-hist-amount.is-failed { text-decoration: line-through; }
-.money-hist-date,
-.money-genesis-date { font-size: 11px; color: var(--dim); font-weight: 600; }
+.money-genesis-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.money-hist-failed-tag {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.money-hist-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.money-hist-sub-text {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.money-hist-copy {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 0;
+  margin: -3px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+  /* buttons pop in app-wide; this one rides in with its row */
+  animation: none !important;
+}
+
+.money-hist-copy:hover {
+  color: var(--text);
+}
+
+.money-hist-copy.is-copied {
+  color: var(--up);
+}
+
+.money-hist-copy.is-copied .icon {
+  animation: pop 0.35s var(--ease-spring);
+}
+
+.money-hist-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.money-hist-amount {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.money-hist-amount.is-up {
+  color: var(--up);
+}
+
+.money-hist-amount.is-down {
+  color: var(--down);
+}
+
+.money-hist-amount.is-failed {
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.money-hist-usd {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.money-hist-time,
+.money-genesis-date {
+  flex-shrink: 0;
+  min-width: 34px;
+  text-align: right;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+/* the heading over each day's rows ("Today", "10 Oct, 2026") */
+.money-day {
+  margin: 18px 0 6px;
+  font-size: 11px;
+  color: var(--dim);
+  animation: fadeIn 0.4s ease backwards;
+}
+
+.money-day:first-child {
+  margin-top: 4px;
+}
 
 /* genesis marker (GenesisRow) — a heart takes the amount's place */
-.money-genesis-heart { font-size: 15px; line-height: 1.2; }
+.money-genesis-icon {
+  background: var(--surface-0);
+  border: 1px solid var(--hairline);
+}
+
+.money-genesis-heart {
+  font-size: 15px;
+  line-height: 1.2;
+}

@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
 import { Logo } from '@/ui/Logo';
+import { Icon, type IconName } from '@/ui/Icon';
 import { navTabs, navActiveKey, navGo } from '@/app/navModel';
 import { cx } from '@/lib/cx';
 import '@/styles/app/nav-menu.css';
@@ -14,7 +15,7 @@ function NavItem({ lead, label, on, onClick }: { lead: ReactNode; label: string;
     <div onClick={onClick} className={cx('tap nav-menu-item', on && 'is-on')}>
       {lead}
       <span className="f1 nav-menu-item-label">{label}</span>
-      <span className="nav-menu-chevron">›</span>
+      <Icon name="chevron-right" size={18} className="nav-menu-chevron" />
     </div>
   );
 }
@@ -57,22 +58,19 @@ export function NavMenu({ store }: { store: WalletStore }) {
   const activeKey = navActiveKey(store);
   const openDrawer = () => store.setNavMenuOpen(true);
   const closeDrawer = () => store.setNavMenuOpen(false);
-  // Quick access: the scanner + settings + the profile shortcuts, one tap away.
-  const shortcuts = [
-    { key: 'scan', label: store.t('scan.scanQr'), glyph: '⛶' },
-    ...(store.meta?.email ? [{ key: 'cosmospay', label: store.t('cosmospay.manage'), glyph: '◇' }] : []),
-    { key: 'export', label: store.t('profile.exportKeys'), glyph: '⚷' },
-    { key: 'receive', label: store.t('profile.receiveAddr'), glyph: '⛁' },
-    { key: 'settings', label: store.t('profile.settings'), glyph: '⚙' },
-    { key: 'about', label: store.t('profile.about'), glyph: '?' },
+  // Quick access: settings and the profile shortcuts, one tap away (the scanner is a tab).
+  const shortcuts: { key: string; label: string; icon: IconName }[] = [
+    ...(store.meta?.email ? [{ key: 'cosmospay', label: store.t('cosmospay.manage'), icon: 'verified' as const }] : []),
+    { key: 'export', label: store.t('profile.exportKeys'), icon: 'key' },
+    { key: 'receive', label: store.t('profile.receiveAddr'), icon: 'qr' },
+    { key: 'settings', label: store.t('profile.settings'), icon: 'settings' },
+    { key: 'about', label: store.t('profile.about'), icon: 'info' },
   ];
 
   return (
     <>
       <button onClick={openDrawer} aria-label={store.t('a11y.menu')} className="glass-soft circle-btn">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-          <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
+        <Icon name="menu" size={20} />
       </button>
 
       {/* Restored already-open -> .is-instant kills the transition so there is
@@ -84,9 +82,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
               <Logo size={22} />Cosmos Pay
             </div>
             <button onClick={closeDrawer} aria-label={store.t('a11y.close')} className="glass-soft circle-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
+              <Icon name="close" size={18} />
             </button>
           </div>
 
@@ -94,7 +90,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
             {tabs.map((tb) => (
               <NavItem
                 key={tb.key}
-                lead={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink0">{tb.icon}</svg>}
+                lead={<Icon name={tb.icon} size={20} />}
                 label={tb.label}
                 on={tb.key === activeKey}
                 onClick={() => {
@@ -108,7 +104,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
             {shortcuts.map((it) => (
               <NavItem
                 key={it.key}
-                lead={<span className="nav-menu-glyph">{it.glyph}</span>}
+                lead={<Icon name={it.icon} size={20} className="nav-menu-glyph" />}
                 label={it.label}
                 // Deliberately NOT closing the drawer: its open-state persists in the
                 // store, so pressing "back" on the destination lands here with the

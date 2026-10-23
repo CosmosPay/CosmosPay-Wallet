@@ -35,7 +35,7 @@ try {
   ok((await page.locator('text=/^[a-z]{3,}$/').count()) >= 12, 'Seed phrase generated in browser');
 
   // import the deterministic test vector
-  await page.getByText('‹', { exact: true }).first().click(); // back to welcome
+  await page.getByRole('button', { name: 'Atrás' }).first().click(); // back to welcome
   await page.getByText('Ya tengo una wallet').click();
   await page.locator('textarea').fill(MNEMONIC);
   await page.getByRole('button', { name: 'Importar wallet' }).click();
@@ -72,7 +72,7 @@ try {
   ok(sealed, 'Encrypted vault persisted');
 
   await page.getByRole('button', { name: 'Ver mi wallet' }).click();
-  await page.getByText('Valor del portafolio').waitFor({ timeout: 10000 });
+  await page.getByText('Saldo actual').waitFor({ timeout: 10000 });
   ok(true, 'Home renders');
 
   // reload -> must require unlock (greets by name, no address/network), then decrypt
@@ -87,7 +87,7 @@ try {
 
   await page.getByPlaceholder('Contraseña').fill('Test-pass-123');
   await page.getByRole('button', { name: 'Desbloquear' }).click();
-  await page.getByText('Valor del portafolio').waitFor({ timeout: 10000 });
+  await page.getByText('Saldo actual').waitFor({ timeout: 10000 });
   ok(true, 'Reload -> unlock (decrypt) -> home');
 
   /* ------------------------- desktop navigation ------------------------- */

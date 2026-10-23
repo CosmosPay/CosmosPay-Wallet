@@ -1,6 +1,47 @@
-/* AssetLogo — official monochrome asset logo (size prop drives the svg attrs). */
+/* AssetLogo — src/ui/AssetLogo.tsx. A round colour logo, and in its lower-right corner the
+   badge of the network the holding lives on. Sizes are classes (`--<px>`), never values. */
 .asset-logo {
-  display: block;
+  position: relative;
+  display: inline-flex;
   flex-shrink: 0;
-  color: var(--text);
+  border-radius: 50%;
+}
+
+.asset-logo-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+  /* a hairline ring so a dark logo (XLM) still has an edge on the black background */
+  box-shadow: 0 0 0 1px var(--hairline);
+  background: var(--surface-1);
+}
+
+.asset-logo-badge {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 40%;
+  height: 40%;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--bg);
+  background: var(--surface-1);
+  animation: pop 0.4s var(--ease-spring) 0.2s backwards;
+}
+
+.asset-logo--20 { width: 20px; height: 20px; }
+.asset-logo--24 { width: 24px; height: 24px; }
+.asset-logo--26 { width: 26px; height: 26px; }
+.asset-logo--28 { width: 28px; height: 28px; }
+.asset-logo--34 { width: 34px; height: 34px; }
+.asset-logo--36 { width: 36px; height: 36px; }
+.asset-logo--38 { width: 38px; height: 38px; }
+.asset-logo--48 { width: 48px; height: 48px; }
+.asset-logo--64 { width: 64px; height: 64px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .asset-logo-badge {
+    animation: none;
+  }
 }

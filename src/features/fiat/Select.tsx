@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { cx } from '@/lib/cx';
 import '@/styles/ui/field.css';
+import { Icon } from '@/ui/Icon';
 import '@/styles/features/fiat/forms.css';
 
 /** Native <select> styled to match the app's pill inputs (glass + chevron). Keeps the
@@ -14,7 +15,7 @@ export function Select({ label, value, onChange, children, className }: { label?
         <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)} className="input is-soft fiat-select">
           {children}
         </select>
-        <span className="fiat-select-chevron">▼</span>
+        <Icon name="chevron-down" size={14} className="fiat-select-chevron" />
       </div>
     </label>
   );

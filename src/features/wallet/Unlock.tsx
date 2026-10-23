@@ -11,6 +11,7 @@ import { getGreeting } from '@/lib/greeting';
 import { shortAddr } from '@/lib/format';
 import { addressOn } from '@/lib/accountAddress';
 import { cx } from '@/lib/cx';
+import { Icon } from '@/ui/Icon';
 import '@/styles/features/wallet/unlock.css';
 
 export function Unlock({ store }: { store: WalletStore }) {
@@ -178,7 +179,7 @@ export function Unlock({ store }: { store: WalletStore }) {
             <div className="unlock-switch">
               <button onClick={() => setWalletOpen((o) => !o)} className="glass-soft unlock-switch-btn">
                 {t('unlock.switchTitle')}
-                <span className={cx('unlock-switch-caret', walletOpen && 'is-open')}>▼</span>
+                <Icon name="chevron-down" size={14} className={cx('unlock-switch-caret', walletOpen && 'is-open')} />
               </button>
               {walletOpen && (
                 <>

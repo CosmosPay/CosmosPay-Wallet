@@ -87,7 +87,7 @@
   min-height: 0;
   overflow-y: auto;
   padding: 2px var(--gutter) 28px;
-  animation: fadeUp 0.3s ease;
+  animation: screenIn 0.42s var(--ease-out) both;
 }
 
 /* A vertical squeeze — a short window, or the on-screen keyboard taking half the phone —
@@ -122,57 +122,53 @@
   padding-bottom: 110px;
 }
 
-/* ------------------------ glass surfaces ------------------------
-   Three translucent surfaces. The full-width pill controls further down
-   (.input, .btn-primary, .btn-ghost) wear exactly the same paint, so each
-   surface is declared once for every class that uses it — only the idle
-   "breathing" animation stays exclusive to the decorative surfaces. */
+/* --------------------------- surfaces ---------------------------
+   The class names are the old glass ones — forty screens compose them — but the
+   paint is the Figma design's: flat dark cards (#171A22 family) with a hairline
+   edge, no frosted blur. The full-width pill controls further down (.input,
+   .btn-primary, .btn-ghost) wear the same paint, so each surface is declared
+   once for every class that uses it. */
 .glass,
 .input {
   background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  backdrop-filter: blur(22px) saturate(150%);
   border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 var(--glass-border), 0 10px 30px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
 }
 
 .glass-soft,
 .btn-ghost {
   background: var(--glass-soft-bg);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  backdrop-filter: blur(16px) saturate(140%);
   border: 1px solid var(--glass-soft-border);
 }
 
 .glass-bright,
 .btn-primary {
   background: var(--primary-bg);
-  -webkit-backdrop-filter: blur(20px) saturate(160%);
-  backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid var(--primary-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 12px 30px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 10px 26px -10px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
-/* only the decorative surfaces breathe — a control that borrows their paint
-   must not pulse under the user's finger */
-.glass {
-  animation: glassBreath 8s ease-in-out infinite;
-}
-
-.glass-soft {
-  animation: glassBreath 11s ease-in-out infinite;
+/* Cards lift a little under a real pointer — the desktop and web reading of "this is
+   tappable". Touch screens keep the press-scale in animations.css instead. */
+@media (hover: hover) and (pointer: fine) {
+  .glass.tap:hover,
+  .glass-soft.tap:hover {
+    border-color: var(--gb-bd-b);
+    background-color: var(--surface-1-hover);
+  }
 }
 
 .card {
-  border-radius: 18px;
+  border-radius: var(--radius-card);
   padding: 18px;
 }
 
 /* --------------------------- buttons ---------------------------- */
-/* 38px round header/control button (network, surface, menu, back…) */
+/* round header/control button (network, surface, menu, back…) — the design's
+   dark circle */
 .circle-btn {
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -180,6 +176,8 @@
   cursor: pointer;
   flex-shrink: 0;
   color: var(--text);
+  background: var(--surface-0);
+  border: 1px solid var(--hairline);
 }
 
 /* full-width 48px pill action (paste pay-URL, scan upload/paste…) */
@@ -193,7 +191,7 @@
   justify-content: center;
   gap: 8px;
   font-size: 13.5px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
   color: var(--text);
 }
@@ -214,29 +212,60 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
-  font-weight: 800;
+  gap: 8px;
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: 0.1px;
   cursor: pointer;
 }
 
-/* pill text field on a glass surface */
+/* pill text field: the card surface, an accent ring when focused */
 .input {
   color: var(--text);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 500;
   outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.25s var(--ease-out), background-color 0.2s ease;
 }
 
-/* main CTA */
+.input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+/* main CTA: Cosmic Blue, with a light sweep that crosses it on hover */
 .btn-primary {
+  position: relative;
+  overflow: hidden;
   color: var(--primary-text);
   /* never squashed inside flex-column screens */
   flex-shrink: 0;
 }
 
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.22) 50%, transparent 70%);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .btn-primary:not(:disabled):hover {
+    background: var(--accent-hover);
+    box-shadow: 0 14px 32px -10px var(--accent-glow), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-primary:not(:disabled):hover::after {
+    animation: btnSheen 0.9s var(--ease-out);
+  }
+}
+
 .btn-primary:disabled {
   cursor: default;
-  opacity: 0.4;
+  opacity: 0.38;
+  box-shadow: none;
 }
 
 /* secondary full-width action */
@@ -247,34 +276,50 @@
 /* -------------------------- typography -------------------------- */
 .title-30 {
   font-size: 30px;
-  font-weight: 800;
-  letter-spacing: -0.8px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+}
+
+/* The design's screen title ("Conectar wallet"): Open Sauce One Bold 24px. */
+.title-24 {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
 }
 
 .title-20 {
   font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.4px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
 }
 
 .label-up {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--dim);
-  font-weight: 700;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.6px;
 }
 
 .t-muted-13 {
   font-size: 13px;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 400;
 }
 
 .t-dim-12 {
   font-size: 12px;
   color: var(--dim);
-  font-weight: 600;
+  font-weight: 500;
+}
+
+.t-up {
+  color: var(--up);
+}
+
+.t-down {
+  color: var(--down);
 }
 
 /* ---------------------- shared components ----------------------- */
@@ -415,6 +460,73 @@ html.kb-open .kb-dock {
 .desc {
   font-size: 13px;
   color: var(--muted);
-  font-weight: 600;
+  font-weight: 400;
   line-height: 1.5;
+}
+
+/* --------------------------- skeleton ---------------------------
+   A placeholder bar with a light sweep, for a value still on its way. Width
+   and height come from modifier classes, never from the caller. */
+.skeleton {
+  display: inline-block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, var(--surface-1) 25%, var(--surface-1-hover) 50%, var(--surface-1) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton--line {
+  width: 64px;
+  height: 12px;
+}
+
+.skeleton--wide {
+  width: 120px;
+  height: 14px;
+}
+
+.skeleton--balance {
+  width: 168px;
+  height: 36px;
+  border-radius: 12px;
+}
+
+/* --------------------------- chips ---------------------------- */
+/* Small rounded selector (network, token, filter). `.is-on` is the selected one. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--surface-0);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, transform 0.13s ease;
+}
+
+.chip.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+/* A horizontally scrolling row of chips; the edge fades so a cut chip reads as "more". */
+.chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0;
+  -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent);
+  mask-image: linear-gradient(90deg, #000 88%, transparent);
+}
+
+.chip-row::-webkit-scrollbar {
+  display: none;
 }

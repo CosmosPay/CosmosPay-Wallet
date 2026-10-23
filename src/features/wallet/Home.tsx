@@ -1,21 +1,21 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { WalletStore } from '@/state/store';
 import { NavMenu } from '@/app/NavMenu';
 import { EnableReceivingCard } from '@/features/cosmospay/EnableReceivingCard';
 import { NetworkDropdown } from '@/features/wallet/NetworkDropdown';
-import { Spinner } from '@/ui/Spinner';
 import { SurfaceToggle } from '@/features/wallet/SurfaceToggle';
-import { HistoryRow } from '@/features/money/HistoryRow';
-import { GenesisRow } from '@/features/money/GenesisRow';
 import { HomeAction } from '@/features/wallet/HomeAction';
-import { AssetListRow } from '@/features/wallet/AssetListRow';
+import { HomeTabs } from '@/features/wallet/HomeTabs';
 import { ActivateCard } from '@/features/wallet/ActivateCard';
 import { ProtectAccountCard } from '@/features/wallet/ProtectAccountCard';
+import { Icon } from '@/ui/Icon';
+import { Spinner } from '@/ui/Spinner';
 import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
-import { chainRows, computePortfolio, rowKey } from '@/lib/portfolio';
+import { chainRows, computePortfolio } from '@/lib/portfolio';
 import { fmt, splitMoney, pct } from '@/lib/format';
-import { getGreeting, ageFromBirthdate } from '@/lib/greeting';
+import { getGreeting, ageFromBirthdate, salutationLead } from '@/lib/greeting';
 import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
+import { buildKind } from '@/lib/platform';
 import { cx } from '@/lib/cx';
 import '@/styles/features/wallet/home.css';
 
@@ -28,10 +28,18 @@ function shortName(name: string, max = 12): string {
   return m ? m[0] : cut;
 }
 
+/** An operation this recent lights the dot on the bell. */
+const RECENT_MS = 24 * 60 * 60 * 1000;
+
 /* ------------------------------- HOME -------------------------------- */
+/**
+ * The Figma design's Home: the avatar with the greeting and the name, the bell and the
+ * settings disc; the current balance with its move; four actions (Send, Receive, Exchange,
+ * More); then the Assets / Activity / Performance / Watchlist panels. Every chain the phrase
+ * holds is one list and one total.
+ */
 export function Home({ store }: { store: WalletStore }) {
   const t = store.t;
-  // Stellar balances and the same phrase's Solana / Monad ones are one list and one total.
   const extra = chainRows(store.chainHoldings, store.chainNet, store.prices);
   const { total, rows, changePct, deltaUsd } = computePortfolio(store.account, store.prices, store.network.id, extra);
   // Every portfolio number eases towards its live value, so price fluctuations
@@ -42,21 +50,15 @@ export function Home({ store }: { store: WalletStore }) {
   const notActivated = store.account && !store.account.exists;
   // Offered only when both recovery servers answer — see `recoveryReachable`.
   const recoveryUp = useRecoveryReachable(store.network) === true;
-  // Load recent activity for the home preview (refreshes on wallet / network change).
-  const loadHistory = store.loadHistory;
-  useEffect(() => {
-    loadHistory();
-  }, [loadHistory, store.meta?.id, store.network.id]);
   // Memoized: getGreeting picks a random salutation — keep it stable across renders
   // (a fresh one only on app open / language change).
   const greeting = useMemo(
     () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', store.t, store.meta?.gender),
     [store.meta?.name, store.meta?.birthdate, store.t, store.meta?.gender],
   );
-  const initial = (store.meta?.name || 'C').slice(0, 1).toUpperCase();
-  // Header shows the name big: first word only, and if still too long it's cut at
+  // Header shows the name: first word only, and if still too long it's cut at
   // its LAST VOWEL within the limit so the short form reads naturally.
-  const firstName = shortName((store.meta?.name || 'astronauta').trim().split(/\s+/)[0]);
+  const firstName = shortName((store.meta?.name || 'Cosmos').trim().split(/\s+/)[0]);
   // Fiat on/off-ramp is 18+ only (unknown/missing birthdate counts as not eligible).
   const fiatOk = (ageFromBirthdate(store.meta?.birthdate ?? '') ?? 0) >= 18;
   const fiatReady = Boolean(store.meta?.cosmosPayReceiverId);
@@ -65,82 +67,93 @@ export function Home({ store }: { store: WalletStore }) {
     // directly from Home, so BlindPay is no longer hidden behind Settings.
     store.setScreen(fiatReady ? screen : 'fiat');
   };
-  // Assets list caps at 5 rows; starred favorites always float to the top so they
-  // stay visible among those 5. "Ver todo" expands the full list inline.
-  const [showAllAssets, setShowAllAssets] = useState(false);
-  const favSet = new Set(store.favorites);
-  // Favourites are Stellar codes; a Solana / Monad row never matches one.
-  const isFav = (r: (typeof rows)[number]) => !r.chain && favSet.has(r.code);
-  const sortedRows = [...rows].sort((a, b) => (isFav(b) ? 1 : 0) - (isFav(a) ? 1 : 0));
-  const visibleRows = showAllAssets ? sortedRows : sortedRows.slice(0, 5);
+  // Recent activity feeds the bell's dot and the Activity panel; it follows the wallet and
+  // the network.
+  const loadHistory = store.loadHistory;
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory, store.meta?.id, store.network.id]);
+  const latest = store.history[0]?.createdAt;
+  const recent = !!latest && Date.now() - new Date(latest).getTime() < RECENT_MS;
+  const up = changePct >= 0;
+  const ext = buildKind() === 'ext';
 
   return (
-    <div className="scr screen pb-110">
-      {/* Profile-first header: the avatar (→ profile) replaces the brand at the left,
-          with the salutation small on top and the user's first name big below. */}
-      <div className="home-head">
-        <div className="home-head-left">
-          <div onClick={() => store.go('profile', 'profile')} className="tap home-avatar">
-            {store.meta?.avatar ? <img src={store.meta.avatar} alt="" className="home-avatar-img" /> : initial}
-          </div>
-          {/* Sized to sit WITHIN the 42px avatar height — never taller, so the header
-              structure holds even in the narrow extension popup. */}
-          <div className="home-greet-col">
-            <span className="home-salutation">{greeting.salutation}</span>
-            <span className="home-firstname">{firstName} 👋</span>
-          </div>
-        </div>
-        <div className="row g10 shrink0">
-          {/* Refresh is automatic (silent poll in the store); spinner only while loading. */}
-          {store.loading && <Spinner size={15} tone="text" />}
-          <NetworkDropdown store={store} align="right" />
-          {/* popup <-> sidebar toggle (preference persists across reopenings) */}
-          <SurfaceToggle store={store} />
-          <NavMenu store={store} />
-        </div>
-      </div>
+    <div className="scr screen home-screen pb-110">
+      {/* The ambient glow behind the balance — decoration only. */}
+      <div className="aurora" aria-hidden="true" />
 
-
-      <div className="home-portfolio">
-        <div className="home-portfolio-label">
-          {t('home.portfolio')}
-        </div>
-        <div className="home-total">
-          {money.whole}<span className="home-cents">{money.cents}</span>
-        </div>
-        {/* 24h change of the WHOLE portfolio: percentage + USD difference vs yesterday
-            (e.g. "↗ +1.00% · +$10.00"), green when up / red when down. */}
-        <div className={cx('home-change', changePct >= 0 ? 'is-up' : 'is-down')}>
-          {changePct >= 0 ? '↗' : '↘'} {pct(shownPct)}
-          <span className="home-change-delta">
-            · {deltaUsd >= 0 ? '+' : '−'}${fmt(Math.abs(shownDelta), 2)}
+      <header className="home-head">
+        <button type="button" onClick={() => store.go('profile', 'profile')} className="home-avatar" aria-label={t('tab.profile')}>
+          <img
+            src={store.meta?.avatar || `${import.meta.env.BASE_URL}brand/cosmos-avatar.png`}
+            alt=""
+            className={cx('home-avatar-img', !store.meta?.avatar && 'is-brand')}
+            draggable={false}
+          />
+        </button>
+        <button type="button" onClick={() => store.go('profile', 'profile')} className="home-greet">
+          <span className="home-salutation">{salutationLead(greeting.salutation)}</span>
+          <span className="home-firstname">
+            {firstName}
+            <Icon name="chevron-right" size={24} className="home-firstname-chev" />
           </span>
+        </button>
+        <span className="f1" />
+        {store.loading && <Spinner size={15} tone="dim" />}
+        {ext && <SurfaceToggle store={store} />}
+        <button type="button" onClick={() => store.setScreen('history')} className="home-disc" aria-label={t('history.title')}>
+          <Icon name="bell" size={20} />
+          {recent && (
+            <span className="home-bell-dot" aria-hidden="true">
+              <span className="home-bell-ping" />
+            </span>
+          )}
+        </button>
+        {ext ? (
+          <NavMenu store={store} />
+        ) : (
+          <button type="button" onClick={() => store.setScreen('settings')} className="home-disc" aria-label={t('profile.settings')}>
+            <Icon name="settings" size={20} />
+          </button>
+        )}
+      </header>
+
+      <section className="home-balance">
+        <div className="home-balance-top">
+          <span className="home-balance-label">{t('home.currentBalance')}</span>
+          <NetworkDropdown store={store} align="right" />
         </div>
-      </div>
+        <div className="home-total" aria-live="polite">
+          {money.whole}
+          <span className="home-cents">{money.cents}</span>
+        </div>
+        {/* 24h change of the WHOLE portfolio: percentage + USD difference vs yesterday,
+            green when up / red when down. */}
+        <div className={cx('home-change', up ? 'is-up' : 'is-down')}>
+          <Icon name={up ? 'trend-up' : 'trend-down'} size={16} className="home-change-icon" />
+          <span className="home-change-pct">{pct(shownPct)}</span>
+          <span className="home-change-delta">
+            {deltaUsd >= 0 ? '+' : '−'}${fmt(Math.abs(shownDelta), 2)}
+          </span>
+          <span className="home-change-when">{t('home.today24h')}</span>
+        </div>
+      </section>
 
       <div className="home-actions">
-        <HomeAction label={t('common.send')} onClick={() => store.setScreen('send')}>
-          <path d="M12 4v13M6 10l6-6 6 6M5 20h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </HomeAction>
-        <HomeAction label={t('common.receive')} onClick={() => store.setScreen('receive')}>
-          <path d="M12 4v13M6 11l6 6 6-6M5 20h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </HomeAction>
-        {/* Central scanner: reads any Stellar QR (address / SEP-7 pay link) and
-            auto-routes to the matching flow (prefilled Send, etc.). */}
-        <HomeAction label={t('scan.short')} onClick={() => store.setScreen('scan')}>
-          <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2" />
-          <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2" />
-          <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="2" />
-          <path d="M14 14h3v3M21 14v.01M21 21v-4M14 21h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </HomeAction>
-        <HomeAction label={t('home.swap')} onClick={() => store.setScreen('swap')}>
-          <path d="M7 7h11l-3-3M17 17H6l3 3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </HomeAction>
-        <HomeAction label={t('home.more')} onClick={() => store.setScreen('operations')}>
-          <circle cx="6" cy="12" r="1.6" fill="currentColor" /><circle cx="12" cy="12" r="1.6" fill="currentColor" /><circle cx="18" cy="12" r="1.6" fill="currentColor" />
-        </HomeAction>
+        <HomeAction index={0} label={t('common.send')} icon="send" onClick={() => store.setScreen('send')} />
+        <HomeAction index={1} label={t('common.receive')} icon="receive" onClick={() => store.setScreen('receive')} />
+        <HomeAction index={2} label={t('home.exchange')} icon="exchange" onClick={() => store.setScreen('swap')} />
+        <HomeAction index={3} label={t('home.more')} icon="more" onClick={() => store.go('more', 'more')} />
       </div>
 
+      {notActivated && <ActivateCard store={store} />}
+      {/* Recovery can only go on a funded account. The card itself decides from the ledger. */}
+      {!notActivated && recoveryUp && <ProtectAccountCard store={store} />}
+      <HomeTabs store={store} rows={rows} />
+
+      {/* The offers sit under the portfolio, not between the balance and it: the design puts
+          the holdings right under the actions. */}
       {/* Fiat entry is age-gated: only shown to 18+ users (see fiatOk above). */}
       {fiatOk && (
         <section className="home-ramp" aria-label={t('fiat.rampTitle')}>
@@ -154,78 +167,19 @@ export function Home({ store }: { store: WalletStore }) {
           <div className="home-ramp-desc">{t('fiat.entryDesc')}</div>
           <div className="home-ramp-actions">
             <button onClick={() => openRamp('deposit')} className="home-ramp-buy">
-              <span>↓</span>{t('fiat.buy')}
+              <Icon name="arrow-down" size={16} />
+              {t('fiat.buy')}
             </button>
             <button onClick={() => openRamp('withdraw')} className="home-ramp-sell">
-              <span>↑</span>{t('fiat.cashOut')}
+              <Icon name="arrow-up" size={16} />
+              {t('fiat.cashOut')}
             </button>
           </div>
-          <button onClick={() => openRamp('deposit')} className="home-ramp-manage">
-            {t('fiat.fundFromBank')} <span>›</span>
-          </button>
           {!fiatReady && <div className="home-ramp-note">{t('fiat.rampSetup')}</div>}
         </section>
       )}
 
-      {notActivated && <ActivateCard store={store} />}
-      {/* Recovery can only go on a funded account. The card itself decides from the ledger. */}
-      {!notActivated && recoveryUp && <ProtectAccountCard store={store} />}
       {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
-
-      <div className="home-assets">
-        <div className="row between home-assets-head">
-          <span className="home-assets-title">{t('home.assets')}</span>
-          {rows.length > 5 && (
-            <span onClick={() => setShowAllAssets((v) => !v)} className="tap home-viewall">
-              {showAllAssets ? t('home.showLess') : t('home.viewAll')}
-            </span>
-          )}
-        </div>
-        {visibleRows.map((r, i) => (
-          <AssetListRow
-            key={rowKey(r)}
-            row={r}
-            chg={store.prices[r.code]?.change24h}
-            fav={!r.chain && store.favorites.includes(r.code)}
-            onFav={r.chain ? undefined : () => store.toggleFavorite(r.code)}
-            index={i}
-            network={r.chain ? t(`chains.net.${store.chainNet}.${r.chain}`) : undefined}
-            onClick={() => {
-              const { chain, asset } = r;
-              if (chain && asset) {
-                store.setChainAsset({ chain, asset });
-                store.setScreen('chain-asset');
-              } else {
-                store.setSelectedAsset(r.code);
-                store.setScreen('asset');
-              }
-            }}
-          />
-        ))}
-        <div onClick={() => store.setScreen('add-asset')} className="tap home-add-asset">
-          <div className="home-add-icon">+</div>
-          <span className="home-add-label">{t('addAsset.title')}</span>
-        </div>
-      </div>
-
-      {/* Recent activity — markets has its own dedicated tab, so the home shows history here. */}
-      <div className="row between home-history-head">
-        <span className="title-20">{t('history.title')}</span>
-        {store.history.length > 0 && (
-          <span onClick={() => store.setScreen('history')} className="tap home-viewall">{t('home.viewAll')}</span>
-        )}
-      </div>
-      {store.history.length === 0 && store.historyLoading ? (
-        <div className="home-history-loading"><Spinner tone="text" /></div>
-      ) : (
-        <>
-          {store.history.slice(0, 10).map((it, i) => <HistoryRow key={it.id} item={it} store={store} index={i} />)}
-          {/* The "started using Cosmos Pay" marker closes the list only when the home
-              preview reaches the actual end (≤10 ops). With more than 10 it lives past
-              the shown window, so it's not rendered here — see the full History screen. */}
-          {store.history.length <= 10 && <GenesisRow store={store} index={store.history.length} />}
-        </>
-      )}
     </div>
   );
 }

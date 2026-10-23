@@ -4,7 +4,9 @@ import { BackBar } from '@/ui/BackBar';
 import { ExternalLink } from '@/ui/ExternalLink';
 import { Spinner } from '@/ui/Spinner';
 import { useBusy } from '@/hooks/useBusy';
-import { chainRows } from '@/lib/portfolio';
+import { chainRows, computePortfolio } from '@/lib/portfolio';
+import { AssetStats } from '@/features/wallet/AssetStats';
+import { chainAddressOf } from '@/lib/chainAddressBook';
 import { fmt, trim } from '@/lib/format';
 import {
   CHAIN_EXPLORER_ADDRESS_BY_NET,
@@ -15,7 +17,7 @@ import {
 import '@/styles/features/wallet/chain-asset.css';
 
 /**
- * A Solana or Monad holding, opened from its row on Home: balance, value, and the same three
+ * A holding on one of the other chains, opened from its row on Home: balance, value, and the same three
  * verbs a Stellar asset has — send, receive, swap. The network follows the Stellar one
  * (`store.chainNet`); a test network adds a way to fund the address.
  *
@@ -29,9 +31,11 @@ export function ChainAsset({ store }: { store: WalletStore }) {
   const { chain, asset } = store.chainAsset;
   const tokens = CHAIN_TOKENS_BY_NET[net][chain];
   const token = tokens.find((tk) => tk.asset === asset) ?? tokens[0];
-  const address = store.meta?.chainAddresses?.[chain] ?? null;
+  const address = chainAddressOf(store.meta?.chainAddresses, chain, net);
   const holdings = store.chainHoldings;
-  const row = chainRows(holdings, net, store.prices).find((r) => r.chain === chain && r.asset === token.asset);
+  const extra = chainRows(holdings, net, store.prices);
+  const row = extra.find((r) => r.chain === chain && r.asset === token.asset);
+  const { total } = computePortfolio(store.account, store.prices, store.network.id, extra);
   const unreadable = !!holdings && holdings[chain] === null;
   const [busy, run] = useBusy();
   const networkName = t(`chains.net.${net}.${chain}`);
@@ -55,7 +59,7 @@ export function ChainAsset({ store }: { store: WalletStore }) {
       <BackBar title={networkName} onBack={store.goBack} />
 
       <div className="row g10 chain-asset-head">
-        <AssetLogo code={token.symbol} size={38} />
+        <AssetLogo code={token.symbol} chain={chain} size={48} />
         <div className="min0">
           <div className="chain-asset-symbol">{token.symbol}</div>
           <div className="chain-asset-net">{networkName}</div>
@@ -70,6 +74,13 @@ export function ChainAsset({ store }: { store: WalletStore }) {
         <div className="chain-asset-bal-fiat">{row?.value != null ? '≈ $' + fmt(row.value, 2) : '—'}</div>
         {unreadable && <div className="chain-asset-err">{t('chains.unreachable')}</div>}
       </div>
+
+      <AssetStats
+        store={store}
+        value={row?.value ?? null}
+        change24h={store.prices[token.symbol]?.change24h ?? null}
+        total={total}
+      />
 
       <div className="flexr g10 chain-asset-actions">
         <button onClick={send} disabled={!address} className="chain-asset-btn is-primary">{t('common.send')}</button>
@@ -89,7 +100,7 @@ export function ChainAsset({ store }: { store: WalletStore }) {
               </button>
             )}
             <ExternalLink href={CHAIN_TESTNET_FAUCET[chain]} className="f1 chain-asset-fund-btn">
-              {t(chain === 'solana' ? 'chains.webFaucet' : 'chains.getMon')} ↗
+              {t(chain === 'monad' ? 'chains.getMon' : 'chains.webFaucet')} ↗
             </ExternalLink>
           </div>
           <ExternalLink href={USDC_TESTNET_FAUCET} className="chain-asset-link">

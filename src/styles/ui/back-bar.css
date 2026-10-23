@@ -1,8 +1,65 @@
-/* BackBar — screen header with back/close button (shell lives in .backbar). */
+/* BackBar — src/ui/BackBar.tsx. The design's screen header: a 24px back arrow at the top
+   left (a 40px tap target around it), the optional action at the right, and the title in
+   Open Sauce One Bold 24px beneath. The shell is `.backbar` in app.css. */
+.backbar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+  padding: 6px 0 16px;
+}
+
+.back-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+}
+
+.back-bar-btn {
+  width: 40px;
+  height: 40px;
+  margin-left: -8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color 0.18s ease, transform 0.18s var(--ease-spring);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .back-bar-btn:hover {
+    background: var(--surface-1);
+  }
+
+  .back-bar-btn:not(.is-close):hover .icon {
+    animation: backNudge 0.5s var(--ease-out);
+  }
+}
+
 .back-bar-title {
+  margin: 0;
+  color: var(--text);
+  animation: titleIn 0.5s var(--ease-out) 0.05s both;
+}
+
+.back-bar-title.is-inline {
   font-size: 18px;
   font-weight: 700;
+  letter-spacing: -0.2px;
+  animation: none;
 }
-/* exit button (top-right); icon size differs for back (‹) vs close (✕) */
-.back-bar-btn { font-size: 22px; }
-.back-bar-btn.is-close { font-size: 17px; }
+
+.backbar.is-compact {
+  padding-bottom: 8px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .back-bar-title,
+  .back-bar-btn .icon {
+    animation: none !important;
+  }
+}

@@ -11,6 +11,7 @@ import '@/styles/ui/flags.css';
 import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { LANGUAGES, type Lang } from '@/lib/i18n';
 import { cx } from '@/lib/cx';
+import { Icon } from '@/ui/Icon';
 
 const FlagIcon = lazy(() => import('@/ui/FlagIcon'));
 
@@ -53,7 +54,7 @@ export function LangSelect({
       <button onClick={() => setOpen((o) => !o)} className="row g8 flag-select-btn">
         <LangFlag code={current.code} />
         <span>{current.name}</span>
-        <span className={cx('flag-select-caret', open && 'is-open')}>▼</span>
+        <Icon name="chevron-down" size={14} className={cx('flag-select-caret', open && 'is-open')} />
       </button>
       {open && (
         <div className="col g2 flag-select-menu">

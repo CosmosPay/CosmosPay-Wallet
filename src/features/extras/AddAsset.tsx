@@ -11,6 +11,7 @@ import { loadRegistry, type RegistryAsset } from '@/lib/assetRegistry';
 import { COMMON_CODES, ASSET_CODE_MAX } from '@/constants/extras';
 import '@/styles/features/extras/add-asset.css';
 import { cx } from '@/lib/cx';
+import { Icon } from '@/ui/Icon';
 
 /* ---------------------------- ADD ASSET -----------------------------
  * Two lists, and the split is the whole point of the screen.
@@ -184,7 +185,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
 
       {!showCustom ? (
         <button onClick={() => setShowCustom(true)} className="glass-soft center g8 add-asset-custom-btn">
-          ＋ {t('addAsset.custom')}
+          <Icon name="plus" size={16} /> {t('addAsset.custom')}
         </button>
       ) : (
         <>

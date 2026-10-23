@@ -36,6 +36,23 @@
   font-display: swap;
 }
 
+/* Nunito: the design sets the bottom bar's labels in it (Nunito Bold 10px). Latin
+   subset, self-hosted for the same reason as Open Sauce One. */
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Nunito';
+  src: url('/fonts/Nunito-ExtraBold.woff2') format('woff2');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* =====================================================================
    Element-level baseline: document chrome, form-control resets and the
    cross-engine fixes that have to apply before any component style.
@@ -55,6 +72,10 @@ body {
   color: var(--text);
   font-family: 'Open Sauce One', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Tabular figures: balances and amounts that tick between values must not jitter
+     sideways as their digits change width. */
+  font-variant-numeric: tabular-nums;
   transition: background-color 0.25s ease, color 0.25s ease;
   /* lock the mobile viewport */
   overscroll-behavior: none;

@@ -3,82 +3,118 @@
    properties, so flipping `data-theme` on <html> re-themes the whole UI
    instantly. Nothing but variables belongs in this file.
    Loaded first by src/pages/index.astro.
+
+   The palette is the Cosmos Wallet Figma file's (Page 1 → "Colors"):
+   black, the near-black nav surface #07080B, the card surface #171A22,
+   the two greys #6B707C / #8889A1, Cosmic Blue #4D66FF as the accent and
+   #28A63F for money in. Everything else here is derived from those.
    ===================================================================== */
 
 :root,
 [data-theme='dark'] {
-  /* Marca Cosmos: cuatro colores (negro, blanco, Dark Navy #05064F, Cosmic
-     Blue #000877) y grises por opacidad. En oscuro el acento es blanco: el
-     Cosmic Blue sobre negro no llega a contraste legible como texto. */
   --bg: #000000;
+  /* The two raised surfaces of the design: the nav bar / header buttons, and the
+     action circles, tab tracks and cards. */
+  --surface-0: #07080b;
+  --surface-1: #171a22;
+  --surface-1-hover: #1e2230;
   --text: #ffffff;
-  --text-soft: #cfd4d1;
-  --muted: #9aa19d;
-  --dim: #6a716d;
-  --dimmer: #5c6460;
-  --accent: #ffffff;
-  --on-accent: #0a0c0b;
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-soft-bg: rgba(255, 255, 255, 0.07);
-  --glass-soft-border: rgba(255, 255, 255, 0.09);
-  --primary-bg: rgba(255, 255, 255, 0.92);
-  --primary-border: rgba(255, 255, 255, 0.65);
-  --primary-text: #0a0c0b;
-  --surface: rgba(255, 255, 255, 0.05);
-  --surface-2: rgba(255, 255, 255, 0.045);
-  --hairline: rgba(255, 255, 255, 0.08);
-  --nav-bg: rgba(10, 10, 10, 0.55);
-  --avatar-bg: rgba(255, 255, 255, 0.09);
-  --avatar-brand: rgba(255, 255, 255, 0.16);
+  /* Row titles in the design are white at 80%. */
+  --text-soft: rgba(255, 255, 255, 0.8);
+  --muted: #8889a1;
+  --dim: #6b707c;
+  --dimmer: #4a4e5a;
+  --accent: #4d66ff;
+  --accent-hover: #6a80ff;
+  --accent-soft: rgba(77, 102, 255, 0.16);
+  --accent-glow: rgba(77, 102, 255, 0.45);
+  --on-accent: #ffffff;
+  /* The old "glass" surfaces, flattened onto the design's card colour: every screen that
+     composes .glass / .glass-soft now wears the Figma surfaces without being touched. */
+  --glass-bg: #0d0f15;
+  --glass-border: #1c1f2a;
+  --glass-soft-bg: #11131a;
+  --glass-soft-border: #1a1d27;
+  --primary-bg: var(--accent);
+  --primary-border: rgba(255, 255, 255, 0.08);
+  --primary-text: #ffffff;
+  --surface: #0f1117;
+  --surface-2: #13151c;
+  --hairline: #171a22;
+  --nav-bg: rgba(7, 8, 11, 0.92);
+  --avatar-bg: #171a22;
+  --avatar-brand: #1f2333;
   --avatar-text: #ffffff;
-  --up: #4ade80;
-  --down: #ff6b6b;
+  --up: #28a63f;
+  --up-bright: #3fcf5a;
+  /* The design's red is #C02828; lifted a step so a 12px amount on black still reads. */
+  --down: #e0453f;
   /* Error / refusal copy. Distinct from --down, which means "price fell": the two
      happen to be red today but must be free to diverge. */
   --danger: #ff5d5d;
   /* Tinted fill behind a refusal mark, e.g. the error boundary's badge. */
   --danger-soft: rgba(255, 93, 93, 0.14);
-  --gb-bg-a: rgba(255, 255, 255, 0.05);
-  --gb-bg-b: rgba(255, 255, 255, 0.085);
-  --gb-bd-a: rgba(255, 255, 255, 0.08);
-  --gb-bd-b: rgba(255, 255, 255, 0.2);
+  --up-soft: rgba(40, 166, 63, 0.16);
+  --gb-bg-a: #0d0f15;
+  --gb-bg-b: #10131b;
+  --gb-bd-a: #1a1d27;
+  --gb-bd-b: #252a3a;
+  --border: #1c1f2a;
+  --border-soft: #14161e;
+  --ok: var(--up-bright);
+  /* The soft ambient glow behind the balance and the FAB. */
+  --aurora-a: rgba(77, 102, 255, 0.22);
+  --aurora-b: rgba(40, 166, 63, 0.1);
+  --shadow-lg: 0 18px 40px rgba(0, 0, 0, 0.55);
 }
 
 [data-theme='light'] {
-  /* En claro el acento y el boton primario son Cosmic Blue con texto blanco,
-     como en cosmospay.lat. --up/--down/--danger no se tocan: en una wallet el
-     verde y el rojo de subio o bajo son semantica financiera, no marca. */
-  --bg: #ffffff;
-  --text: #000000;
-  --text-soft: #2b322f;
-  --muted: #5d6762;
-  --dim: #8b938e;
-  --dimmer: #aab2ad;
-  --accent: #000877;
+  /* The design is dark-only; this is its daylight reading. Same accent, same greens,
+     the surfaces inverted to paper and a cool grey. */
+  --bg: #f5f6fa;
+  --surface-0: #ffffff;
+  --surface-1: #eceef5;
+  --surface-1-hover: #e2e5ef;
+  --text: #0b0c10;
+  --text-soft: rgba(11, 12, 16, 0.82);
+  --muted: #62657a;
+  --dim: #7d8191;
+  --dimmer: #a8acb8;
+  --accent: #3d55f0;
+  --accent-hover: #2f45d6;
+  --accent-soft: rgba(61, 85, 240, 0.12);
+  --accent-glow: rgba(61, 85, 240, 0.3);
   --on-accent: #ffffff;
-  --glass-bg: rgba(255, 255, 255, 0.58);
-  --glass-border: rgba(255, 255, 255, 0.85);
-  --glass-soft-bg: rgba(255, 255, 255, 0.62);
-  --glass-soft-border: rgba(0, 0, 0, 0.05);
-  --primary-bg: #000877;
-  --primary-border: rgba(0, 0, 0, 0.2);
+  --glass-bg: #ffffff;
+  --glass-border: #e3e6ef;
+  --glass-soft-bg: #ffffff;
+  --glass-soft-border: #e6e8f0;
+  --primary-bg: var(--accent);
+  --primary-border: rgba(0, 0, 0, 0.06);
   --primary-text: #ffffff;
-  --surface: rgba(255, 255, 255, 0.5);
-  --surface-2: rgba(255, 255, 255, 0.4);
-  --hairline: rgba(0, 0, 0, 0.08);
-  --nav-bg: rgba(255, 255, 255, 0.72);
-  --avatar-bg: rgba(0, 0, 0, 0.06);
-  --avatar-brand: rgba(0, 0, 0, 0.1);
-  --avatar-text: #000877;
-  --up: #16a34a;
-  --down: #dc2626;
+  --surface: #ffffff;
+  --surface-2: #f0f2f7;
+  --hairline: #e3e6ef;
+  --nav-bg: rgba(255, 255, 255, 0.94);
+  --avatar-bg: #eceef5;
+  --avatar-brand: #e1e5f7;
+  --avatar-text: #3d55f0;
+  --up: #1e8e34;
+  --up-bright: #22a33c;
+  --down: #c62828;
   --danger: #d92020;
   --danger-soft: rgba(217, 32, 32, 0.1);
-  --gb-bg-a: rgba(255, 255, 255, 0.42);
-  --gb-bg-b: rgba(255, 255, 255, 0.62);
-  --gb-bd-a: rgba(255, 255, 255, 0.5);
-  --gb-bd-b: rgba(255, 255, 255, 0.95);
+  --up-soft: rgba(30, 142, 52, 0.12);
+  --gb-bg-a: #ffffff;
+  --gb-bg-b: #fbfbfe;
+  --gb-bd-a: #e6e8f0;
+  --gb-bd-b: #d4d8e6;
+  --border: #e3e6ef;
+  --border-soft: #eceef5;
+  --ok: var(--up);
+  --aurora-a: rgba(61, 85, 240, 0.14);
+  --aurora-b: rgba(30, 142, 52, 0.06);
+  --shadow-lg: 0 18px 40px rgba(20, 24, 40, 0.12);
 }
 
 /* native controls (date pickers, scrollbars) follow the app theme, so a
@@ -89,6 +125,16 @@
 
 :root[data-theme='dark'] {
   color-scheme: dark;
+}
+
+/* ---------------- motion ----------------
+   The two curves every animation in the app uses, so the whole thing moves with one
+   personality: a soft spring for things arriving, a quick ease for state changes. */
+:root {
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.15);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --radius-card: 20px;
+  --radius-sheet: 28px;
 }
 
 /* ---------------- fluid device adaptation ----------------

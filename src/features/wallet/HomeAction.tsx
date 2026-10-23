@@ -1,14 +1,16 @@
-import type { ReactNode } from 'react';
+import { Icon, type IconName } from '@/ui/Icon';
+import { cx } from '@/lib/cx';
 import '@/styles/features/wallet/home.css';
 
-/** Home quick-action: round glass icon + label (Send / Receive / Scan / Swap / More). */
-export function HomeAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+/** Home quick-action, as the design draws it: a dark disc with a 20px glyph and its label
+ *  under it (Send / Receive / Exchange / More). `index` picks its entrance rung. */
+export function HomeAction({ label, icon, onClick, index = 0 }: { label: string; icon: IconName; onClick: () => void; index?: number }) {
   return (
-    <div onClick={onClick} className="tap home-action">
-      <div className="glass-soft home-action-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">{children}</svg>
-      </div>
+    <button type="button" onClick={onClick} className={cx('home-action', `home-action--${index}`)}>
+      <span className="home-action-icon">
+        <Icon name={icon} size={20} />
+      </span>
       <span className="home-action-label">{label}</span>
-    </div>
+    </button>
   );
 }

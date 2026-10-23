@@ -6,6 +6,9 @@ import { fmt, trim } from '@/lib/format';
 import { isValidPublicKey } from '@/lib/wallet';
 import { cx } from '@/lib/cx';
 import { AssetSelect } from '@/features/money/AssetSelect';
+import { NetworkPicker } from '@/features/money/NetworkPicker';
+import { Icon } from '@/ui/Icon';
+import { SWAP_NETWORKS } from '@/lib/swapRoute';
 import { findAsset, isNativeRef } from '@/lib/asset';
 import { parseDecimalOr0, sanitizeDecimalInput } from '@/lib/amount';
 import { clampMemoText, memoProblem } from '@/lib/memo';
@@ -45,6 +48,22 @@ export function Send({ store }: { store: WalletStore }) {
     <div className="scr screen col pb-24">
       <BackBar title={t('send.title')} onBack={store.goBack} />
 
+      {/* Any network the phrase holds. Stellar is this screen; the others are the chain
+          send, opened on that network's coin. */}
+      {store.meta?.chainAddresses && (
+        <NetworkPicker
+          store={store}
+          label={t('send.network')}
+          value="stellar"
+          options={SWAP_NETWORKS}
+          onPick={(n) => {
+            if (n === 'stellar') return;
+            store.setChainAsset({ chain: n, asset: 'native' });
+            store.setScreen('chain-send');
+          }}
+        />
+      )}
+
       <div className="label-up send-to-label">{t('send.to')}</div>
       <div className="flexr g8">
         <input
@@ -59,17 +78,17 @@ export function Send({ store }: { store: WalletStore }) {
           className="input send-addr-input"
         />
         <button onClick={() => store.setScreen('scan')} title={t('scan.scanQr')} className="glass-soft send-scan-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><path d="M14 14h3v3M21 14v.01M21 21v-4M14 21h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+          <Icon name="scan" size={20} />
         </button>
       </div>
       {/* Standard-sized control (48px pill), snug under the address row; the
           validity note only takes space once there's something to validate. */}
       <button onClick={pastePayUrl} className="glass-soft pill-btn send-paste-btn">
-        ⛓ {t('ops.pastePay')}
+        <Icon name="link" size={16} /> {t('ops.pastePay')}
       </button>
       {s.to && (
         <div className={cx('send-addr-note', addrValid ? 'is-valid' : 'is-invalid')}>
-          <span className="send-addr-dot">{addrValid ? '✓' : '✕'}</span>
+          <Icon name={addrValid ? 'check' : 'close'} size={14} className="send-addr-dot" />
           {addrValid ? t('send.validAddr') : t('send.invalidAddr')}
         </div>
       )}

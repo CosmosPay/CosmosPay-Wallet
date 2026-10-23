@@ -2,6 +2,7 @@ import type { WalletStore } from '@/state/store';
 import { navTabsDesktop, navActiveKey, navGo } from '@/app/navModel';
 import { APP_VERSION } from '@/constants/app';
 import { Logo } from '@/ui/Logo';
+import { Icon } from '@/ui/Icon';
 import { cx } from '@/lib/cx';
 import '@/styles/app/desktop-nav.css';
 
@@ -39,9 +40,7 @@ export function DesktopNav({ store }: { store: WalletStore }) {
             className={cx('tap desk-nav-item', tb.key === activeKey && 'is-on')}
             aria-current={tb.key === activeKey ? 'page' : undefined}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              {tb.icon}
-            </svg>
+            <Icon name={tb.icon} size={20} />
             <span className="desk-nav-label">{tb.label}</span>
           </button>
         ))}

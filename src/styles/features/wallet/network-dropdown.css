@@ -79,3 +79,41 @@
   text-align: center;
   font-size: 16px;
 }
+
+/* the trigger: a chip naming the network, its dot green on mainnet and amber on a test one */
+.network-dd-trigger {
+  height: 28px;
+  padding: 0 8px 0 10px;
+  gap: 6px;
+  color: var(--text-soft);
+  max-width: 160px;
+}
+
+.network-dd-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.network-dd-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--up);
+  box-shadow: 0 0 0 3px var(--up-soft);
+}
+
+.network-dd-dot.is-test {
+  background: #f5a524;
+  box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.18);
+}
+
+.network-dd-chev {
+  color: var(--muted);
+  transition: transform 0.25s var(--ease-spring);
+}
+
+.network-dd-trigger.is-open .network-dd-chev {
+  transform: rotate(180deg);
+}

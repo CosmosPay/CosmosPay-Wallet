@@ -1,0 +1,148 @@
+/* HomeTabs — src/features/wallet/HomeTabs.tsx. The design's tab row: 11px labels over a
+   four-segment 1px track (#171A22) whose active segment is Cosmic Blue; the panels under
+   it; the page dots at the foot. */
+.home-tabs {
+  position: relative;
+  margin-top: 26px;
+}
+
+.home-tabs-head {
+  position: relative;
+  display: flex;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.home-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 0 0 9px;
+  border: none;
+  background: none;
+  border-radius: 0 !important;
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 400;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.25s ease;
+}
+
+.home-tab.is-on {
+  color: var(--accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-tab:not(.is-on):hover {
+    color: var(--text-soft);
+  }
+}
+
+/* the active segment, sliding between the four */
+.home-tabs-track-on {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 25%;
+  height: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  transition: transform 0.42s var(--ease-spring);
+}
+
+.home-tabs-track-on.is-tab-0 { transform: translateX(0); }
+.home-tabs-track-on.is-tab-1 { transform: translateX(100%); }
+.home-tabs-track-on.is-tab-2 { transform: translateX(200%); }
+.home-tabs-track-on.is-tab-3 { transform: translateX(300%); }
+
+/* The panel: rows sit 26px apart, as drawn. `touch-action: pan-y` hands vertical drags to
+   the screen's scroller and keeps the horizontal ones for the swipe. */
+.home-panel {
+  padding-top: 26px;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  touch-action: pan-y;
+}
+
+.home-panel.is-from-right {
+  animation: panelFromRight 0.38s var(--ease-out);
+}
+
+.home-panel.is-from-left {
+  animation: panelFromLeft 0.38s var(--ease-out);
+}
+
+/* The activity panel groups by day; its own rows are spaced by their padding. */
+.home-day {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.home-panel-loading {
+  padding: 28px 0;
+  text-align: center;
+}
+
+.home-panel-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: -6px;
+}
+
+.home-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.home-link.is-accent {
+  color: var(--accent);
+}
+
+.home-link:hover {
+  color: var(--text);
+}
+
+.home-link.is-accent:hover {
+  color: var(--accent-hover);
+}
+
+/* the page dots: 5px, 9px apart, bottom right */
+.home-dots {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  margin-top: 22px;
+}
+
+.home-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--surface-1);
+  transition: width 0.35s var(--ease-spring), background-color 0.25s ease;
+}
+
+.home-dot.is-on {
+  width: 14px;
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-panel {
+    animation: none !important;
+  }
+}

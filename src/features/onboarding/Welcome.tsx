@@ -4,6 +4,9 @@ import { LangSelect } from '@/ui/LangSelect';
 import { APP_VERSION } from '@/constants/app';
 import '@/styles/features/onboarding/welcome.css';
 import { cx } from '@/lib/cx';
+import { Icon } from '@/ui/Icon';
+import { ChainLogo } from '@/ui/ChainLogo';
+import { SWAP_NETWORKS } from '@/lib/swapRoute';
 
 export function Welcome({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -13,7 +16,7 @@ export function Welcome({ store }: { store: WalletStore }) {
       <div className={cx('row welcome-topbar', store.addingWallet && 'is-adding')}>
         {store.addingWallet && (
           <div onClick={() => store.cancelAddWallet()} className="tap row g8 welcome-cancel">
-            <span className="welcome-cancel-arrow">‹</span> {t('common.cancel')}
+            <Icon name="back" size={18} className="welcome-cancel-arrow" /> {t('common.cancel')}
           </div>
         )}
         <LangSelect value={store.lang} onChange={store.setLang} />
@@ -22,6 +25,18 @@ export function Welcome({ store }: { store: WalletStore }) {
         {/* El lockup oficial (isotipo + "cosmos pay"), no el nombre tipeado: la
             marca pide que el nombre vaya siempre dibujado. Es blanco, y la clase
             logo-img lo invierte a negro en el tema claro, igual que el isotipo. */}
+        {/* The networks one phrase holds, slowly orbiting the mark — the product in one
+            picture. Each sits on a fixed rung of the ring (.welcome-orbit-<i>). */}
+        <div className="welcome-orbit" aria-hidden="true">
+          <div className="welcome-orbit-ring">
+            {SWAP_NETWORKS.map((n, i) => (
+              <span key={n} className={`welcome-orbit-item welcome-orbit-${i}`}>
+                <ChainLogo chain={n} size={34} />
+              </span>
+            ))}
+          </div>
+          <span className="welcome-orbit-core" />
+        </div>
         <div className="welcome-logo">
           <img
             src={`${import.meta.env.BASE_URL}brand/lockup-cosmos-pay.svg`}

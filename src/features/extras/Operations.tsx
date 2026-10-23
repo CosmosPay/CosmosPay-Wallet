@@ -2,6 +2,7 @@ import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { readText } from '@/lib/clipboard';
 import { OpRow } from '@/features/extras/OpRow';
+import type { IconName } from '@/ui/Icon';
 import '@/styles/features/extras/operations.css';
 
 /* --------------------------- OPERATIONS HUB ------------------------- */
@@ -14,15 +15,15 @@ export function Operations({ store }: { store: WalletStore }) {
     else store.flash(t('ops.pasteInvalid'), 'err');
   };
 
-  const rows: { glyph: string; label: string; sub?: string; onClick: () => void }[] = [
-    { glyph: '☰', label: t('ops.gatewayTitle'), sub: t('ops.gatewaySub'), onClick: () => store.setScreen('gateway-ops') },
-    { glyph: '✎', label: t('ops.signTx'), sub: t('ops.signTxSub'), onClick: () => store.setScreen('sign-tx') },
-    { glyph: '⛓', label: t('ops.pastePay'), sub: t('ops.pastePaySub'), onClick: pastePayUrl },
-    { glyph: '⛶', label: t('scan.scanQr'), onClick: () => store.setScreen('scan') },
-    { glyph: '＋', label: t('addAsset.title'), onClick: () => store.setScreen('add-asset') },
-    { glyph: '⌗', label: t('net.add'), onClick: () => store.setScreen('add-network') },
-    { glyph: '⚷', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') },
-    { glyph: '⚙', label: t('profile.settings'), onClick: () => store.setScreen('settings') },
+  const rows: { glyph: IconName; label: string; sub?: string; onClick: () => void }[] = [
+    { glyph: 'layers', label: t('ops.gatewayTitle'), sub: t('ops.gatewaySub'), onClick: () => store.setScreen('gateway-ops') },
+    { glyph: 'key', label: t('ops.signTx'), sub: t('ops.signTxSub'), onClick: () => store.setScreen('sign-tx') },
+    { glyph: 'link', label: t('ops.pastePay'), sub: t('ops.pastePaySub'), onClick: pastePayUrl },
+    { glyph: 'scan', label: t('scan.scanQr'), onClick: () => store.setScreen('scan') },
+    { glyph: 'plus', label: t('addAsset.title'), onClick: () => store.setScreen('add-asset') },
+    { glyph: 'network', label: t('net.add'), onClick: () => store.setScreen('add-network') },
+    { glyph: 'shield', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') },
+    { glyph: 'settings', label: t('profile.settings'), onClick: () => store.setScreen('settings') },
   ];
 
   return (

@@ -14,12 +14,15 @@ import { Home } from '@/features/wallet/Home';
 import { Earn } from '@/features/wallet/Earn';
 import { Markets } from '@/features/wallet/Markets';
 import { Profile } from '@/features/wallet/Profile';
+import { WalletAccounts } from '@/features/wallet/WalletAccounts';
+import { More } from '@/features/wallet/More';
 import { cx } from '@/lib/cx';
 import { tNow } from '@/lib/i18n';
 import { useKeyboardInset } from '@/hooks/useKeyboardInset';
 import { nativeInvoke, nativeListen } from '@/lib/nativeBridge';
 import { report, startTelemetry } from '@/lib/telemetry';
 import { EVENT } from '@/constants/telemetry';
+import { registerWebServiceWorker, takeLaunchTarget } from '@/lib/pwa';
 
 type ScreenComponent = ComponentType<{ store: WalletStore }> | LazyExoticComponent<ComponentType<{ store: WalletStore }>>;
 
@@ -57,6 +60,8 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   defindex: lazy(() => import('@/features/wallet/Defindex').then((m) => ({ default: m.Defindex }))),
   markets: Markets,
   profile: Profile,
+  wallet: WalletAccounts,
+  more: More,
 
   // lazy — money
   receive: lazy(() => import('@/features/money/Receive').then((m) => ({ default: m.Receive }))),
@@ -131,6 +136,20 @@ function WalletAppShell() {
     const path = window.location.pathname.replace(/\/+$/, '');
     if (path.endsWith('/earn') && store.screen !== 'earn') store.go('earn', 'earn');
   }, [store, store.hasSession, store.screen]);
+
+  // A home-screen shortcut (`?go=receive`) names a screen; it is read once at boot and
+  // opened as soon as there is a session to open it in — after the unlock, if locked.
+  const [launch, setLaunch] = useState(() => takeLaunchTarget());
+  useEffect(() => {
+    if (!launch || !store.hasSession) return;
+    store.setScreen(launch);
+    setLaunch(null);
+  }, [launch, store, store.hasSession]);
+
+  // The installable web app's offline shell (web build only; see lib/pwa.ts).
+  useEffect(() => {
+    registerWebServiceWorker();
+  }, []);
 
   // Publishes --kb-h / .kb-open for the whole document, so every screen's footer can
   // stay above the on-screen keyboard instead of being pushed up over its own content.

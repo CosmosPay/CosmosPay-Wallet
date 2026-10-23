@@ -143,3 +143,21 @@ export function computePortfolio(
   const changePct = prevTotal > 0 ? (deltaUsd / prevTotal) * 100 : 0;
   return { total, rows, changePct, deltaUsd };
 }
+
+/**
+ * The two figures an asset's own screen leads with beside its balance: what the holding
+ * gained or lost over 24 hours in dollars — backed out of its price change the same way
+ * `computePortfolio` does for the whole — and its share of everything the wallet holds.
+ * Null where the inputs cannot say (no price, an empty portfolio), never a zero that reads
+ * as a fact.
+ */
+export function holdingStats(
+  value: number | null,
+  change24hPct: number | null,
+  total: number,
+): { deltaUsd: number | null; share: number | null } {
+  const denom = change24hPct === null ? 0 : 1 + change24hPct / 100;
+  const deltaUsd = value !== null && denom > 0.01 ? value - value / denom : null;
+  const share = value !== null && total > 0 ? Math.min(1, value / total) : null;
+  return { deltaUsd, share };
+}

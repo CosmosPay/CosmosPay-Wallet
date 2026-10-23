@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { Spinner } from '@/ui/Spinner';
 import { HistoryRow } from '@/features/money/HistoryRow';
 import { GenesisRow } from '@/features/money/GenesisRow';
+import { dayLabel, groupByDay } from '@/lib/activity';
 import '@/styles/features/money/history.css';
 
 /* ----------------------------- HISTORY ------------------------------ */
@@ -16,6 +17,9 @@ export function History({ store }: { store: WalletStore }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.meta?.id, store.network.id]);
   const items = store.history;
+  // Grouped under day headings, as Home's Activity panel draws them.
+  const days = useMemo(() => groupByDay(items), [items]);
+  let row = 0;
   return (
     <div className="scr screen col pb-104">
       <BackBar title={t('history.title')} onBack={store.goBack} />
@@ -23,7 +27,14 @@ export function History({ store }: { store: WalletStore }) {
         <div className="f1 center"><Spinner tone="text" /></div>
       ) : (
         <div className="history-list">
-          {items.map((it, i) => <HistoryRow key={it.id} item={it} store={store} index={i} dense />)}
+          {days.map((day) => (
+            <div key={day.date.getTime()} className="history-day">
+              <div className="money-day">{day.relative ? t(`history.${day.relative}`) : dayLabel(day.date, store.locale)}</div>
+              {day.items.map((it) => (
+                <HistoryRow key={it.id} item={it} store={store} index={row++} dense />
+              ))}
+            </div>
+          ))}
           {/* Visual-only marker closing the list: when this wallet started using Cosmos Pay. */}
           <GenesisRow store={store} index={items.length} dense />
         </div>

@@ -1,82 +1,588 @@
-/* Home screen (src/features/wallet/Home.tsx) + Action / ActivateCard / AssetListRow. */
+/* =====================================================================
+   Home — src/features/wallet/Home.tsx, src/features/wallet/HomeAction.tsx,
+   src/features/wallet/AssetListRow.tsx, and the cards Home shows
+   (src/features/wallet/ActivateCard.tsx, src/features/wallet/ProtectAccountCard.tsx).
+   Measurements are the Figma frame's (360 × 800): a 46px header, the
+   balance at 32px, 40.5px action discs, 48px asset rows 26px apart.
+   ===================================================================== */
 
-/* header: avatar + greeting on the left, controls on the right */
-.home-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0 16px; }
-.home-head-left { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.home-avatar {
-  width: 42px; height: 42px; border-radius: 50%; overflow: hidden;
-  background: var(--glass-soft-bg); border: 1px solid var(--glass-soft-border);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 15px; font-weight: 700; color: var(--text); cursor: pointer; flex-shrink: 0;
+.home-screen {
+  position: relative;
+  /* the aurora is painted behind everything on this screen */
+  isolation: isolate;
 }
-.home-avatar-img { width: 100%; height: 100%; object-fit: cover; }
-.home-greet-col { display: flex; flex-direction: column; justify-content: center; min-width: 0; height: 42px; gap: 2px; }
-.home-salutation { font-size: 11.5px; color: var(--muted); font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.home-firstname { font-size: 17px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* portfolio total + 24h change */
-.home-portfolio { text-align: center; padding: 8px 0 6px; }
-.home-portfolio-label { color: var(--muted); font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-.home-total { font-size: 46px; font-weight: 800; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; }
-.home-cents { color: var(--dimmer); }
-.home-change { margin-top: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.home-change.is-up { color: var(--up); }
-.home-change.is-down { color: var(--down); }
-.home-change-delta { font-weight: 600; opacity: 0.85; }
+/* The ambient glow behind the balance: two soft blobs drifting slowly. Decorative, and
+   below everything (z-index -1 inside the isolated screen). */
+.aurora {
+  position: absolute;
+  z-index: -1;
+  top: -60px;
+  left: -40px;
+  right: -40px;
+  height: 340px;
+  pointer-events: none;
+  background:
+    radial-gradient(45% 55% at 25% 40%, var(--aurora-a), transparent 70%),
+    radial-gradient(40% 50% at 80% 30%, var(--aurora-b), transparent 70%);
+  filter: blur(18px);
+  /* Faded out at every edge: the screen clips it, and a glow that reaches the clip shows
+     a straight line where the column ends. */
+  -webkit-mask-image: radial-gradient(70% 60% at 50% 40%, #000 30%, transparent 100%);
+  mask-image: radial-gradient(70% 60% at 50% 40%, #000 30%, transparent 100%);
+  animation: auroraDrift 14s ease-in-out infinite;
+}
 
-/* quick actions row (Action) */
-.home-actions { display: flex; justify-content: space-between; gap: 8px; margin: 22px 0 26px; }
-.home-action { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 9px; cursor: pointer; }
-.home-action-icon { width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; } /* on .glass-soft */
-.home-action-label { font-size: 11.5px; color: var(--muted); font-weight: 600; text-align: center; line-height: 1.25; }
+/* ------------------------------ header ------------------------------ */
+.home-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 10px;
+  min-height: 46px;
+}
 
-/* fiat entry card */
-.home-ramp { position: relative; overflow: hidden; margin-bottom: 14px; padding: 17px; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--glass-border)); border-radius: 20px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), var(--glass-soft-bg)); }
-.home-ramp::after { content: ''; position: absolute; width: 140px; height: 140px; top: -95px; right: -40px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 30%, transparent); filter: blur(9px); }
-.home-ramp-head, .home-ramp-actions { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.home-ramp-kicker { color: var(--accent); font-size: 9.5px; font-weight: 900; letter-spacing: .1em; }
-.home-ramp-title { margin-top: 3px; font-size: 18px; font-weight: 850; letter-spacing: -.03em; }
-.home-ramp-network { padding: 5px 8px; border: 1px solid var(--hairline); border-radius: 999px; color: var(--muted); font-size: 9px; font-weight: 900; letter-spacing: .08em; }
-.home-ramp-desc { position: relative; z-index: 1; margin: 7px 0 14px; color: var(--muted); font-size: 12px; font-weight: 650; }
-.home-ramp-actions { justify-content: stretch; }
-.home-ramp-actions button { flex: 1; min-height: 42px; border: 0; border-radius: 12px; cursor: pointer; font-size: 12px; font-weight: 850; }
-.home-ramp-actions span { margin-right: 7px; font-size: 16px; }
-.home-ramp-buy { color: var(--bg); background: var(--accent); }
-.home-ramp-sell { color: var(--text); background: var(--glass-soft-bg); border: 1px solid var(--glass-border) !important; }
-.home-ramp-manage { position: relative; z-index: 1; display: flex; width: 100%; align-items: center; justify-content: space-between; margin-top: 8px; padding: 5px 1px 0; border: 0; background: transparent; color: var(--accent); cursor: pointer; font-size: 11px; font-weight: 850; }
-.home-ramp-manage span { font-size: 17px; line-height: 10px; }
-.home-ramp-note { position: relative; z-index: 1; margin-top: 11px; color: var(--dim); font-size: 10.5px; line-height: 1.4; font-weight: 650; }
+/* the 46px avatar disc with the 38px mark inside, as drawn */
+.home-avatar {
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50% !important;
+  background: var(--surface-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.25s var(--ease-spring), box-shadow 0.25s ease;
+}
 
-/* assets + history section heads */
-.home-assets { margin-bottom: 8px; }
-.home-assets-head { margin: 6px 2px 12px; } /* on .row.between */
-.home-history-head { margin: 18px 0 6px; } /* on .row.between */
-.home-assets-title { font-size: 15px; font-weight: 800; letter-spacing: -0.3px; }
-.home-viewall { font-size: 13px; color: var(--muted); font-weight: 700; cursor: pointer; }
-.home-add-asset { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; cursor: pointer; color: var(--accent); margin-top: 2px; }
-.home-add-icon { width: 34px; height: 34px; border-radius: 50%; border: 1px dashed var(--glass-border); display: flex; align-items: center; justify-content: center; font-size: 20px; }
-.home-add-label { font-size: 14.5px; font-weight: 800; }
-.home-history-loading { padding: 18px; text-align: center; }
+.home-avatar:hover {
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
 
-/* one asset row (AssetListRow) — the per-index entrance delay is a
-   .stagger-* class from animations.css */
-.home-asset-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 12px; border-radius: 16px; cursor: pointer; margin-bottom: 2px; animation: fadeUp 0.45s ease backwards; }
-.home-asset-name { font-size: 15px; font-weight: 700; }
-.home-asset-net { color: var(--muted); font-weight: 700; } /* a Solana / Monad row names its chain */
-.home-asset-values { text-align: right; } /* on .col.g2 */
-.home-asset-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.home-asset-chg { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.home-asset-chg.is-up { color: var(--up); }
-.home-asset-chg.is-down { color: var(--down); }
-.home-asset-fav { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 23px; line-height: 1; cursor: pointer; flex-shrink: 0; margin-right: -6px; color: var(--dimmer); }
-.home-asset-fav.is-fav { color: #f7c948; }
+.home-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
-/* activation card (ActivateCard) */
-.home-activate { margin-bottom: 22px; } /* on .glass.card */
-.home-activate-title { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
-.home-activate-desc { font-size: 13px; color: var(--muted); font-weight: 600; line-height: 1.5; margin-bottom: 14px; }
-.home-activate-btn { width: 100%; height: 54px; background: var(--accent); color: var(--on-accent); border: none; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; cursor: pointer; }
+/* the brand mark sits inset in its disc, the way the design places it */
+.home-avatar-img.is-brand {
+  width: 38px;
+  height: 38px;
+}
+
+[data-theme='light'] .home-avatar-img.is-brand {
+  filter: invert(1);
+}
+
+.home-greet {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 0 !important;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.home-salutation {
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
+.home-firstname {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 16px;
+}
+
+.home-firstname-chev {
+  margin: -4px -6px -4px -2px;
+  color: var(--muted);
+  transition: transform 0.25s var(--ease-spring);
+}
+
+.home-greet:hover .home-firstname-chev {
+  transform: translateX(3px);
+}
+
+/* the 46px dark discs on the right: notifications and settings */
+.home-disc {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50% !important;
+  background: var(--surface-0);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.13s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-disc:hover {
+    background: var(--surface-1);
+  }
+
+  .home-disc:hover .icon-settings {
+    transform: rotate(60deg);
+  }
+
+  .home-disc:hover .icon-bell {
+    animation: nudge 0.5s ease;
+  }
+}
+
+.home-disc .icon-settings {
+  transition: transform 0.5s var(--ease-out);
+}
+
+/* the 11px accent dot at the bell's shoulder, with a ring that keeps spreading */
+.home-bell-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+}
+
+.home-bell-ping {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* ------------------------------ balance ----------------------------- */
+.home-balance {
+  margin-top: 24px;
+}
+
+.home-balance-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.home-balance-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.home-total {
+  margin-top: 4px;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 40px;
+  letter-spacing: -0.4px;
+  color: var(--text);
+  animation: screenIn 0.6s var(--ease-out) 0.05s backwards;
+}
+
+.home-cents {
+  font-size: 22px;
+  color: var(--text-soft);
+}
+
+.home-change {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 13px;
+  animation: fadeIn 0.6s ease 0.25s backwards;
+}
+
+.home-change-icon {
+  margin-right: -2px;
+}
+
+.home-change.is-up .home-change-icon,
+.home-change.is-up .home-change-pct {
+  color: var(--up);
+}
+
+.home-change.is-down .home-change-icon,
+.home-change.is-down .home-change-pct {
+  color: var(--down);
+}
+
+.home-change-pct {
+  font-weight: 600;
+}
+
+.home-change-delta,
+.home-change-when {
+  color: var(--muted);
+}
+
+/* ------------------------------ actions ----------------------------- */
+.home-actions {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 24px;
+}
+
+.home-action {
+  width: 72px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: 0 !important;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* A staggered arrival, the four discs one after another (replaces the global pop-in). */
+.home-action.home-action--0 { animation: pop 0.5s var(--ease-spring) 0.08s backwards !important; }
+.home-action.home-action--1 { animation: pop 0.5s var(--ease-spring) 0.14s backwards !important; }
+.home-action.home-action--2 { animation: pop 0.5s var(--ease-spring) 0.2s backwards !important; }
+.home-action.home-action--3 { animation: pop 0.5s var(--ease-spring) 0.26s backwards !important; }
+
+.home-action-icon {
+  width: 40.5px;
+  height: 40.5px;
+  border-radius: 50%;
+  background: var(--surface-1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, transform 0.25s var(--ease-spring), box-shadow 0.25s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-action:hover .home-action-icon {
+    background: var(--accent);
+    color: var(--on-accent);
+    transform: translateY(-3px);
+    box-shadow: 0 10px 20px -8px var(--accent-glow);
+  }
+
+  .home-action:hover .icon {
+    animation: nudge 0.5s ease;
+  }
+}
+
+.home-action:active .home-action-icon {
+  transform: scale(0.9);
+}
+
+.home-action-label {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* ---------------------------- asset rows ---------------------------- */
+/* One holding (AssetListRow) — the per-index entrance delay is a .stagger-* class. */
+.home-asset-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  margin: -4px -8px;
+  padding: 4px 8px;
+  box-sizing: content-box;
+  border: none;
+  background: none;
+  border-radius: 16px !important;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  animation: rowIn 0.5s var(--ease-out) backwards !important;
+  transition: background-color 0.18s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-asset-row:hover {
+    background: var(--surface-1);
+  }
+
+  .home-asset-row:hover .asset-logo {
+    transform: scale(1.06);
+  }
+}
+
+.home-asset-row .asset-logo {
+  transition: transform 0.25s var(--ease-spring);
+}
+
+.home-asset-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-asset-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-soft);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* a holding not on Stellar names its network, small, after its name */
+.home-asset-net {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-1);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.home-asset-sub {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dim);
+}
+
+.home-asset-chg.is-up {
+  color: var(--up);
+}
+
+.home-asset-chg.is-down {
+  color: var(--down);
+}
+
+.home-asset-values {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.home-asset-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+}
+
+.home-asset-amount {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dim);
+}
+
+/* ------------------------------ fiat card --------------------------- */
+.home-ramp {
+  position: relative;
+  overflow: hidden;
+  margin-top: 22px;
+  padding: 17px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-card);
+  background: linear-gradient(135deg, var(--accent-soft), var(--surface-0) 60%);
+  animation: screenIn 0.5s var(--ease-out) 0.2s backwards;
+}
+
+.home-ramp::after {
+  content: '';
+  position: absolute;
+  width: 160px;
+  height: 160px;
+  top: -100px;
+  right: -50px;
+  border-radius: 50%;
+  background: var(--accent-glow);
+  filter: blur(26px);
+  opacity: 0.6;
+  animation: floatY 6s ease-in-out infinite;
+}
+
+.home-ramp-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.home-ramp-kicker {
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.home-ramp-title {
+  margin-top: 3px;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.home-ramp-network {
+  padding: 5px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.home-ramp-desc {
+  position: relative;
+  z-index: 1;
+  margin: 7px 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.home-ramp-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 10px;
+}
+
+.home-ramp-actions button {
+  flex: 1;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 0;
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+.home-ramp-buy {
+  color: var(--on-accent);
+  background: var(--accent);
+}
+
+.home-ramp-sell {
+  color: var(--text);
+  background: var(--surface-1);
+}
+
+.home-ramp-note {
+  position: relative;
+  z-index: 1;
+  margin-top: 11px;
+  color: var(--dim);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+/* --------------------- activation / protect cards ------------------- */
+/* ActivateCard */
+.home-activate {
+  margin-top: 22px;
+  animation: screenIn 0.5s var(--ease-out) 0.2s backwards;
+} /* on .glass.card */
+
+.home-activate-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.home-activate-desc {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+
+.home-activate-btn {
+  width: 100%;
+  height: 50px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 10px 24px -10px var(--accent-glow);
+}
+
 /* ProtectAccountCard — the SEP-30 offer. Same card as .home-activate; its own spacing. */
-.home-protect { margin-bottom: 22px; } /* on .glass.card */
-.home-protect-code { margin-bottom: 12px; letter-spacing: 0.25em; text-align: center; }
-.home-protect-later { display: block; width: 100%; margin-top: 10px; background: none; border: 0; color: var(--muted); font-size: 13px; font-weight: 700; cursor: pointer; }
+.home-protect {
+  margin-top: 22px;
+  animation: screenIn 0.5s var(--ease-out) 0.25s backwards;
+} /* on .glass.card */
+
+.home-protect-code {
+  margin-bottom: 12px;
+  letter-spacing: 0.25em;
+  text-align: center;
+}
+
+.home-protect-later {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* This sheet's own `!important` entrances need their own reduced-motion override: it
+   loads after animations.css, whose block cannot beat a later rule of equal weight. */
+@media (prefers-reduced-motion: reduce) {
+  .aurora,
+  .home-total,
+  .home-change,
+  .home-action,
+  .home-asset-row,
+  .home-ramp,
+  .home-ramp::after,
+  .home-activate,
+  .home-protect,
+  .home-bell-ping {
+    animation: none !important;
+  }
+}

@@ -44,3 +44,82 @@
   margin-top: 8px;
   letter-spacing: 0.2px;
 }
+
+/* The orbit: seven network marks on a ring around the Cosmos mark. The ring turns; each
+   mark turns back the other way, so the logos stay upright. Positions are fixed rungs. */
+.welcome-orbit {
+  position: relative;
+  width: 210px;
+  height: 210px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pop 0.7s var(--ease-spring) backwards;
+}
+
+.welcome-orbit::before {
+  content: '';
+  position: absolute;
+  inset: 22px;
+  border-radius: 50%;
+  border: 1px dashed var(--hairline);
+}
+
+.welcome-orbit::after {
+  content: '';
+  position: absolute;
+  inset: 60px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+  filter: blur(12px);
+  animation: floatY 5s ease-in-out infinite;
+}
+
+.welcome-orbit-ring {
+  position: absolute;
+  inset: 0;
+  animation: orbit 36s linear infinite;
+}
+
+.welcome-orbit-item {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  display: flex;
+}
+
+.welcome-orbit-item .asset-logo {
+  animation: orbit 36s linear infinite reverse;
+}
+
+.welcome-orbit-core {
+  position: relative;
+  z-index: 1;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--accent-hover), var(--accent) 60%, transparent 100%);
+  box-shadow: 0 0 40px var(--accent-glow);
+  animation: fabPulse 3.2s ease-in-out infinite;
+}
+.welcome-orbit-0 { transform: rotate(0.00deg) translateY(-83px) rotate(-0.00deg); }
+.welcome-orbit-1 { transform: rotate(51.43deg) translateY(-83px) rotate(-51.43deg); }
+.welcome-orbit-2 { transform: rotate(102.86deg) translateY(-83px) rotate(-102.86deg); }
+.welcome-orbit-3 { transform: rotate(154.29deg) translateY(-83px) rotate(-154.29deg); }
+.welcome-orbit-4 { transform: rotate(205.71deg) translateY(-83px) rotate(-205.71deg); }
+.welcome-orbit-5 { transform: rotate(257.14deg) translateY(-83px) rotate(-257.14deg); }
+.welcome-orbit-6 { transform: rotate(308.57deg) translateY(-83px) rotate(-308.57deg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .welcome-orbit,
+  .welcome-orbit::after,
+  .welcome-orbit-ring,
+  .welcome-orbit-item .asset-logo,
+  .welcome-orbit-core {
+    animation: none !important;
+  }
+}

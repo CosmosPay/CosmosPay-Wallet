@@ -5,7 +5,7 @@ import type { TokenAvatarTone } from '@/constants/assets';
 
 /** Diameters that have a .token-avatar--<px> class in token-avatar.css.
  *  Widen this union (and add the class) rather than passing a raw number. */
-export type TokenAvatarSize = 20 | 24 | 26 | 28 | 34 | 36 | 38 | 64;
+export type TokenAvatarSize = 20 | 24 | 26 | 28 | 34 | 36 | 38 | 48 | 64;
 
 /** Coloured circular token badge. */
 export function TokenAvatar({

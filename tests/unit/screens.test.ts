@@ -101,7 +101,7 @@ test('only the true roots exit the app', () => {
 });
 
 test('the nav bar is derived from the table, not a second list', () => {
-  assert.deepEqual([...NAV_SCREENS].sort(), ['earn', 'home', 'markets', 'profile', 'swap'].sort());
+  assert.deepEqual([...NAV_SCREENS].sort(), ['earn', 'home', 'markets', 'more', 'profile', 'swap', 'wallet'].sort());
   for (const s of NAV_SCREENS) assert.equal(SCREENS[s].nav, true);
 });
 

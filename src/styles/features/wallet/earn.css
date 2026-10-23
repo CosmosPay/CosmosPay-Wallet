@@ -15,6 +15,9 @@
 /* .earn-lp is a tappable card (whole card opens the liquidity hub). */
 .earn-option {
   width: 100%;
+  /* A card, not a pill: base.css rounds every <button> fully, which turns a tall card
+     into an oval. */
+  border-radius: var(--radius-card) !important;
   border: 0;
   color: inherit;
   font: inherit;
