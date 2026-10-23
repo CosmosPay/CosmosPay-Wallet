@@ -22,7 +22,7 @@
         "minHeight": 560,
         "center": true,
         "resizable": true,
-        "backgroundColor": "#080808"
+        "backgroundColor": "#000000"
       }
     ],
     "security": {
@@ -46,8 +46,8 @@
     "active": true,
     "targets": "all",
     "category": "Finance",
-    "shortDescription": "Non-custodial Stellar wallet",
-    "longDescription": "Cosmos Pay — send, receive and swap XLM and Stellar assets, with a fiat on/off-ramp. Your keys are encrypted and never leave your device.",
+    "shortDescription": "Non-custodial multichain wallet",
+    "longDescription": "Cosmos Pay — one recovery phrase for Stellar, Bitcoin, Ethereum, Solana, Arbitrum, Base and Monad. Send, receive and swap across all of them, with a fiat on/off-ramp. Your keys are encrypted and never leave your device.",
     "copyright": "Cosmos Pay",
     "icon": [
       "icons/32x32.png",

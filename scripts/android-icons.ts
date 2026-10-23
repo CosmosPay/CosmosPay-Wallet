@@ -48,10 +48,10 @@ const FOREGROUND_SCALE = 0.85;
 const FLAT_SCALE = 0.6;
 const SPLASH_SCALE = 0.2;
 
-// #080808 — `--bg` in src/styles/theme.css, and the window backgroundColor in
+// #000000 — `--bg` in src/styles/theme.css, and the window backgroundColor in
 // src-tauri/tauri.conf.json. The icon sits on the same surface the app opens onto.
 // As channels rather than a hex string because that is the only form sharp takes.
-const rgb = { r: 8, g: 8, b: 8, alpha: 1 };
+const rgb = { r: 0, g: 0, b: 0, alpha: 1 };
 const clear = { r: 0, g: 0, b: 0, alpha: 0 };
 
 /** The logo, resized to fill `size` px, ready to composite. */

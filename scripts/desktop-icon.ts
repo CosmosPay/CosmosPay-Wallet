@@ -22,7 +22,7 @@ const SOURCE = 'public/logo-white.png';
 const OUT = 'resources/icon.png';
 
 /** --bg in src/styles/theme.css, and the window backgroundColor in tauri.conf.json. */
-const BG = { r: 8, g: 8, b: 8, alpha: 1 };
+const BG = { r: 0, g: 0, b: 0, alpha: 1 };
 
 /** The master every other size is downscaled from — what `tauri icon` asks for. */
 const SIZE = 1024;
