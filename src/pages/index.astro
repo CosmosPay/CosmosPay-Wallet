@@ -27,16 +27,23 @@ import '@/styles/app.css';
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#080808" />
+    <meta name="theme-color" content="#000000" />
     <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
-    <link rel="apple-touch-icon" href={`${import.meta.env.BASE_URL}favicon.svg`} />
+    <link rel="apple-touch-icon" href={`${import.meta.env.BASE_URL}icons/icon-192.png`} />
+    <!-- Installable web app: the manifest, and the iOS equivalents Safari still reads
+         instead of it. The worker it pairs with is registered by src/lib/pwa.ts. -->
+    <link rel="manifest" href={`${import.meta.env.BASE_URL}manifest.webmanifest`} />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Cosmos Pay" />
     <meta
       name="description"
-      content="Cosmos Pay — non-custodial Stellar wallet. Send, receive and swap XLM and Stellar assets, with fiat on/off-ramp. Your keys never leave your device."
+      content="Cosmos Pay — non-custodial multichain wallet. One recovery phrase for Stellar, Bitcoin, Ethereum, Solana, Arbitrum, Base and Monad: send, receive and swap across all of them, with a fiat on/off-ramp. Your keys never leave your device."
     />
     <meta name="application-name" content="Cosmos Pay" />
-    <title>Cosmos Pay · Stellar Wallet</title>
+    <title>Cosmos Pay · Wallet</title>
   </head>
   <body>
     <WalletApp client:only="react" />

@@ -1,0 +1,23 @@
+{
+  "name": "Cosmos Pay Wallet",
+  "short_name": "Cosmos Pay",
+  "description": "Non-custodial multichain wallet: Stellar, Bitcoin, Ethereum, Solana, Arbitrum, Base and Monad from one recovery phrase.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "categories": ["finance", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Receive", "url": "./?go=receive", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Swap", "url": "./?go=swap", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
