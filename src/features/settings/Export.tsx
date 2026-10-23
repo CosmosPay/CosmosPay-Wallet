@@ -94,8 +94,10 @@ export function Export({ store }: { store: WalletStore }) {
             <>
               <Reveal title={t('export.solanaTitle')} value={chainKeys.solana} mono copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'solana'} onCopy={() => copy(chainKeys.solana, 'solana')} />
               <div className="export-compat">{t('export.solanaCompat')}</div>
-              <Reveal title={t('export.monadTitle')} value={chainKeys.monad} mono copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'monad'} onCopy={() => copy(chainKeys.monad, 'monad')} />
-              <div className="export-compat">{t('export.monadCompat')}</div>
+              <Reveal title={t('export.evmTitle')} value={chainKeys.evm} mono copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'evm'} onCopy={() => copy(chainKeys.evm, 'evm')} />
+              <div className="export-compat">{t('export.evmCompat')}</div>
+              <Reveal title={t('export.bitcoinTitle')} value={chainKeys.bitcoin} mono copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'bitcoin'} onCopy={() => copy(chainKeys.bitcoin, 'bitcoin')} />
+              <div className="export-compat">{t('export.bitcoinCompat')}</div>
             </>
           )}
         </>

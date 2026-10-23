@@ -132,7 +132,7 @@ test('a Monad test send is signed for Monad testnet’s chain id', async () => {
     eth_estimateGas: hex(21000),
     eth_sendRawTransaction: '0xhash',
   });
-  const { monad } = await chainAddressesFromMnemonic(PHRASE);
+  const { evm: monad } = await chainAddressesFromMnemonic(PHRASE);
   const secret = await chainSecret(PHRASE, 'monad', monad);
   await sendTransfer({ chain: 'monad', net: 'testnet', secret, owner: monad, asset: 'native', decimals: 18, to: EVM_DEST, amount: 1n });
   assert.ok(calls.every((c) => c.url === DEFAULT_MONAD_TESTNET_RPC_URL));
@@ -149,7 +149,7 @@ test('a Monad test send is signed for Monad testnet’s chain id', async () => {
 
 test('a Monad testnet node that is really mainnet is refused, for sends and for balances', async () => {
   stubNode({ eth_chainId: hex(MONAD_CHAIN_ID) });
-  const { monad } = await chainAddressesFromMnemonic(PHRASE);
+  const { evm: monad } = await chainAddressesFromMnemonic(PHRASE);
   const secret = await chainSecret(PHRASE, 'monad', monad);
   await refusal(
     sendTransfer({ chain: 'monad', net: 'testnet', secret, owner: monad, asset: 'native', decimals: 18, to: EVM_DEST, amount: 1n }),

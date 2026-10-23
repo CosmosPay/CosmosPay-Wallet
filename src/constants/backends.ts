@@ -15,6 +15,7 @@
  * backend — and from inside the popup that failure is indistinguishable from the
  * server being down.
  */
+import type { ChainNet, OtherChain } from '@/constants/chains';
 
 /**
  * APISIX gateway: the payments API, the wallet's sign-in and the public key — everything
@@ -45,7 +46,14 @@ export const DEFAULT_RECOVERY_B_URL = 'https://reserv002.cosmospay.lat';
  * and is why a build expecting traffic should point `PUBLIC_SOLANA_RPC_URL` /
  * `PUBLIC_MONAD_RPC_URL` at a node of its own.
  */
-export const DEFAULT_SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
+/*
+ * Solana mainnet is publicnode, not `api.mainnet-beta.solana.com`: that one answers 403 to
+ * any request carrying an `Origin` header — every request a browser, an extension or a
+ * WebView makes — so it only ever worked from Node. publicnode answers CORS but refuses
+ * `getTokenAccountsByOwner`, which is why `lib/chainRpc.ts` reads the listed tokens'
+ * associated accounts instead and the Jupiter check reads the transaction's own accounts.
+ */
+export const DEFAULT_SOLANA_RPC_URL = 'https://solana-rpc.publicnode.com';
 export const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
 
 /**
@@ -56,3 +64,53 @@ export const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
  */
 export const DEFAULT_SOLANA_TESTNET_RPC_URL = 'https://api.devnet.solana.com';
 export const DEFAULT_MONAD_TESTNET_RPC_URL = 'https://testnet-rpc.monad.xyz';
+
+/**
+ * NEAR Intents' public status endpoint (1Click), which the swap tracker reads by deposit
+ * address — public and CORS-open, and listed in the extension's host permissions like every
+ * other host the bundle calls.
+ */
+export const INTENTS_STATUS_URL = 'https://1click.chaindefuser.com/v0/status';
+
+/**
+ * Bitcoin, Ethereum, Arbitrum and Base, mainnet and test network. The EVM nodes are
+ * PublicNode's — free, keyless and CORS-open (`access-control-allow-origin: *`, checked
+ * from a browser origin), which is what a popup and a WebView need; Bitcoin is
+ * mempool.space's Esplora API, the open endpoint light wallets read. The test networks are
+ * Sepolia, Arbitrum Sepolia, Base Sepolia and Bitcoin testnet4.
+ */
+export const DEFAULT_BITCOIN_API_URL = 'https://mempool.space/api';
+export const DEFAULT_ETHEREUM_RPC_URL = 'https://ethereum-rpc.publicnode.com';
+export const DEFAULT_ARBITRUM_RPC_URL = 'https://arbitrum-one-rpc.publicnode.com';
+export const DEFAULT_BASE_RPC_URL = 'https://base-rpc.publicnode.com';
+export const DEFAULT_BITCOIN_TESTNET_API_URL = 'https://mempool.space/testnet4/api';
+export const DEFAULT_ETHEREUM_TESTNET_RPC_URL = 'https://ethereum-sepolia-rpc.publicnode.com';
+export const DEFAULT_ARBITRUM_TESTNET_RPC_URL = 'https://arbitrum-sepolia-rpc.publicnode.com';
+export const DEFAULT_BASE_TESTNET_RPC_URL = 'https://base-sepolia-rpc.publicnode.com';
+
+/**
+ * Every chain node a build talks to, and the `.env` variable that replaces each one.
+ *
+ * One table, read by BOTH `lib/endpoints.ts` (which node a call goes to) and
+ * `scripts/build-extension.ts` (which hosts the MV3 manifest grants), so a chain added here
+ * cannot be called by the bundle and forgotten by the manifest — the failure that reads,
+ * from inside the popup, as the network being down.
+ */
+export const CHAIN_NODES: Record<ChainNet, Record<OtherChain, { env: string; fallback: string }>> = {
+  mainnet: {
+    bitcoin: { env: 'PUBLIC_BITCOIN_API_URL', fallback: DEFAULT_BITCOIN_API_URL },
+    ethereum: { env: 'PUBLIC_ETHEREUM_RPC_URL', fallback: DEFAULT_ETHEREUM_RPC_URL },
+    solana: { env: 'PUBLIC_SOLANA_RPC_URL', fallback: DEFAULT_SOLANA_RPC_URL },
+    arbitrum: { env: 'PUBLIC_ARBITRUM_RPC_URL', fallback: DEFAULT_ARBITRUM_RPC_URL },
+    base: { env: 'PUBLIC_BASE_RPC_URL', fallback: DEFAULT_BASE_RPC_URL },
+    monad: { env: 'PUBLIC_MONAD_RPC_URL', fallback: DEFAULT_MONAD_RPC_URL },
+  },
+  testnet: {
+    bitcoin: { env: 'PUBLIC_BITCOIN_TESTNET_API_URL', fallback: DEFAULT_BITCOIN_TESTNET_API_URL },
+    ethereum: { env: 'PUBLIC_ETHEREUM_TESTNET_RPC_URL', fallback: DEFAULT_ETHEREUM_TESTNET_RPC_URL },
+    solana: { env: 'PUBLIC_SOLANA_TESTNET_RPC_URL', fallback: DEFAULT_SOLANA_TESTNET_RPC_URL },
+    arbitrum: { env: 'PUBLIC_ARBITRUM_TESTNET_RPC_URL', fallback: DEFAULT_ARBITRUM_TESTNET_RPC_URL },
+    base: { env: 'PUBLIC_BASE_TESTNET_RPC_URL', fallback: DEFAULT_BASE_TESTNET_RPC_URL },
+    monad: { env: 'PUBLIC_MONAD_TESTNET_RPC_URL', fallback: DEFAULT_MONAD_TESTNET_RPC_URL },
+  },
+};

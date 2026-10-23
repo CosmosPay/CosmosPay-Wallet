@@ -37,6 +37,7 @@ import { dropPasskeyUnlock } from '@/lib/passkeyUnlock';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
 import type { Rekey } from '@/lib/accountAddress';
+import type { StoredChainAddresses } from '@/lib/chainAddressBook';
 import { tNow } from '@/lib/i18n';
 
 const WALLETS_KEY = 'cosmos.wallets';
@@ -110,11 +111,13 @@ export interface WalletEntry {
    */
   recoveryEmail?: string;
   /**
-   * The Solana and Monad addresses this wallet's recovery phrase controls (`lib/chainAddresses.ts`).
-   * Public, derived once and kept here so showing them needs no password. Absent until first
-   * derived, and never present on a wallet imported from a bare secret key: it has no phrase.
+   * The Bitcoin, EVM and Solana addresses this wallet's recovery phrase controls
+   * (`lib/chainAddresses.ts`). Public, derived once and kept here so showing them needs no
+   * password. Absent until first derived, and never present on a wallet imported from a bare
+   * secret key: it has no phrase. An entry saved before Bitcoin and the other EVM chains
+   * holds `{ solana, monad }` and is re-derived to the full set on the next unlock.
    */
-  chainAddresses?: { solana: string; monad: string };
+  chainAddresses?: StoredChainAddresses;
   /**
    * The email the two recovery servers will hand this wallet's backup key halves to
    * (`lib/backupRecovery.ts`). Like `recoveryEmail`, the only record of what was filed —

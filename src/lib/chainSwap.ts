@@ -1,7 +1,7 @@
 /**
- * Paying from Solana or Monad: the balances the swap screen shows, and the things the
- * wallet signs there — a Jupiter swap, a Kuru Flow swap (with its approval), a deposit
- * into a NEAR Intents address, and a plain transfer on a test network.
+ * Paying from the other chains: the balances the swap screen shows, and the things the
+ * wallet signs there — a Jupiter swap (Solana), a Kuru Flow swap with its approval (Monad),
+ * a deposit into a NEAR Intents address (every chain), and a plain transfer.
  *
  * Every function that signs checks first, and refuses with a `ChainSwapRefused` whose
  * `code` the store turns into a message. Nothing here reaches the gateway: the store
@@ -13,34 +13,41 @@ import {
   CHAIN_CONFIRM_TIMEOUT_MS,
   CHAIN_TOKENS_BY_NET,
   EVM_BASE_FEE_MULTIPLIER,
+  EVM_CHAIN_IDS,
   EVM_GAS_HEADROOM_PCT,
   MONAD_CHAIN_ID,
-  MONAD_CHAIN_IDS,
   NATIVE_RESERVE,
+  SOLANA_MAX_READ_ACCOUNTS,
   SOLANA_RENT_EXEMPT_LAMPORTS,
+  isEvmChain,
   type ChainNet,
+  type EvmChain,
   type OtherChain,
 } from '@/constants/chains';
 import {
-  monadBalance,
-  monadChainId,
-  monadEstimateGas,
-  monadFees,
-  monadNonce,
-  monadReceipt,
-  monadSend,
-  monadTokenBalance,
+  bitcoinBalance,
+  bitcoinBroadcast,
+  bitcoinFeeRate,
+  bitcoinUtxos,
+  evmBalance,
+  evmChainId,
+  evmEstimateGas,
+  evmFees,
+  evmNonce,
+  evmReceipt,
+  evmSend,
+  evmTokenBalance,
   solanaAccounts,
   solanaBlockhash,
   solanaLamports,
   solanaMintProgram,
   solanaSend,
   solanaSimulate,
-  solanaTokenAccounts,
+  solanaTokenBalances,
 } from '@/lib/chainRpc';
+import { BitcoinSpendRefused, isBitcoinAddress, signBitcoinPayment } from '@/lib/bitcoinTx';
 import { checkMonadSwapCalls, isEvmAddress, signEip1559, transferCalldata, type EvmCall } from '@/lib/evmTx';
 import {
-  associatedTokenAddress,
   checkSwapEffects,
   isSolanaAddress,
   lookupTableAddresses,
@@ -57,13 +64,16 @@ export type ChainSwapRefusalCode =
   | 'drain' // it would take more than the amount confirmed
   | 'short' // it would deliver less than the quote's minimum
   | 'simulation' // the node could not run it at all
-  | 'chain' // a Monad call for another chain, or the node is not Monad mainnet
-  | 'testnetNode' // the node configured for Monad testnet is not Monad testnet
+  | 'chain' // an EVM call for another chain, or the node is not the chain it claims
+  | 'testnetNode' // the node configured for a test network is not that test network
   | 'rent' // a SOL transfer would open an account with less than rent exemption
   | 'value' // a Monad swap sending more MON than confirmed
   | 'approval' // an approval that is not exactly (router, amount)
-  | 'address' // a deposit address that is not an address on that chain
-  | 'timeout'; // the approval did not land in time
+  | 'address' // a destination that is not an address on that chain (and network)
+  | 'timeout' // the approval did not land in time
+  | 'funds' // a Bitcoin payment its outputs cannot cover, fee included
+  | 'fee' // a Bitcoin fee rate outside the bounds the wallet will pay
+  | 'dust'; // a Bitcoin payment too small to be relayed
 
 export class ChainSwapRefused extends Error {
   readonly code: ChainSwapRefusalCode;
@@ -76,30 +86,38 @@ export class ChainSwapRefused extends Error {
 
 /**
  * Base-unit balance of each token offered on `chain`'s `net`, keyed by `asset`. On a
- * test network the Monad node is asked which chain it serves first: an override pointed
- * at mainnet would otherwise show real MON on a card that calls it test MON.
+ * test network an EVM node is asked which chain it serves first: an override pointed at
+ * mainnet would otherwise show real coins on a card that calls them test coins.
  */
 export async function chainBalances(chain: OtherChain, owner: string, net: ChainNet = 'mainnet'): Promise<Record<string, bigint>> {
   const out: Record<string, bigint> = {};
   const tokens = CHAIN_TOKENS_BY_NET[net][chain];
-  if (chain === 'solana') {
-    const [lamports, accounts] = await Promise.all([solanaLamports(owner, net), solanaTokenAccounts(owner, net)]);
-    for (const t of tokens) {
-      out[t.asset] = t.asset === 'native' ? lamports : accounts.filter((a) => a.mint === t.asset).reduce((s, a) => s + a.amount, 0n);
-    }
+  if (chain === 'bitcoin') {
+    out.native = await bitcoinBalance(owner, net);
     return out;
   }
-  if (net === 'testnet') await assertMonadNode(net);
+  if (chain === 'solana') {
+    const mints = tokens.filter((t) => t.asset !== 'native').map((t) => t.asset);
+    const [lamports, held] = await Promise.all([solanaLamports(owner, net), solanaTokenBalances(owner, mints, net)]);
+    for (const t of tokens) out[t.asset] = t.asset === 'native' ? lamports : held[t.asset] ?? 0n;
+    return out;
+  }
+  if (net === 'testnet') await assertEvmNode(chain, net);
   await Promise.all(
     tokens.map(async (t) => {
-      out[t.asset] = t.asset === 'native' ? await monadBalance(owner, net) : await monadTokenBalance(t.asset, owner, net);
+      out[t.asset] = t.asset === 'native' ? await evmBalance(chain, owner, net) : await evmTokenBalance(chain, t.asset, owner, net);
     }),
   );
   return out;
 }
 
-/** Whether `address` is an address on `chain` — the predicate a screen and the signer share. */
-export function isChainAddress(chain: OtherChain, address: string): boolean {
+/**
+ * Whether `address` is an address on `chain` — the predicate a screen and the signer share.
+ * A Bitcoin address is checked for the network it would be paid on: a `tb1…` address is not
+ * a mainnet address and a `bc1…` one is not a testnet address.
+ */
+export function isChainAddress(chain: OtherChain, address: string, net: ChainNet = 'mainnet'): boolean {
+  if (chain === 'bitcoin') return isBitcoinAddress(address, net);
   return chain === 'solana' ? isSolanaAddress(address) : isEvmAddress(address);
 }
 
@@ -135,9 +153,11 @@ async function writableAccounts(message: Uint8Array): Promise<Set<string>> {
 }
 
 /**
- * Check a Jupiter swap by simulating it with every account of ours it may write to in
- * view, then sign it. Only those: an account the transaction cannot write to cannot
- * change, and a node takes no more accounts than the transaction names. `sell` / `buy` are `native` or a mint; `amount` and `minimum` are base units — the
+ * Check a Jupiter swap by simulating it with every account it may write to in view, then
+ * sign it. Every one, not a listing of ours: `checkSwapEffects` keeps the wallet and the
+ * token accounts it owns and ignores the pools', so reading them all also covers an account
+ * of ours no listing would have named — and needs no `getTokenAccountsByOwner`, which the
+ * public mainnet node refuses. An account the transaction cannot write to cannot change. `sell` / `buy` are `native` or a mint; `amount` and `minimum` are base units — the
  * amount typed and the minimum the confirmed QUOTE showed, not the create response's.
  * Answers the signed wire bytes, base64.
  */
@@ -151,9 +171,6 @@ export async function signSolanaSwap(p: {
   minimum: bigint;
 }): Promise<string> {
   const wire = base64.decode(p.wire);
-  const tokens = await solanaTokenAccounts(p.owner);
-  const ours = new Set([p.owner, ...tokens.map((t) => t.address)]);
-  if (p.buy !== 'native') ours.add(associatedTokenAddress(p.owner, p.buy, await solanaMintProgram(p.buy)));
   let writable: Set<string>;
   try {
     writable = await writableAccounts(parseSolanaTx(wire).message);
@@ -161,8 +178,9 @@ export async function signSolanaSwap(p: {
     if (e instanceof ChainSwapRefused) throw e;
     throw new ChainSwapRefused('simulation');
   }
-  // The fee payer is always writable; the rest of ours only where the transaction says so.
-  const list = [p.owner, ...[...ours].filter((a) => a !== p.owner && writable.has(a))];
+  // The fee payer first; then everything else the transaction may write.
+  const list = [p.owner, ...[...writable].filter((a) => a !== p.owner)];
+  if (list.length > SOLANA_MAX_READ_ACCOUNTS) throw new ChainSwapRefused('simulation');
   const [pre, sim] = await Promise.all([solanaAccounts(list), solanaSimulate(wire, list)]);
   if (sim.err) throw new ChainSwapRefused('simulation');
   const refusal = checkSwapEffects(
@@ -185,24 +203,31 @@ export async function signSolanaSwap(p: {
   return base64.encode(signed);
 }
 
-/* --------------------------------- Monad --------------------------------- */
+/* ---------------------------------- EVM ---------------------------------- */
 
 /** The node must serve the chain `net` names; the signature is bound to that chain id too. */
-async function assertMonadNode(net: ChainNet = 'mainnet'): Promise<void> {
-  if ((await monadChainId(net)) !== MONAD_CHAIN_IDS[net]) throw new ChainSwapRefused(net === 'mainnet' ? 'chain' : 'testnetNode');
+async function assertEvmNode(chain: EvmChain, net: ChainNet = 'mainnet'): Promise<void> {
+  if ((await evmChainId(chain, net)) !== EVM_CHAIN_IDS[net][chain]) {
+    throw new ChainSwapRefused(net === 'mainnet' ? 'chain' : 'testnetNode');
+  }
 }
 
-/** Sign one call as an EIP-1559 transaction at the node's current fees and our nonce. */
-async function signMonadCall(
+/** Sign one call on `chain` as an EIP-1559 transaction at the node's current fees and our nonce. */
+async function signEvmCall(
+  chain: EvmChain,
   call: { to: string; data: string; value: bigint },
   secret: Uint8Array,
   owner: string,
   net: ChainNet = 'mainnet',
 ) {
-  const [n, fees, gas] = await Promise.all([monadNonce(owner, net), monadFees(net), monadEstimateGas({ from: owner, ...call }, net)]);
+  const [n, fees, gas] = await Promise.all([
+    evmNonce(chain, owner, net),
+    evmFees(chain, net),
+    evmEstimateGas(chain, { from: owner, ...call }, net),
+  ]);
   return signEip1559(
     {
-      chainId: MONAD_CHAIN_IDS[net],
+      chainId: EVM_CHAIN_IDS[net][chain],
       nonce: n,
       maxPriorityFeePerGas: fees.tip,
       maxFeePerGas: fees.baseFee * EVM_BASE_FEE_MULTIPLIER + fees.tip,
@@ -215,10 +240,10 @@ async function signMonadCall(
   );
 }
 
-async function waitForReceipt(hash: string): Promise<void> {
+async function waitForReceipt(chain: EvmChain, hash: string): Promise<void> {
   const deadline = Date.now() + CHAIN_CONFIRM_TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const ok = await monadReceipt(hash);
+    const ok = await evmReceipt(chain, hash);
     if (ok === true) return;
     if (ok === false) throw new ChainSwapRefused('approval');
     await new Promise((r) => setTimeout(r, CHAIN_CONFIRM_POLL_MS));
@@ -229,7 +254,8 @@ async function waitForReceipt(hash: string): Promise<void> {
 /**
  * Check a Kuru Flow swap's calls, send its approval (when there is one) and wait for it
  * to land — the swap's gas estimate needs the allowance in place — then sign the swap.
- * Answers the raw signed swap, 0x-hex, for the gateway to relay.
+ * Answers the raw signed swap, 0x-hex, for the gateway to relay. Monad only: it is the one
+ * EVM chain with a same-chain venue the gateway builds for.
  */
 export async function signMonadSwap(p: {
   transaction: EvmCall;
@@ -241,13 +267,14 @@ export async function signMonadSwap(p: {
 }): Promise<string> {
   const refusal = checkMonadSwapCalls(p.transaction, p.approval, p.sell, p.amount, MONAD_CHAIN_ID);
   if (refusal) throw new ChainSwapRefused(refusal);
-  await assertMonadNode();
+  await assertEvmNode('monad');
   if (p.approval) {
-    const approve = await signMonadCall({ to: p.approval.to, data: p.approval.data, value: 0n }, p.secret, p.owner);
-    await monadSend(approve.raw);
-    await waitForReceipt(approve.hash);
+    const approve = await signEvmCall('monad', { to: p.approval.to, data: p.approval.data, value: 0n }, p.secret, p.owner);
+    await evmSend('monad', approve.raw);
+    await waitForReceipt('monad', approve.hash);
   }
-  const swap = await signMonadCall(
+  const swap = await signEvmCall(
+    'monad',
     { to: p.transaction.to, data: p.transaction.data, value: BigInt(p.transaction.value || '0') },
     p.secret,
     p.owner,
@@ -267,13 +294,30 @@ export interface TransferParams {
   amount: bigint;
 }
 
+/** Spend from the phrase's Bitcoin address; a builder refusal becomes the wallet's own. */
+async function sendBitcoin(p: TransferParams & { net: ChainNet }): Promise<string> {
+  const [utxos, feeRate] = await Promise.all([bitcoinUtxos(p.owner, p.net), bitcoinFeeRate(p.net)]);
+  let signed: { hex: string; txid: string };
+  try {
+    signed = signBitcoinPayment({ utxos, secret: p.secret, owner: p.owner, to: p.to, amount: p.amount, feeRate, net: p.net });
+  } catch (e) {
+    if (e instanceof BitcoinSpendRefused) throw new ChainSwapRefused(e.code);
+    throw e;
+  }
+  const txid = await bitcoinBroadcast(signed.hex, p.net);
+  // Esplora answers the txid it computed; one that disagrees with ours is not our transaction.
+  if (txid.toLowerCase() !== signed.txid.toLowerCase()) throw new ChainSwapRefused('simulation');
+  return signed.txid;
+}
+
 /**
  * Pay `amount` of `asset` from our address on `chain` to `to`, on `net`, with a
  * transaction this wallet builds itself. Answers the transaction id once the node has
  * accepted it (Solana runs preflight, so a doomed one is refused there).
  */
 export async function sendTransfer(p: TransferParams & { net: ChainNet }): Promise<string> {
-  if (!isChainAddress(p.chain, p.to)) throw new ChainSwapRefused('address');
+  if (!isChainAddress(p.chain, p.to, p.net)) throw new ChainSwapRefused('address');
+  if (p.chain === 'bitcoin') return sendBitcoin(p);
   if (p.chain === 'solana') {
     // Opening an account with less than rent exemption fails on chain with an error
     // about rent nobody expects from "send 0.0001 SOL"; refuse it here and say why.
@@ -295,13 +339,15 @@ export async function sendTransfer(p: TransferParams & { net: ChainNet }): Promi
           });
     return solanaSend(signSolanaTx(wire, p.secret, p.owner).signed, p.net);
   }
-  await assertMonadNode(p.net);
+  if (!isEvmChain(p.chain)) throw new ChainSwapRefused('chain');
+  const chain = p.chain;
+  await assertEvmNode(chain, p.net);
   const call =
     p.asset === 'native'
       ? { to: p.to, data: '0x', value: p.amount }
       : { to: p.asset, data: transferCalldata(p.to, p.amount), value: 0n };
-  const signed = await signMonadCall(call, p.secret, p.owner, p.net);
-  await monadSend(signed.raw, p.net);
+  const signed = await signEvmCall(chain, call, p.secret, p.owner, p.net);
+  await evmSend(chain, signed.raw, p.net);
   return signed.hash;
 }
 

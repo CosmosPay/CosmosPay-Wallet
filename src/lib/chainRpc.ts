@@ -1,6 +1,7 @@
 /**
- * The Solana and Monad JSON-RPC calls the wallet makes — balances, simulation, fees,
- * nonces and broadcasts — against the node `lib/endpoints.ts` resolves for each network.
+ * The calls the wallet makes to the other chains' nodes — Solana and EVM JSON-RPC, and a
+ * Bitcoin Esplora API: balances, simulation, fees, nonces, unspent outputs and broadcasts —
+ * against the node `lib/endpoints.ts` resolves for each network.
  * Every call defaults to mainnet, which is the only network a swap uses; the test
  * networks (`net: 'testnet'`) are for test balances and test sends.
  *
@@ -11,12 +12,13 @@
  * lying one alone does not get a transaction through both.
  */
 import { base64 } from '@scure/base';
-import { CHAIN_RPC_TIMEOUT_MS, type ChainNet } from '@/constants/chains';
+import { CHAIN_RPC_TIMEOUT_MS, type ChainNet, type EvmChain } from '@/constants/chains';
 import { chainRpcUrl, testnetRpcUrl } from '@/lib/endpoints';
 import { balanceOfCalldata } from '@/lib/evmTx';
 import {
   TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
+  associatedTokenAddress,
   decodeTokenAccount,
   type AccountState,
 } from '@/lib/solanaTx';
@@ -69,23 +71,30 @@ export async function solanaLamports(owner: string, net: ChainNet = 'mainnet'): 
   return BigInt(r.value);
 }
 
-/** Every token account `owner` holds, under both token programs. */
-export async function solanaTokenAccounts(owner: string, net: ChainNet = 'mainnet'): Promise<{ address: string; mint: string; amount: bigint }[]> {
-  const lists = await Promise.all(
-    [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((programId) =>
-      sol<{ value: { pubkey: string; account: NonNullable<RawAccount> }[] }>('getTokenAccountsByOwner', [
-        owner,
-        { programId },
-        { encoding: 'base64', commitment: 'confirmed' },
-      ], net),
-    ),
+/**
+ * What `owner` holds of each of `mints`, read from its associated token account under both
+ * token programs in one `getMultipleAccounts`. Never `getTokenAccountsByOwner`: the public
+ * mainnet node that answers a browser refuses it (see `DEFAULT_SOLANA_RPC_URL`). The mints
+ * are the wallet's own listed tokens, whose balances live in their associated accounts.
+ */
+export async function solanaTokenBalances(owner: string, mints: string[], net: ChainNet = 'mainnet'): Promise<Record<string, bigint>> {
+  const out: Record<string, bigint> = Object.fromEntries(mints.map((m) => [m, 0n]));
+  const slots = mints.flatMap((mint) =>
+    [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((program) => ({ mint, program, address: associatedTokenAddress(owner, mint, program) })),
   );
-  return lists.flatMap((l) =>
-    l.value.flatMap(({ pubkey, account }) => {
-      const token = decodeTokenAccount(base64.decode(account.data[0]));
-      return token ? [{ address: pubkey, mint: token.mint, amount: token.amount }] : [];
-    }),
+  if (!slots.length) return out;
+  const r = await sol<{ value: RawAccount[] }>(
+    'getMultipleAccounts',
+    [slots.map((s) => s.address), { encoding: 'base64', commitment: 'confirmed' }],
+    net,
   );
+  slots.forEach((s, i) => {
+    const raw = r.value[i];
+    if (!raw || raw.owner !== s.program) return;
+    const token = decodeTokenAccount(base64.decode(raw.data[0]));
+    if (token && token.owner === owner && token.mint === s.mint) out[s.mint] += token.amount;
+  });
+  return out;
 }
 
 /** The token program that owns `mint` (SPL Token or Token-2022). */
@@ -134,53 +143,131 @@ export async function solanaSend(signed: Uint8Array, net: ChainNet = 'mainnet'):
   return sol<string>('sendTransaction', [base64.encode(signed), { encoding: 'base64', preflightCommitment: 'confirmed' }], net);
 }
 
-/* -------------------------------- Monad --------------------------------- */
+/* --------------------------------- EVM ---------------------------------- */
+// Ethereum, Arbitrum, Base and Monad speak the same JSON-RPC; only the node and the chain
+// id differ, and every caller that signs checks the chain id first (`lib/chainSwap.ts`).
 
-const mon = <T>(method: string, params: unknown[], net: ChainNet = 'mainnet') =>
-  rpc<T>(chainRpcUrl('monad', net), method, params);
+const evm = <T>(chain: EvmChain, method: string, params: unknown[], net: ChainNet = 'mainnet') =>
+  rpc<T>(chainRpcUrl(chain, net), method, params);
 const hexQty = (n: bigint) => `0x${n.toString(16)}`;
 
-export async function monadChainId(net: ChainNet = 'mainnet'): Promise<number> {
-  return Number(BigInt(await mon<string>('eth_chainId', [], net)));
+export async function evmChainId(chain: EvmChain, net: ChainNet = 'mainnet'): Promise<number> {
+  return Number(BigInt(await evm<string>(chain, 'eth_chainId', [], net)));
 }
 
-export async function monadBalance(owner: string, net: ChainNet = 'mainnet'): Promise<bigint> {
-  return BigInt(await mon<string>('eth_getBalance', [owner, 'latest'], net));
+export async function evmBalance(chain: EvmChain, owner: string, net: ChainNet = 'mainnet'): Promise<bigint> {
+  return BigInt(await evm<string>(chain, 'eth_getBalance', [owner, 'latest'], net));
 }
 
-export async function monadTokenBalance(token: string, owner: string, net: ChainNet = 'mainnet'): Promise<bigint> {
-  const out = await mon<string>('eth_call', [{ to: token, data: balanceOfCalldata(owner) }, 'latest'], net);
+export async function evmTokenBalance(chain: EvmChain, token: string, owner: string, net: ChainNet = 'mainnet'): Promise<bigint> {
+  const out = await evm<string>(chain, 'eth_call', [{ to: token, data: balanceOfCalldata(owner) }, 'latest'], net);
   return out && out !== '0x' ? BigInt(out) : 0n;
 }
 
-export async function monadNonce(owner: string, net: ChainNet = 'mainnet'): Promise<bigint> {
-  return BigInt(await mon<string>('eth_getTransactionCount', [owner, 'pending'], net));
+export async function evmNonce(chain: EvmChain, owner: string, net: ChainNet = 'mainnet'): Promise<bigint> {
+  return BigInt(await evm<string>(chain, 'eth_getTransactionCount', [owner, 'pending'], net));
 }
 
 /** `maxPriorityFeePerGas` and the latest block's base fee. */
-export async function monadFees(net: ChainNet = 'mainnet'): Promise<{ tip: bigint; baseFee: bigint }> {
+export async function evmFees(chain: EvmChain, net: ChainNet = 'mainnet'): Promise<{ tip: bigint; baseFee: bigint }> {
   const [tip, block] = await Promise.all([
-    mon<string>('eth_maxPriorityFeePerGas', [], net),
-    mon<{ baseFeePerGas?: string }>('eth_getBlockByNumber', ['latest', false], net),
+    evm<string>(chain, 'eth_maxPriorityFeePerGas', [], net),
+    evm<{ baseFeePerGas?: string }>(chain, 'eth_getBlockByNumber', ['latest', false], net),
   ]);
   return { tip: BigInt(tip), baseFee: BigInt(block.baseFeePerGas ?? '0x0') };
 }
 
-export async function monadEstimateGas(
+export async function evmEstimateGas(
+  chain: EvmChain,
   call: { from: string; to: string; data: string; value: bigint },
   net: ChainNet = 'mainnet',
 ): Promise<bigint> {
-  return BigInt(await mon<string>('eth_estimateGas', [{ ...call, value: hexQty(call.value) }], net));
+  return BigInt(await evm<string>(chain, 'eth_estimateGas', [{ ...call, value: hexQty(call.value) }], net));
 }
 
-export async function monadSend(raw: string, net: ChainNet = 'mainnet'): Promise<string> {
-  return mon<string>('eth_sendRawTransaction', [raw], net);
+export async function evmSend(chain: EvmChain, raw: string, net: ChainNet = 'mainnet'): Promise<string> {
+  return evm<string>(chain, 'eth_sendRawTransaction', [raw], net);
 }
 
 /** true / false once mined (status 1 / 0), null while pending. */
-export async function monadReceipt(hash: string, net: ChainNet = 'mainnet'): Promise<boolean | null> {
-  const r = await mon<{ status?: string } | null>('eth_getTransactionReceipt', [hash], net);
+export async function evmReceipt(chain: EvmChain, hash: string, net: ChainNet = 'mainnet'): Promise<boolean | null> {
+  const r = await evm<{ status?: string } | null>(chain, 'eth_getTransactionReceipt', [hash], net);
   return r ? r.status === '0x1' : null;
+}
+
+/* -------------------------------- Bitcoin -------------------------------- */
+// An Esplora REST API (mempool.space by default), not JSON-RPC: a Bitcoin node exposes no
+// address index, and an indexer is what answers "what can this address spend".
+
+async function esplora<T>(net: ChainNet, path: string, init?: { method: 'POST'; body: string }): Promise<T> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), CHAIN_RPC_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${chainRpcUrl('bitcoin', net)}${path}`, {
+      method: init?.method ?? 'GET',
+      headers: init ? { 'content-type': 'text/plain' } : undefined,
+      body: init?.body,
+      signal: ctrl.signal,
+    });
+    const text = await res.text();
+    if (!res.ok) throw new ChainRpcError(`${path}: HTTP ${res.status} ${text.slice(0, 200)}`.trim(), res.status);
+    // A broadcast answers the bare txid as text; everything else is JSON.
+    return (init ? text.trim() : JSON.parse(text)) as T;
+  } catch (e) {
+    if (e instanceof ChainRpcError) throw e;
+    throw new ChainRpcError((e as Error).name === 'AbortError' ? `${path}: timed out` : `${path}: ${(e as Error).message}`);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** An output this address can spend. `value` in sats. */
+export interface BitcoinUtxo {
+  txid: string;
+  vout: number;
+  value: bigint;
+  confirmed: boolean;
+}
+
+/** The balance (sats): confirmed and unconfirmed, received less spent, as Esplora counts it. */
+export async function bitcoinBalance(address: string, net: ChainNet = 'mainnet'): Promise<bigint> {
+  type Stats = { funded_txo_sum: number; spent_txo_sum: number };
+  const r = await esplora<{ chain_stats: Stats; mempool_stats: Stats }>(net, `/address/${encodeURIComponent(address)}`);
+  const sum = (s: Stats) => BigInt(s.funded_txo_sum) - BigInt(s.spent_txo_sum);
+  const total = sum(r.chain_stats) + sum(r.mempool_stats);
+  return total > 0n ? total : 0n;
+}
+
+export async function bitcoinUtxos(address: string, net: ChainNet = 'mainnet'): Promise<BitcoinUtxo[]> {
+  const list = await esplora<{ txid: string; vout: number; value: number; status: { confirmed: boolean } }[]>(
+    net,
+    `/address/${encodeURIComponent(address)}/utxo`,
+  );
+  return list.map((u) => ({ txid: u.txid, vout: u.vout, value: BigInt(u.value), confirmed: !!u.status?.confirmed }));
+}
+
+/**
+ * The fee rate (sat/vB) for confirmation within about half an hour. mempool.space's
+ * `/v1/fees/recommended` first; a plain Esplora's `/fee-estimates` (target in blocks →
+ * rate) when the first is not there.
+ */
+export async function bitcoinFeeRate(net: ChainNet = 'mainnet'): Promise<number> {
+  try {
+    const r = await esplora<{ halfHourFee?: number; fastestFee?: number }>(net, '/v1/fees/recommended');
+    const rate = r.halfHourFee ?? r.fastestFee;
+    if (typeof rate === 'number' && Number.isFinite(rate)) return rate;
+  } catch {
+    /* not mempool.space — fall through to the Esplora standard */
+  }
+  const est = await esplora<Record<string, number>>(net, '/fee-estimates');
+  const rate = est['3'] ?? est['6'] ?? est['2'] ?? est['1'];
+  if (typeof rate !== 'number' || !Number.isFinite(rate)) throw new ChainRpcError('fee-estimates: no rate');
+  return rate;
+}
+
+/** Broadcast a signed transaction (raw hex); answers its txid. */
+export async function bitcoinBroadcast(rawHex: string, net: ChainNet = 'mainnet'): Promise<string> {
+  return esplora<string>(net, '/tx', { method: 'POST', body: rawHex });
 }
 
 /* ----------------------------- test networks ----------------------------- */

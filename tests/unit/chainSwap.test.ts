@@ -44,7 +44,7 @@ const USDT_SOL = 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB';
 /* ---------------------------------- keys --------------------------------- */
 
 test('the signing keys belong to the addresses the wallet shows', async () => {
-  const { solana, monad } = await chainAddressesFromMnemonic(PHRASE);
+  const { solana, evm: monad } = await chainAddressesFromMnemonic(PHRASE);
   const solSecret = await chainSecret(PHRASE, 'solana', solana);
   assert.equal(base58.encode(ed25519.getPublicKey(solSecret)), solana);
   const evmSecret = await chainSecret(PHRASE, 'monad', monad.toLowerCase());

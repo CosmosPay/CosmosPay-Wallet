@@ -44,7 +44,9 @@ export function DevModeSection({ store }: { store: WalletStore }) {
           <div className="settings-dev-desc">{t('settings.devModeDesc')}</div>
           {ENDPOINT_FIELDS.map((f) => (
             <label key={f.key} className="settings-dev-field">
-              <div className="label-up settings-dev-field-label">{t(f.labelKey)}</div>
+              <div className="label-up settings-dev-field-label">
+                {f.chainKey ? t(f.labelKey, { chain: t(f.chainKey) }) : t(f.labelKey)}
+              </div>
               <input
                 value={vals[f.key] ?? ''}
                 placeholder={f.getDefault() || '(same-origin)'}

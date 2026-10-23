@@ -18,15 +18,7 @@
 import { cp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
 import { loadEnv } from 'vite';
-import {
-  DEFAULT_GATEWAY_URL,
-  DEFAULT_MONAD_RPC_URL,
-  DEFAULT_MONAD_TESTNET_RPC_URL,
-  DEFAULT_RECOVERY_A_URL,
-  DEFAULT_RECOVERY_B_URL,
-  DEFAULT_SOLANA_RPC_URL,
-  DEFAULT_SOLANA_TESTNET_RPC_URL,
-} from '../src/constants/backends.ts';
+import { CHAIN_NODES, DEFAULT_GATEWAY_URL, DEFAULT_RECOVERY_A_URL, DEFAULT_RECOVERY_B_URL, INTENTS_STATUS_URL } from '../src/constants/backends.ts';
 import { cosmosHostPermissions, hostPattern } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
@@ -158,7 +150,7 @@ const cameraJs =
   ".catch((e)=>{s.textContent='\\u274c Permiso denegado ('+e.name+'). Act\\u00edvalo desde el icono de c\\u00e1mara en la barra de direcciones y cierra esta pesta\\u00f1a. / Permission denied — enable it from the address-bar camera icon, then close this tab.';});";
 const cameraHtml =
   '<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Cosmos Pay · Cámara</title>' +
-  '<style>body{background:#080808;color:#fff;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;text-align:center;margin:0}p{max-width:520px;line-height:1.6;font-size:15px;font-weight:600}</style>' +
+  '<style>body{background:#000000;color:#fff;font-family:system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;text-align:center;margin:0}p{max-width:520px;line-height:1.6;font-size:15px;font-weight:600}</style>' +
   '</head><body><p id="st">Solicitando permiso de cámara… / Requesting camera permission…</p><script src="camera.js"></script></body></html>';
 await writeFile(join(OUT, 'camera.html'), cameraHtml, 'utf8');
 await writeFile(join(OUT, 'camera.js'), cameraJs, 'utf8');
@@ -170,29 +162,29 @@ await writeFile(join(OUT, 'camera.js'), cameraJs, 'utf8');
 //   appDesc      — store + chrome://extensions description (HARD Chrome limit ≤132)
 //   actionTitle  — toolbar-icon tooltip (localised, more descriptive than the name)
 // default_locale is `en`, so `en` MUST define every key referenced by the manifest.
-const APP_NAME = 'Cosmos Pay — Stellar Wallet';
+const APP_NAME = 'Cosmos Pay — Multichain Wallet';
 const APP_SHORT = 'Cosmos Pay';
 type Locale = { desc: string; tooltip: string };
 const LOCALES: Record<string, Locale> = {
   en: {
-    desc: 'Non-custodial Stellar wallet: send, receive and swap XLM & assets. Your keys are encrypted on-device and never leave it.',
-    tooltip: 'Open your Cosmos Pay Stellar wallet',
+    desc: 'Non-custodial wallet for Stellar, Bitcoin, Ethereum, Solana, Arbitrum, Base & Monad. Send, receive and swap; keys stay on-device.',
+    tooltip: 'Open your Cosmos Pay wallet',
   },
   es: {
-    desc: 'Wallet no custodial de Stellar: envía, recibe e intercambia XLM y activos. Tus claves se cifran en tu dispositivo y nunca salen.',
-    tooltip: 'Abre tu wallet Stellar de Cosmos Pay',
+    desc: 'Wallet no custodial: Stellar, Bitcoin, Ethereum, Solana, Arbitrum, Base y Monad. Envía, recibe e intercambia; tus claves no salen.',
+    tooltip: 'Abre tu wallet de Cosmos Pay',
   },
   pt: {
-    desc: 'Carteira não custodial de Stellar: envie, receba e troque XLM e ativos. Suas chaves são cifradas no dispositivo e nunca saem.',
-    tooltip: 'Abra sua carteira Stellar da Cosmos Pay',
+    desc: 'Carteira não custodial para Stellar, Bitcoin, Ethereum, Solana, Arbitrum, Base e Monad. Envie, receba e troque; chaves no aparelho.',
+    tooltip: 'Abra sua carteira Cosmos Pay',
   },
   de: {
-    desc: 'Nicht-verwahrende Stellar-Wallet: XLM & Assets senden, empfangen und tauschen. Schlüssel werden auf dem Gerät verschlüsselt.',
-    tooltip: 'Cosmos Pay – deine Stellar-Wallet öffnen',
+    desc: 'Nicht-verwahrende Wallet für Stellar, Bitcoin, Ethereum, Solana, Arbitrum, Base & Monad. Senden, empfangen, tauschen.',
+    tooltip: 'Cosmos Pay – deine Wallet öffnen',
   },
   fr: {
-    desc: "Portefeuille Stellar non dépositaire : envoyez, recevez et échangez XLM et actifs. Vos clés restent chiffrées sur l'appareil.",
-    tooltip: 'Ouvrir votre portefeuille Stellar Cosmos Pay',
+    desc: "Portefeuille non dépositaire : Stellar, Bitcoin, Ethereum, Solana, Arbitrum, Base et Monad. Envoyez, recevez, échangez.",
+    tooltip: 'Ouvrir votre portefeuille Cosmos Pay',
   },
 };
 const DESC_LIMIT = 132; // Chrome rejects a manifest `description` longer than this.
@@ -276,17 +268,23 @@ const COSMOS_HOST_PERMISSIONS = cosmosHostPermissions([
   env.PUBLIC_COSMOS_RECOVERY_B_URL || DEFAULT_RECOVERY_B_URL,
 ]);
 
-// The Solana and Monad nodes a swap paid from those chains reads and broadcasts through,
-// and their test networks, where Home reads test balances and asks devnet for an airdrop.
-// Not CORS-exempt otherwise, exactly like the backends above.
+// Every chain node the wallet reads balances from and broadcasts through — Bitcoin's Esplora
+// API and the Ethereum, Solana, Arbitrum, Base and Monad RPCs, mainnet and test network.
+// Read from the SAME table lib/endpoints.ts resolves (CHAIN_NODES), so a chain the bundle
+// calls cannot be missing here. Not CORS-exempt otherwise, exactly like the backends above.
+// Plus NEAR Intents' public status endpoint, which the swap tracker reads.
 const CHAIN_RPC_HOST_PERMISSIONS = [
-  env.PUBLIC_SOLANA_RPC_URL || DEFAULT_SOLANA_RPC_URL,
-  env.PUBLIC_MONAD_RPC_URL || DEFAULT_MONAD_RPC_URL,
-  env.PUBLIC_SOLANA_TESTNET_RPC_URL || DEFAULT_SOLANA_TESTNET_RPC_URL,
-  env.PUBLIC_MONAD_TESTNET_RPC_URL || DEFAULT_MONAD_TESTNET_RPC_URL,
-]
-  .map(hostPattern)
-  .filter((p): p is string => p !== null);
+  ...new Set(
+    [
+      ...Object.values(CHAIN_NODES)
+        .flatMap((byChain) => Object.values(byChain))
+        .map((node) => env[node.env] || node.fallback),
+      INTENTS_STATUS_URL,
+    ]
+      .map(hostPattern)
+      .filter((p): p is string => p !== null),
+  ),
+];
 
 // MV3 manifest
 const manifest = {

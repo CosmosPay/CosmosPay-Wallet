@@ -12,16 +12,13 @@
  */
 
 import {
+  CHAIN_NODES,
   DEFAULT_GATEWAY_ENTRY,
   DEFAULT_GATEWAY_URL,
   DEFAULT_RECOVERY_A_URL,
   DEFAULT_RECOVERY_B_URL,
-  DEFAULT_SOLANA_RPC_URL,
-  DEFAULT_MONAD_RPC_URL,
-  DEFAULT_SOLANA_TESTNET_RPC_URL,
-  DEFAULT_MONAD_TESTNET_RPC_URL,
 } from '@/constants/backends';
-import type { ChainNet, OtherChain } from '@/constants/chains';
+import { OTHER_CHAINS, type ChainNet, type OtherChain } from '@/constants/chains';
 import type { RecoveryRole } from '@/constants/recovery';
 import { buildKind } from '@/lib/platform';
 
@@ -43,17 +40,24 @@ const sameOriginWorks = () => buildKind() === 'web';
 const MODE_KEY = 'cosmos.devMode';
 const OVERRIDES_KEY = 'cosmos.devEndpoints';
 
-export interface EndpointOverrides {
+/**
+ * The override key of each chain node: `<chain>RpcUrl` for mainnet, `<chain>TestnetRpcUrl`
+ * for its test network (on Bitcoin the "RPC" is an Esplora API base). The Solana and Monad
+ * keys are the ones this store has always used, so an override saved before the other
+ * chains existed still applies.
+ */
+export type ChainNodeKey = `${OtherChain}RpcUrl` | `${OtherChain}TestnetRpcUrl`;
+
+export const chainNodeKey = (chain: OtherChain, net: ChainNet): ChainNodeKey =>
+  net === 'mainnet' ? `${chain}RpcUrl` : `${chain}TestnetRpcUrl`;
+
+export type EndpointOverrides = {
   coingeckoBase?: string; // price feed base, e.g. https://api.coingecko.com
   gatewayUrl?: string; // APISIX gateway base ('' = same-origin proxy)
   gatewayEntry?: string; // gateway entry prefix, e.g. /cosmos-api
   recoveryAUrl?: string; // SEP-30 recovery server A
   recoveryBUrl?: string; // SEP-30 recovery server B — a DIFFERENT deployment, always
-  solanaRpcUrl?: string; // Solana mainnet JSON-RPC node
-  monadRpcUrl?: string; // Monad mainnet JSON-RPC node
-  solanaTestnetRpcUrl?: string; // Solana devnet JSON-RPC node
-  monadTestnetRpcUrl?: string; // Monad testnet JSON-RPC node
-}
+} & Partial<Record<ChainNodeKey, string>>;
 
 export function devModeEnabled(): boolean {
   try {
@@ -137,22 +141,17 @@ export const recoveryUrl = (role: RecoveryRole): string =>
     ? resolve('recoveryAUrl', ENV.PUBLIC_COSMOS_RECOVERY_A_URL || undefined, DEFAULT_RECOVERY_A_URL)
     : resolve('recoveryBUrl', ENV.PUBLIC_COSMOS_RECOVERY_B_URL || undefined, DEFAULT_RECOVERY_B_URL);
 
-/** Solana mainnet JSON-RPC (swaps paid from Solana). */
-export const solanaRpcUrl = (): string =>
-  resolve('solanaRpcUrl', ENV.PUBLIC_SOLANA_RPC_URL || undefined, DEFAULT_SOLANA_RPC_URL);
+/**
+ * The node for `chain` on `net`: a JSON-RPC endpoint, or on Bitcoin an Esplora API base.
+ * Override (dev mode) → `.env` (`CHAIN_NODES[net][chain].env`) → the compiled-in default.
+ */
+export const chainRpcUrl = (chain: OtherChain, net: ChainNet): string => {
+  const node = CHAIN_NODES[net][chain];
+  return resolve(chainNodeKey(chain, net), ENV[node.env] || undefined, node.fallback);
+};
 
-/** Monad mainnet JSON-RPC (swaps paid from Monad). */
-export const monadRpcUrl = (): string => resolve('monadRpcUrl', ENV.PUBLIC_MONAD_RPC_URL || undefined, DEFAULT_MONAD_RPC_URL);
-
-/** Solana devnet / Monad testnet JSON-RPC (test balances, airdrops and test sends). */
-export const testnetRpcUrl = (chain: OtherChain): string =>
-  chain === 'solana'
-    ? resolve('solanaTestnetRpcUrl', ENV.PUBLIC_SOLANA_TESTNET_RPC_URL || undefined, DEFAULT_SOLANA_TESTNET_RPC_URL)
-    : resolve('monadTestnetRpcUrl', ENV.PUBLIC_MONAD_TESTNET_RPC_URL || undefined, DEFAULT_MONAD_TESTNET_RPC_URL);
-
-/** The node for `chain` on `net`. */
-export const chainRpcUrl = (chain: OtherChain, net: ChainNet): string =>
-  net === 'testnet' ? testnetRpcUrl(chain) : chain === 'solana' ? solanaRpcUrl() : monadRpcUrl();
+/** The test network's node for `chain` (test balances, airdrops and test sends). */
+export const testnetRpcUrl = (chain: OtherChain): string => chainRpcUrl(chain, 'testnet');
 
 /**
  * Both of them, in role order.
@@ -180,8 +179,27 @@ function safeOrigin(url: string): string {
   }
 }
 
-/** UI metadata for the developer-mode settings form (label keys live in i18n). */
-export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; getDefault: () => string }[] = [
+/**
+ * UI metadata for the developer-mode settings form (label keys live in i18n). A chain
+ * node's row names its network through `chainKey`, resolved into the label's `{chain}`.
+ */
+export interface EndpointField {
+  key: keyof EndpointOverrides;
+  labelKey: string;
+  chainKey?: string;
+  getDefault: () => string;
+}
+
+const CHAIN_NODE_FIELDS: EndpointField[] = (['mainnet', 'testnet'] as const).flatMap((net) =>
+  OTHER_CHAINS.map((chain) => ({
+    key: chainNodeKey(chain, net),
+    labelKey: chain === 'bitcoin' ? 'settings.epChainApi' : 'settings.epChainNode',
+    chainKey: `chains.net.${net}.${chain}`,
+    getDefault: () => ENV[CHAIN_NODES[net][chain].env] || CHAIN_NODES[net][chain].fallback,
+  })),
+);
+
+export const ENDPOINT_FIELDS: EndpointField[] = [
   { key: 'coingeckoBase', labelKey: 'settings.epCoingecko', getDefault: () => 'https://api.coingecko.com' },
   {
     key: 'gatewayUrl',
@@ -199,18 +217,7 @@ export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; 
     labelKey: 'settings.epRecoveryB',
     getDefault: () => ENV.PUBLIC_COSMOS_RECOVERY_B_URL || DEFAULT_RECOVERY_B_URL,
   },
-  { key: 'solanaRpcUrl', labelKey: 'settings.epSolanaRpc', getDefault: () => ENV.PUBLIC_SOLANA_RPC_URL || DEFAULT_SOLANA_RPC_URL },
-  { key: 'monadRpcUrl', labelKey: 'settings.epMonadRpc', getDefault: () => ENV.PUBLIC_MONAD_RPC_URL || DEFAULT_MONAD_RPC_URL },
-  {
-    key: 'solanaTestnetRpcUrl',
-    labelKey: 'settings.epSolanaTestnetRpc',
-    getDefault: () => ENV.PUBLIC_SOLANA_TESTNET_RPC_URL || DEFAULT_SOLANA_TESTNET_RPC_URL,
-  },
-  {
-    key: 'monadTestnetRpcUrl',
-    labelKey: 'settings.epMonadTestnetRpc',
-    getDefault: () => ENV.PUBLIC_MONAD_TESTNET_RPC_URL || DEFAULT_MONAD_TESTNET_RPC_URL,
-  },
+  ...CHAIN_NODE_FIELDS,
 ];
 
 /* ------------------------------- the sign-in ------------------------------- */
