@@ -115,6 +115,35 @@ belong in CSS: `.glass` / `.glass-soft` / `.glass-bright` / `.input` /
 source of truth for colour. Do not reintroduce a TS module of style values — a
 constant holding a colour string can only ever be consumed inline.
 
+### The design is the Figma file's
+
+The look is the Cosmos Wallet Figma file (Page 1: Home, Activity, "Conectar wallet",
+Colors, Logo). Its palette is the token set in `src/styles/theme.css` — black, the
+`--surface-0` (#07080B) bar/header discs, the `--surface-1` (#171A22) action discs and
+cards, `--muted` #8889A1, `--dim` #6B707C, Cosmic Blue `--accent` #4D66FF, `--up` #28A63F —
+type is Open Sauce One (Nunito Bold only for the bottom bar's labels), and the screen
+header is the design's: a back arrow at the top left and the title set at 24px under it
+(`src/ui/BackBar.tsx`). The old glass class names (`.glass`, `.glass-soft`) are kept —
+forty screens compose them — but now paint the design's flat surfaces.
+
+- **Icons are `src/ui/Icon.tsx`**, a CSS mask over an SVG in `public/icons/ui/`, painted
+  with `currentColor` so it follows the theme and states like text does. The ones the
+  Figma defines are its own exports byte for byte; the rest are Lucide (the set the design
+  is drawn from). Add a name to `IconName` and a rule to `src/styles/ui/icon.css`; never
+  inline an SVG path in a component, and never use a text glyph (`›`, `✕`, `⚙`) as an icon.
+- **Token and network logos are colour files** under `public/tokens/`, mapped by code and
+  network in `src/constants/assets.ts`; `src/ui/AssetLogo.tsx` draws a coin with its
+  network's badge, `src/ui/ChainLogo.tsx` a network's own mark.
+- **A proportion is a class too.** Bars and meters take `widthRung()` from
+  `src/lib/rung.ts`, a 5% ladder defined in `src/styles/ui/meter.css` — the same pattern as
+  the stagger ladder.
+- **Motion lives in `src/styles/animations.css`**, on two shared curves (`--ease-spring`,
+  `--ease-out`). A component sheet that sets an `!important` animation must carry its own
+  `prefers-reduced-motion` override, because it loads after the global block and wins.
+- **An overlay a screen raises is portalled to <body>** (`createPortal`): a screen is its
+  own stacking context — its entrance animation — so from inside it no z-index lifts a
+  sheet over the bottom navigation. `SlippageControl` and `SwapProgress` are the examples.
+
 ## Writing CSS here
 
 Ship both the prefixed and unprefixed form of a property when Safari still needs
@@ -160,6 +189,17 @@ Three rules hold it together:
   `Shell.tsx`). A Chrome side panel can be dragged past 1024px and must stay one
   column with its own drawer — width alone would have given it a rail it has no room
   for.
+
+The phone bar is the design's: Home · Wallet · the raised scan button · Markets · More
+(`src/app/navModel.tsx`). The rail names what the bar folds into More.
+
+### The web build installs
+
+`public/manifest.webmanifest` and `public/sw-web.js` make the web build an installable app
+that opens offline. The worker caches the app shell and the art and NOTHING the app talks
+to — a balance or a quote is never answered from a cache — and `src/lib/pwa.ts` registers it
+only in a production web build: the extension has its own worker and a Tauri window its
+own scheme. A manifest shortcut opens a screen through `?go=`, read once at boot.
 
 ## `src-tauri/gen/` is a build output; the rest of `src-tauri/` is not
 
@@ -806,6 +846,56 @@ none of which is Tether. Four rules follow:
 
 Two `EURC` rows from different issuers (Circle and MyKobo) are both legitimate and both
 kept, deliberately: they are what breaks any screen that keys on a bare code.
+
+## One phrase, seven networks
+
+The recovery phrase that holds the Stellar account also derives an account on Bitcoin,
+Ethereum, Solana, Arbitrum, Base and Monad (`src/lib/chainAddresses.ts`, the reference
+wallets' paths: BIP-84 for Bitcoin — coin type 1 on testnet4 — `m/44'/60'/0'/0/0` for the
+EVM chains, SLIP-0010 for Solana). Five rules:
+
+- **One EVM address serves all four EVM chains.** What keeps a signature on one from
+  being replayed on another is the chain id inside it (`EVM_CHAIN_IDS` in
+  `src/constants/chains.ts`), and every node is asked its `eth_chainId` before the wallet
+  signs anything for it — a node override pointed at the wrong chain is refused, not
+  believed.
+- **Addresses are read through `src/lib/chainAddressBook.ts`**, never by indexing the stored
+  object: entries saved before Bitcoin existed hold `{ solana, monad }` and are re-derived
+  on the next unlock (`ensureChainAddresses`), and Bitcoin's address differs per network.
+  That module is light on purpose — the derivation pulls in BIP-39 and every curve and is
+  only ever loaded on demand.
+- **Every chain node is one row of `CHAIN_NODES`** (`src/constants/backends.ts`), which both
+  `src/lib/endpoints.ts` and the extension build read, so a chain the bundle calls cannot be
+  missing from the MV3 manifest's `host_permissions`.
+- **The Bitcoin spend is built here and refused rather than stretched** (`src/lib/bitcoinTx.ts`):
+  confirmed outputs first, the fee rate bounded by `BITCOIN_MIN_FEE_RATE` /
+  `BITCOIN_MAX_FEE_RATE`, change below dust folded into the fee, the destination decoded
+  with its checksum for the network it is paid on, and the broadcast's txid compared with
+  ours. `tests/unit/bitcoinTx.test.ts` pins it.
+- **Swaps take the native venue first and NEAR Intents for the rest** (`src/lib/swapRoute.ts`,
+  pinned by `tests/unit/swapRoute.test.ts`): the Stellar DEX, Jupiter on Solana and Kuru Flow
+  on Monad for a swap that stays on those chains; NEAR Intents for every swap between
+  chains and for one that stays on Ethereum, Arbitrum or Base, which have no venue. A NEAR
+  target is matched to the wallet's own token list by CONTRACT, never by symbol — 1Click
+  lists `WETH` beside `ETH` and `BTC(OMNI)` beside `BTC`. A venue that does not answer
+  (a `provider_unavailable` quote — Kuru Flow timing out) hands its pair to NEAR Intents
+  for that screen (`venueFallback` in `lib/swapRoute.ts`, sent to the gateway as the
+  request's `venueFallback`), with a line saying so; the Stellar DEX has no fallback. The community server's
+  `SWAP_CHAINS` (its cross-chain-swaps module) is the other half of this table: a chain
+  added here needs a row there too, or every quote for it is refused.
+- **A node is chosen for what a BROWSER gets back, not curl.** `api.mainnet-beta.solana.com`
+  answers 403 to any request with an `Origin` header — every request the popup, a WebView
+  or the web build makes — and answers Node normally, so it looked fine in every script and
+  read no Solana balance in the app. Probe a new default with `-H 'origin: …'`. Solana
+  mainnet is publicnode, which refuses `getTokenAccountsByOwner`: balances come from the
+  listed tokens' associated accounts (`solanaTokenBalances`), and the Jupiter check reads
+  every account the transaction may write instead of a listing of ours — which also covers
+  an account no listing would have named. `tests/unit/solanaBalances.test.ts` pins both.
+- **The person sets the max slippage, the quote bounds the signature.**
+  `src/features/money/SlippageControl.tsx` stores one tolerance (`usePreferences`,
+  clamped by `src/lib/slippage.ts`) that replaces each venue's default in the quote AND the
+  create; the screens re-quote when it changes, so the "minimum received" the guard bounds
+  by is always the one priced with it. The gateway caps it again with its own setting.
 
 ## Swapping does not require an account; it changes the price
 
