@@ -1,26 +1,157 @@
-/* Swap screen (src/features/money/Swap.tsx).
+/* Swap screen — src/features/money/Swap.tsx, src/features/money/ChainSwap.tsx and
+   src/features/money/SwapRouteBadge.tsx.
    The two-card stack, the amount inputs and the quote/guard/note lines are the
    shared exchange card — see styles/ui/exchange-card.css. Only what is unique to
-   swapping lives here: the invert button on the seam, the received amount and the
-   effective-rate line. */
+   swapping lives here: the flip button on the seam, the received amount, the rate
+   line and the route badge. */
 
-/* invert button, centred on the seam between the two cards. Centred with FLEX
-   (never transform) so nothing — not .tap:active's scale, not popIn — can shift it
-   on click. White face / black ring / black icon, fixed regardless of theme. */
-.swap-seam { position: relative; height: 0; z-index: 2; display: flex; justify-content: center; }
-.swap-invert { position: relative; top: -17px; width: 44px; height: 44px; border-radius: 50%; background: #fff; border: 2px solid #000; color: #000; display: flex; align-items: center; justify-content: center; font-size: 18px; cursor: pointer; }
-.swap-receive { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
-.swap-receive.is-empty { color: var(--dim); }
-.swap-rate { text-align: right; margin-top: 10px; color: var(--dim); font-size: 12px; font-weight: 600; }
-.swap-quoting { margin-top: 14px; font-size: 12px; color: var(--dim); font-weight: 600; } /* on .center.g8 */
+/* the flip button, centred on the seam between the two cards. Centred with FLEX
+   (never transform) so the rotation it plays on a flip is the only transform it has. */
+.swap-seam {
+  position: relative;
+  height: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+}
 
-/* "Receive on" — which network the output lands on. Stellar is a path payment; the
-   other two are cross-chain swaps settled by NEAR Intents. A pill row, like the chips
-   on the receive screen, so the choice reads before the amounts. */
-.swap-target { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
-.swap-target-label { width: 100%; font-size: 12px; font-weight: 700; color: var(--dim); }
-.swap-target-btn { padding: 8px 14px; border-radius: 30px; font-size: 13px; font-weight: 700; color: var(--dim); cursor: pointer; background: var(--glass-soft-bg); border: 1px solid var(--glass-soft-border); }
-.swap-target-btn.is-on { color: var(--text); border-color: var(--accent); }
+.swap-invert {
+  position: relative;
+  top: -21px;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 4px solid var(--bg);
+  background: var(--accent);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 18px -8px var(--accent-glow);
+  transition: transform 0.45s var(--ease-spring), background-color 0.2s ease;
+}
 
-/* The assets a cross-chain swap can deliver, as pills in the "to" card. */
-.swap-dest-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.swap-invert.is-flipped {
+  transform: rotate(180deg);
+}
+
+.swap-invert:disabled {
+  background: var(--surface-1);
+  color: var(--muted);
+  box-shadow: none;
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .swap-invert:not(:disabled):hover {
+    background: var(--accent-hover);
+  }
+}
+
+.swap-receive {
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  animation: screenIn 0.4s var(--ease-out);
+  /* the amount keeps its width and the token chips beside it wrap instead: shrinking both
+     in proportion cut a six-decimal quote down to "0.0337…" */
+  flex-shrink: 0;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.swap-receive.is-empty {
+  color: var(--dimmer);
+  animation: none;
+}
+
+.swap-rate {
+  text-align: right;
+  margin-top: 10px;
+  color: var(--dim);
+  font-size: 12px;
+}
+
+.swap-quoting {
+  margin-top: 14px;
+  font-size: 12px;
+  color: var(--dim);
+} /* on .center.g8 */
+
+/* The assets a cross-chain swap can deliver (and a chain's tokens), as chips. */
+.swap-dest-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* ChainSwap's pay field sits beside up to three token chips: it keeps room for the amount
+   and the chips wrap, instead of the chips taking the row and clipping "0.01" to ")1" */
+.exchange-input.swap-pay-input {
+  flex: 0 0 42%;
+}
+
+/* Which venue settles it: a slim line under the stack, with its own accent. */
+.swap-route {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--surface-0);
+  border: 1px solid var(--hairline);
+  font-size: 12px;
+  color: var(--muted);
+  animation: fadeIn 0.35s ease;
+}
+
+.swap-route-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.swap-route.is-intents .swap-route-icon {
+  background: rgba(0, 236, 151, 0.14);
+  color: #00ec97;
+}
+
+.swap-route.is-jupiter .swap-route-icon {
+  background: rgba(199, 242, 132, 0.16);
+  color: #c7f284;
+}
+
+.swap-route.is-kuru .swap-route-icon {
+  background: rgba(245, 165, 36, 0.14);
+  color: #f5a524;
+}
+
+.swap-route-label {
+  flex: 1;
+  min-width: 0;
+}
+
+.swap-route-quoting {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swap-receive,
+  .swap-route {
+    animation: none !important;
+  }
+}

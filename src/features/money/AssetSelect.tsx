@@ -3,6 +3,7 @@ import { AssetLogo } from '@/ui/AssetLogo';
 import { trim } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import { assetKey, codeIsAmbiguous, isSameAsset, shortIssuer, type AssetRef } from '@/lib/asset';
+import { Icon } from '@/ui/Icon';
 import '@/styles/features/money/asset-select.css';
 
 /** The shape every caller already has: a Horizon balance row. */
@@ -51,7 +52,7 @@ export function AssetSelect({
       <button onClick={() => setOpen(!open)} className="glass-soft asset-select-btn">
         <AssetLogo code={value.code} size={send ? 26 : 28} />
         {value.code}
-        <span className={cx('asset-select-caret', open && 'is-open')}>▼</span>
+        <Icon name="chevron-down" size={14} className={cx('asset-select-caret', open && 'is-open')} />
       </button>
       {open && (
         <>

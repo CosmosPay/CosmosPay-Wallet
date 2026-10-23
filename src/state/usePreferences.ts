@@ -1,5 +1,6 @@
 /**
- * Device preferences: theme, language, the manual-signing toggle, and diagnostics.
+ * Device preferences: theme, language, the manual-signing toggle, diagnostics, and the
+ * swap screens' max slippage.
  *
  * Split out of the store hook, which was doing routing, session, network, prices,
  * history, CosmosPay, fiat, liquidity, toasts, theme and i18n in one 2100-line
@@ -14,11 +15,13 @@
 import { useCallback, useMemo, useState } from 'react';
 import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '@/lib/i18n';
 import { setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
+import { clampSlippageBps, parseSlippagePref } from '@/lib/slippage';
 
 export type Theme = 'dark' | 'light';
 
 const THEME_KEY = 'cosmos.theme';
 const CONFIRM_KEY = 'cosmos.confirm';
+const SLIPPAGE_KEY = 'cosmos.slippage';
 
 export function savedTheme(): Theme {
   try {
@@ -34,6 +37,15 @@ export function savedRequireConfirm(): boolean {
     return localStorage.getItem(CONFIRM_KEY) !== 'off';
   } catch {
     return true;
+  }
+}
+
+/** The max slippage chosen in the swap sheet, or null for "auto" (each venue's default). */
+export function savedSlippage(): number | null {
+  try {
+    return parseSlippagePref(localStorage.getItem(SLIPPAGE_KEY));
+  } catch {
+    return null;
   }
 }
 
@@ -53,6 +65,7 @@ export function usePreferences(onLangChange: (message: string) => void) {
   const [lang, setLangState] = useState<Lang>(savedLang);
   const [requireConfirm, setRequireConfirmState] = useState<boolean>(savedRequireConfirm);
   const [diagnostics, setDiagnosticsState] = useState<boolean>(telemetryEnabled);
+  const [slippageBps, setSlippageState] = useState<number | null>(savedSlippage);
 
   const t = useMemo(() => makeT(lang), [lang]);
   const locale = useMemo(() => localeOf(lang), [lang]);
@@ -71,6 +84,17 @@ export function usePreferences(onLangChange: (message: string) => void) {
     setTelemetryEnabled(on);
   }, []);
 
+  const setSlippageBps = useCallback((bps: number | null) => {
+    const next = bps === null ? null : clampSlippageBps(bps);
+    setSlippageState(next);
+    try {
+      if (next === null) localStorage.removeItem(SLIPPAGE_KEY);
+      else localStorage.setItem(SLIPPAGE_KEY, String(next));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const setTheme = useCallback((th: Theme) => {
     setThemeState(th);
     try {
@@ -78,7 +102,7 @@ export function usePreferences(onLangChange: (message: string) => void) {
       localStorage.setItem(THEME_KEY, th);
       document
         .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', th === 'light' ? '#eceef1' : '#080808');
+        ?.setAttribute('content', th === 'light' ? '#eceef1' : '#000000');
     } catch {
       /* ignore */
     }
@@ -100,5 +124,18 @@ export function usePreferences(onLangChange: (message: string) => void) {
     [onLangChange],
   );
 
-  return { theme, setTheme, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics };
+  return {
+    theme,
+    setTheme,
+    lang,
+    setLang,
+    t,
+    locale,
+    requireConfirm,
+    setRequireConfirm,
+    diagnostics,
+    setDiagnostics,
+    slippageBps,
+    setSlippageBps,
+  };
 }

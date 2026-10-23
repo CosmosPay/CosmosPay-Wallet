@@ -1,0 +1,57 @@
+/* NetworkPicker — src/features/money/NetworkPicker.tsx. A scrolling row of network chips,
+   each with its mark; the selected one wears the accent. */
+.net-picker {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.net-picker-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.net-picker-row {
+  margin: 0 calc(var(--gutter) * -1);
+  padding: 2px var(--gutter);
+}
+
+.net-picker-chip {
+  height: 36px;
+  padding: 0 14px 0 8px;
+  color: var(--text-soft);
+  animation: pop 0.4s var(--ease-spring) backwards !important;
+}
+
+.net-picker-chip.is-on {
+  color: var(--text);
+}
+
+.net-picker-chip.is-on .asset-logo {
+  animation: pop 0.4s var(--ease-spring);
+}
+
+/* Where the row is wide enough to show every network, it wraps instead of scrolling: a
+   hidden option is one nobody picks. Decided by the picker's own width, not by any mode. */
+@container (min-width: 560px) {
+  .net-picker-row {
+    flex-wrap: wrap;
+    overflow: visible;
+    margin: 0;
+    padding: 2px 0;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .net-picker-chip,
+  .net-picker-chip.is-on .asset-logo {
+    animation: none !important;
+  }
+}

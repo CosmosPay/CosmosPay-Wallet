@@ -31,6 +31,7 @@
 // so a dev can repoint them live from Settings without rebuilding. The gateway
 // still exposes the payments API behind an entry prefix (default `/cosmos-api`).
 import type { LedgerName } from '@/lib/stellar';
+import type { OtherChain } from '@/constants/chains';
 import { gatewayApi, walletApiBase } from '@/lib/endpoints';
 import { newTraceId } from '@/lib/trace';
 
@@ -118,7 +119,7 @@ export interface SubmitResult {
 
 export interface QuoteSwapInput {
   /** Omitted = Stellar. solana → Jupiter, monad → Kuru Flow (mainnet only). */
-  chain?: 'stellar' | CrossChainTarget;
+  chain?: 'stellar' | ChainSwapVenueChain;
   amount: string;
   sourceAssetCode?: string;
   sourceAssetIssuer?: string;
@@ -799,15 +800,16 @@ export async function createSwap(apiKey: string, input: CreateSwapInput): Promis
 
 /* ------------------------- cross-chain swaps ---------------------------- */
 /*
- * Stellar ⇄ Solana ⇄ Monad, settled by NEAR Intents behind the gateway. The wallet pays
- * a deposit address from its account on the origin chain — a payment it builds and
- * signs itself — and NEAR Intents pays the output to the wallet's own address on the
- * destination chain (all three derive from the same recovery phrase). Mainnet only —
- * the gateway refuses a testnet key.
+ * Stellar ⇄ Bitcoin ⇄ Ethereum ⇄ Solana ⇄ Arbitrum ⇄ Base ⇄ Monad, settled by NEAR Intents
+ * behind the gateway. The wallet pays a deposit address from its account on the origin
+ * chain — a payment it builds and signs itself — and NEAR Intents pays the output to the
+ * wallet's own address on the destination chain (every one of them derives from the same
+ * recovery phrase). Mainnet only — the gateway refuses a testnet key. A swap that stays on
+ * Ethereum, Arbitrum or Base is one of these too (`lib/swapRoute.ts`).
  */
 
 /** The chains besides Stellar: a Jupiter / Kuru swap, or one end of a cross-chain one. */
-export type CrossChainTarget = 'solana' | 'monad';
+export type CrossChainTarget = OtherChain;
 /** Any end of a cross-chain swap. */
 export type CrossChainNetwork = 'stellar' | CrossChainTarget;
 
@@ -835,6 +837,8 @@ export interface CrossChainSwapInput {
   recipient: string;
   refundTo: string;
   slippageBps?: number;
+  /** A pair on Solana or Monad sent here because Jupiter / Kuru Flow is not answering. */
+  venueFallback?: boolean;
 }
 
 export interface CrossChainSwap {
@@ -896,6 +900,9 @@ export async function reportCrossChainDeposit(apiKey: string, id: string, txHash
 
 /* ------------------------- Solana / Monad swaps -------------------------- */
 
+/** The chains `/v1/swaps` settles on a venue of their own (Jupiter, Kuru Flow). */
+export type ChainSwapVenueChain = 'solana' | 'monad';
+
 /**
  * A Jupiter (Solana) or Kuru Flow (Monad) swap. `transaction` is what gets signed —
  * Solana: `{ encoding: 'base64', data }`, the unsigned wire bytes; Monad: the router
@@ -904,7 +911,7 @@ export async function reportCrossChainDeposit(apiKey: string, id: string, txHash
  */
 export interface ChainSwap {
   id: string;
-  chain: CrossChainTarget;
+  chain: ChainSwapVenueChain;
   status: string;
   source: string;
   sendAsset: string;
@@ -927,7 +934,7 @@ export interface ChainSwapSubmitResult {
 /** Build a Solana / Monad swap for `source` (the output always comes back to it). */
 export async function createChainSwap(
   apiKey: string,
-  input: QuoteSwapInput & { chain: CrossChainTarget; source: string },
+  input: QuoteSwapInput & { chain: ChainSwapVenueChain; source: string },
 ): Promise<ChainSwap> {
   return postJson<ChainSwap>(`${gatewayApi()}/v1/swaps`, input, authHeaders(apiKey), false, ChainSwapShape);
 }

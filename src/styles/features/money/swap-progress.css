@@ -1,0 +1,146 @@
+/* SwapProgress — src/features/money/SwapProgress.tsx. A full-frame veil while a swap is in
+   flight: the two coins bob out of step, five dots run the beam between them on a fixed
+   delay ladder, and the paid / received pair sits on a card underneath. */
+.swap-progress {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + var(--safe-t)) var(--gutter) calc(24px + var(--safe-b));
+  background: rgba(0, 0, 0, 0.9);
+  text-align: center;
+  animation: fadeIn 0.25s ease;
+}
+
+.swap-progress-stage {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 28px;
+}
+
+.swap-progress-coin {
+  display: flex;
+  border-radius: 50%;
+  box-shadow: 0 0 0 6px var(--surface-1), 0 12px 40px -8px var(--accent-glow);
+  animation: floatY 2.4s ease-in-out infinite;
+}
+
+.swap-progress-coin.is-to {
+  animation-delay: 1.2s;
+}
+
+.swap-progress-beam {
+  display: flex;
+  gap: 8px;
+}
+
+.swap-progress-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: beamDot 1.25s ease-in-out infinite both;
+}
+
+.swap-progress-dot.is-1 {
+  animation-delay: 0s;
+}
+
+.swap-progress-dot.is-2 {
+  animation-delay: 0.15s;
+}
+
+.swap-progress-dot.is-3 {
+  animation-delay: 0.3s;
+}
+
+.swap-progress-dot.is-4 {
+  animation-delay: 0.45s;
+}
+
+.swap-progress-dot.is-5 {
+  animation-delay: 0.6s;
+}
+
+.swap-progress-title {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  animation: titleIn 0.45s var(--ease-out) both;
+}
+
+.swap-progress-sub {
+  max-width: 300px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.swap-progress-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 360px;
+  box-sizing: border-box;
+  margin-top: 28px;
+  padding: 14px 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface-0);
+  border: 1px solid var(--hairline);
+  animation: screenIn 0.45s var(--ease-out) 0.1s both;
+}
+
+.swap-progress-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+
+.swap-progress-side.is-to {
+  text-align: right;
+}
+
+.swap-progress-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--dim);
+}
+
+.swap-progress-amount {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.swap-progress-chain {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.swap-progress-arrow {
+  color: var(--accent);
+  font-size: 18px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swap-progress,
+  .swap-progress-coin,
+  .swap-progress-dot,
+  .swap-progress-title,
+  .swap-progress-card {
+    animation: none !important;
+  }
+}

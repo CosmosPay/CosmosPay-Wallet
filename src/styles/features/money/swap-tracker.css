@@ -1,0 +1,137 @@
+/* SwapTracker — src/features/money/SwapTracker.tsx. A four-step timeline on the design's
+   card: done steps fill with Cosmic Blue (green once delivered), the current one pulses,
+   the line between them fills as the swap moves. */
+.swap-track {
+  margin-bottom: 14px;
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface-0);
+  border: 1px solid var(--hairline);
+  animation: screenIn 0.5s var(--ease-out) 0.3s backwards;
+}
+
+.swap-track-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.swap-track-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.swap-track-eta {
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.swap-track-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.swap-track-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  color: var(--dim);
+  transition: color 0.3s ease;
+}
+
+/* the line from one dot down to the next, filled once the step above is done */
+.swap-track-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 24px;
+  width: 2px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--surface-1);
+  transition: background-color 0.4s ease;
+}
+
+.swap-track-step.is-done:not(:last-child)::after {
+  background: var(--accent);
+}
+
+.swap-track-dot {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-1);
+  color: var(--on-accent);
+  transition: background-color 0.3s ease, transform 0.3s var(--ease-spring);
+}
+
+.swap-track-step.is-done {
+  color: var(--text);
+}
+
+.swap-track-step.is-done .swap-track-dot {
+  background: var(--accent);
+  animation: pop 0.45s var(--ease-spring);
+}
+
+.swap-track.is-ok .swap-track-step:last-child .swap-track-dot {
+  background: var(--up);
+}
+
+.swap-track.is-refunded .swap-track-step:last-child .swap-track-dot,
+.swap-track.is-failed .swap-track-step:last-child .swap-track-dot {
+  background: var(--danger);
+}
+
+.swap-track-step.is-current {
+  color: var(--text-soft);
+}
+
+.swap-track-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dimmer);
+}
+
+.swap-track-step.is-current .swap-track-pulse {
+  background: var(--accent);
+  animation: ping 1.4s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+.swap-track-result {
+  margin-top: 14px;
+  font-size: 13px;
+  color: var(--text-soft);
+  line-height: 1.5;
+  animation: fadeIn 0.4s ease;
+}
+
+.swap-track-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swap-track,
+  .swap-track-step.is-done .swap-track-dot,
+  .swap-track-step.is-current .swap-track-pulse {
+    animation: none !important;
+  }
+}
