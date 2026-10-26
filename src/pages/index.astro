@@ -111,6 +111,11 @@ import WalletApp from '../components/WalletApp.tsx';
       button {
         border-radius: 999px !important;
       }
+      /* ...except the ones that are cards, like the skin swatches: a pill with
+         a preview inside reads as a smudge, not as something elegible. */
+      button.card-btn {
+        border-radius: 16px !important;
+      }
       /* brand logo: white asset; invert to black in light mode */
       [data-theme='light'] .brand-logo {
         filter: invert(1);

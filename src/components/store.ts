@@ -39,16 +39,17 @@ import {
 } from '../lib/stellar';
 import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '../lib/i18n';
 import { parseStellarQr } from '../lib/sep7';
+import {
+  applyAppearance,
+  bootAppearance,
+  modeOf,
+  writeAppearance,
+  type Appearance,
+  type SkinMode,
+} from '../lib/appearance';
 
-export type Theme = 'dark' | 'light';
-
-function savedTheme(): Theme {
-  try {
-    return localStorage.getItem('cosmos.theme') === 'light' ? 'light' : 'dark';
-  } catch {
-    return 'dark';
-  }
-}
+/** Claro u oscuro. Ahora sale del skin elegido, no de una clave propia. */
+export type Theme = SkinMode;
 
 /** Manual signing confirmations (password prompt before any signing action). Default ON. */
 function savedRequireConfirm(): boolean {
@@ -59,15 +60,15 @@ function savedRequireConfirm(): boolean {
   }
 }
 
-// Apply the persisted theme to <html> as early as possible (module load, before
-// first paint) so there's no flash of the wrong theme.
-try {
-  if (typeof document !== 'undefined') {
-    document.documentElement.setAttribute('data-theme', savedTheme());
+// Se aplica la apariencia guardada apenas carga el modulo, antes del primer
+// pintado, para que no se vea un parpadeo del skin equivocado.
+const APARIENCIA_INICIAL: Appearance = (() => {
+  try {
+    return bootAppearance();
+  } catch {
+    return { preset: 'dark' };
   }
-} catch {
-  /* non-browser context */
-}
+})();
 
 export type Screen =
   | 'boot'
@@ -181,7 +182,8 @@ export function useWalletStore() {
   const [busy, setBusy] = useState(false);
 
   const [toast, setToast] = useState<Toast | null>(null);
-  const [theme, setThemeState] = useState<Theme>(savedTheme);
+  const [appearance, setAppearanceState] = useState<Appearance>(APARIENCIA_INICIAL);
+  const theme: Theme = useMemo(() => modeOf(appearance), [appearance]);
   const [lang, setLangState] = useState<Lang>(savedLang);
   const [requireConfirm, setRequireConfirmState] = useState<boolean>(savedRequireConfirm);
   const t = useMemo(() => makeT(lang), [lang]);
@@ -196,18 +198,19 @@ export function useWalletStore() {
     }
   }, []);
 
-  const setTheme = useCallback((th: Theme) => {
-    setThemeState(th);
-    try {
-      document.documentElement.setAttribute('data-theme', th);
-      localStorage.setItem('cosmos.theme', th);
-      document
-        .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', th === 'light' ? '#eceef1' : '#080808');
-    } catch {
-      /* ignore */
-    }
+  const setAppearance = useCallback((a: Appearance) => {
+    setAppearanceState(a);
+    applyAppearance(a);
+    writeAppearance(a);
   }, []);
+
+  /** Atajo para los dos skins de siempre. Lo sigue usando quien ya lo llamaba. */
+  const setTheme = useCallback(
+    (th: Theme) => {
+      setAppearance({ preset: th });
+    },
+    [setAppearance],
+  );
 
   const setLang = useCallback((l: Lang) => {
     setLangState(l);
@@ -755,6 +758,8 @@ export function useWalletStore() {
     toast,
     theme,
     setTheme,
+    appearance,
+    setAppearance,
     lang,
     setLang,
     requireConfirm,

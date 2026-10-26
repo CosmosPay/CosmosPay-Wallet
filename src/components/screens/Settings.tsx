@@ -6,6 +6,7 @@ import { copyText } from '@/lib/clipboard';
 import { shortAddr } from '@/lib/format';
 import { changePassword } from '@/lib/vault';
 import { LANGUAGES } from '@/lib/i18n';
+import { SkinPicker } from './SkinPicker';
 
 export function Settings({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -44,16 +45,7 @@ export function Settings({ store }: { store: WalletStore }) {
       </Section>
 
       <Section title={t('settings.appearance')}>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          {([['dark', t('settings.dark'), '🌙'], ['light', t('settings.light'), '☀️']] as const).map(([th, label, icon]) => {
-            const on = store.theme === th;
-            return (
-              <button key={th} onClick={() => store.setTheme(th)} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', background: on ? C.accent : C.cardSolid, color: on ? 'var(--on-accent)' : 'var(--text)', border: 'none', borderRadius: '14px', padding: '14px', fontSize: '14px', fontWeight: 800, cursor: 'pointer' }}>
-                <span>{icon}</span>{label}
-              </button>
-            );
-          })}
-        </div>
+        <SkinPicker store={store} />
       </Section>
 
       <Section title={t('settings.language')}>
