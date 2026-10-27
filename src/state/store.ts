@@ -54,6 +54,8 @@ import { storageGet, storageSet } from '@/lib/storage';
 import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
 import { VaultKeyMismatchError, WrongPasswordError, deriveVaultKey, newKdfParams, wipeVaultKey, type VaultKey } from '@/lib/crypto';
 import { assertSafeToSign, reviewTx } from '@/lib/txGuard';
+import { signsForAccount } from '@/lib/signers';
+import { shortAddr } from '@/lib/format';
 import { MIN_APP_PWD_LEN, appPasswordOk, isAccessCode, isSafeHorizonUrl } from '@/lib/validate';
 import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
 import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
@@ -5188,18 +5190,25 @@ export function useWalletStore() {
     async (xdr: string): Promise<string | null> => {
       if (!session) return null;
       const epoch = sessionEpochRef.current;
+      // Review only — a manual signature is deliberately allowed to carry operations
+      // the automated flows refuse, but it must be decodable and either OUR account's or an
+      // account our key signs for (a sub-account it controls, e.g. a Cosmos Pay private
+      // sub-account), checked on the network before anything is asked. The confirmation then
+      // names that other account, so the person knows whose transaction they sign.
+      const review = reviewTx(network, xdr.trim());
+      const foreign = review.source !== session.publicKey;
+      if (foreign && !(await signsForAccount(network, review.source, session.publicKey))) {
+        throw new Error(t('sign.foreignSource'));
+      }
       const ok = await requestSignature(
-        { title: t('confirmSig.signTitle'), message: t('confirmSig.signMsg') },
+        {
+          title: t('confirmSig.signTitle'),
+          message: foreign ? t('confirmSig.signForeignMsg', { source: shortAddr(review.source) }) : t('confirmSig.signMsg'),
+        },
         true,
       );
       if (!ok) return null;
       guardSession(epoch);
-      // Review only — a manual signature is deliberately allowed to carry operations
-      // the automated flows refuse, but it must still be OUR account and decodable.
-      const review = reviewTx(network, xdr.trim());
-      if (review.source !== session.publicKey) {
-        throw new Error(t('sign.foreignSource'));
-      }
       return signEnvelope(xdr.trim());
     },
     [session, network, requestSignature, guardSession, signEnvelope, t],

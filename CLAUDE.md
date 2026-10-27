@@ -388,7 +388,13 @@ the wallet's own native plugin. Eight rules, and most of them are holes it shipp
 - **Anything that changes how the wallet opens is `force`-gated.** That is
   `toggleDeviceAuth`, `acceptDeviceAuthOffer`, `changeAppPassword` and `signRawXdr` — the
   last because `reviewTx` checks only the source account, so the human confirmation is the
-  only thing standing between a pasted envelope and `setOptions`. The two enrolment paths
+  only thing standing between a pasted envelope and `setOptions`. `signRawXdr` signs this
+  account's transactions and, since 2026-10-27, those of an account whose signers include this
+  key (`signsForAccount` in `src/lib/signers.ts`, read from Horizon before anything is asked):
+  a Cosmos Pay private sub-account is a Stellar account whose only signer is its owner's
+  account, so all of its transactions have it as their source and need this key. The
+  confirmation then names that account (`confirmSig.signForeignMsg`); any other foreign source
+  is still refused (`sign.foreignSource`). The two enrolment paths
   also check the epoch **on both sides of `enableDeviceUnlock`, and undo the enrolment if it
   moved.** Checking only before is what the code did and it guarded nothing: the OS sheet
   lives *inside* that call and the envelope commits *after* it, so the idle auto-lock fires
