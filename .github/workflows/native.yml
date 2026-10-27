@@ -164,6 +164,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          check-latest: true
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
@@ -280,6 +281,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          check-latest: true
           cache: npm
 
       - uses: actions/setup-java@v6
@@ -431,6 +433,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22
+          check-latest: true
           cache: npm
 
       - uses: dtolnay/rust-toolchain@stable
