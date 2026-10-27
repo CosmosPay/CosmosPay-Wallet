@@ -389,12 +389,16 @@ the wallet's own native plugin. Eight rules, and most of them are holes it shipp
   `toggleDeviceAuth`, `acceptDeviceAuthOffer`, `changeAppPassword` and `signRawXdr` — the
   last because `reviewTx` checks only the source account, so the human confirmation is the
   only thing standing between a pasted envelope and `setOptions`. `signRawXdr` signs this
-  account's transactions and, since 2026-10-27, those of an account whose signers include this
-  key (`signsForAccount` in `src/lib/signers.ts`, read from Horizon before anything is asked):
-  a Cosmos Pay private sub-account is a Stellar account whose only signer is its owner's
-  account, so all of its transactions have it as their source and need this key. The
-  confirmation then names that account (`confirmSig.signForeignMsg`); any other foreign source
-  is still refused (`sign.foreignSource`). The two enrolment paths
+  account's transactions and, since 2026-10-27, those of an account this key ALONE controls
+  (`controlsAccount` in `src/lib/signers.ts`, read from Horizon before anything is asked: the
+  only signer with weight, meeting every threshold; being listed is not enough, anyone can add
+  any key to their own account): a Cosmos Pay private sub-account is a Stellar account whose
+  only signer is its owner's account, so all of its transactions have it as their source and
+  need this key. Such an envelope must authorize that account and nothing else
+  (`foreignEnvelopeProblem`: no operation of another source, ours above all, which would spend
+  from this account under a prompt naming the sub-account; no fee bump). The confirmation names
+  the account in full (`confirmSig.signForeignMsg`); anything else is refused
+  (`sign.foreignSource`, `sign.foreignOps`). The two enrolment paths
   also check the epoch **on both sides of `enableDeviceUnlock`, and undo the enrolment if it
   moved.** Checking only before is what the code did and it guarded nothing: the OS sheet
   lives *inside* that call and the envelope commits *after* it, so the idle auto-lock fires
