@@ -1,0 +1,20 @@
+[Unit]
+Description=Publish the latest Cosmos Wallet release at cosmospay.lat/wallet/
+Documentation=https://github.com/CosmosPay/CosmosPay-Wallet/blob/main/deploy/update-wallet-web.sh
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=walletweb
+Group=walletweb
+Environment=HOME=/opt/cosmos-wallet-web
+EnvironmentFile=/etc/cosmos-wallet-web.env
+ExecStart=/usr/local/bin/update-wallet-web.sh
+TimeoutStartSec=900
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/cosmos-wallet-web /var/www/cosmos-wallet-releases
