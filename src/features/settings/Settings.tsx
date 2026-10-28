@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
-import { LangFlag } from '@/ui/LangSelect';
+import { ThemeIcon } from '@/ui/Icons';
+import { LangFlag } from '@/ui/LangFlag';
 import { SettingsSection } from '@/features/settings/SettingsSection';
 import { SettingsRow } from '@/features/settings/SettingsRow';
 import { ToggleRow } from '@/features/settings/ToggleRow';
@@ -42,8 +43,15 @@ export function Settings({ store }: { store: WalletStore }) {
       <SettingsSection title={t('settings.appearance')}>
         <div className="flexr g8">
           {THEME_OPTIONS.map((o) => (
-            <button key={o.id} onClick={() => store.setTheme(o.id)} className={cx('settings-theme-btn', store.theme === o.id && 'is-on')}>
-              <span>{o.icon}</span>{t(o.labelKey)}
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={store.themePref === o.id}
+              onClick={() => store.setThemePref(o.id)}
+              className={cx('settings-theme-btn', store.themePref === o.id && 'is-on')}
+            >
+              <ThemeIcon kind={o.icon} />
+              {t(o.labelKey)}
             </button>
           ))}
         </div>
@@ -52,8 +60,16 @@ export function Settings({ store }: { store: WalletStore }) {
       <SettingsSection title={t('settings.language')}>
         <div className="flexr g8 settings-lang-wrap">
           {LANGUAGES.map((l) => (
-            <button key={l.code} onClick={() => store.setLang(l.code)} className={cx('row g8 settings-lang-btn', store.lang === l.code && 'is-on')}>
-              <LangFlag code={l.code} />{l.name}
+            <button
+              key={l.code}
+              type="button"
+              lang={l.code}
+              aria-pressed={store.lang === l.code}
+              onClick={() => store.setLang(l.code)}
+              className={cx('row g8 settings-lang-btn', store.lang === l.code && 'is-on')}
+            >
+              <LangFlag code={l.code} />
+              {l.name}
             </button>
           ))}
         </div>

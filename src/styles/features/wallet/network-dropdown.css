@@ -27,15 +27,11 @@
 .network-dd-menu.is-right {
   right: 0;
 }
-/* SOLID opaque menu (no backdrop-filter): the frosted blur does not composite inside
-   the app's shell in Chrome OR Firefox, so a translucent menu just bleeds the page
-   content through. A solid --bg surface + border + shadow reads as a clean floating
-   panel everywhere. The compound selector also beats `.glass`'s glassBreath animation. */
+/* Solid --bg menu with a border: it floats over the page without a translucent fill. The
+   compound selector beats `.glass`'s own fill regardless of stylesheet order. */
 .glass.network-dd-menu {
   animation: fadeUp 0.18s ease;
   background: var(--bg);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
   border: 1px solid var(--glass-border);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
 }

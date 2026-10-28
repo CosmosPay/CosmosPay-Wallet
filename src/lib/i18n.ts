@@ -6,12 +6,13 @@
  */
 export type Lang = 'es' | 'en' | 'pt' | 'de' | 'fr';
 
-export const LANGUAGES: { code: Lang; name: string; flag: string }[] = [
-  { code: 'es', name: 'Español', flag: '🇪🇸' },
-  { code: 'en', name: 'English', flag: '🇬🇧' },
-  { code: 'pt', name: 'Português', flag: '🇵🇹' },
-  { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
-  { code: 'fr', name: 'Français', flag: '🇫🇷' },
+/** Each language by its own name; its flag is drawn by src/ui/LangFlag.tsx. */
+export const LANGUAGES: { code: Lang; name: string }[] = [
+  { code: 'es', name: 'Español' },
+  { code: 'en', name: 'English' },
+  { code: 'pt', name: 'Português' },
+  { code: 'de', name: 'Deutsch' },
+  { code: 'fr', name: 'Français' },
 ];
 
 const LANG_KEY = 'cosmos.lang';
@@ -95,6 +96,12 @@ export const T: Record<string, Record<Lang, string>> = {
   'a11y.hide': { es: 'Ocultar', en: 'Hide', pt: 'Ocultar', de: 'Verbergen', fr: 'Masquer' },
   'a11y.menu': { es: 'Menú', en: 'Menu', pt: 'Menu', de: 'Menü', fr: 'Menu' },
   'a11y.close': { es: 'Cerrar', en: 'Close', pt: 'Fechar', de: 'Schließen', fr: 'Fermer' },
+  'a11y.back': { es: 'Volver', en: 'Back', pt: 'Voltar', de: 'Zurück', fr: 'Retour' },
+  // The two quick controls on Welcome and Unlock. The language one keeps the visible name
+  // inside its label (WCAG 2.5.3); the theme one says what a tap does, not the state.
+  'prefs.language': { es: 'Idioma: {lang}', en: 'Language: {lang}', pt: 'Idioma: {lang}', de: 'Sprache: {lang}', fr: 'Langue : {lang}' },
+  'prefs.toLight': { es: 'Usar tema claro', en: 'Use light theme', pt: 'Usar tema claro', de: 'Helles Design verwenden', fr: 'Utiliser le thème clair' },
+  'prefs.toDark': { es: 'Usar tema oscuro', en: 'Use dark theme', pt: 'Usar tema escuro', de: 'Dunkles Design verwenden', fr: 'Utiliser le thème sombre' },
 
   // ---- error boundary ----
   'error.screenTitle': {
@@ -122,16 +129,93 @@ export const T: Record<string, Record<Lang, string>> = {
   'error.goHome': { es: 'Volver al inicio', en: 'Back to home', pt: 'Voltar ao início', de: 'Zurück zum Start', fr: "Retour à l'accueil" },
 
   // ---- welcome ----
-  'welcome.subtitle': {
-    es: 'Tu wallet de auto-custodia en Stellar. Tus claves, tus criptos — bajo tu control.',
-    en: 'Your self-custody Stellar wallet. Your keys, your crypto — fully in your control.',
-    pt: 'A tua wallet de auto-custódia na Stellar. As tuas chaves, as tuas criptos — sob o teu controlo.',
-    de: 'Deine Self-Custody-Wallet auf Stellar. Deine Schlüssel, deine Kryptos — ganz unter deiner Kontrolle.',
-    fr: 'Ton portefeuille auto-géré sur Stellar. Tes clés, tes cryptos — sous ton contrôle.',
+  // The foot of Welcome: 'welcome.legal' + Terms link ('backup.termsLink') + 'welcome.legalAnd'
+  // + privacy link ('welcome.privacyLink') + '.'
+  'welcome.legalAnd': { es: ' y la ', en: ' and the ', pt: ' e a ', de: ' und die ', fr: ' et la ' },
+  'welcome.privacyLink': {
+    es: 'Política de privacidad',
+    en: 'Privacy Policy',
+    pt: 'Política de Privacidade',
+    de: 'Datenschutzerklärung',
+    fr: 'Politique de confidentialité',
+  },
+  'welcome.legal': {
+    es: 'Al continuar, aceptas los ',
+    en: 'By continuing, you accept the ',
+    pt: 'Ao continuar, aceitas os ',
+    de: 'Wenn du fortfährst, akzeptierst du die ',
+    fr: 'En continuant, tu acceptes les ',
   },
   'welcome.create': { es: 'Crear una wallet nueva', en: 'Create a new wallet', pt: 'Criar uma nova wallet', de: 'Neue Wallet erstellen', fr: 'Créer un nouveau portefeuille' },
   'welcome.import': { es: 'Ya tengo una wallet', en: 'I already have a wallet', pt: 'Já tenho uma wallet', de: 'Ich habe bereits eine Wallet', fr: "J'ai déjà un portefeuille" },
-  'welcome.producer': { es: 'Un producto de Cosmos', en: 'A Cosmos product', pt: 'Um produto Cosmos', de: 'Ein Cosmos-Produkt', fr: 'Un produit Cosmos' },
+  // ---- creating: how to back it up (BackupChoice) ----
+  'backupChoice.title': {
+    es: '¿Cómo quieres respaldarla?',
+    en: 'How do you want to back it up?',
+    pt: 'Como queres fazer a cópia de segurança?',
+    de: 'Wie möchtest du sie sichern?',
+    fr: 'Comment veux-tu la sauvegarder ?',
+  },
+  'backupChoice.desc': {
+    es: 'Si pierdes el teléfono, el respaldo te devuelve la wallet.',
+    en: 'If you lose your phone, the backup gives you your wallet back.',
+    pt: 'Se perderes o telemóvel, a cópia de segurança devolve-te a wallet.',
+    de: 'Wenn du dein Handy verlierst, bringt dir die Sicherung deine Wallet zurück.',
+    fr: 'Si tu perds ton téléphone, la sauvegarde te rend ton portefeuille.',
+  },
+  'backupChoice.words': { es: 'Con 12 palabras', en: 'With 12 words', pt: 'Com 12 palavras', de: 'Mit 12 Wörtern', fr: 'Avec 12 mots' },
+  'backupChoice.wordsDesc': {
+    es: 'Las anotas y las guardas tú. Nadie más puede recuperarla.',
+    en: 'You write them down and keep them. Nobody else can recover it.',
+    pt: 'Anota-las e guarda-las tu. Mais ninguém a pode recuperar.',
+    de: 'Du schreibst sie auf und bewahrst sie auf. Niemand sonst kann sie wiederherstellen.',
+    fr: 'Tu les notes et tu les gardes. Personne d’autre ne peut la récupérer.',
+  },
+  'backupChoice.account': { es: 'Con mi cuenta', en: 'With my account', pt: 'Com a minha conta', de: 'Mit meinem Konto', fr: 'Avec mon compte' },
+  'backupChoice.accountDesc': {
+    es: 'La recuperas entrando con Cosmos Pay, Google, GitHub o email.',
+    en: 'You get it back by signing in with Cosmos Pay, Google, GitHub or email.',
+    pt: 'Recuperas a wallet ao entrar com Cosmos Pay, Google, GitHub ou e-mail.',
+    de: 'Du bekommst sie zurück, indem du dich mit Cosmos Pay, Google, GitHub oder E-Mail anmeldest.',
+    fr: 'Tu la récupères en te connectant avec Cosmos Pay, Google, GitHub ou e-mail.',
+  },
+  'backupChoice.note': {
+    es: 'En los dos casos la clave se crea y queda en este dispositivo.',
+    en: 'Either way, the key is created and stays on this device.',
+    pt: 'Em ambos os casos, a chave é criada e fica neste dispositivo.',
+    de: 'In beiden Fällen wird der Schlüssel auf diesem Gerät erzeugt und bleibt dort.',
+    fr: 'Dans les deux cas, la clé est créée et reste sur cet appareil.',
+  },
+  // ---- restoring: which backup it has (RestoreChoice) ----
+  'restoreChoice.title': {
+    es: '¿Cómo la respaldaste?',
+    en: 'How did you back it up?',
+    pt: 'Como fizeste a cópia de segurança?',
+    de: 'Wie hast du sie gesichert?',
+    fr: 'Comment l’as-tu sauvegardé ?',
+  },
+  'restoreChoice.desc': {
+    es: 'Elige el respaldo que usaste al crearla.',
+    en: 'Choose the backup you used when you created it.',
+    pt: 'Escolhe a cópia de segurança que usaste ao criá-la.',
+    de: 'Wähle die Sicherung, die du beim Erstellen genutzt hast.',
+    fr: 'Choisis la sauvegarde utilisée lors de sa création.',
+  },
+  'restoreChoice.accountDesc': {
+    es: 'Cosmos Pay, Google, GitHub o email.',
+    en: 'Cosmos Pay, Google, GitHub or email.',
+    pt: 'Cosmos Pay, Google, GitHub ou e-mail.',
+    de: 'Cosmos Pay, Google, GitHub oder E-Mail.',
+    fr: 'Cosmos Pay, Google, GitHub ou e-mail.',
+  },
+  'restoreChoice.words': { es: 'Con mis 12 palabras', en: 'With my 12 words', pt: 'Com as minhas 12 palavras', de: 'Mit meinen 12 Wörtern', fr: 'Avec mes 12 mots' },
+  'restoreChoice.wordsDesc': {
+    es: 'La frase que anotaste, o la clave secreta.',
+    en: 'The phrase you wrote down, or the secret key.',
+    pt: 'A frase que anotaste, ou a chave secreta.',
+    de: 'Die Phrase, die du notiert hast, oder der geheime Schlüssel.',
+    fr: 'La phrase que tu as notée, ou la clé secrète.',
+  },
 
   // ---- backup ----
   'backup.title': { es: 'Frase de recuperación', en: 'Recovery phrase', pt: 'Frase de recuperação', de: 'Wiederherstellungsphrase', fr: 'Phrase de récupération' },
@@ -470,6 +554,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'settings.appearance': { es: 'Apariencia', en: 'Appearance', pt: 'Aparência', de: 'Darstellung', fr: 'Apparence' },
   'settings.dark': { es: 'Oscuro', en: 'Dark', pt: 'Escuro', de: 'Dunkel', fr: 'Sombre' },
   'settings.light': { es: 'Claro', en: 'Light', pt: 'Claro', de: 'Hell', fr: 'Clair' },
+  'settings.system': { es: 'Sistema', en: 'System', pt: 'Sistema', de: 'System', fr: 'Système' },
   'settings.language': { es: 'Idioma', en: 'Language', pt: 'Idioma', de: 'Sprache', fr: 'Langue' },
   'settings.myAddress': { es: 'Mi dirección', en: 'My address', pt: 'O meu endereço', de: 'Meine Adresse', fr: 'Mon adresse' },
   'settings.security': { es: 'Seguridad', en: 'Security', pt: 'Segurança', de: 'Sicherheit', fr: 'Sécurité' },
@@ -1650,10 +1735,33 @@ export const T: Record<string, Record<Lang, string>> = {
   'vault.passwordChangeFailed': { es: 'No se pudo completar el cambio de contraseña.', en: 'The password change could not be completed.', pt: 'Não foi possível concluir a alteração da palavra-passe.', de: 'Die Passwortänderung konnte nicht abgeschlossen werden.', fr: 'Le changement de mot de passe n’a pas pu être terminé.' },
 
   /* The wallet's own sign-in (src/lib/signIn.ts) and the cloud backup it restores. */
-  'signin.cta': { es: 'Entrar con Google, GitHub o email', en: 'Sign in with Google, GitHub or email', pt: 'Entrar com Google, GitHub ou e-mail', de: 'Mit Google, GitHub oder E-Mail anmelden', fr: 'Se connecter avec Google, GitHub ou e-mail' },
   'signin.title': { es: 'Iniciar sesión', en: 'Sign in', pt: 'Iniciar sessão', de: 'Anmelden', fr: 'Se connecter' },
-  'signin.desc': { es: 'Entrá para crear tu wallet, o para recuperar la que ya tenés en otro dispositivo.', en: 'Sign in to create your wallet, or to restore the one you already have on another device.', pt: 'Inicie sessão para criar a sua wallet ou recuperar a que já tem noutro dispositivo.', de: 'Melden Sie sich an, um Ihre Wallet zu erstellen oder die wiederherzustellen, die Sie bereits auf einem anderen Gerät haben.', fr: 'Connectez-vous pour créer votre portefeuille, ou pour restaurer celui que vous avez déjà sur un autre appareil.' },
-  'signin.keyNote': { es: 'Tu clave se genera en este dispositivo y nunca sale de él sin cifrar. Guardamos una copia cifrada que solo abre tu contraseña: si la olvidás, nadie puede recuperarla por vos.', en: 'Your key is generated on this device and never leaves it unencrypted. We keep an encrypted copy that only your password opens — if you forget it, nobody can recover it for you.', pt: 'A sua chave é gerada neste dispositivo e nunca sai dele sem cifra. Guardamos uma cópia cifrada que só a sua palavra-passe abre: se a esquecer, ninguém a pode recuperar por si.', de: 'Ihr Schlüssel wird auf diesem Gerät erzeugt und verlässt es nie unverschlüsselt. Wir bewahren eine verschlüsselte Kopie auf, die nur Ihr Passwort öffnet – wenn Sie es vergessen, kann es niemand für Sie wiederherstellen.', fr: 'Votre clé est générée sur cet appareil et ne le quitte jamais en clair. Nous conservons une copie chiffrée que seul votre mot de passe ouvre : si vous l’oubliez, personne ne peut la récupérer pour vous.' },
+  // The redesigned sign-in: pick an account, or an email and then its code.
+  'signin.chooseTitle': { es: 'Elige tu cuenta', en: 'Choose your account', pt: 'Escolhe a tua conta', de: 'Wähle dein Konto', fr: 'Choisis ton compte' },
+  'signin.chooseDesc': {
+    es: 'Solo la usamos para guardar tu respaldo cifrado.',
+    en: 'We only use it to keep your encrypted backup.',
+    pt: 'Só a usamos para guardar a tua cópia de segurança cifrada.',
+    de: 'Wir nutzen es nur, um deine verschlüsselte Sicherung aufzubewahren.',
+    fr: 'Nous ne l’utilisons que pour garder ta sauvegarde chiffrée.',
+  },
+  'signin.keyNotice': {
+    es: 'Tu clave se crea en este dispositivo y nunca sale de él sin cifrar. Cosmos guarda un respaldo cifrado que no puede abrir.',
+    en: 'Your key is created on this device and never leaves it unencrypted. Cosmos keeps an encrypted backup it cannot open.',
+    pt: 'A tua chave é criada neste dispositivo e nunca sai dele sem cifra. A Cosmos guarda uma cópia cifrada que não consegue abrir.',
+    de: 'Dein Schlüssel wird auf diesem Gerät erzeugt und verlässt es nie unverschlüsselt. Cosmos bewahrt eine verschlüsselte Sicherung auf, die es nicht öffnen kann.',
+    fr: 'Ta clé est créée sur cet appareil et n’en sort jamais sans être chiffrée. Cosmos garde une sauvegarde chiffrée qu’il ne peut pas ouvrir.',
+  },
+  'signin.emailTitle': { es: 'Tu email', en: 'Your email', pt: 'O teu e-mail', de: 'Deine E-Mail', fr: 'Ton e-mail' },
+  'signin.emailDesc': {
+    es: 'Te enviamos un código de 6 dígitos para entrar.',
+    en: 'We will send you a 6-digit code to sign in.',
+    pt: 'Enviamos-te um código de 6 dígitos para entrar.',
+    de: 'Wir senden dir einen 6-stelligen Code zum Anmelden.',
+    fr: 'Nous t’envoyons un code à 6 chiffres pour te connecter.',
+  },
+  'signin.emailLabel': { es: 'Email', en: 'Email', pt: 'E-mail', de: 'E-Mail', fr: 'E-mail' },
+  'signin.sendCode': { es: 'Enviar código', en: 'Send code', pt: 'Enviar código', de: 'Code senden', fr: 'Envoyer le code' },
   'signin.continueWith': { es: 'Continuar con {provider}', en: 'Continue with {provider}', pt: 'Continuar com {provider}', de: 'Weiter mit {provider}', fr: 'Continuer avec {provider}' },
   'signin.or': { es: 'o', en: 'or', pt: 'ou', de: 'oder', fr: 'ou' },
   'signin.emailPlaceholder': { es: 'nombre@email.com', en: 'name@email.com', pt: 'nome@email.com', de: 'name@email.com', fr: 'nom@email.com' },

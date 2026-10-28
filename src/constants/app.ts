@@ -39,9 +39,16 @@ export const APP_PRODUCER = 'Un producto de Cosmos';
  */
 export const MEMO_SIGNATURE = 'Cosmos Wallet';
 
-/** Terms & Conditions of use — linked from the backup consent checkbox. Served by
- *  the Developer Platform (a separate repo, EN/ES). */
-export const TERMS_URL = 'https://dev.cosmospay.lat/tos';
+/**
+ * The wallet's own legal pages, on its own domain: the Terms & Conditions of use and the
+ * privacy policy. Linked from the foot of Welcome (both) and the backup consent checkbox
+ * (Terms). Required on every first run, so they are linked even before the pages are
+ * published — the user's call (2026-10-28); the pages go up at these exact addresses.
+ * Not snap.cosmospay.lat/privacy: that one is the Stellar Snap's and says it keeps no user
+ * accounts, which is untrue of the wallet (sign-in, email, the encrypted backup, metrics).
+ */
+export const TERMS_URL = 'https://wallet.cosmospay.lat/tos';
+export const PRIVACY_URL = 'https://wallet.cosmospay.lat/privacy';
 
 /** Splash intro timing: the app starts fading in at REVEAL and the splash
  *  overlay unmounts at DONE. DONE - REVEAL = 800ms, paired with the 0.8s ease

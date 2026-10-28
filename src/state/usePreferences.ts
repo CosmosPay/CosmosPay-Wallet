@@ -11,20 +11,55 @@
  * slice writing the flag while the reporter kept its buffer would be an opt-out that
  * still sent the last few minutes.
  */
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '@/lib/i18n';
 import { setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
 
+/** What is painted. */
 export type Theme = 'dark' | 'light';
+/** What the person chose. `system` follows the device and is the default: a first run
+ *  opens in the phone's own theme, and only an explicit choice pins one. */
+export type ThemePref = Theme | 'system';
 
-const THEME_KEY = 'cosmos.theme';
+/**
+ * public/theme-boot.js holds its own copies of these two (it runs before any module, so
+ * the first paint already has the right canvas); tests/unit/themeBoot.test.ts keeps them
+ * equal.
+ */
+export const THEME_KEY = 'cosmos.theme';
+/** The browser chrome colour per theme: each theme's --bg (src/styles/theme.css). */
+export const THEME_COLOR: Record<Theme, string> = { dark: '#000000', light: '#ffffff' };
 const CONFIRM_KEY = 'cosmos.confirm';
+const LIGHT_QUERY = '(prefers-color-scheme: light)';
 
-export function savedTheme(): Theme {
+export function savedThemePref(): ThemePref {
   try {
-    return localStorage.getItem(THEME_KEY) === 'light' ? 'light' : 'dark';
+    const v = localStorage.getItem(THEME_KEY);
+    return v === 'light' || v === 'dark' ? v : 'system';
+  } catch {
+    return 'system';
+  }
+}
+
+function systemTheme(): Theme {
+  try {
+    return window.matchMedia(LIGHT_QUERY).matches ? 'light' : 'dark';
   } catch {
     return 'dark';
+  }
+}
+
+export function resolveTheme(pref: ThemePref): Theme {
+  return pref === 'system' ? systemTheme() : pref;
+}
+
+/** Paint a theme: tokens through `data-theme`, and the browser chrome to match. */
+function paintTheme(th: Theme): void {
+  try {
+    document.documentElement.setAttribute('data-theme', th);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLOR[th]);
+  } catch {
+    /* non-browser context */
   }
 }
 
@@ -37,19 +72,17 @@ export function savedRequireConfirm(): boolean {
   }
 }
 
-/** Apply the persisted theme to <html> before first paint, so there is no flash. */
+/** Apply the persisted theme to <html> as soon as the store module loads. The first paint
+ *  is public/theme-boot.js's; this covers a shell that does not load it (the extension's
+ *  approval window). */
 export function applySavedThemeEarly(): void {
-  try {
-    if (typeof document !== 'undefined') {
-      document.documentElement.setAttribute('data-theme', savedTheme());
-    }
-  } catch {
-    /* non-browser context */
-  }
+  if (typeof document !== 'undefined') paintTheme(resolveTheme(savedThemePref()));
 }
 
 export function usePreferences(onLangChange: (message: string) => void) {
-  const [theme, setThemeState] = useState<Theme>(savedTheme);
+  const [themePref, setThemePrefState] = useState<ThemePref>(savedThemePref);
+  const [deviceTheme, setDeviceTheme] = useState<Theme>(systemTheme);
+  const theme: Theme = themePref === 'system' ? deviceTheme : themePref;
   const [lang, setLangState] = useState<Lang>(savedLang);
   const [requireConfirm, setRequireConfirmState] = useState<boolean>(savedRequireConfirm);
   const [diagnostics, setDiagnosticsState] = useState<boolean>(telemetryEnabled);
@@ -71,14 +104,40 @@ export function usePreferences(onLangChange: (message: string) => void) {
     setTelemetryEnabled(on);
   }, []);
 
-  const setTheme = useCallback((th: Theme) => {
-    setThemeState(th);
+  // The device's theme can change under an open app (a scheduled dark mode, the quick
+  // setting); a `system` preference follows it live.
+  useEffect(() => {
+    let mq: MediaQueryList;
     try {
-      document.documentElement.setAttribute('data-theme', th);
-      localStorage.setItem(THEME_KEY, th);
-      document
-        .querySelector('meta[name="theme-color"]')
-        ?.setAttribute('content', th === 'light' ? '#eceef1' : '#080808');
+      mq = window.matchMedia(LIGHT_QUERY);
+    } catch {
+      return;
+    }
+    const onChange = () => setDeviceTheme(mq.matches ? 'light' : 'dark');
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+
+  // A flip the person (or the device) makes cross-fades, with the motion tokens' timing
+  // (animations.css); the first paint is the boot script's and does not animate.
+  const painted = useRef(false);
+  useEffect(() => {
+    const doc = document as Document & { startViewTransition?: (update: () => void) => unknown };
+    if (painted.current && typeof doc.startViewTransition === 'function') {
+      doc.startViewTransition(() => paintTheme(theme));
+    } else {
+      paintTheme(theme);
+    }
+    painted.current = true;
+  }, [theme]);
+
+  /** `system` forgets the stored choice rather than storing the word, so a device that
+   *  never chose keeps following the phone. */
+  const setThemePref = useCallback((pref: ThemePref) => {
+    setThemePrefState(pref);
+    try {
+      if (pref === 'system') localStorage.removeItem(THEME_KEY);
+      else localStorage.setItem(THEME_KEY, pref);
     } catch {
       /* ignore */
     }
@@ -100,5 +159,5 @@ export function usePreferences(onLangChange: (message: string) => void) {
     [onLangChange],
   );
 
-  return { theme, setTheme, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics };
+  return { theme, themePref, setThemePref, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics };
 }

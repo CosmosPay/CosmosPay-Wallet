@@ -1,0 +1,120 @@
+/* =====================================================================
+   src/ui/QuickPrefs.tsx — the language and theme controls of Welcome and Unlock, and
+   the language list in their sheet (the sheet itself is src/styles/ui/sheet.css).
+   Both controls are 44px targets and ink with the text colour on hover, like the
+   header controls of snap.cosmospay.lat.
+   ===================================================================== */
+.quick-prefs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* borderless pill: globe, the language's own name, a chevron */
+.quick-prefs-lang {
+  --ink: var(--text);
+  --ink-text: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 12px 0 11px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* the narrowest column (see the matching rule in welcome.css) */
+@media (max-width: 359px) {
+  .quick-prefs {
+    gap: 2px;
+  }
+
+  .quick-prefs-lang {
+    gap: 5px;
+    padding: 0 8px;
+  }
+}
+
+/* A round button in the buttons' style, inverted from the primary (the user's call): the
+   canvas with a 1.5px ink outline and an ink icon; on hover the ink fills it and the icon
+   turns to the canvas colour. */
+.quick-prefs-theme {
+  --ink: var(--text);
+  --ink-text: var(--bg);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1.5px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.quick-prefs-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.quick-prefs-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform var(--dur-base) var(--ease-in-out);
+}
+
+.quick-prefs-lang[aria-expanded='true'] .quick-prefs-chevron {
+  transform: rotate(180deg);
+}
+
+/* ---- the language list inside the sheet ---- */
+.quick-prefs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quick-prefs-opt {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.13s var(--ease-out), background-color var(--dur-quick) var(--ease-out);
+}
+
+.quick-prefs-opt.is-on {
+  background: var(--glass-bg);
+  font-weight: 700;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .quick-prefs-opt:not(.is-on):hover {
+    background: var(--glass-soft-bg);
+    filter: none;
+  }
+}
+
+.quick-prefs-check {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}

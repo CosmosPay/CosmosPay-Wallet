@@ -1,79 +1,77 @@
 /* Recovering an account onto this device — src/features/onboarding/RecoverAccount.tsx.
-   The list is a pick-one, so its rows carry the same tile metrics as the rest of
-   onboarding and differ only by the `.is-on` border. */
-
-.recover-desc {
-  margin-bottom: 14px;
-}
-
+   The header is ui/ScreenHeader and the panels ui/Notice. The list is a pick-one: flat
+   rows on the control surface, the chosen one outlined in ink. */
 .recover-loading {
   gap: 10px;
-  align-items: center;
   padding: 18px 0;
-  font-size: 13.5px;
-  color: var(--text-soft);
+  font-size: 14px;
+  color: var(--muted);
 }
 
-.recover-empty {
-  border-radius: 14px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
-  font-size: 13.5px;
-  line-height: 1.45;
-  color: var(--text-soft);
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
+.recover-notice {
+  margin-bottom: 16px;
+}
+
+.recover-notice-title {
+  font-size: 15px;
+  font-weight: 700;
 }
 
 .recover-list {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .recover-item {
   width: 100%;
-  border-radius: 14px;
-  padding: 14px 16px;
+  min-height: 54px;
+  display: flex;
   align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  border: 1.5px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text);
   text-align: left;
+  cursor: pointer;
+  transition: transform 0.13s var(--ease-out), border-color var(--dur-quick) var(--ease-out);
 }
 
 .recover-item.is-on {
-  border-color: var(--accent);
+  border-color: var(--text);
 }
 
 /* The address is the one thing worth reading character by character here: it is what
    the person is deciding to take back. */
 .recover-item-addr {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
+  font-size: 13.5px;
 }
 
 .recover-item-mark {
-  color: var(--accent);
-  font-size: 15px;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 
 .recover-warn {
-  border-radius: 14px;
-  padding: 12px 14px;
-  margin-top: 14px;
-}
-
-.recover-warn-text {
-  font-size: 12.5px;
-  line-height: 1.45;
-  color: var(--text-soft);
+  margin-top: 8px;
 }
 
 /* The two codes, one per recovery server — shown instead of the list until both servers
    have each been convinced of the inbox on their own. */
 .recover-codes {
-  border-radius: 14px;
-  padding: 14px 16px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
-.recover-codes-title {
-  font-size: 15px;
+.recover-section-title {
+  margin: 0 0 6px;
+  font-size: 18px;
   font-weight: 700;
+}
+
+.recover-section-desc {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
 }

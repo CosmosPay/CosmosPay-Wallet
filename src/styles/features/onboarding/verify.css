@@ -1,31 +1,68 @@
 /* =====================================================================
-   Onboarding — Verify (seed check). Prefix: .verify-
-   Slot/chip states are driven by modifier classes (--fixed / --empty /
-   --filled for slots, .is-used for chips).
+   src/features/onboarding/Verify.tsx — fill the gaps. Prefix: .verify-
+   Slot looks are modifier classes on the WordCell (is-fixed / is-empty /
+   is-filled); a used chip is .is-used.
    ===================================================================== */
-.verify-grid { margin-bottom: 22px; }
-.verify-word { min-height: 45px; }
-.verify-word--fixed { background: var(--surface); border: 1px solid var(--glass-border); cursor: default; }
-.verify-word--fixed .ob-word-text { color: var(--text-soft); }
-.verify-word--empty { background: transparent; border: 1px dashed rgba(255, 255, 255, 0.22); cursor: pointer; }
-.verify-word--empty .ob-word-text { color: var(--dim); }
-.verify-word--filled { background: var(--avatar-brand); border: 1px solid var(--accent); cursor: pointer; }
-.verify-word--filled .ob-word-text { color: var(--accent); }
-.verify-hint { margin-bottom: 12px; }
+.verify-grid {
+  margin-bottom: 20px;
+}
+
+.verify-word.is-fixed {
+  background: var(--glass-soft-bg);
+  border-color: var(--glass-soft-border);
+}
+
+.verify-word.is-fixed .ob-word-text {
+  color: var(--muted);
+}
+
+/* the gap: an outline waiting for a word */
+.verify-word.is-empty {
+  background: transparent;
+  border: 1.5px dashed var(--dimmer);
+}
+
+/* a word placed by a tap: ink, so it reads as the person's own answer */
+.verify-word.is-filled {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+  cursor: pointer;
+}
+
+.verify-word.is-filled .ob-word-num {
+  color: inherit;
+  opacity: 0.6;
+}
+
+.verify-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .verify-bank {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 24px;
 }
+
 .verify-chip {
-  border: 1px solid var(--glass-soft-border);
-  border-radius: 12px;
-  padding: 11px 18px;
-  font-size: 15px;
-  font-weight: 700;
-  background: var(--glass-soft-bg);
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--text);
+  background: transparent;
   color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
   cursor: pointer;
+  transition: transform 0.13s var(--ease-out), border-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
-.verify-chip.is-used { background: var(--surface-2); color: var(--dim); cursor: default; }
+
+.verify-chip.is-used {
+  border-color: var(--glass-border);
+  color: var(--dim);
+  cursor: default;
+}

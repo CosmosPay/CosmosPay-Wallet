@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
 import { GhostButton, PrimaryButton } from '@/ui/Buttons';
+import { Notice } from '@/ui/Notice';
 import { PasskeyButton } from '@/ui/PasskeyButton';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Spinner } from '@/ui/Spinner';
 import { Criterion } from '@/features/onboarding/Criterion';
-import { Desc } from '@/features/onboarding/Desc';
 import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
 import { Field } from '@/ui/Field';
 import { APP_PWD_CRITERIA, MIN_APP_PWD_LEN, appPasswordOk } from '@/lib/validate';
@@ -88,9 +88,12 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
     };
     return (
       <div className="scr screen col">
-        <BackBar title={t('passkey.protectTitle')} onBack={back} />
-        <Desc className="pwd-setup-desc">{t(signIn ? 'passkey.protectDescSignIn' : 'passkey.protectDesc')}</Desc>
-        <div className="glass-soft pwd-setup-note">{t('passkey.protectNote')}</div>
+        <ScreenHeader
+          title={t('passkey.protectTitle')}
+          desc={t(signIn ? 'passkey.protectDescSignIn' : 'passkey.protectDesc')}
+          onBack={back}
+        />
+        <Notice className="pwd-setup-note">{t('passkey.protectNote')}</Notice>
 
         {/* The sign-in path asks its two consents where it collects the password; the
             passkey path collects none, so it asks here, before the wallet exists. The seed
@@ -109,8 +112,7 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
   if (step === 'consents') {
     return (
       <div className="scr screen col">
-        <BackBar title={t('setup.optionalTitle')} onBack={back} />
-        <Desc className="pwd-setup-desc">{t('setup.optionalDesc')}</Desc>
+        <ScreenHeader title={t('setup.optionalTitle')} desc={t('setup.optionalDesc')} onBack={back} />
 
         <OptionalConsents store={store} />
 
@@ -126,10 +128,9 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('pwd.title')} onBack={back} />
       {/* On the sign-in path this password also seals the cloud backup, and it is the one
           the NEXT device will ask for — which the seed path's copy does not say, and has to. */}
-      <Desc className="pwd-setup-desc">{t(signIn ? 'signin.passwordDesc' : 'pwd.desc')}</Desc>
+      <ScreenHeader title={t('pwd.title')} desc={t(signIn ? 'signin.passwordDesc' : 'pwd.desc')} onBack={back} />
 
       <Field password label={t('pwd.label')} value={pwd} onChange={setPwd} placeholder={t('pwd.min', { n: MIN_APP_PWD_LEN })} />
       <Field password label={t('pwd.repeat')} value={confirm} onChange={setConfirm} placeholder={t('pwd.repeat')} />

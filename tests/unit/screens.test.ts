@@ -60,7 +60,11 @@ test('following back repeatedly always terminates at exit', () => {
 });
 
 test('the onboarding chain matches the flow the user walked', () => {
-  assert.equal(backTarget('backup', ctx()), 'welcome');
+  // Welcome -> how to back it up -> the words; Welcome -> which backup -> the import.
+  assert.equal(backTarget('backup-choice', ctx()), 'welcome');
+  assert.equal(backTarget('restore-choice', ctx()), 'welcome');
+  assert.equal(backTarget('backup', ctx()), 'backup-choice');
+  assert.equal(backTarget('import', ctx()), 'restore-choice');
   assert.equal(backTarget('verify', ctx()), 'backup');
   assert.equal(backTarget('password', ctx()), 'profile-setup');
   // profile-setup came from `verify` when a phrase was generated, `import` otherwise.

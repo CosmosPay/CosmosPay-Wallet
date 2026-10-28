@@ -57,11 +57,16 @@ async function mockServer(page: Page, ready: () => unknown, finishes: Captured[]
   });
 }
 
+/** Welcome -> create -> with my account -> email -> code. Restoring goes through the same
+ *  door on purpose: the account decides whether there is a backup to open, so a person who
+ *  taps "create" with an account that already has one still gets it back. */
 async function signInWithEmail(page: Page) {
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
-  await page.getByText('Entrar con Google, GitHub o email').click();
-  await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
+  await page.getByText('Crear una wallet nueva').click();
+  await page.getByRole('button', { name: 'Con mi cuenta' }).click();
   await page.getByRole('button', { name: 'Continuar con email' }).click();
+  await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
+  await page.getByRole('button', { name: 'Enviar código' }).click();
   await page.locator('input[autocomplete="one-time-code"]').fill('123456');
   await page.getByRole('button', { name: 'Confirmar' }).click();
 }

@@ -13,9 +13,9 @@ import '@/styles/ui/field.css';
  * `molecules/fiat/Field` (sentence-case label on the soft surface) and
  * `molecules/onboarding/PasswordField` (the same field plus an eye toggle).
  *
- * The two looks are kept as enumerated variants rather than averaged away, so this
- * merge changes no pixels — `tone` and `kind` map to classes, per CLAUDE.md, and an
- * unsupported value is a compile error rather than a silently missing style.
+ * `tone` only picks the fill (the label is one style since the redesign); `tone` and
+ * `kind` map to classes, per CLAUDE.md, and an unsupported value is a compile error
+ * rather than a silently missing style.
  */
 export type FieldTone = 'glass' | 'soft';
 export type FieldKind = 'text' | 'amount';
@@ -69,7 +69,7 @@ export function Field({
 
   return (
     <label className={cx('field', tone === 'soft' && 'is-soft', className)}>
-      {label && <div className={cx('field-label', tone === 'glass' && 'label-up')}>{label}</div>}
+      {label && <div className="field-label">{label}</div>}
       {password ? (
         <div className="field-eye-wrap">
           {input}

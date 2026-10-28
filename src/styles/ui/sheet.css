@@ -1,0 +1,140 @@
+/* =====================================================================
+   src/ui/Sheet.tsx — bottom sheet on the native <dialog>.
+   The dialog spans the viewport (a click on it is a click on the scrim) and the panel
+   sits at its bottom, capped to the app column. Flat: one solid fill a step above the
+   canvas and a hairline, no shadow.
+   ===================================================================== */
+.sheet {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  /* The UA gives `dialog:modal` `overflow: auto`, which makes it a scroll container. On
+     open the focus lands in the panel while it is still parked below the screen, so the
+     dialog scrolled down by the panel's height to show it — cancelling the slide exactly:
+     the sheet sat still at its final place from the first frame and only the way out
+     moved. Not a scroll container, nothing can scroll it. */
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.sheet:not([open]) {
+  display: none;
+}
+
+/* The literal is the fallback for engines whose ::backdrop does not inherit custom
+   properties (Chromium before 122, which an older Android WebView still is).
+   Transitions, not keyframes, for the scrim and the panel alike: the dialog is shown
+   parked and `is-open` lands two frames later (see Sheet.tsx), so each direction is a
+   transition between two states the phone has already painted. Each state carries the
+   timing of the move INTO it. In: an even deceleration over half a second — a curve that
+   front-loads the move (most of it in the first 100ms) reads as the sheet simply
+   appearing, on a large screen above all. Out: a short ease-in. */
+.sheet::backdrop {
+  background: var(--scrim, rgba(0, 0, 0, 0.6));
+  opacity: 0;
+  transition: opacity var(--dur-base) var(--ease-in);
+}
+
+.sheet.is-open::backdrop {
+  opacity: 1;
+  transition: opacity var(--dur-slow) var(--ease-out);
+}
+
+.sheet-panel {
+  width: 100%;
+  max-width: var(--frame-max);
+  max-height: 85%;
+  overflow-y: auto;
+  background: var(--sheet-bg);
+  border: 1px solid var(--hairline);
+  border-bottom: 0;
+  border-radius: 24px 24px 0 0;
+  padding: 10px var(--gutter) calc(28px + var(--safe-b));
+  /* Its own compositor layer for as long as the dialog is up. Promoted only for the slide,
+     the panel was folded back into the dialog's layer when the transition ended, and that
+     repainted the whole viewport-sized dialog in one ~12ms frame: a stutter right as it
+     settled. */
+  will-change: transform;
+  transform: translateY(100%);
+  transition: transform var(--dur-base) var(--ease-in);
+}
+
+.sheet.is-open .sheet-panel {
+  transform: none;
+  transition: transform var(--dur-slow) var(--ease-out);
+}
+
+/* The sheet moves as ONE piece: its controls must not run the app-wide entrance pop
+   (animations.css) on their own, or their last rebound lands as a small jump just as the
+   slide settles. Same rule as the nav drawer's (app.css). */
+.sheet-panel button,
+.sheet-panel .tap {
+  animation: none !important;
+}
+
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 4px;
+  background: var(--dimmer);
+  margin: 0 auto 14px;
+}
+
+/* title row: the sheet's name and its close button */
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sheet-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+}
+
+/* 44px round close in the outlined-button style (.btn-ghost): the 1.5px outline alone, and
+   on hover the brand blue fills it and takes the outline too. */
+.sheet-close {
+  --ink: var(--brand);
+  --ink-text: var(--on-brand);
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sheet-close.ink:focus-visible {
+  border-color: var(--brand);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sheet-close.ink:hover {
+    border-color: var(--brand);
+  }
+}
+
+.sheet-close svg {
+  width: 18px;
+  height: 18px;
+}

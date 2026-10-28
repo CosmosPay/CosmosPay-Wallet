@@ -5,80 +5,92 @@
    Loaded first by src/pages/index.astro.
    ===================================================================== */
 
+/* Flat and matte: every surface is one solid colour. No gradients, no translucency, no
+   backdrop blur, no drop shadows — depth comes from the step between --bg and the two
+   surfaces, never from light effects. The `--glass-*` names predate this and stay so the
+   forty screens keep resolving; they hold solid colours now.
+
+   Brand palette (brand manual): black, white, Dark Navy #05064f, Cosmic Blue #000877.
+   Ink is the primary colour — buttons, figures, selected states — as on
+   snap.cosmospay.lat; blue is tertiary (focus ring, active indicator) and never a button.
+   Every text colour below is WCAG AA (4.5:1) on --bg AND on --glass-bg. */
 :root,
 [data-theme='dark'] {
-  /* Marca Cosmos: cuatro colores (negro, blanco, Dark Navy #05064F, Cosmic
-     Blue #000877) y grises por opacidad. En oscuro el acento es blanco: el
-     Cosmic Blue sobre negro no llega a contraste legible como texto. */
+  /* Dark is the Figma file ("Cosmos Wallet"): black canvas, #171a22 controls, #07080b
+     navigation, #8889a1 labels. Its tertiary grey #6b707c is 3.5:1 on a control, so
+     --dim is lifted to #7d8290 (4.5:1 there). */
   --bg: #000000;
   --text: #ffffff;
-  --text-soft: #cfd4d1;
-  --muted: #9aa19d;
-  --dim: #6a716d;
-  --dimmer: #5c6460;
+  --text-soft: #cfd0d6;
+  --muted: #8889a1;
+  --dim: #7d8290;
+  /* 3:1 — large figures (a balance's cents) and marks only, never small text. */
+  --dimmer: #62677a;
   --accent: #ffffff;
-  --on-accent: #0a0c0b;
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-soft-bg: rgba(255, 255, 255, 0.07);
-  --glass-soft-border: rgba(255, 255, 255, 0.09);
-  --primary-bg: rgba(255, 255, 255, 0.92);
-  --primary-border: rgba(255, 255, 255, 0.65);
-  --primary-text: #0a0c0b;
-  --surface: rgba(255, 255, 255, 0.05);
-  --surface-2: rgba(255, 255, 255, 0.045);
-  --hairline: rgba(255, 255, 255, 0.08);
-  --nav-bg: rgba(10, 10, 10, 0.55);
-  --avatar-bg: rgba(255, 255, 255, 0.09);
-  --avatar-brand: rgba(255, 255, 255, 0.16);
+  --on-accent: #000000;
+  /* The Figma accent: focus rings and the active indicator, 3:1 or more on every surface. */
+  --brand: #4d66ff;
+  --on-brand: #ffffff;
+  --glass-bg: #171a22;
+  --glass-border: #262a35;
+  --glass-soft-bg: #11131a;
+  --glass-soft-border: #1f232d;
+  --primary-bg: #ffffff;
+  --primary-border: #ffffff;
+  --primary-text: #000000;
+  --surface: #11131a;
+  --surface-2: #0c0d12;
+  --hairline: #1f232d;
+  --nav-bg: #07080b;
+  /* Bottom sheets sit one step above the canvas so their edge reads without a shadow. */
+  --sheet-bg: #0c0d12;
+  --scrim: rgba(0, 0, 0, 0.72);
+  --avatar-bg: #171a22;
+  --avatar-brand: #262a35;
   --avatar-text: #ffffff;
-  --up: #4ade80;
+  --up: #28a63f;
   --down: #ff6b6b;
   /* Error / refusal copy. Distinct from --down, which means "price fell": the two
      happen to be red today but must be free to diverge. */
   --danger: #ff5d5d;
-  /* Tinted fill behind a refusal mark, e.g. the error boundary's badge. */
-  --danger-soft: rgba(255, 93, 93, 0.14);
-  --gb-bg-a: rgba(255, 255, 255, 0.05);
-  --gb-bg-b: rgba(255, 255, 255, 0.085);
-  --gb-bd-a: rgba(255, 255, 255, 0.08);
-  --gb-bd-b: rgba(255, 255, 255, 0.2);
+  /* Fill behind a refusal mark, e.g. the error boundary's badge. */
+  --danger-soft: #2b1517;
 }
 
 [data-theme='light'] {
-  /* En claro el acento y el boton primario son Cosmic Blue con texto blanco,
-     como en cosmospay.lat. --up/--down/--danger no se tocan: en una wallet el
-     verde y el rojo de subio o bajo son semantica financiera, no marca. */
+  /* Light is derived from the same system: white canvas, black ink, and the cool greys
+     snap.cosmospay.lat uses, so the two products read as one. --up/--down/--danger keep
+     their meaning (financial semantics, not brand) and were moved to AA on white. */
   --bg: #ffffff;
   --text: #000000;
-  --text-soft: #2b322f;
-  --muted: #5d6762;
-  --dim: #8b938e;
-  --dimmer: #aab2ad;
-  --accent: #000877;
+  --text-soft: #2b2d35;
+  --muted: #555561;
+  --dim: #696c79;
+  --dimmer: #84879a;
+  --accent: #000000;
   --on-accent: #ffffff;
-  --glass-bg: rgba(255, 255, 255, 0.58);
-  --glass-border: rgba(255, 255, 255, 0.85);
-  --glass-soft-bg: rgba(255, 255, 255, 0.62);
-  --glass-soft-border: rgba(0, 0, 0, 0.05);
-  --primary-bg: #000877;
-  --primary-border: rgba(0, 0, 0, 0.2);
+  --brand: #3d55f0;
+  --on-brand: #ffffff;
+  --glass-bg: #f2f3f6;
+  --glass-border: #e3e5eb;
+  --glass-soft-bg: #f7f8fa;
+  --glass-soft-border: #eceef2;
+  --primary-bg: #000000;
+  --primary-border: #000000;
   --primary-text: #ffffff;
-  --surface: rgba(255, 255, 255, 0.5);
-  --surface-2: rgba(255, 255, 255, 0.4);
-  --hairline: rgba(0, 0, 0, 0.08);
-  --nav-bg: rgba(255, 255, 255, 0.72);
-  --avatar-bg: rgba(0, 0, 0, 0.06);
-  --avatar-brand: rgba(0, 0, 0, 0.1);
-  --avatar-text: #000877;
-  --up: #16a34a;
+  --surface: #eef0f4;
+  --surface-2: #f4f5f8;
+  --hairline: #e6e8ee;
+  --nav-bg: #ffffff;
+  --sheet-bg: #ffffff;
+  --scrim: rgba(0, 0, 0, 0.4);
+  --avatar-bg: #eef0f4;
+  --avatar-brand: #e3e5eb;
+  --avatar-text: #000000;
+  --up: #15803d;
   --down: #dc2626;
   --danger: #d92020;
-  --danger-soft: rgba(217, 32, 32, 0.1);
-  --gb-bg-a: rgba(255, 255, 255, 0.42);
-  --gb-bg-b: rgba(255, 255, 255, 0.62);
-  --gb-bd-a: rgba(255, 255, 255, 0.5);
-  --gb-bd-b: rgba(255, 255, 255, 0.95);
+  --danger-soft: #fdecec;
 }
 
 /* native controls (date pickers, scrollbars) follow the app theme, so a
@@ -157,6 +169,22 @@
   }
 }
 
+/* ---------------- motion ----------------
+   Every move eases: nothing jumps and nothing runs linear (a spinner's endless turn is
+   the one exception). Enter with --ease-out (quick start, soft landing), leave with
+   --ease-in, travel between two places with --ease-in-out; --ease-ink is the snap buttons'
+   fill. Durations by size of the move: --dur-quick for colour and border, --dur-base for
+   small moves and every way out, --dur-slow for a panel coming in. */
+:root {
+  --ease-out: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-in: cubic-bezier(0.55, 0.085, 0.68, 0.53);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --ease-ink: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-quick: 0.18s;
+  --dur-base: 0.3s;
+  --dur-slow: 0.5s;
+}
+
 /* ---------------- safe margins ----------------
    Two different things, kept apart on purpose.
 
@@ -172,6 +200,11 @@
    a fallback an engine with no env() support poisons every calc() that reads these. */
 :root {
   --gutter: 22px;
+  /* Breathing room under a screen's last control. The shell already pads the content by
+     --safe-b (the gesture pill); this tops it up so the last button always sits at least
+     56px above the bottom edge — and 24px above the pill where there is one — instead of
+     flush with the glass on a phone that reports no inset. */
+  --screen-end: max(24px, calc(56px - var(--safe-b)));
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);

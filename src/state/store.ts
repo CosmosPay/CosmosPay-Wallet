@@ -506,6 +506,46 @@ export function useWalletStore() {
   const screenRef = useRef<Screen>(screen);
   screenRef.current = screen;
   const [tab, setTab] = useState<Tab>('home');
+
+  /**
+   * Navigation stack. This was a ONE-DEEP slot (`prevScreenRef`) that `back()` reset
+   * to 'home' after every use, so any three-level flow lost its origin — and the
+   * "where can I return to" question was answered by a hardcoded list of eleven
+   * screen names. A real stack answers it exactly, and the table in
+   * lib/screens.ts supplies the fallback when the stack is empty.
+   *
+   * Declared up here, with `navigate`, because everything below may move between screens:
+   * `lock()` empties the stack, and the onboarding actions push onto it. An action that
+   * changed screen with the raw `setScreen` left no trace, so "back" from a screen it
+   * opened skipped that screen's parent (verify went straight to Welcome).
+   */
+  const stackRef = useRef<Screen[]>([]);
+
+  /* --------------------------- navigation ------------------------- */
+  const navigate = useCallback((s: Screen) => {
+    // The stack is pushed HERE, not inside the `setScreen` updater. React requires
+    // updaters to be pure and may call one twice (StrictMode, a discarded concurrent
+    // render); mutating the stack in there pushed two entries per navigation and made
+    // "back" need two taps — with nothing red to show for it.
+    const cur = screenRef.current;
+    if (cur !== s) {
+      // A terminal screen (success) starts a fresh stack: "back" from it must not
+      // walk back into the flow that produced it.
+      stackRef.current = SCREENS[s].terminal ? [] : [...stackRef.current, cur];
+      screenRef.current = s;
+      setScreen(s);
+    }
+    const tab = SCREENS[s].tab;
+    if (tab) setTab(tab);
+  }, []);
+
+  const go = useCallback(
+    (s: Screen, t?: Tab) => {
+      navigate(s);
+      if (t) setTab(t);
+    },
+    [navigate],
+  );
   const [networkId, setNetworkIdState] = useState<string>('testnet');
   const [customNetworks, setCustomNetworksState] = useState<NetConfig[]>([]);
   const networks = useMemo(() => allNetworks(customNetworks), [customNetworks]);
@@ -610,7 +650,7 @@ export function useWalletStore() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta, network, networkId]);
-  const { theme, setTheme, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics } =
+  const { theme, themePref, setThemePref, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics } =
     usePreferences(useCallback((msg: string) => flash(msg, 'info'), [flash]));
 
   // onboarding drafts
@@ -930,8 +970,8 @@ export function useWalletStore() {
     setDraftAccount(acc);
     setDraftHasMnemonic(true);
     setVerifyFilled({});
-    setScreen('backup');
-  }, []);
+    navigate('backup');
+  }, [navigate]);
 
   const beginVerify = useCallback(() => {
     const words = draftMnemonic.split(' ');
@@ -953,8 +993,8 @@ export function useWalletStore() {
     setVerifyTargets(targets);
     setVerifyFilled({});
     setVerifyBank(bank);
-    setScreen('verify');
-  }, [draftMnemonic]);
+    navigate('verify');
+  }, [draftMnemonic, navigate]);
 
   const tapChip = useCallback(
     (word: string) => {
@@ -990,14 +1030,14 @@ export function useWalletStore() {
       // was abandoned at the password screen is still visible — the drop-off between
       // these two events is the thing worth seeing.
       report(EVENT.walletImported, { category: 'lifecycle', props: { hasMnemonic: !!mnemonic } });
-      setScreen('profile-setup');
+      navigate('profile-setup');
     } catch (e) {
       // The message only ever describes the FORM of what was pasted ("not a valid secret
       // key or recovery phrase"); the text itself is a seed and never leaves the device.
       reportError(EVENT.walletImported, e);
       flash((e as Error).message, 'err');
     }
-  }, [importText, flash]);
+  }, [importText, flash, navigate]);
 
   /* ----------------------------- signing in ----------------------------- */
   /* Declared up here, not down with the sign-in actions, because `finishOnboarding` is a
@@ -1604,17 +1644,6 @@ export function useWalletStore() {
     [flash, claimAttempt, forgetAttempt, openSession, t, errLine],
   );
 
-  /**
-   * Navigation stack. This was a ONE-DEEP slot (`prevScreenRef`) that `back()` reset
-   * to 'home' after every use, so any three-level flow lost its origin — and the
-   * "where can I return to" question was answered by a hardcoded list of eleven
-   * screen names. A real stack answers it exactly, and the table in
-   * lib/screens.ts supplies the fallback when the stack is empty.
-   *
-   * Declared here rather than beside `navigate`/`goBack` because `lock()` below has
-   * to be able to empty it.
-   */
-  const stackRef = useRef<Screen[]>([]);
 
   /**
    * End the session.
@@ -4699,31 +4728,6 @@ export function useWalletStore() {
     flash(t('devAuth.enabled', { method }), 'ok');
   }, [session, requestSignature, deviceAuthPublic, deviceAuthPrivileged, flash, flashDeviceAuth, t]);
 
-  /* --------------------------- navigation ------------------------- */
-  const navigate = useCallback((s: Screen) => {
-    // The stack is pushed HERE, not inside the `setScreen` updater. React requires
-    // updaters to be pure and may call one twice (StrictMode, a discarded concurrent
-    // render); mutating the stack in there pushed two entries per navigation and made
-    // "back" need two taps — with nothing red to show for it.
-    const cur = screenRef.current;
-    if (cur !== s) {
-      // A terminal screen (success) starts a fresh stack: "back" from it must not
-      // walk back into the flow that produced it.
-      stackRef.current = SCREENS[s].terminal ? [] : [...stackRef.current, cur];
-      screenRef.current = s;
-      setScreen(s);
-    }
-    const tab = SCREENS[s].tab;
-    if (tab) setTab(tab);
-  }, []);
-
-  const go = useCallback(
-    (s: Screen, t?: Tab) => {
-      navigate(s);
-      if (t) setTab(t);
-    },
-    [navigate],
-  );
 
   /**
    * Where "continue" goes from the success screen.
@@ -6021,7 +6025,8 @@ export function useWalletStore() {
     loadHistory,
     toast,
     theme,
-    setTheme,
+    themePref,
+    setThemePref,
     lang,
     setLang,
     requireConfirm,

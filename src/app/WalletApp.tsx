@@ -1,6 +1,7 @@
 import '@/styles/app/wallet-app.css';
 import { Suspense, lazy, useEffect, useRef, useState, type ComponentType, type LazyExoticComponent } from 'react';
 import { SPLASH_REVEAL_MS, SPLASH_DONE_MS } from '@/constants/app';
+import { markAppRevealed } from '@/lib/appReveal';
 import { NAV_SCREENS, type Screen } from '@/lib/screens';
 import { useWalletStore, type WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
@@ -43,6 +44,8 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
 
   // lazy — the rest of onboarding. Reached only after a tap, and `import` pulls in
   // BIP-39 + SLIP-0010 (~240 KB) that a returning user never needs.
+  'backup-choice': lazy(() => import('@/features/onboarding/BackupChoice').then((m) => ({ default: m.BackupChoice }))),
+  'restore-choice': lazy(() => import('@/features/onboarding/RestoreChoice').then((m) => ({ default: m.RestoreChoice }))),
   backup: lazy(() => import('@/features/onboarding/Backup').then((m) => ({ default: m.Backup }))),
   verify: lazy(() => import('@/features/onboarding/Verify').then((m) => ({ default: m.Verify }))),
   import: lazy(() => import('@/features/onboarding/Import').then((m) => ({ default: m.Import }))),
@@ -147,8 +150,14 @@ function WalletAppShell() {
   const isExt = buildKind() === 'ext';
   const [intro, setIntro] = useState<'show' | 'reveal' | 'done'>(isExt ? 'done' : 'show');
   useEffect(() => {
-    if (isExt) return;
-    const t1 = setTimeout(() => setIntro('reveal'), SPLASH_REVEAL_MS);
+    if (isExt) {
+      markAppRevealed();
+      return;
+    }
+    const t1 = setTimeout(() => {
+      setIntro('reveal');
+      markAppRevealed();
+    }, SPLASH_REVEAL_MS);
     const t2 = setTimeout(() => setIntro('done'), SPLASH_DONE_MS);
     return () => {
       clearTimeout(t1);

@@ -1,4 +1,5 @@
 import { cx } from '@/lib/cx';
+import { inkHandlers } from '@/lib/ink';
 import { Spinner } from '@/ui/Spinner';
 import type { DeviceAuthKind } from '@/lib/deviceAuth';
 import '@/styles/ui/device-auth-button.css';
@@ -59,7 +60,8 @@ export function DeviceAuthButton({
       type="button"
       onClick={onClick}
       disabled={busy}
-      className={cx('glass-soft row center g10 device-auth-btn', className)}
+      className={cx('btn-ghost ink device-auth-btn', className)}
+      {...inkHandlers}
     >
       {busy ? <Spinner /> : <DeviceAuthIcon kind={kind} />}
       <span className="device-auth-btn-label">{label}</span>

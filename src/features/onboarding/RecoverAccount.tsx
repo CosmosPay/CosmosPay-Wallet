@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Field } from '@/ui/Field';
+import { CheckIcon } from '@/ui/Icons';
+import { Notice } from '@/ui/Notice';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Spinner } from '@/ui/Spinner';
 import { CheckRow } from '@/features/onboarding/CheckRow';
-import { Desc } from '@/features/onboarding/Desc';
 import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
 import { shortAddr } from '@/lib/format';
 import { cx } from '@/lib/cx';
@@ -77,13 +78,12 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('recover.title')} onBack={store.goBack} />
-      <Desc className="recover-desc">{t('recover.desc')}</Desc>
+      <ScreenHeader title={t('recover.title')} desc={t('recover.desc')} onBack={store.goBack} />
 
       {pendingCodes ? (
-        <div className="glass-soft col g8 recover-codes">
-          <div className="recover-codes-title">{t('recover.codesTitle')}</div>
-          <div className="desc">{t('recover.codesDesc', { email: pendingCodes.email })}</div>
+        <section className="col recover-codes" aria-labelledby="recover-codes-title">
+          <h2 id="recover-codes-title" className="recover-section-title">{t('recover.codesTitle')}</h2>
+          <p className="recover-section-desc">{t('recover.codesDesc', { email: pendingCodes.email })}</p>
           {Array.from({ length: pendingCodes.count }, (_, i) => (
             <Field
               key={i}
@@ -101,35 +101,37 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
           >
             {store.busy ? <Spinner /> : t('recover.codesCta')}
           </PrimaryButton>
-        </div>
+        </section>
       ) : wholeBackup ? (
         <>
-          <div className="glass-soft col g8 recover-codes">
-            <div className="recover-codes-title">{t('recover.backupTitle')}</div>
-            <div className="desc">{t('recover.backupDesc', { address: shortAddr(whole?.address ?? '', 8, 8) })}</div>
-            {whole && whole.count > 1 && <div className="desc">{t('recover.backupMore', { n: whole.count - 1 })}</div>}
-          </div>
+          <Notice className="recover-notice">
+            <strong className="recover-notice-title">{t('recover.backupTitle')}</strong>
+            <span>{t('recover.backupDesc', { address: shortAddr(whole?.address ?? '', 8, 8) })}</span>
+            {whole && whole.count > 1 && <span>{t('recover.backupMore', { n: whole.count - 1 })}</span>}
+          </Notice>
           <Field password label={t('recover.newPwdLabel')} value={pwd} onChange={setPwd} />
           <OptionalConsents store={store} />
         </>
       ) : accounts === null ? (
-        <div className="row recover-loading">
-          <Spinner />
+        <div className="row recover-loading" role="status">
+          <Spinner tone="text" />
           <span>{t('recover.looking')}</span>
         </div>
       ) : accounts.length === 0 ? (
-        <div className="recover-empty">{t('recovery.error.noAccounts')}</div>
+        <Notice tone="danger" className="recover-notice">{t('recovery.error.noAccounts')}</Notice>
       ) : (
         <>
           <div className="col g8 recover-list">
             {accounts.map((a) => (
               <button
                 key={a.address}
+                type="button"
+                aria-pressed={address === a.address}
                 onClick={() => setChosen(a.address)}
-                className={cx('tap glass row between recover-item', address === a.address && 'is-on')}
+                className={cx('recover-item', address === a.address && 'is-on')}
               >
-                <span className="recover-item-addr">{shortAddr(a.address, 8, 8)}</span>
-                <span className="recover-item-mark">{address === a.address ? '✓' : ''}</span>
+                <span className="f1 recover-item-addr">{shortAddr(a.address, 8, 8)}</span>
+                {address === a.address && <CheckIcon className="recover-item-mark" />}
               </button>
             ))}
           </div>
@@ -137,14 +139,14 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
           <Field password label={t('recover.newPwdLabel')} value={pwd} onChange={setPwd} />
           <OptionalConsents store={store} />
 
-          <div className="glass-soft col g8 recover-warn">
-            <div className="recover-warn-text">{t('recover.phraseWarn')}</div>
-            <div className="recover-warn-text">{t('recover.otherNetworks', { network: store.network.label })}</div>
-            <div className="recover-warn-text">{t('recover.otherChains')}</div>
+          <Notice tone="danger" className="recover-warn">
+            <span>{t('recover.phraseWarn')}</span>
+            <span>{t('recover.otherNetworks', { network: store.network.label })}</span>
+            <span>{t('recover.otherChains')}</span>
             <CheckRow on={ack} onToggle={() => setAck(!ack)}>
               {t('recover.phraseAck')}
             </CheckRow>
-          </div>
+          </Notice>
         </>
       )}
 

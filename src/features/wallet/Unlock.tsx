@@ -6,7 +6,9 @@ import { Spinner } from '@/ui/Spinner';
 import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
 import { PasskeyButton } from '@/ui/PasskeyButton';
 import { EyeIcon } from '@/ui/EyeIcon';
-import { LangSelect } from '@/ui/LangSelect';
+import { CheckIcon, ChevronDownIcon } from '@/ui/Icons';
+import { Notice } from '@/ui/Notice';
+import { QuickPrefs } from '@/ui/QuickPrefs';
 import { getGreeting } from '@/lib/greeting';
 import { shortAddr } from '@/lib/format';
 import { addressOn } from '@/lib/accountAddress';
@@ -88,17 +90,15 @@ export function Unlock({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col unlock-screen">
-      {/* language switcher, top-right — same control as the Welcome screen */}
+      {/* language and theme, top-right — the same controls as the Welcome screen */}
       <div className="unlock-langbar">
-        <LangSelect value={store.lang} onChange={store.setLang} />
+        <QuickPrefs t={t} lang={store.lang} onLang={store.setLang} theme={store.theme} onTheme={store.setThemePref} />
       </div>
       <div className="f1 col center unlock-hero">
         <div className="unlock-logo"><Logo size={92} /></div>
         {g.isBirthday && <div className="unlock-birthday">🎂 {g.age !== null ? t('unlock.yearsOld', { age: g.age }) : t('unlock.happyDay')}</div>}
-        <div className="unlock-line">{g.line}</div>
-        <div className="unlock-subtitle">
-          {t('unlock.subtitle')}
-        </div>
+        <h1 className="unlock-line">{g.line}</h1>
+        <p className="unlock-subtitle">{t('unlock.subtitle')}</p>
 
         {/* The field and everything that acts on it, as ONE group.
             The unlock button used to sit at the bottom of the screen. That put most of a
@@ -117,9 +117,9 @@ export function Unlock({ store }: { store: WalletStore }) {
             />
           )}
           {passkeyFirst && !showPwdForm && (
-            <div onClick={() => setShowPwdForm(true)} className="tap unlock-forgot">
+            <button type="button" onClick={() => setShowPwdForm(true)} className="link-btn unlock-link">
               {t('passkey.usePassword')}
-            </div>
+            </button>
           )}
           {(!passkeyFirst || showPwdForm) && (
             <>
@@ -129,6 +129,7 @@ export function Unlock({ store }: { store: WalletStore }) {
                   value={pwd}
                   autoFocus
                   placeholder={t('pwd.label')}
+                  aria-label={t('pwd.label')}
                   onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
                   onKeyDown={(e) => e.key === 'Enter' && submit()}
                   className="input unlock-pwd-input"
@@ -137,7 +138,7 @@ export function Unlock({ store }: { store: WalletStore }) {
                 <button
                   type="button"
                   onClick={() => setShowPwd((v) => !v)}
-                  aria-label={showPwd ? 'Ocultar' : 'Mostrar'}
+                  aria-label={t(showPwd ? 'a11y.hide' : 'a11y.show')}
                   className={cx('unlock-eye', showPwd && 'is-shown')}
                 >
                   <EyeIcon off={showPwd} />
@@ -159,31 +160,40 @@ export function Unlock({ store }: { store: WalletStore }) {
             />
           )}
           {!confirmWipe ? (
-            <div onClick={() => setConfirmWipe(true)} className="tap unlock-forgot">
+            <button type="button" onClick={() => setConfirmWipe(true)} className="link-btn unlock-link">
               {t('unlock.forgot')}
-            </div>
+            </button>
           ) : (
-            <div className="unlock-wipe">
-              {t('unlock.forgotDesc')}
+            <Notice tone="danger" className="unlock-wipe">
+              <span>{t('unlock.forgotDesc')}</span>
               {/* Removes ONLY the active wallet (the one whose password was forgotten) —
                   other wallets on this device are untouched. */}
-              <div onClick={() => store.meta && store.removeWalletLocked(store.meta.id)} className="tap unlock-wipe-delete">
+              <button
+                type="button"
+                onClick={() => store.meta && store.removeWalletLocked(store.meta.id)}
+                className="btn-ghost unlock-wipe-delete"
+              >
                 {t('unlock.deleteRestore')}
-              </div>
-            </div>
+              </button>
+            </Notice>
           )}
 
           {/* Multiple wallets: compact dropdown to pick which one to unlock, or remove one. */}
           {multi && (
             <div className="unlock-switch">
-              <button onClick={() => setWalletOpen((o) => !o)} className="glass-soft unlock-switch-btn">
+              <button
+                type="button"
+                aria-expanded={walletOpen}
+                onClick={() => setWalletOpen((o) => !o)}
+                className="btn-ghost unlock-switch-btn"
+              >
                 {t('unlock.switchTitle')}
-                <span className={cx('unlock-switch-caret', walletOpen && 'is-open')}>▼</span>
+                <ChevronDownIcon className={cx('unlock-switch-caret', walletOpen && 'is-open')} />
               </button>
               {walletOpen && (
                 <>
                   <div onClick={() => { setWalletOpen(false); setDeletingId(''); }} className="unlock-switch-overlay" />
-                  <div className="scr glass unlock-switch-menu">
+                  <div className="scr unlock-switch-menu">
                     {store.wallets.map((w) => {
                       const active = w.id === store.activeWalletId;
                       if (deletingId === w.id) {
@@ -191,8 +201,8 @@ export function Unlock({ store }: { store: WalletStore }) {
                           <div key={w.id} className="unlock-del">
                             <div className="unlock-del-text">{t('unlock.removeConfirm', { name: w.name })}</div>
                             <div className="flexr g8">
-                              <button onClick={() => setDeletingId('')} className="glass-soft unlock-del-btn">{t('common.cancel')}</button>
-                              <button onClick={() => { store.removeWalletLocked(w.id); setDeletingId(''); setWalletOpen(false); }} className="unlock-del-btn unlock-del-btn--danger">{t('common.delete')}</button>
+                              <button type="button" onClick={() => setDeletingId('')} className="unlock-del-btn">{t('common.cancel')}</button>
+                              <button type="button" onClick={() => { store.removeWalletLocked(w.id); setDeletingId(''); setWalletOpen(false); }} className="unlock-del-btn is-danger">{t('common.delete')}</button>
                             </div>
                           </div>
                         );
@@ -208,7 +218,7 @@ export function Unlock({ store }: { store: WalletStore }) {
                               <div className="unlock-wallet-addr">{shortAddr(addressOn(w, store.network.passphrase), 5, 5)}</div>
                             </div>
                           </div>
-                          {active && <span className="unlock-wallet-check">✓</span>}
+                          {active && <CheckIcon className="unlock-wallet-check" />}
                           <div onClick={() => setDeletingId(w.id)} className="tap unlock-wallet-del" title={t('common.delete')}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
                           </div>

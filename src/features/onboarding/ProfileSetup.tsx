@@ -1,6 +1,6 @@
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
 import { PrimaryButton } from '@/ui/Buttons';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Spinner } from '@/ui/Spinner';
 import { ageFromBirthdate } from '@/lib/greeting';
 import { EMAIL_RE } from '@/lib/validate';
@@ -23,15 +23,10 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
   const tooYoung = !!store.draftBirthdate && !dobFuture && (ageFromBirthdate(store.draftBirthdate) ?? 0) < MIN_AGE;
   // Name, email, a valid 13+ birthdate and a gender pick are all required.
   const ok = name.trim().length >= 2 && emailOk && !!store.draftBirthdate && !dobFuture && !tooYoung && !!store.draftGender;
-  const back = () =>
-    store.setScreen(store.draftHasMnemonic && store.draftMnemonic ? 'verify' : 'import');
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('setup.about')} onBack={back} />
-      <div className="profile-setup-emoji">👋</div>
-      <div className="profile-setup-title">{t('setup.title')}</div>
-      <div className="profile-setup-sub">{t('setup.subtitle')}</div>
+      <ScreenHeader title={t('setup.title')} desc={t('setup.subtitle')} onBack={store.goBack} />
 
       <Field
         label={t('setup.nameLabel')}
@@ -47,10 +42,10 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
         placeholder="tu@correo.com"
       />
       {email.length > 0 && !emailOk && (
-        <div className="profile-setup-err">{t('setup.emailInvalid')}</div>
+        <div className="err-line profile-setup-err">{t('setup.emailInvalid')}</div>
       )}
       <label className="field">
-        <div className="label-up field-label">{t('setup.dobLabel')}</div>
+        <div className="field-label">{t('setup.dobLabel')}</div>
         <input
           type="date"
           value={store.draftBirthdate}
@@ -60,19 +55,21 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
         />
       </label>
       {dobFuture && (
-        <div className="profile-setup-err">{t('setup.dobFuture')}</div>
+        <div className="err-line profile-setup-err">{t('setup.dobFuture')}</div>
       )}
       {tooYoung && (
-        <div className="profile-setup-err">{t('setup.tooYoung')}</div>
+        <div className="err-line profile-setup-err">{t('setup.tooYoung')}</div>
       )}
 
-      <div className="label-up field-label">{t('setup.genderLabel')}</div>
-      <div className="row g8 profile-setup-genders">
+      <div className="field-label" id="profile-setup-gender">{t('setup.genderLabel')}</div>
+      <div className="row g8 profile-setup-genders" role="group" aria-labelledby="profile-setup-gender">
         {GENDER_OPTIONS.map((o) => (
           <button
             key={o.id}
+            type="button"
+            aria-pressed={store.draftGender === o.id}
             onClick={() => store.setDraftGender(o.id)}
-            className={cx('profile-setup-gender', store.draftGender === o.id ? 'profile-setup-gender-on' : 'glass-soft profile-setup-gender-off')}
+            className={cx('profile-setup-gender', store.draftGender === o.id && 'is-on')}
           >
             {t(o.labelKey)}
           </button>

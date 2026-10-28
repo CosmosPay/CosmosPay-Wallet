@@ -1,117 +1,168 @@
 /* =====================================================================
-   Onboarding — shared atoms for src/features/onboarding/. Prefix: .ob-
-   State-driven colours (checked / met / bad) are modifier classes.
+   Onboarding — shared atoms for src/features/onboarding/ (CheckRow, Criterion,
+   WordCell, OptionalConsents). Prefix: .ob-
+   State-driven looks (checked / met / bad) are modifier classes.
    ===================================================================== */
 
-/* muted intro paragraph under the BackBar; screens override margin-bottom
-   with a compound selector (.ob-desc.<screen>-desc) */
-.ob-desc {
-  font-size: 14px;
-  color: var(--muted);
-  font-weight: 600;
-  line-height: 1.5;
-  margin: 14px 0 18px;
-}
-
-/* checkbox row (CheckRow) — box fill/border follow the .is-on modifier */
+/* ---- CheckRow: a real checkbox, visually hidden, under a drawn ink box ---- */
 .ob-check {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 12px;
+  min-height: 44px;
+  padding: 10px 0;
   cursor: pointer;
-  padding: 2px;
-}
-.ob-check-box {
-  width: 24px;
-  height: 24px;
-  border-radius: 7px;
-  color: var(--on-accent);
-  border-width: 2px;
-  border-style: solid;
-  border-color: var(--glass-border);
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.ob-check-box.is-on { background: var(--accent); border-color: var(--accent); }
-.ob-check-tick { opacity: 0; }
-.ob-check-box.is-on .ob-check-tick { opacity: 1; }
-.ob-check-text {
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--text-soft);
-  line-height: 1.45;
 }
 
-/* live-criterion row (Criterion) — color/border/tint follow .is-met / .is-bad */
+.ob-check-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.ob-check-box {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--text);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--bg);
+  transition: background-color var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);
+}
+
+.ob-check-box.is-on {
+  background: var(--text);
+}
+
+.ob-check-tick {
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity var(--dur-quick) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+.ob-check-box.is-on .ob-check-tick {
+  opacity: 1;
+  transform: none;
+}
+
+/* The ring the hidden input would have drawn, on the box the person sees. */
+.ob-check-input:focus-visible + .ob-check-box {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.ob-check-text {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.ob-check-text a {
+  color: var(--text);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ---- Criterion: one live rule under a field ---- */
 .ob-crit {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-size: 12.5px;
-  font-weight: 700;
-  transition: color 0.2s ease;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1.4;
   color: var(--dim);
+  transition: color var(--dur-quick) var(--ease-out);
 }
-.ob-crit.is-met { color: var(--up); }
-.ob-crit.is-bad { color: var(--down); }
+
+.ob-crit.is-met {
+  color: var(--up);
+}
+
+.ob-crit.is-bad {
+  color: var(--danger);
+}
+
 .ob-crit-dot {
-  width: 17px;
-  height: 17px;
-  border-radius: 50%;
-  border-width: 1.5px;
-  border-style: solid;
-  border-color: var(--glass-border);
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s ease;
+  width: 18px;
+  height: 18px;
   flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--glass-border);
+  border-radius: 50%;
+  transition: border-color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out),
+    color var(--dur-quick) var(--ease-out);
 }
-/* color-mix() needs Safari 16.2+; older engines drop only the tinted fill and
-   keep the coloured ring, which already carries the met/bad state */
-.ob-crit.is-met .ob-crit-dot { border-color: var(--up); background: color-mix(in srgb, var(--up) 18%, transparent); }
-.ob-crit.is-bad .ob-crit-dot { border-color: var(--down); background: color-mix(in srgb, var(--down) 18%, transparent); }
-.ob-crit-tick { opacity: 0.35; }
-.ob-crit.is-met .ob-crit-tick { opacity: 1; }
 
-/* labelled pill-input field (Field / PasswordField / date field) */
-/* .ob-field / .ob-field-label moved to styles/ui/field.css as .field / .field-label. */
+.ob-crit.is-met .ob-crit-dot {
+  border-color: var(--up);
+  background: var(--up);
+  color: var(--bg);
+}
 
-/* numbered seed-word grid + cell (Backup reveal, Verify slots) */
+.ob-crit.is-bad .ob-crit-dot {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--bg);
+}
+
+.ob-crit-tick {
+  opacity: 0.4;
+}
+
+.ob-crit.is-met .ob-crit-tick {
+  opacity: 1;
+}
+
+/* ---- WordCell: numbered seed-word pills (Backup grid, Verify slots) ---- */
 .ob-word-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 8px;
 }
+
 .ob-word-cell {
   display: flex;
   align-items: center;
-  gap: 9px;
-  border-radius: 13px;
-  padding: 12px 13px;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  transition: transform 0.13s var(--ease-out), background-color var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
+
 .ob-word-num {
+  width: 18px;
   font-size: 12px;
-  color: var(--accent);
-  font-weight: 700;
-  width: 16px;
+  font-weight: 500;
+  color: var(--dim);
   font-variant-numeric: tabular-nums;
 }
+
 .ob-word-text {
   font-size: 15px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
+  font-weight: 600;
 }
 
-/* flexible gap pushing the CTA to the bottom of column screens */
-
-/* optional consents (OptionalConsents) — shared by profile-setup and the social
-   path's second password step, so the spacing lives with the component rather
-   than in whichever screen happened to render it first */
-.ob-consent-metrics { margin-bottom: 10px; }
-.ob-consent-promo { margin-bottom: 14px; }
+/* ---- OptionalConsents: shared by every path that creates a wallet ---- */
+.ob-consents {
+  display: flex;
+  flex-direction: column;
+  margin: 4px 0 8px;
+}

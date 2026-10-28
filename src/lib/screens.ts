@@ -24,6 +24,8 @@ export type Tab = 'home' | 'earn' | 'markets' | 'profile';
 export const SCREEN_IDS = [
   'boot',
   'welcome',
+  'backup-choice',
+  'restore-choice',
   'backup',
   'verify',
   'import',
@@ -108,16 +110,20 @@ export const SCREENS: Record<Screen, ScreenDef> = {
 
   // onboarding
   welcome: { back: (c) => (c.addingWallet ? 'profile' : 'exit') },
-  backup: { back: 'welcome' },
+  // Welcome's two doors: "create" asks how to back the new wallet up, "I already have one"
+  // asks which backup it has. Each leads to the words path or the account path.
+  'backup-choice': { back: 'welcome' },
+  'restore-choice': { back: 'welcome' },
+  backup: { back: 'backup-choice' },
   verify: { back: 'backup' },
   // Terminal: it is offered once, after onboarding's success screen, and "back" from
   // it must not walk into the flow that created the wallet.
   'device-auth': { back: 'home', terminal: true },
-  import: { back: 'welcome' },
+  import: { back: 'restore-choice' },
   'profile-setup': { back: (c) => (c.hasDraftMnemonic ? 'verify' : 'import') },
-  // Reached from 'welcome' — on a first run, and on the add-wallet path, which starts there
-  // too. Back goes wherever the stack says; 'profile' is only the fallback, and on a first
-  // run the stack is what answers.
+  // Reached from either choice screen — on a first run, and on the add-wallet path, which
+  // starts at 'welcome' too. Back goes wherever the stack says; these are only the
+  // fallbacks, and on a first run the stack is what answers.
   'sign-in': { back: (c) => (c.hasSession ? 'profile' : 'welcome') },
   // The password a finished sign-in still needs: the backup's to restore it, or this
   // device's to seal a new one. Only ever reached from 'sign-in'.

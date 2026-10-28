@@ -31,8 +31,7 @@
 .home-action-label { font-size: 11.5px; color: var(--muted); font-weight: 600; text-align: center; line-height: 1.25; }
 
 /* fiat entry card */
-.home-ramp { position: relative; overflow: hidden; margin-bottom: 14px; padding: 17px; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--glass-border)); border-radius: 20px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), var(--glass-soft-bg)); }
-.home-ramp::after { content: ''; position: absolute; width: 140px; height: 140px; top: -95px; right: -40px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 30%, transparent); filter: blur(9px); }
+.home-ramp { position: relative; overflow: hidden; margin-bottom: 14px; padding: 17px; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--glass-border)); border-radius: 20px; background: var(--glass-bg); }
 .home-ramp-head, .home-ramp-actions { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .home-ramp-kicker { color: var(--accent); font-size: 9.5px; font-weight: 900; letter-spacing: .1em; }
 .home-ramp-title { margin-top: 3px; font-size: 18px; font-weight: 850; letter-spacing: -.03em; }

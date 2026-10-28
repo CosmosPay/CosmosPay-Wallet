@@ -6,32 +6,36 @@
 .settings-section { margin-top: 22px; }
 .settings-section-title { margin-bottom: 10px; } /* composes .label-up */
 
-/* theme picker (dark / light) — active look via .is-on */
+/* theme picker (system / light / dark) — icon over label, so three fit a 320px column;
+   active look via .is-on */
 .settings-theme-btn {
   flex: 1;
+  min-width: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   border: none;
   border-radius: 14px;
-  padding: 14px;
-  font-size: 14px;
-  font-weight: 800;
+  padding: 12px 6px;
+  font-size: 13.5px;
+  font-weight: 700;
   cursor: pointer;
   background: var(--glass-soft-bg);
   color: var(--text);
+  transition: transform 0.13s var(--ease-out), background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 .settings-theme-btn.is-on { background: var(--accent); color: var(--on-accent); }
 
-/* language chips — active look via .is-on; composes .flexr .g8 / .row .g8 */
+/* language chips: flag + the language's own name — active look via .is-on; composes .row .g8 */
 .settings-lang-wrap { flex-wrap: wrap; }
 .settings-lang-btn {
   border: none;
   border-radius: 999px;
-  padding: 9px 16px 9px 11px;
+  padding: 10px 16px 10px 12px;
   font-size: 13.5px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
   background: var(--glass-soft-bg);
   color: var(--text);

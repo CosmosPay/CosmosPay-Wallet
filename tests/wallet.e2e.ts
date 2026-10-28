@@ -29,14 +29,19 @@ try {
   await page.getByText('Crear una wallet nueva').waitFor({ timeout: 20000 });
   ok(true, 'Welcome renders');
 
-  // create flow generates a seed in-browser (bip39 + SEP-5)
+  // create flow generates a seed in-browser (bip39 + SEP-5): Welcome -> how to back it up
+  // -> the twelve words
   await page.getByText('Crear una wallet nueva').click();
+  await page.getByRole('button', { name: 'Con 12 palabras' }).click();
   await page.getByText('Frase de recuperación', { exact: false }).first().waitFor();
   ok((await page.locator('text=/^[a-z]{3,}$/').count()) >= 12, 'Seed phrase generated in browser');
 
-  // import the deterministic test vector
-  await page.getByText('‹', { exact: true }).first().click(); // back to welcome
+  // import the deterministic test vector: back twice (the words, the choice) to Welcome,
+  // then "I already have one" -> with my 12 words
+  await page.getByRole('button', { name: 'Volver' }).click();
+  await page.getByRole('button', { name: 'Volver' }).click();
   await page.getByText('Ya tengo una wallet').click();
+  await page.getByRole('button', { name: 'Con mis 12 palabras' }).click();
   await page.locator('textarea').fill(MNEMONIC);
   await page.getByRole('button', { name: 'Importar wallet' }).click();
 

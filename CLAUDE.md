@@ -115,6 +115,72 @@ belong in CSS: `.glass` / `.glass-soft` / `.glass-bright` / `.input` /
 source of truth for colour. Do not reintroduce a TS module of style values — a
 constant holding a colour string can only ever be consumed inline.
 
+## The look: flat, matte, ink
+
+The redesign (branch `feat/design-migration`, Figma file "Cosmos Wallet") follows the Figma
+screens, the brand manual and snap.cosmospay.lat. Four rules:
+
+- **Flat and matte.** Every surface is one solid colour and a 1px line. No gradients, no
+  translucent fills, no `backdrop-filter`, no drop shadows, no glow blobs, no idle "breathing"
+  animation. Depth is the step between `--bg`, `--glass-soft-bg` and `--glass-bg` (the
+  `--glass-*` names are older than the look and now hold solid colours).
+- **Ink is primary, blue is tertiary.** Primary buttons are solid ink (black in light, white in
+  dark); secondary buttons are the 1.5px outline alone. `--brand` (#4d66ff in dark, #3d55f0 in
+  light) is for focus rings, the active indicator and the outlined button's hover fill — never
+  a button's resting colour.
+- **Buttons ink on hover**, like snap's: `.ink` + `inkHandlers` from `src/lib/ink.ts` grow a
+  circle of `--ink` from where the pointer entered (`PrimaryButton`/`GhostButton` already do).
+  Solid buttons fill with the canvas, outlined ones with the brand blue. Touch has no hover.
+- **Every move eases** (the user's rule): transitions and animations use the motion tokens in
+  `theme.css` (`--ease-out` in, `--ease-in` out, `--ease-in-out` between, `--dur-quick/base/slow`)
+  — never a bare jump, never `linear` except a spinner's endless turn. A state change on a
+  control (colour, border, check) transitions too; a theme flip cross-fades through
+  `document.startViewTransition`. Setting `transition` on a button replaces the global press
+  transition, so keep `transform` in its list. Check motion from PAINTED frames (headed Chrome +
+  CDP screencast), not computed styles: a slide can compute fine and never reach the screen.
+- **Every text colour is AA on `--bg` and on `--glass-bg`.** `--dimmer` is 3:1 and only for
+  large figures and marks. Check new tokens with a contrast calculator before adding them.
+
+**Theme.** The preference is `system` (default: follows the device, live), `light` or `dark`
+(`usePreferences`: `themePref` / `setThemePref`; `theme` is what is painted). Welcome and Unlock
+carry the quick controls (`src/ui/QuickPrefs.tsx`: language sheet + one-tap theme flip);
+Settings offers all three. `public/theme-boot.js` paints the first frame before any module
+runs and holds its own copy of the storage key and colours — `tests/unit/themeBoot.test.ts`
+keeps them equal to `src/state/usePreferences.ts`.
+
+**Language selectors show the flag and the language's own name** (`ui/LangFlag`): Spanish →
+Argentina, English → USA, Portuguese → Brazil, German → Germany, French → France — the
+user's call, the same as snap.cosmospay.lat. The flag SVGs load lazily; keep them out of
+the entry chunk.
+
+**A redesigned screen uses only the new pieces — never mix old and new on one screen.**
+
+| New | Replaces |
+| --- | --- |
+| `ui/ScreenHeader` — back arrow on the LEFT, `h1` title, muted `desc` | `BackBar` (back on the right) + `Desc` / `.desc` paragraphs |
+| `ui/ChoiceCard` — whole-card option with icon, title, line, chevron | ad-hoc option buttons |
+| `ui/Notice` (`info` / `danger`) — mark + text, may hold a checkbox or a button | `.glass-soft` note boxes, pink warning boxes |
+| `.link-btn` — ink, bold, underlined, 44px target | coloured or grey `div onClick` links |
+| `PrimaryButton` / `GhostButton` (ink) | `.glass-soft` buttons, per-provider colours |
+| `CheckRow` (real checkbox in a label), `Field` (sentence-case muted label) | `div` checkboxes, `.label-up` uppercase labels |
+| `ui/Icons` (line icons + `CosmosMark`, `GoogleLogo`, `GitHubLogo`) | emoji and text glyphs as icons (`‹`, `▼`, `✓`, `👋`) |
+
+The onboarding (Welcome → `backup-choice` / `restore-choice` → words or account → lock),
+Unlock, the device-unlock offer and Success are done.
+
+**Welcome has no logo and no headline**: its hero is a provisional video
+(`features/onboarding/WelcomeHero.tsx`, files in `public/brand/welcome/`, rendered by the
+Remotion project `cosmos-wallet-welcome-motion` outside this repo). An intro plays once per
+session, after the boot splash lifts (`lib/appReveal.ts`), and cuts to a seamless loop; one
+set per theme, WebM then MP4, the loop's poster as the fallback. To replace it, keep the
+file names and that contract. No pause control and no reduced-motion stop, both the user's
+call — WCAG 2.2.2 asks for one; revisit with the final hero. `BackBar` and the rest of the old
+atoms remain only in screens not yet redesigned; replace them part by part.
+
+**Every screen change inside a flow goes through `navigate`** (the store's `setScreen`), store
+actions included: a raw `setScreen` leaves no entry on the back stack, and "back" then skips
+the screen's parent.
+
 ## Writing CSS here
 
 Ship both the prefixed and unprefixed form of a property when Safari still needs
@@ -1171,9 +1237,9 @@ Deciding where something goes:
   `StellarMark` were in `ui/` with one importing feature each and now live in
   `features/wallet/`; `NumberPad` had none and was deleted. `Spinner` (28 importers),
   `BackBar` (31) and `Field` (10) earned the place.
-  The count that matters is *importing features*, not importers: `EyeIcon` and
-  `FlagIcon` stay in `ui/` with one and zero feature importers because their consumers
-  are `Field` and `LangSelect` — shared primitives. Moving a primitive's own helper
+  The count that matters is *importing features*, not importers: `EyeIcon`, `Sheet` and
+  `FlagIcon` stay in `ui/` with zero feature importers because their consumers are `Field`,
+  `QuickPrefs` and `LangFlag` — shared primitives. Moving a primitive's own helper
   into a feature would make `ui/` import from `features/`, which the layering forbids.
 - Used by several features and purely presentational → `ui/`.
 - Holds React state but no markup → `hooks/`. No React at all → `lib/`.

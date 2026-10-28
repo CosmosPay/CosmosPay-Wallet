@@ -1,18 +1,17 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { SignInPurpose, WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
-import { SignInMethods } from '@/ui/SignInMethods';
+import { Notice } from '@/ui/Notice';
+import { ScreenHeader } from '@/ui/ScreenHeader';
+import { SignInMethods, type SignInStep } from '@/ui/SignInMethods';
 import '@/styles/features/onboarding/sign-in.css';
 
 /**
  * Sign in with Cosmos Pay (Authentik), Google, GitHub or an emailed code — and keep the key
- * on this device.
+ * on this device. Three steps on one screen: the list, the email, the code. The header names
+ * each and its back button walks them backwards (the code step back cancels that sign-in).
  *
- * What it states up front is the promise and the one condition that comes with it — the
- * key is generated here, the backup
- * the server keeps only opens with the person's password, and nobody can reset that
- * password for them. Said before the sign-in rather than after, because after it the next
- * screen asks for exactly that password.
+ * What it states up front is the promise: the key is generated here, and the backup the
+ * server keeps is one it cannot open.
  *
  * Where the sign-in leads is the store's call (`routeSignIn`): a backup to restore, a
  * password to choose on a first run, or this device's password to confirm on an unlocked
@@ -22,6 +21,9 @@ import '@/styles/features/onboarding/sign-in.css';
 export function SignIn({ store }: { store: WalletStore }) {
   const t = store.t;
   const purpose: SignInPurpose = store.hasSession ? 'add' : 'onboarding';
+  const [emailStep, setEmailStep] = useState(false);
+  const code = store.signInCode;
+  const step: SignInStep = code ? 'code' : emailStep ? 'email' : 'list';
 
   // Once per mount: what this deployment offers, and a sign-in a closed popup left open.
   useEffect(() => {
@@ -30,28 +32,45 @@ export function SignIn({ store }: { store: WalletStore }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const title = step === 'code' ? t('signin.codeTitle') : step === 'email' ? t('signin.emailTitle') : t('signin.chooseTitle');
+  const desc =
+    step === 'code' && code
+      ? t(code.via === 'email' ? 'signin.codeDesc' : 'signin.codeDescExisting', { email: code.email })
+      : step === 'email'
+        ? t('signin.emailDesc')
+        : t('signin.chooseDesc');
+  const back =
+    step === 'code'
+      ? store.cancelSignIn
+      : step === 'email'
+        ? () => setEmailStep(false)
+        : () => {
+            store.cancelSignIn();
+            store.goBack();
+          };
+
   return (
     <div className="scr screen col">
-      <BackBar
-        title={t('signin.title')}
-        onBack={() => {
-          store.cancelSignIn();
-          store.goBack();
-        }}
-      />
-      <div className="sign-in-desc">{t('signin.desc')}</div>
-      <div className="glass-soft sign-in-note">{t('signin.keyNote')}</div>
+      {/* Keyed by step, so each step's title and line fade in instead of swapping. */}
+      <ScreenHeader key={step} title={title} desc={desc} onBack={back} />
       <SignInMethods
         t={t}
+        step={step}
         offer={store.signInMethods}
         phase={store.signInPhase}
-        code={store.signInCode}
         url={store.signInUrl}
         onProvider={(p) => void store.signInWith(p, purpose)}
+        onEmailStep={() => setEmailStep(true)}
         onEmail={(email) => void store.signInWithEmail(email)}
-        onCode={(code) => void store.submitSignInCode(code, purpose)}
+        onCode={(c) => void store.submitSignInCode(c, purpose)}
         onCancel={store.cancelSignIn}
       />
+      {step === 'list' && (
+        <>
+          <div className="spacer" />
+          <Notice className="sign-in-note">{t('signin.keyNotice')}</Notice>
+        </>
+      )}
     </div>
   );
 }

@@ -1,46 +1,66 @@
 /* =====================================================================
-   Onboarding — Welcome (landing). Prefix: .welcome-
+   src/features/onboarding/Welcome.tsx — the first screen. Prefix: .welcome-
+   The controls row (language, theme; the way back while adding a wallet), the
+   hero motion (WelcomeHero, its own sheet) taking the free height, the two
+   doors, and the Terms line. No logo and no headline: the hero carries them.
    ===================================================================== */
 .welcome-screen {
   flex: 1;
   min-height: 0;
-  /* a touch wider than a normal screen — kept as a delta so it tracks --gutter */
-  padding: 2px calc(var(--gutter) + 4px) 32px;
-  animation: fadeUp 0.3s ease;
+  padding: 6px var(--gutter) var(--screen-end);
+  animation: fadeUp var(--dur-base) var(--ease-out);
 }
-/* top bar: right-aligned by default; space-between while adding a wallet (.is-adding) */
-.welcome-topbar { min-height: 34px; margin-bottom: 2px; justify-content: flex-end; }
-.welcome-topbar.is-adding { justify-content: space-between; }
-/* create-wallet CTA: a touch more padding than the default primary button */
-.welcome-create { padding: 18px; }
+
+/* the controls sit on the right; while adding a wallet the way back takes the left */
+.welcome-topbar {
+  min-height: 44px;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.welcome-topbar.between {
+  justify-content: space-between;
+}
+
+/* the way back while adding a wallet: arrow + word, on a 44px target */
 .welcome-cancel {
-  color: var(--muted);
+  height: 44px;
+  padding: 0 8px 0 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  padding: 6px 4px;
 }
-.welcome-cancel-arrow { font-size: 20px; }
-.welcome-hero { text-align: center; }
-.welcome-logo { margin-bottom: 24px; }
-.welcome-title {
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: -1.2px;
-  margin-bottom: 12px;
+
+.welcome-cancel-icon {
+  width: 22px;
+  height: 22px;
 }
-.welcome-sub {
-  font-size: 13px;
-  color: var(--muted);
-  font-weight: 500;
-  line-height: 1.5;
-  max-width: 270px;
-}
-.welcome-footer {
+
+/* The Terms and privacy line under the two doors: small, muted, the links in ink. It uses
+   the column's whole width with balanced lines, and a link's name never breaks across
+   lines — a 34ch cap stacked it into three short lines that split "Términos y /
+   Condiciones" and "Política de / privacidad". */
+.welcome-legal {
+  margin: 18px 0 0;
   text-align: center;
-  font-size: 11.5px;
-  color: var(--dim);
+  text-wrap: balance;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.welcome-legal a,
+.welcome-legal-tail {
+  white-space: nowrap;
+}
+
+.welcome-legal a {
+  color: var(--text);
   font-weight: 600;
-  margin-top: 8px;
-  letter-spacing: 0.2px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }

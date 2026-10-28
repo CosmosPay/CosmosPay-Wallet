@@ -103,6 +103,6 @@
     border-top: 1px solid var(--hairline);
     font-size: 11.5px;
     font-weight: 700;
-    color: var(--dimmer);
+    color: var(--dim);
   }
 }

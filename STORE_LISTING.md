@@ -123,9 +123,14 @@ https://cosmospay.lat
 
 **Support / Terms URL**
 ```
-https://dev.cosmospay.lat/tos
+https://wallet.cosmospay.lat/tos
 ```
-(Terms live there — EN/ES, covering the gateway and the wallet. Publish a dedicated privacy-policy URL as well before submitting; the Store requires one for extensions that handle user data. Section 8 of the ToS can seed it.)
+
+**Privacy policy URL**
+```
+https://wallet.cosmospay.lat/privacy
+```
+(The wallet's own pages, linked from its Welcome screen. Both must be live before submitting; the Store requires a privacy policy for extensions that handle user data.)
 
 ---
 

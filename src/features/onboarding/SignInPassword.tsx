@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
-import { PrimaryButton } from '@/ui/Buttons';
+import { GhostButton, PrimaryButton } from '@/ui/Buttons';
 import { Field } from '@/ui/Field';
+import { Notice } from '@/ui/Notice';
 import { PasskeyButton } from '@/ui/PasskeyButton';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Spinner } from '@/ui/Spinner';
 import { CheckRow } from '@/features/onboarding/CheckRow';
-import { Desc } from '@/features/onboarding/Desc';
 import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
 import { shortAddr } from '@/lib/format';
 import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
@@ -77,8 +77,11 @@ export function SignInPassword({ store }: { store: WalletStore }) {
     if (store.passkeyUnlock) {
       return (
         <div className="scr screen col">
-          <BackBar title={t('signin.protectTitle')} onBack={store.goBack} />
-          <Desc className="sign-in-pwd-desc">{t('passkey.protectAddDesc', { email: pending.email })}</Desc>
+          <ScreenHeader
+            title={t('signin.protectTitle')}
+            desc={t('passkey.protectAddDesc', { email: pending.email })}
+            onBack={store.goBack}
+          />
           <div className="spacer" />
           <div className="kb-dock">
             <PasskeyButton label={t('signin.createCta')} busy={busy} onClick={withPasskey} />
@@ -91,10 +94,11 @@ export function SignInPassword({ store }: { store: WalletStore }) {
     };
     return (
       <div className="scr screen col">
-        <BackBar title={t('signin.protectTitle')} onBack={store.goBack} />
-        <Desc className="sign-in-pwd-desc">
-          {t(pending.replace ? 'signin.protectReplaceDesc' : 'signin.protectDesc', { email: pending.email })}
-        </Desc>
+        <ScreenHeader
+          title={t('signin.protectTitle')}
+          desc={t(pending.replace ? 'signin.protectReplaceDesc' : 'signin.protectDesc', { email: pending.email })}
+          onBack={store.goBack}
+        />
         <Field password label={t('pwd.label')} value={pwd} onChange={setPwd} />
         <div className="spacer" />
         <div className="kb-dock">
@@ -124,16 +128,17 @@ export function SignInPassword({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('signin.restoreTitle')} onBack={store.goBack} />
-      <Desc className="sign-in-pwd-desc">
-        {t(passkeyDoor ? 'passkey.restoreDesc' : stuck ? 'passkey.restoreElsewhere' : 'signin.restoreDesc', {
+      <ScreenHeader
+        title={t('signin.restoreTitle')}
+        desc={t(passkeyDoor ? 'passkey.restoreDesc' : stuck ? 'passkey.restoreElsewhere' : 'signin.restoreDesc', {
           email: pending.email,
           address: shortAddr(pending.backupAddress ?? ''),
         })}
-      </Desc>
+        onBack={store.goBack}
+      />
 
       {passkeyDoor && !showPwd && doors.password && (
-        <button type="button" className="sign-in-pwd-forgot" onClick={() => setShowPwd(true)}>
+        <button type="button" className="link-btn sign-in-pwd-link" onClick={() => setShowPwd(true)}>
           {t('passkey.usePassword')}
         </button>
       )}
@@ -143,7 +148,7 @@ export function SignInPassword({ store }: { store: WalletStore }) {
           backup — which is exactly why they are being asked for a password here. Said, so
           it does not read as the passkey having failed. */}
       {fieldShown && !passkeyDoor && store.passkeyPossible && (
-        <div className="desc sign-in-pwd-note">{t('passkey.authentikNote')}</div>
+        <Notice className="sign-in-pwd-note">{t('passkey.authentikNote')}</Notice>
       )}
       {offerUpgrade && (
         <CheckRow on={upgrade} onToggle={() => setUpgrade(!upgrade)}>
@@ -156,35 +161,37 @@ export function SignInPassword({ store }: { store: WalletStore }) {
       {firstRun && <OptionalConsents store={store} />}
 
       {!forgot && !stuck ? (
-        <button className="sign-in-pwd-forgot" onClick={() => setForgot(true)}>
+        <button type="button" className="link-btn sign-in-pwd-link" onClick={() => setForgot(true)}>
           {t(passkeyDoor ? 'passkey.forgot' : 'signin.forgot')}
         </button>
       ) : (
-        <div className="glass-soft col g8 sign-in-pwd-startover">
+        <div className="col g12 sign-in-pwd-ways">
           {/* Recovery FIRST, because it is the answer that keeps the account. Starting
               over below it gives up the address and everything on it, and is offered only
               because a build without recovery servers — or an account that never turned
               recovery on — has nothing else. */}
           {recoverable && (
-            <>
-              <div className="sign-in-pwd-startover-text">
-                {t(doors.recovery ? 'signin.recoverEmailOffer' : 'signin.recoverOffer')}
-              </div>
-              <button className="btn-ghost" disabled={busy} onClick={() => store.setScreen('recover')}>
+            <Notice>
+              <span>{t(doors.recovery ? 'signin.recoverEmailOffer' : 'signin.recoverOffer')}</span>
+              <GhostButton disabled={busy} onClick={() => store.setScreen('recover')}>
                 {t(doors.recovery ? 'signin.recoverEmailCta' : 'signin.recoverCta')}
-              </button>
-              <div className="sign-in-pwd-or">{t('common.or')}</div>
-            </>
+              </GhostButton>
+            </Notice>
           )}
-          <div className="sign-in-pwd-startover-text">
-            {t('signin.startOverWarn', { address: shortAddr(pending.backupAddress ?? '') })}
-          </div>
-          <CheckRow on={ack} onToggle={() => setAck(!ack)}>
-            {t('signin.startOverAck')}
-          </CheckRow>
-          <button className="btn-ghost" disabled={!ack || busy} onClick={store.startOverSignIn}>
-            {t('signin.startOverCta')}
-          </button>
+          <Notice tone="danger">
+            <span>{t('signin.startOverWarn', { address: shortAddr(pending.backupAddress ?? '') })}</span>
+            <CheckRow on={ack} onToggle={() => setAck(!ack)}>
+              {t('signin.startOverAck')}
+            </CheckRow>
+            <button
+              type="button"
+              className="btn-ghost sign-in-pwd-danger"
+              disabled={!ack || busy}
+              onClick={store.startOverSignIn}
+            >
+              {t('signin.startOverCta')}
+            </button>
+          </Notice>
         </div>
       )}
 

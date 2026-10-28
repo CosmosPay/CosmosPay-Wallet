@@ -63,14 +63,16 @@ async function mockServer(page: Page, ready: (email: string) => unknown, finishe
   });
 }
 
-/** Welcome → sign-in → email → a wrong code, then the right one. */
+/** Welcome → create → with my account → email → a wrong code, then the right one. */
 async function signInWithEmail(page: Page) {
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
-  await page.getByText('Entrar con Google, GitHub o email').click();
+  await page.getByText('Crear una wallet nueva').click();
+  await page.getByRole('button', { name: 'Con mi cuenta' }).click();
   await page.getByRole('button', { name: 'Continuar con Google' }).waitFor({ timeout: 10000 });
   ok(await page.getByRole('button', { name: 'Continuar con GitHub' }).isVisible(), 'the providers the server offers are shown');
-  await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
   await page.getByRole('button', { name: 'Continuar con email' }).click();
+  await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
+  await page.getByRole('button', { name: 'Enviar código' }).click();
   await page.getByText('Revisá tu correo').waitFor({ timeout: 10000 });
   const code = page.locator('input[autocomplete="one-time-code"]');
   await code.fill('000000');

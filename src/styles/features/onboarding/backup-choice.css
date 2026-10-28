@@ -1,0 +1,5 @@
+/* src/features/onboarding/BackupChoice.tsx — the cards are ui/ChoiceCard; only the note's
+   place at the foot of the screen is here. */
+.backup-choice-note {
+  margin-top: 20px;
+}
