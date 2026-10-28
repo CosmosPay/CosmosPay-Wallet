@@ -68,7 +68,8 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   // lazy — money
   receive: lazy(() => import('@/features/money/Receive').then((m) => ({ default: m.Receive }))),
   send: lazy(() => import('@/features/money/Send').then((m) => ({ default: m.Send }))),
-  'chain-send': lazy(() => import('@/features/money/ChainSend').then((m) => ({ default: m.ChainSend }))),
+  // The Solana / Monad tabs of Send, opened on the holding's network.
+  'chain-send': lazy(() => import('@/features/money/Send').then((m) => ({ default: m.Send }))),
   'chain-asset': lazy(() => import('@/features/wallet/ChainAsset').then((m) => ({ default: m.ChainAsset }))),
   swap: lazy(() => import('@/features/money/Swap').then((m) => ({ default: m.Swap }))),
   select: lazy(() => import('@/features/money/Send').then((m) => ({ default: m.Send }))),

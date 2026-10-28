@@ -31,22 +31,25 @@
   /* The Figma accent: focus rings and the active indicator, 3:1 or more on every surface. */
   --brand: #4d66ff;
   --on-brand: #ffffff;
-  --glass-bg: #171a22;
-  --glass-border: #262a35;
+  /* The old surfaces, retired (the user's call: the old wallet is discarded). Every screen
+     still dressed in .glass / .glass-soft now draws the redesign's way: the canvas with a
+     line around it. The names stay so nothing has to change at once. */
+  --glass-bg: var(--bg);
+  --glass-border: var(--line);
   /* The brand draws surfaces with LINES, not grey fills (the user's rule): a card, a track,
      a divider is --line on the canvas. A control whose edge is the only thing that shows
      where it is (a text field, a checkbox) takes --line-strong, 3:1 on --bg (WCAG 1.4.11). */
   --line: #2a2e39;
   --line-strong: #5d6273;
-  --glass-soft-bg: #11131a;
-  --glass-soft-border: #1f232d;
+  --glass-soft-bg: var(--bg);
+  --glass-soft-border: var(--line-strong);
   --primary-bg: #ffffff;
   --primary-border: #ffffff;
   --primary-text: #000000;
   --surface: #11131a;
   --surface-2: #0c0d12;
   --hairline: #1f232d;
-  --nav-bg: #07080b;
+  --nav-bg: var(--bg);
   /* Bottom sheets sit one step above the canvas so their edge reads without a shadow. */
   --sheet-bg: #0c0d12;
   --scrim: rgba(0, 0, 0, 0.72);
@@ -59,7 +62,8 @@
      happen to be red today but must be free to diverge. */
   --danger: #ff5d5d;
   /* Fill behind a refusal mark, e.g. the error boundary's badge. */
-  --danger-soft: #2b1517;
+  /* No tinted fills in the redesign: a refusal is a line of --danger on the canvas. */
+  --danger-soft: var(--bg);
 }
 
 [data-theme='light'] {
@@ -77,12 +81,12 @@
   /* The Figma palette's one blue, the same in both themes (4.5:1 on white). */
   --brand: #4d66ff;
   --on-brand: #ffffff;
-  --glass-bg: #f2f3f6;
-  --glass-border: #e3e5eb;
+  --glass-bg: var(--bg);
+  --glass-border: var(--line);
   --line: #dcdfe6;
   --line-strong: #8a8e9b;
-  --glass-soft-bg: #f7f8fa;
-  --glass-soft-border: #eceef2;
+  --glass-soft-bg: var(--bg);
+  --glass-soft-border: var(--line-strong);
   --primary-bg: #000000;
   --primary-border: #000000;
   --primary-text: #ffffff;
@@ -98,7 +102,7 @@
   --up: #15803d;
   --down: #dc2626;
   --danger: #d92020;
-  --danger-soft: #fdecec;
+  --danger-soft: var(--bg);
 }
 
 /* native controls (date pickers, scrollbars) follow the app theme, so a

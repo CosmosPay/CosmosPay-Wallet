@@ -124,8 +124,12 @@ screens, the brand manual and snap.cosmospay.lat. Four rules:
   no drop shadows, no glow blobs, no idle "breathing" animation — and, the user's rule, no grey
   fills wherever a line will do: a card, a track, a divider, a selected row is `--line` on the
   canvas (`.outlined`), a text field is `--line-strong` (3:1 on `--bg`, WCAG 1.4.11), and a
-  popup (sheet, dropdown, toast) is the canvas colour with a line. The `--glass-*` fills
-  (older names, solid colours) remain only on screens not yet redesigned.
+  popup (sheet, dropdown, toast) is the canvas colour with a line. The old wallet is discarded
+  (the user's call): `--glass-bg`/`--glass-soft-bg`/`--danger-soft`/`--nav-bg` are now the canvas
+  and `--glass-*-border` the lines, so a screen still dressed in `.glass`/`.glass-soft` draws the
+  new way, and `BackBar` renders `ScreenHeader`. Those names are kept for the screens not yet
+  rewritten; a rewritten screen uses the new pieces. `base.css` still pills every `<button>`
+  with `!important` — draw a row's divider with a pseudo-element, not a `border-bottom`.
 - **Ink is primary, blue is tertiary.** Primary buttons are solid ink (black in light, white in
   dark); secondary buttons are the 1.5px outline alone. `--brand` is the Figma palette's one
   blue, `#4d66ff`, identical in both themes — never a derived shade. It is for focus rings, the
@@ -169,7 +173,20 @@ the entry chunk.
 | `ui/Icons` (line icons + `CosmosMark`, `GoogleLogo`, `GitHubLogo`) | emoji and text glyphs as icons (`‹`, `▼`, `✓`, `👋`) |
 
 The onboarding (Welcome → `backup-choice` / `restore-choice` → words or account → lock),
-Unlock, the device-unlock offer and Success are done. **One question per step** (the user's
+Unlock, the device-unlock offer and Success are done. **The wallet follows the Figma's Home**
+(node 1:2, plus its Activity variant 108:272): the bar is Home · Wallet · the QR scanner raised on
+the brand blue · Earn · More (`app/navModel.tsx`; the rail marks the active place with the same
+blue line). Home is greeting, total balance with its 24h move, four ringed actions, and the tabs
+Activos (every network's holdings, a network filter, each token's network coin on its corner) ·
+Actividad (in days, `ActivityList`) · Análisis (the split by network and asset) · Favoritos.
+**The Wallet tab** (`features/wallet/Wallets.tsx`) is everything about the wallet itself, so using
+several networks is one place: the active wallet's address on Stellar, Solana and Monad (copy, or
+its QR on Receive), the Stellar ledger, recovery (account recovery, transfer to another device, the
+phrase) and the wallets on this device. **Adding a wallet is one short flow**
+(`features/onboarding/AddWallet.tsx`, the user's call): create (a phrase to keep) or import, a name,
+done — sealed under the session's key with the person's own profile, no account, no profile and no
+password screen (`prepareNewWallet` / `prepareImportedWallet` → `addWalletToDevice`). Send and
+Receive take one tab per network. **One question per step** (the user's
 call: a screen with every field was too much at once): `profile-setup` walks
 `PROFILE_STEPS` (`constants/onboarding.ts`) — the name, the email, the age and gender, the two
 optional consents — as `goStep` stops, under a line per step and "Paso n de 4"; Enter in a

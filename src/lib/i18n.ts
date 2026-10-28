@@ -1963,6 +1963,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'more.securityDesc': { es: "Cómo se abre tu wallet y cómo la recuperas", en: "How your wallet opens and how you recover it", pt: "Como a tua wallet abre e como a recuperas", de: "Wie deine Wallet öffnet und wie du sie wiederherstellst", fr: "Comment ton portefeuille s’ouvre et comment le récupérer" },
   'more.app': { es: "App", en: "App", pt: "App", de: "App", fr: "App" },
   'more.settingsDesc': { es: "Idioma, tema, sitios conectados", en: "Language, theme, connected sites", pt: "Idioma, tema, sites ligados", de: "Sprache, Design, verbundene Seiten", fr: "Langue, thème, sites connectés" },
+  'receive.qrAlt': { es: "Código QR de tu dirección en {network}", en: "QR code of your address on {network}", pt: "Código QR do teu endereço em {network}", de: "QR-Code deiner Adresse auf {network}", fr: "Code QR de ton adresse sur {network}" },
   'signin.emailTitle': { es: 'Tu email', en: 'Your email', pt: 'O teu e-mail', de: 'Deine E-Mail', fr: 'Ton e-mail' },
   'signin.emailDesc': {
     es: 'Te enviamos un código de 6 dígitos para entrar.',

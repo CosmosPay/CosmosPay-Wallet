@@ -1,55 +1,63 @@
-import { ExternalLink } from '@/ui/ExternalLink';
 import type { WalletStore } from '@/state/store';
-import { TAB_SCREEN } from '@/lib/screens';
 import { AssetLogo, assetMeta } from '@/ui/AssetLogo';
+import { GhostButton, PrimaryButton } from '@/ui/Buttons';
+import { ExternalLink } from '@/ui/ExternalLink';
+import { ScreenHeader } from '@/ui/ScreenHeader';
+import { TrendDownIcon, TrendUpIcon } from '@/ui/Icons';
 import { computePortfolio } from '@/lib/portfolio';
 import { fmt, trim, pct } from '@/lib/format';
 import { explorerAccountUrl } from '@/lib/stellar';
-import '@/styles/features/wallet/asset.css';
 import { cx } from '@/lib/cx';
+import '@/styles/features/wallet/asset.css';
 
 /* --------------------------- ASSET DETAIL ---------------------------- */
+/** A Stellar asset: its market price and 24h move, what this wallet holds, and the verbs. */
 export function Asset({ store }: { store: WalletStore }) {
   const t = store.t;
   const code = store.selectedAsset || 'XLM';
   const m = assetMeta(code);
   const price = store.prices[code];
   const { rows } = computePortfolio(store.account, store.prices, store.network.id);
-  const held = rows.find((r) => r.code === code);
+  const held = rows.find((r) => r.code === code && !r.chain);
 
   return (
-    <div className="scr screen pb-30">
-      <div className="asset-head">
-        <div onClick={() => store.go(TAB_SCREEN[store.tab], store.tab)} className="glass-soft circle-btn asset-back">‹</div>
-        <div className="row g8">
-          <AssetLogo code={code} size={24} />
-          <span className="asset-name">{m.name} <span className="asset-code">{code}</span></span>
-        </div>
-        <div className="asset-head-pad" />
-      </div>
+    <div className="scr screen col pb-30">
+      <ScreenHeader title={m.name} desc={`${code} · Stellar`} onBack={store.goBack} />
 
-      <div className="asset-price-row">
-        <span className="asset-price">
-          {price ? '$' + fmt(price.usd, price.usd >= 1 ? 2 : 4) : '—'}
+      <section className="asset-hero" aria-label={t('asset.marketPrice')}>
+        <AssetLogo code={code} size={64} />
+        <div className="asset-hero-text">
+          <p className="asset-price">{price ? '$' + fmt(price.usd, price.usd >= 1 ? 2 : 4) : '—'}</p>
+          {price && (
+            <p className={cx('asset-change', price.change24h >= 0 ? 'is-up' : 'is-down')}>
+              {price.change24h >= 0 ? <TrendUpIcon /> : <TrendDownIcon />}
+              {pct(price.change24h)} · {t('home.in24h')}
+            </p>
+          )}
+        </div>
+      </section>
+
+      <section className="asset-balance" aria-label={t('asset.balance')}>
+        <span className="asset-balance-label">{t('asset.balance')}</span>
+        <span className="asset-balance-value">
+          {held ? trim(held.amount, 7) : '0'} {code}
         </span>
-        {price && <span className={cx('asset-change', price.change24h >= 0 ? 'is-up' : 'is-down')}>{price.change24h >= 0 ? '↗' : '↘'} {pct(price.change24h)}</span>}
-      </div>
-      <div className="asset-sub">{t('asset.marketPrice')}</div>
+        <span className="asset-balance-fiat">{held?.value != null ? '≈ $' + fmt(held.value, 2) : '—'}</span>
+      </section>
 
-      <div className="glass card asset-bal-card">
-        <div className="asset-bal-label">{t('asset.balance')}</div>
-        <div className="asset-bal-value">{held ? trim(held.amount, 7) : '0'} {code}</div>
-        <div className="asset-bal-fiat">{held?.value != null ? '≈ $' + fmt(held.value, 2) : '—'}</div>
+      <div className="asset-actions">
+        <PrimaryButton
+          onClick={() => {
+            store.setSend({ ...store.send, asset: { code, issuer: held?.issuer ?? null } });
+            store.setScreen('send');
+          }}
+        >
+          {t('common.send')}
+        </PrimaryButton>
+        <GhostButton onClick={() => store.setScreen('receive')}>{t('common.receive')}</GhostButton>
       </div>
-
-      {code === 'XLM' && (
-        <div className="flexr g10 asset-actions">
-          <button onClick={() => store.setScreen('send')} className="asset-btn asset-btn--send">{t('common.send')}</button>
-          <button onClick={() => store.setScreen('receive')} className="glass-soft asset-btn asset-btn--ghost">{t('common.receive')}</button>
-        </div>
-      )}
-      {store.meta && (
-        <ExternalLink href={explorerAccountUrl(store.network, store.meta.publicKey)} className="asset-explorer">
+      {store.publicKey && (
+        <ExternalLink href={explorerAccountUrl(store.network, store.publicKey)} className="link-btn asset-explorer">
           {t('asset.explorer')}
         </ExternalLink>
       )}

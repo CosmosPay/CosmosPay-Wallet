@@ -146,11 +146,10 @@ async function finishImport(page: Page, name: string) {
   ok(link.startsWith('cosmos-easy-recovery:v1?'), 'the QR carries an easy-recovery link');
   ok(!/https?:/.test(link), 'the QR names no server');
 
-  // OLD device: Settings → move to another device → paste the link → confirm → unlock.
+  // OLD device: the Wallet tab → transfer to another device → paste the link → confirm → unlock.
   await oldPage.evaluate(() => window.scrollTo(0, 0));
-  await oldPage.getByText('Perfil').last().click();
-  await oldPage.getByText('Ajustes').first().click();
-  await oldPage.getByText('Transferir a otro dispositivo').click();
+  await oldPage.locator('nav.bottom-nav:visible, nav.shell-side:visible').first().getByRole('button', { name: 'Wallet', exact: true }).click();
+  await oldPage.getByRole('button', { name: /Transferir a otro dispositivo/ }).click();
   await oldPage.getByPlaceholder('cosmos-easy-recovery:v1?…').fill('not a link');
   await oldPage.getByRole('button', { name: 'Usar este enlace' }).click();
   ok(await oldPage.getByText('Ese no es un código de Cosmos Wallet').isVisible(), 'a pasted non-link is refused in place');

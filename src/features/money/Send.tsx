@@ -1,19 +1,64 @@
+import { useEffect, useId, useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
 import { PrimaryButton } from '@/ui/Buttons';
+import { CheckIcon, CloseIcon, LinkIcon, ScanIcon } from '@/ui/Icons';
+import { ScreenHeader } from '@/ui/ScreenHeader';
+import { Tabs } from '@/ui/Tabs';
 import { readText } from '@/lib/clipboard';
 import { fmt, trim } from '@/lib/format';
 import { isValidPublicKey } from '@/lib/wallet';
 import { cx } from '@/lib/cx';
 import { AssetSelect } from '@/features/money/AssetSelect';
+import { ChainSendForm } from '@/features/money/ChainSend';
 import { findAsset, isNativeRef } from '@/lib/asset';
 import { parseDecimalOr0, sanitizeDecimalInput } from '@/lib/amount';
 import { clampMemoText, memoProblem } from '@/lib/memo';
 import { spendableXlm, sendableAssets } from '@/lib/balances';
+import type { CrossChainNetwork } from '@/lib/cosmospay';
+import '@/styles/ui/field.css';
 import '@/styles/features/money/send.css';
 
+const NETWORKS: readonly CrossChainNetwork[] = ['stellar', 'solana', 'monad'];
+
 /* ------------------------------- SEND ------------------------------- */
+/**
+ * Send from any network the wallet holds, one tab each: Stellar (any trustline, a memo, a pay
+ * link pasted or scanned) and the phrase's own Solana and Monad addresses. Opened from a
+ * Solana / Monad holding (the `chain-send` screen) it starts on that network.
+ */
 export function Send({ store }: { store: WalletStore }) {
+  const t = store.t;
+  const chains = store.meta?.chainAddresses;
+  const [net, setNet] = useState<CrossChainNetwork>(store.screen === 'chain-send' ? store.chainAsset.chain : 'stellar');
+  const panelId = useId();
+  const { ensureChainAddresses } = store;
+  useEffect(() => {
+    void ensureChainAddresses();
+  }, [ensureChainAddresses]);
+
+  return (
+    <div className="scr screen col pb-24">
+      <ScreenHeader title={t('send.title')} onBack={store.goBack} />
+      {chains && (
+        <Tabs
+          tabs={NETWORKS.map((n) => ({ key: n, label: t(`xswap.chain.${n}`) }))}
+          value={net}
+          onChange={setNet}
+          label={t('receive.network')}
+          panelId={panelId}
+          className="send-tabs"
+        />
+      )}
+      <div id={panelId} role="tabpanel" className="send-panel">
+        {net === 'stellar' ? <StellarSend store={store} /> : <ChainSendForm key={net} store={store} chain={net} />}
+      </div>
+    </div>
+  );
+}
+
+/** Send on Stellar: destination, amount in any trustline, memo. The draft lives in the store
+ *  (`store.send`), because the confirmation is a screen of its own. */
+function StellarSend({ store }: { store: WalletStore }) {
   const t = store.t;
   const s = store.send;
   const assets = sendableAssets(store.account);
@@ -30,7 +75,6 @@ export function Send({ store }: { store: WalletStore }) {
   const ok = addrValid && amtValid && !memoErr;
 
   const setPct = (p: number) => store.setSend({ ...s, amount: String(Math.floor(avail * p * 1e7) / 1e7) });
-  // Direct keyboard editing (no on-screen pad) through the shared decimal filter.
   const editAmountInput = (raw: string) => {
     const v = sanitizeDecimalInput(raw);
     if (v !== null) store.setSend({ ...s, amount: v });
@@ -42,77 +86,79 @@ export function Send({ store }: { store: WalletStore }) {
   };
 
   return (
-    <div className="scr screen col pb-24">
-      <BackBar title={t('send.title')} onBack={store.goBack} />
-
-      <div className="label-up send-to-label">{t('send.to')}</div>
-      <div className="flexr g8">
-        <input
-          value={s.to}
-          onChange={(e) => {
-            const v = (e.target as HTMLInputElement).value.trim();
-            // Pasting a SEP-7 link fills destination + amount + memo in one go.
-            if (v.toLowerCase().startsWith('web+stellar:') && store.applySep7(v)) return;
-            store.setSend({ ...s, to: v });
-          }}
-          placeholder={t('send.dest')}
-          className="input send-addr-input"
-        />
-        <button onClick={() => store.setScreen('scan')} title={t('scan.scanQr')} className="glass-soft send-scan-btn">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.8" /><path d="M14 14h3v3M21 14v.01M21 21v-4M14 21h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
-        </button>
-      </div>
-      {/* Standard-sized control (48px pill), snug under the address row; the
-          validity note only takes space once there's something to validate. */}
-      <button onClick={pastePayUrl} className="glass-soft pill-btn send-paste-btn">
-        ⛓ {t('ops.pastePay')}
-      </button>
+    <>
+      <label className="field">
+        <span className="field-label">{t('send.to')}</span>
+        <span className="send-to">
+          <input
+            value={s.to}
+            onChange={(e) => {
+              const v = (e.target as HTMLInputElement).value.trim();
+              // Pasting a SEP-7 link fills destination + amount + memo in one go.
+              if (v.toLowerCase().startsWith('web+stellar:') && store.applySep7(v)) return;
+              store.setSend({ ...s, to: v });
+            }}
+            placeholder={t('send.dest')}
+            spellCheck={false}
+            autoCapitalize="off"
+            autoCorrect="off"
+            className="input send-to-input"
+          />
+          <button type="button" onClick={() => store.setScreen('scan')} aria-label={t('scan.scanQr')} className="send-icon-btn">
+            <ScanIcon />
+          </button>
+        </span>
+      </label>
       {s.to && (
-        <div className={cx('send-addr-note', addrValid ? 'is-valid' : 'is-invalid')}>
-          <span className="send-addr-dot">{addrValid ? '✓' : '✕'}</span>
+        <p className={cx('send-note', addrValid ? 'is-valid' : 'is-invalid')}>
+          {addrValid ? <CheckIcon /> : <CloseIcon />}
           {addrValid ? t('send.validAddr') : t('send.invalidAddr')}
-        </div>
+        </p>
       )}
+      <button type="button" onClick={pastePayUrl} className="link-btn send-paste">
+        <LinkIcon />
+        {t('ops.pastePay')}
+      </button>
 
       <div className="send-amount">
-        {/* asset selector sits right next to the amount; the amount is a real input
-            (system keyboard) — no on-screen pad needed on any device */}
-        <div className="center g12">
-          <input
-            value={s.amount}
-            onChange={(e) => editAmountInput((e.target as HTMLInputElement).value)}
-            inputMode="decimal"
-            placeholder="0"
-            className="send-amount-input"
-          />
-          <AssetSelect
-            variant="send"
-            assets={assets}
-            value={s.asset}
-            onPick={(a) => store.setSend({ ...s, asset: { code: a.code, issuer: a.issuer }, amount: '0' })}
-          />
-        </div>
-        <div className="send-avail">
-          {price > 0 ? `≈ $${fmt(amt * price, 2)} · ` : ''}{t('send.available')}: {trim(avail, 4)} {code}
-        </div>
+        <input
+          value={s.amount}
+          onChange={(e) => editAmountInput((e.target as HTMLInputElement).value)}
+          inputMode="decimal"
+          placeholder="0"
+          aria-label={t('chainSend.amount')}
+          className="send-amount-input"
+        />
+        <AssetSelect
+          variant="send"
+          assets={assets}
+          value={s.asset}
+          onPick={(a) => store.setSend({ ...s, asset: { code: a.code, issuer: a.issuer }, amount: '0' })}
+        />
       </div>
-
-      <div className="flexr g8 send-pct">
+      <p className="send-avail">
+        {price > 0 ? `≈ $${fmt(amt * price, 2)} · ` : ''}
+        {t('send.available')}: {trim(avail, 4)} {code}
+      </p>
+      <div className="send-pcts" role="group" aria-label={t('chainSend.amount')}>
         {([['25%', 0.25], ['50%', 0.5], [t('send.max'), 1]] as [string, number][]).map(([l, p]) => (
-          <span key={l} onClick={() => setPct(p)} className="tap glass-soft send-pct-btn">{l}</span>
+          <button key={l} type="button" onClick={() => setPct(p)} className="send-pct">
+            {l}
+          </button>
         ))}
       </div>
 
-      {/* memo: standard input metrics (54px pill, 15px type) like every other field.
-          Clamped by BYTES — Stellar's 28 is a byte limit, so 28 accented characters
-          used to build fine here and throw inside the SDK after the password step. */}
-      <input
-        value={s.memo}
-        onChange={(e) => store.setSend({ ...s, memo: clampMemoText((e.target as HTMLInputElement).value) })}
-        placeholder={t('send.memo')}
-        className="input send-memo"
-      />
-      {memoErr && <div className="send-memo-err">{memoErr}</div>}
+      {/* Clamped by BYTES — Stellar's 28 is a byte limit, so 28 accented characters would
+          build fine here and throw inside the SDK after the password step. */}
+      <label className="field">
+        <span className="field-label">{t('send.memo')}</span>
+        <input
+          value={s.memo}
+          onChange={(e) => store.setSend({ ...s, memo: clampMemoText((e.target as HTMLInputElement).value) })}
+          className="input"
+        />
+      </label>
+      {memoErr && <p className="send-note is-invalid">{memoErr}</p>}
 
       <div className="spacer" />
       <div className="kb-dock">
@@ -120,6 +166,6 @@ export function Send({ store }: { store: WalletStore }) {
           {amt > avail && amt > 0 ? t('send.insufficient') : t('common.continue')}
         </PrimaryButton>
       </div>
-    </div>
+    </>
   );
 }
