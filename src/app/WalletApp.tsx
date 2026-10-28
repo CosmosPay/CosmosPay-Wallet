@@ -104,6 +104,8 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   'add-network': lazy(() => import('@/features/extras/AddNetwork').then((m) => ({ default: m.AddNetwork }))),
   'add-asset': lazy(() => import('@/features/extras/AddAsset').then((m) => ({ default: m.AddAsset }))),
   scan: lazy(() => import('@/features/extras/ScanQR').then((m) => ({ default: m.ScanQR }))),
+  wallets: lazy(() => import('@/features/wallet/Wallets').then((m) => ({ default: m.Wallets }))),
+  'add-wallet': lazy(() => import('@/features/onboarding/AddWallet').then((m) => ({ default: m.AddWallet }))),
 };
 
 /**

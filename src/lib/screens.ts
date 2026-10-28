@@ -18,7 +18,7 @@
  * reachable from several places returns to where the user actually came from.
  */
 
-export type Tab = 'home' | 'earn' | 'markets' | 'profile';
+export type Tab = 'home' | 'wallet' | 'earn' | 'markets' | 'profile';
 
 /** Every screen id. Adding one here forces a row in SCREENS below. */
 export const SCREEN_IDS = [
@@ -73,6 +73,8 @@ export const SCREEN_IDS = [
   'scan',
   'chain-send',
   'chain-asset',
+  'wallets',
+  'add-wallet',
 ] as const;
 
 export type Screen = (typeof SCREEN_IDS)[number];
@@ -111,6 +113,15 @@ export interface ScreenDef {
 }
 
 const profileOrHome = (c: BackContext): Screen => (c.hasSession ? 'profile' : 'home');
+
+/** The screen each tab opens — the Wallet tab's is `wallets`. */
+export const TAB_SCREEN: Record<Tab, Screen> = {
+  home: 'home',
+  wallet: 'wallets',
+  earn: 'earn',
+  markets: 'markets',
+  profile: 'profile',
+};
 
 export const SCREENS: Record<Screen, ScreenDef> = {
   boot: { back: 'exit' },
@@ -152,7 +163,12 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   home: { back: 'exit', tab: 'home', nav: true },
   earn: { back: 'home', tab: 'earn', nav: true },
   defindex: { back: 'earn' },
-  markets: { back: 'home', tab: 'markets', nav: true },
+  // A tab of Home (its Watchlist) rather than a place in the bar.
+  markets: { back: 'home', tab: 'home', nav: true },
+  // The Wallet tab: the wallets on this device, their address on each network, the ledger.
+  wallets: { back: 'home', tab: 'wallet', nav: true },
+  // Another wallet under the same password: no account, no profile, no password screen.
+  'add-wallet': { back: 'wallets', tab: 'wallet' },
   profile: { back: 'home', tab: 'profile', nav: true },
 
   // money
@@ -167,7 +183,7 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // A Solana / Monad holding listed on Home, and the send it opens.
   'chain-asset': { back: 'home' },
   'chain-send': { back: 'chain-asset' },
-  asset: { back: (c) => c.tab },
+  asset: { back: (c) => TAB_SCREEN[c.tab] },
 
   // liquidity
   liquidity: { back: 'earn' },

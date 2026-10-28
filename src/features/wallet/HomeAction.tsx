@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react';
 import '@/styles/features/wallet/home.css';
 
-/** Home quick-action: round glass icon + label (Send / Receive / Scan / Swap / More). */
+/** One of Home's four actions (Figma: Send · Receive · Exchange · More): a ringed icon over its name. */
 export function HomeAction({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
   return (
-    <div onClick={onClick} className="tap home-action">
-      <div className="glass-soft home-action-icon">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">{children}</svg>
-      </div>
+    <button type="button" onClick={onClick} className="home-action">
+      <span className="home-action-ring" aria-hidden="true">
+        {children}
+      </span>
       <span className="home-action-label">{label}</span>
-    </div>
+    </button>
   );
 }

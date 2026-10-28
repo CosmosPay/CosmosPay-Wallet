@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NAV_SCREENS, SCREENS, SCREEN_IDS, backTarget, canEnter, type BackContext } from '@/lib/screens';
+import { NAV_SCREENS, SCREENS, SCREEN_IDS, TAB_SCREEN, backTarget, canEnter, type BackContext } from '@/lib/screens';
 
 const ctx = (over: Partial<BackContext> = {}): BackContext => ({
   hasSession: true,
@@ -107,8 +107,16 @@ test('only the true roots exit the app', () => {
 });
 
 test('the nav bar is derived from the table, not a second list', () => {
-  assert.deepEqual([...NAV_SCREENS].sort(), ['earn', 'home', 'markets', 'profile', 'swap'].sort());
+  assert.deepEqual([...NAV_SCREENS].sort(), ['earn', 'home', 'markets', 'profile', 'swap', 'wallets'].sort());
   for (const s of NAV_SCREENS) assert.equal(SCREENS[s].nav, true);
+});
+
+test('every tab opens a screen that activates it', () => {
+  for (const [tab, screen] of Object.entries(TAB_SCREEN)) {
+    if (tab === 'markets') continue; // a tab of Home now (its watchlist), not of the bar
+    assert.equal(SCREENS[screen].tab, tab, screen);
+  }
+  assert.equal(TAB_SCREEN.wallet, 'wallets');
 });
 
 test('success is terminal so back cannot re-enter the flow that produced it', () => {

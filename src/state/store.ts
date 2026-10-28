@@ -1928,6 +1928,97 @@ export function useWalletStore() {
     [session, meta, wallets, t, flash, errLine, activateWallet],
   );
 
+  /* ------------------- another wallet, same password ------------------- */
+  /**
+   * Another wallet on a device that already has one — the user's call: no account, no profile,
+   * no password screen, because the password is the one this device already opens with. A
+   * draft first (a phrase made here, or what was pasted), then `addWalletToDevice` seals it
+   * under the session's key with the person's own profile and makes it the active wallet.
+   */
+  const prepareNewWallet = useCallback(async (): Promise<void> => {
+    const { createMnemonic, accountFromMnemonic } = await walletLib();
+    const mnemonic = createMnemonic();
+    setDraftAccount(await accountFromMnemonic(mnemonic));
+    setDraftMnemonic(mnemonic);
+    setDraftHasMnemonic(true);
+  }, []);
+
+  const prepareImportedWallet = useCallback(
+    async (text: string): Promise<boolean> => {
+      try {
+        const { importAccount } = await walletLib();
+        const { account: acc, mnemonic } = await importAccount(text);
+        setDraftAccount(acc);
+        setDraftMnemonic(mnemonic ?? '');
+        setDraftHasMnemonic(!!mnemonic);
+        report(EVENT.walletImported, { category: 'lifecycle', props: { hasMnemonic: !!mnemonic } });
+        return true;
+      } catch (e) {
+        // The message describes only the FORM of what was pasted; the text is a seed.
+        reportError(EVENT.walletImported, e);
+        flash((e as Error).message, 'err');
+        return false;
+      }
+    },
+    [flash],
+  );
+
+  /** Forget a draft the person walked away from: a phrase must not outlive its screen. */
+  const dropWalletDraft = useCallback(() => {
+    setDraftAccount(null);
+    setDraftMnemonic('');
+    setImportText('');
+  }, []);
+
+  const addWalletToDevice = useCallback(
+    async (name: string): Promise<boolean> => {
+      if (!session || !meta || !draftAccount) return false;
+      const epoch = sessionEpochRef.current;
+      const vk = session.vaultKey;
+      setBusy(true);
+      try {
+        const entry = await vaultAddWallet(
+          { secret: draftAccount.secret, mnemonic: draftHasMnemonic ? draftMnemonic : null },
+          {
+            publicKey: draftAccount.publicKey,
+            name: name.trim() || t('addWallet.defaultName', { n: wallets.length + 1 }),
+            // The person's own profile: a second wallet is not a second person.
+            birthdate: meta.birthdate,
+            email: meta.email,
+            gender: meta.gender,
+            metricsOptIn: meta.metricsOptIn,
+            promoOptIn: meta.promoOptIn,
+          },
+          vk,
+        );
+        guardSession(epoch);
+        setWallets(await listWallets());
+        await activateWallet(entry, vk);
+        report(EVENT.walletCreated, { category: 'lifecycle', props: { added: true, signIn: false } });
+        setSuccessInfo({
+          title: t('success.added', { name: entry.name }),
+          msg: t('success.protected'),
+          rows: [
+            { label: t('success.user'), val: entry.name },
+            { label: t('success.status'), val: t('success.encrypted') },
+          ],
+        });
+        setDraftAccount(null);
+        setDraftMnemonic('');
+        setImportText('');
+        setTab('home');
+        setScreen('success');
+        return true;
+      } catch (e) {
+        flash(errLine(e), 'err');
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [session, meta, draftAccount, draftHasMnemonic, draftMnemonic, wallets.length, guardSession, activateWallet, t, flash, errLine],
+  );
+
   /** Remove the active wallet; switch to another, or fall back to onboarding. */
   const removeActiveWallet = useCallback(async () => {
     if (!meta || !session) return;
@@ -6510,6 +6601,12 @@ export function useWalletStore() {
     startAddWallet,
     cancelAddWallet,
     switchWallet,
+    prepareNewWallet,
+    prepareImportedWallet,
+    dropWalletDraft,
+    addWalletToDevice,
+    /** A wallet waits in the add flow (or onboarding) to be sealed. */
+    hasWalletDraft: !!draftAccount,
     removeActiveWallet,
     switchNetwork,
     addNetwork,

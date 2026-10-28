@@ -3,33 +3,40 @@ import { navTabs, navActiveKey, navGo } from '@/app/navModel';
 import { cx } from '@/lib/cx';
 import '@/styles/app/bottom-nav.css';
 
-/** Phone/web bottom tab bar (the extension navigates via NavMenu instead). */
+/**
+ * Phone/web bottom bar (the extension navigates via NavMenu instead), as the Figma draws it:
+ * five places with their names, the scanner raised in the centre on the brand blue, and a line
+ * over the place you are on.
+ */
 export function BottomNav({ store }: { store: WalletStore }) {
   const tabs = navTabs(store.t);
   const activeKey = navActiveKey(store);
-  const idx = Math.max(0, tabs.findIndex((x) => x.key === activeKey));
 
   return (
-    <div className="bottom-nav">
-      {/* Sliding active indicator — one .is-tab-<i> rung per tab (bottom-nav.css
-          hard-codes the five-tab width, matching navTabs). */}
-      <div className={`bottom-nav-indicator is-tab-${idx}`}>
-        <div className="bottom-nav-dot" />
-      </div>
-
+    <nav className="bottom-nav" aria-label={store.t('nav.label')}>
       {tabs.map((tb) => {
         const on = tb.key === activeKey;
+        if (tb.key === 'scan') {
+          return (
+            <button key={tb.key} type="button" onClick={() => navGo(store, tb.key)} className="bottom-nav-scan">
+              <span className="bottom-nav-scan-disc">{tb.icon}</span>
+              <span className="bottom-nav-label">{tb.label}</span>
+            </button>
+          );
+        }
         return (
-          <div
+          <button
             key={tb.key}
+            type="button"
             onClick={() => navGo(store, tb.key)}
-            className={cx('tap bottom-nav-tab', on && 'is-on')}
+            aria-current={on ? 'page' : undefined}
+            className={cx('bottom-nav-tab', on && 'is-on')}
           >
-            <svg width="23" height="23" viewBox="0 0 24 24" fill="none">{tb.icon}</svg>
-            {!on && <span className="bottom-nav-label">{tb.label}</span>}
-          </div>
+            {tb.icon}
+            <span className="bottom-nav-label">{tb.label}</span>
+          </button>
         );
       })}
-    </div>
+    </nav>
   );
 }

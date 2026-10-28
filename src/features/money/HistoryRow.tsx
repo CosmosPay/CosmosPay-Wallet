@@ -2,11 +2,12 @@ import type { WalletStore } from '@/state/store';
 import { trim, shortAddr } from '@/lib/format';
 import { explorerTxUrl, type HistoryOp } from '@/lib/stellar';
 import { staggerClass } from '@/lib/stagger';
+import { useCopied } from '@/hooks/useCopied';
+import { ExternalLink } from '@/ui/ExternalLink';
+import { CheckIcon, CopyIcon, DotsIcon, ExchangeIcon, ReceiveIcon, SentIcon } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
 import '@/styles/features/money/rows.css';
 
-/** Leading glyph per operation kind (anything unmapped gets the neutral dot). */
-const ICONS: Record<string, string> = { sent: '↑', received: '↓', create: '↓', swap: '⇅', fee: '%' };
 /** Title i18n key per kind, and the finer key per fee kind. */
 const TITLES: Record<string, string> = {
   sent: 'history.sent',
@@ -16,67 +17,73 @@ const TITLES: Record<string, string> = {
 };
 const FEE_TITLES: Record<string, string> = { liquidity: 'history.feeLiquidity', swap: 'history.feeSwap' };
 
-/** One activity row (send / receive / swap / create / other), linking to the explorer.
- *  Direction and failed/amount colours come from modifier classes; `index` picks
- *  the entrance-delay rung (`dense` on the full History screen). */
+/**
+ * One operation, as the Figma's Activity tab draws it: a ringed mark (green in, ink out, the
+ * brand blue for a swap), the title over who it was with — that address copies — and the
+ * amount over the time. The row opens the operation on the explorer: the title is the link,
+ * stretched over the row, so the copy button beside it is not a button inside a link.
+ */
 export function HistoryRow({ item, store, index = 0, dense = false }: { item: HistoryOp; store: WalletStore; index?: number; dense?: boolean }) {
   const t = store.t;
+  const [copied, copy] = useCopied();
   const url = explorerTxUrl(store.network, item.hash);
-  const date = new Date(item.createdAt).toLocaleDateString(store.locale, { day: 'numeric', month: 'short', year: 'numeric' });
+  const time = new Date(item.createdAt).toLocaleTimeString(store.locale, { hour: '2-digit', minute: '2-digit' });
   const amount = trim(parseFloat(item.amount || '0'), 4);
   const title =
-    item.kind === 'fee'
-      ? t(FEE_TITLES[item.feeKind ?? ''] ?? 'history.fee')
-      : t(TITLES[item.kind] ?? 'history.other');
-  const sub =
-    item.kind === 'swap'
-      ? `${trim(parseFloat(item.fromAmount || '0'), 4)} ${item.fromCode} → ${amount} ${item.code}`
-      : item.counterparty
-        ? shortAddr(item.counterparty)
-        : '';
-  // Money in (+) / money out (−). Fees are money out, so they sign like a send;
-  // a swap nets in, so it always shows '+'.
+    item.kind === 'fee' ? t(FEE_TITLES[item.feeKind ?? ''] ?? 'history.fee') : t(TITLES[item.kind] ?? 'history.other');
   const inbound = item.kind === 'received' || item.kind === 'create';
   const outbound = item.kind === 'sent' || item.kind === 'fee';
-  const sign = item.kind === 'swap' ? '+' : inbound ? '+' : outbound ? '−' : '';
+  // A swap nets in, so it signs '+'; fees are money out.
+  const sign = item.kind === 'swap' || inbound ? '+' : outbound ? '−' : '';
   const amountText = item.amount || item.kind === 'swap' ? `${sign}${amount} ${item.code}` : '';
-  // Left icon tinted by direction for at-a-glance scanning: green = money in,
-  // red = money out, plain white = no value transfer (swaps, signatures, config…).
-  const Wrapper: any = url ? 'a' : 'div';
+  const who = item.counterparty;
+  const sub =
+    item.kind === 'swap'
+      ? `${item.fromCode} → ${item.code}`
+      : who
+        ? t(inbound ? 'history.from' : 'history.to', { who: shortAddr(who, 6, 4) })
+        : '';
+  const tone = item.failed ? 'is-failed' : item.kind === 'swap' ? 'is-swap' : inbound ? 'is-in' : 'is-out';
+  const Mark = item.kind === 'swap' ? ExchangeIcon : inbound ? ReceiveIcon : outbound ? SentIcon : DotsIcon;
+
   return (
-    <Wrapper
-      {...(url ? { href: url, target: '_blank', rel: 'noreferrer' } : {})}
-      className={cx('tap money-hist-row', staggerClass(index, dense))}
-    >
-      <div
-        className={cx(
-          'glass-soft money-hist-icon',
-          inbound && 'money-hist-icon--in',
-          item.kind === 'sent' && 'money-hist-icon--out',
-          item.failed && 'is-failed',
+    <div className={cx('activity-row', staggerClass(index, dense))}>
+      <span className={cx('activity-mark', tone)} aria-hidden="true">
+        <Mark />
+      </span>
+      <div className="activity-main">
+        {url ? (
+          <ExternalLink href={url} className="activity-title activity-link">
+            {title}
+            {item.failed && <span className="activity-failed"> · {t('history.failed')}</span>}
+          </ExternalLink>
+        ) : (
+          <span className="activity-title">{title}</span>
         )}
-      >
-        {ICONS[item.kind] ?? '•'}
-      </div>
-      <div className="f1 min0">
-        <div className="money-hist-title">
-          {title}{item.failed && <span className="money-hist-failed-tag"> · {t('history.failed')}</span>}
-        </div>
-        {sub && <div className="money-hist-sub">{sub}</div>}
-      </div>
-      <div className="t-right shrink0">
-        {amountText && (
-          <div
-            className={cx(
-              'money-hist-amount',
-              item.failed ? 'money-hist-amount--danger is-failed' : sign === '+' && 'money-hist-amount--up',
+        {sub && (
+          <span className="activity-sub">
+            {sub}
+            {who && item.kind !== 'swap' && (
+              <button
+                type="button"
+                onClick={() => copy(who)}
+                className={cx('activity-copy', copied && 'is-copied')}
+                aria-label={copied ? t('common.copied') : t('history.copyAddress')}
+              >
+                {copied ? <CheckIcon /> : <CopyIcon />}
+              </button>
             )}
-          >
-            {amountText}
-          </div>
+          </span>
         )}
-        <div className="money-hist-date">{date}</div>
       </div>
-    </Wrapper>
+      <div className="activity-end">
+        {amountText && (
+          <span className={cx('activity-amount', item.failed ? 'is-failed' : sign === '+' ? 'is-up' : sign === '−' && 'is-down')}>
+            {amountText}
+          </span>
+        )}
+        <span className="activity-time">{time}</span>
+      </div>
+    </div>
   );
 }

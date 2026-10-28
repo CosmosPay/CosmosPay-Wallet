@@ -1,30 +1,28 @@
 import type { WalletStore } from '@/state/store';
 import { Spinner } from '@/ui/Spinner';
+import { PrimaryButton } from '@/ui/Buttons';
 import { useBusy } from '@/hooks/useBusy';
-import '@/styles/features/wallet/home.css';
+import { HomeCard } from '@/features/wallet/HomeCard';
 
-/** Not-yet-activated account card: fund via Friendbot (testnet) or show the address (mainnet).
- *  Uses a LOCAL busy so funding doesn't spin the unrelated CosmosPay card's button. */
+/** Not-yet-activated account: fund via Friendbot (testnet) or show the address (mainnet).
+ *  Uses a LOCAL busy so funding doesn't spin an unrelated card's button. */
 export function ActivateCard({ store }: { store: WalletStore }) {
   const t = store.t;
   const testnet = !!store.network.friendbot;
   const [busy, run] = useBusy();
   return (
-    <div className="glass card home-activate">
-      <div className="home-activate-title">{t('home.activate')}</div>
-      <div className="home-activate-desc">
+    <HomeCard title={t('home.activate')}>
+      <p className="home-card-desc">
         {t('home.activateDesc')}
         {testnet ? t('home.activateTestnet') : t('home.activateMainnet')}
-      </div>
+      </p>
       {testnet ? (
-        <button onClick={() => run(() => store.fund())} disabled={busy} className="home-activate-btn">
+        <PrimaryButton disabled={busy} onClick={() => void run(() => store.fund())}>
           {busy ? <Spinner /> : t('home.getTestXlm')}
-        </button>
+        </PrimaryButton>
       ) : (
-        <button onClick={() => store.setScreen('receive')} className="home-activate-btn">
-          {t('home.viewAddress')}
-        </button>
+        <PrimaryButton onClick={() => store.setScreen('receive')}>{t('home.viewAddress')}</PrimaryButton>
       )}
-    </div>
+    </HomeCard>
   );
 }

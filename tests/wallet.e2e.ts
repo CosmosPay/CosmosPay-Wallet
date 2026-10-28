@@ -106,7 +106,7 @@ try {
   ok((await page.getByRole('button', { name: 'Ver mi wallet' }).count()) === 1, 'Forward from success does not re-enter the flow');
 
   await page.getByRole('button', { name: 'Ver mi wallet' }).click();
-  await page.getByText('Valor del portafolio').waitFor({ timeout: 10000 });
+  await page.getByText('Saldo total').waitFor({ timeout: 10000 });
   ok(true, 'Home renders');
 
   // reload -> must require unlock (greets by name, no address/network), then decrypt
@@ -121,7 +121,7 @@ try {
 
   await page.getByPlaceholder('Contraseña').fill('Test-pass-123');
   await page.getByRole('button', { name: 'Desbloquear' }).click();
-  await page.getByText('Valor del portafolio').waitFor({ timeout: 10000 });
+  await page.getByText('Saldo total').waitFor({ timeout: 10000 });
   ok(true, 'Reload -> unlock (decrypt) -> home');
 
   /* ------------------------- desktop navigation ------------------------- */

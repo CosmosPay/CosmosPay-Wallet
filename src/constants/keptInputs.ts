@@ -16,4 +16,7 @@ export const KEPT_INPUT = {
   recoverAccount: 'recover-account.address',
   /** SignInPassword: turn this device to a passkey on the restore. */
   restorePasskey: 'sign-in-password.passkey',
+  /** Home: the tab under the actions, and the holdings' network filter. */
+  homeTab: 'home.tab',
+  homeNetwork: 'home.network',
 } as const;

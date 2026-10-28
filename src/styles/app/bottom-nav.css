@@ -1,95 +1,123 @@
-/* BottomNav — phone/web bottom tab bar (the extension uses NavMenu instead). */
+/* =====================================================================
+   src/app/BottomNav.tsx — the phone/web bar (the extension uses NavMenu).
+   Figma "Cosmos Wallet" Home: Home · Wallet · QR · Earn · More, the scanner
+   raised in the centre on the brand blue, a line over the active place.
+   Flat: the canvas with a hairline on top, no fill of its own.
+   ===================================================================== */
 .bottom-nav {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  /* The bar GROWS by the gesture-bar inset instead of eating into itself: with a
-     flat 92px, box-sizing: border-box let the safe padding squeeze the 72px tab
-     content box down to 38px and the 50px active dot spilled out of it. The
-     scroller above it still clears the bar — .shell-content is already inset by
-     --safe-b, so the overlap stays 92px and pb-104/pb-110 keep covering it. */
-  height: calc(92px + var(--safe-b));
+  /* The bar GROWS by the gesture-bar inset instead of eating into itself; .pb-104 /
+     .pb-110 keep the scroller above it clear. */
+  height: calc(68px + var(--safe-b));
   z-index: 5;
-  padding: 0 16px calc(20px + var(--safe-b));
+  padding: 0 12px var(--safe-b);
   display: flex;
-  align-items: center;
-  background: var(--nav-bg);
-  border-top: 1px solid var(--hairline);
+  align-items: stretch;
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+  transition: transform 0.24s var(--ease-in-out), opacity 0.18s var(--ease-out), visibility 0.24s;
 }
 
-/* A tab bar is dead weight while the keyboard is up: nothing on it is reachable without
-   dismissing the keyboard first, so it slides out under the frame — which clips it — and
-   comes back the same way. Not `display: none`: that cannot be transitioned, and the bar
-   vanishing mid-frame is exactly the hard cut this avoids. `visibility` is what actually
-   takes it out of the tab order, and it flips discretely at the END of the slide out and
-   at the START of the slide back in. */
-.bottom-nav {
-  transition: transform 0.24s ease, opacity 0.18s ease, visibility 0.24s;
-}
-
+/* Dead weight while the keyboard is up: it slides out under the frame and back. */
 html.kb-open .bottom-nav {
   transform: translateY(100%);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
 }
-/* Sliding active indicator. nav.tsx ships a FIXED five-tab bar, so the width is
-   a constant and the slide is one class per tab index — add a rung here if the
-   tab list ever grows. */
-.bottom-nav-indicator {
-  position: absolute;
-  left: 16px;
-  top: 0;
-  bottom: calc(20px + var(--safe-b));
-  width: calc((100% - 32px) / 5);
-  transition: transform 0.42s cubic-bezier(0.34, 1.3, 0.5, 1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  z-index: 1;
-}
 
-.bottom-nav-indicator.is-tab-0 { transform: translateX(0); }
-.bottom-nav-indicator.is-tab-1 { transform: translateX(100%); }
-.bottom-nav-indicator.is-tab-2 { transform: translateX(200%); }
-.bottom-nav-indicator.is-tab-3 { transform: translateX(300%); }
-.bottom-nav-indicator.is-tab-4 { transform: translateX(400%); }
-.bottom-nav-dot {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.3);
-  transform: translateY(-10px);
-}
-/* tab item — colour + lift come from .is-on */
-.bottom-nav-tab {
-  flex: 1;
+.bottom-nav-tab,
+.bottom-nav-scan {
   position: relative;
-  z-index: 2;
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
   cursor: pointer;
-  color: var(--dim);
-}
-/* Compound selectors so both the spring transition and the resting transform
-   beat the generic `.tap` rules (`.tap:active`'s press-scale included, which is
-   what the old inline transform used to suppress) regardless of sheet order. */
-.tap.bottom-nav-tab {
-  transition: transform 0.42s cubic-bezier(0.34, 1.3, 0.5, 1), color 0.25s ease;
-  transform: none;
+  transition: color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
 }
 
-.tap.bottom-nav-tab.is-on {
-  color: var(--on-accent);
-  transform: translateY(-10px);
+.bottom-nav-tab svg {
+  width: 23px;
+  height: 23px;
 }
+
 .bottom-nav-label {
-  font-size: 10px;
+  font-size: 10.5px;
   font-weight: 700;
+  line-height: 1;
+}
+
+.bottom-nav-tab.is-on {
+  color: var(--text);
+}
+
+/* the line over the place you are on */
+.bottom-nav-tab::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  width: 28px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--brand);
+  opacity: 0;
+  transform: translateX(-50%) scaleX(0.4);
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+.bottom-nav-tab.is-on::before {
+  opacity: 1;
+  transform: translateX(-50%) scaleX(1);
+}
+
+/* the scanner: a disc of the brand blue, raised over the bar's line */
+.bottom-nav-scan {
+  justify-content: flex-end;
+  padding-bottom: 9px;
+  color: var(--text);
+}
+
+.bottom-nav-scan-disc {
+  position: absolute;
+  top: -26px;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin-left: -29px;
+  border: 4px solid var(--bg);
+  border-radius: 50%;
+  background: var(--brand);
+  color: var(--on-brand);
+  transition: transform 0.13s var(--ease-out);
+}
+
+.bottom-nav-scan-disc svg {
+  width: 25px;
+  height: 25px;
+}
+
+.bottom-nav-scan:active .bottom-nav-scan-disc {
+  transform: scale(0.94);
+}
+
+.bottom-nav-tab:focus-visible,
+.bottom-nav-scan:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -4px;
+  border-radius: 12px;
 }

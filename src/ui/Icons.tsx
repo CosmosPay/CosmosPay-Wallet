@@ -163,6 +163,238 @@ export function ThemeIcon({ kind, className }: IconProps & { kind: 'sun' | 'moon
 }
 
 /** Google's "G", in its own four colours on any theme. */
+/* ---- the wallet's own screens (Figma "Cosmos Wallet": Home, its tabs and its bar) ---- */
+
+export function HomeIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 10.5 12 4l8 6.5V19a1.5 1.5 0 0 1-1.5 1.5H15v-6H9v6H5.5A1.5 1.5 0 0 1 4 19z" />
+    </Svg>
+  );
+}
+
+/** A wallet: the wallets on this device and their addresses. */
+export function WalletIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 7.5A2.5 2.5 0 0 1 6.5 5H17a1 1 0 0 1 1 1v2" />
+      <rect x="4" y="7.5" width="16" height="12" rx="2.5" />
+      <path d="M16 13.5h1.5" />
+    </Svg>
+  );
+}
+
+/** A scan frame: the camera reads a QR. */
+export function ScanIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 8.5V6a2 2 0 0 1 2-2h2.5M15.5 4H18a2 2 0 0 1 2 2v2.5M20 15.5V18a2 2 0 0 1-2 2h-2.5M8.5 20H6a2 2 0 0 1-2-2v-2.5" />
+      <rect x="8.5" y="8.5" width="7" height="7" rx="1.2" />
+    </Svg>
+  );
+}
+
+/** A coin with a percent: earning. */
+export function EarnIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M9 15l6-6M9.5 9.5h.01M14.5 14.5h.01" />
+    </Svg>
+  );
+}
+
+/** Three lines: more. */
+export function MenuIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 7h16M4 12h16M4 17h10" />
+    </Svg>
+  );
+}
+
+/** A paper plane: send. */
+export function SendIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M20.5 3.5 10 14M20.5 3.5 14 20.5l-4-6.5-6.5-4z" />
+    </Svg>
+  );
+}
+
+/** An arrow down and in: receive. */
+export function ReceiveIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M17 7 7 17M7 9v8h8" />
+    </Svg>
+  );
+}
+
+/** An arrow up and out: sent. */
+export function SentIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M7 17 17 7M9 7h8v8" />
+    </Svg>
+  );
+}
+
+/** Two opposite arrows: exchange. */
+export function ExchangeIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 8h15l-3.5-3.5M20 16H5l3.5 3.5" />
+    </Svg>
+  );
+}
+
+export function DotsIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M6 12h.01M12 12h.01M18 12h.01" />
+    </Svg>
+  );
+}
+
+export function GearIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+    </Svg>
+  );
+}
+
+/** A globe: the network. */
+export function GlobeIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M3.5 12h17M12 3.5c2.4 2.3 3.5 5.2 3.5 8.5s-1.1 6.2-3.5 8.5c-2.4-2.3-3.5-5.2-3.5-8.5S9.6 5.8 12 3.5z" />
+    </Svg>
+  );
+}
+
+export function CopyIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="9" y="9" width="11" height="11" rx="2.5" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+    </Svg>
+  );
+}
+
+export function PlusIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 5v14M5 12h14" />
+    </Svg>
+  );
+}
+
+/** A shield with a check: the account can be recovered. */
+export function ShieldIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 3.5 5 6.5v5c0 4.4 3 7.9 7 9 4-1.1 7-4.6 7-9v-5z" />
+      <path d="m9 12 2 2 4-4" />
+    </Svg>
+  );
+}
+
+export function TrendUpIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="m3.5 16.5 6-6 4 4 7-7M15 7.5h5.5V13" />
+    </Svg>
+  );
+}
+
+export function TrendDownIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="m3.5 7.5 6 6 4-4 7 7M15 16.5h5.5V11" />
+    </Svg>
+  );
+}
+
+export function StarIcon({ className, filled = false }: IconProps & { filled?: boolean }) {
+  return (
+    <svg className={className} width="20" height="20" viewBox="0 0 24 24" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="m12 3.8 2.5 5.1 5.6.8-4 4 .9 5.6-5-2.7-5 2.7.9-5.6-4-4 5.6-.8z" />
+    </svg>
+  );
+}
+
+/** A key: the recovery phrase and the secret key. */
+export function KeyIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="8" cy="15" r="4" />
+      <path d="m11 12 8.5-8.5M16 7l2.5 2.5M14 9l2 2" />
+    </Svg>
+  );
+}
+
+export function LockIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="5" y="10.5" width="14" height="10" rx="2.5" />
+      <path d="M8 10.5V8a4 4 0 0 1 8 0v2.5" />
+    </Svg>
+  );
+}
+
+/** Two devices: transfer a wallet to another one. */
+export function DevicesIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="3" y="5" width="12" height="9" rx="2" />
+      <path d="M6 18h6" />
+      <rect x="16" y="9" width="5.5" height="11" rx="1.5" />
+    </Svg>
+  );
+}
+
+export function InfoCircleIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11v5M12 8h.01" />
+    </Svg>
+  );
+}
+
+/** A chain link: a payment link. */
+export function LinkIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+    </Svg>
+  );
+}
+
+/** A clock with an arrow: the activity list. */
+export function ActivityIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M3.5 12a8.5 8.5 0 1 0 2.5-6M3.5 4v4h4" />
+      <path d="M12 8v4.5l3 2" />
+    </Svg>
+  );
+}
+
+/** A power line: lock the wallet now. */
+export function PowerIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 3.5v7.5M7 6.3a7.5 7.5 0 1 0 10 0" />
+    </Svg>
+  );
+}
+
 export function GoogleLogo({ className }: IconProps) {
   return (
     <svg className={className} width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
