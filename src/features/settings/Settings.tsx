@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { SECTION_SCROLL_DELAY_MS } from '@/constants/ui';
 import type { WalletStore } from '@/state/store';
 import { BackBar } from '@/ui/BackBar';
 import { ThemeIcon } from '@/ui/Icons';
@@ -35,6 +36,19 @@ export function Settings({ store }: { store: WalletStore }) {
     if (!signInMethods) void loadSignInMethods({ quiet: true });
   }, [signInMethods, loadSignInMethods]);
   const mfaUrl = signInMethods?.mfaSettingsUrl ?? null;
+
+  // Opened as "recover the account" (the Wallet tab): the recovery part, not the top of a long
+  // screen. A step of this screen, so the browser's back leaves Settings as it came.
+  const recoveryRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (store.navStep !== 'recovery') return;
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timer = setTimeout(
+      () => recoveryRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' }),
+      SECTION_SCROLL_DELAY_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [store.navStep]);
 
   return (
     <div className="scr screen pb-40">
@@ -149,8 +163,10 @@ export function Settings({ store }: { store: WalletStore }) {
         />
       </SettingsSection>
 
-      <BackupRecoverySection store={store} />
-      <RecoverySection store={store} />
+      <div ref={recoveryRef} className="settings-anchor">
+        <BackupRecoverySection store={store} />
+        <RecoverySection store={store} />
+      </div>
 
       <ConnectedSites store={store} />
 

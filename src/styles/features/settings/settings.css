@@ -173,3 +173,8 @@
   background: var(--danger);
   color: #fff;
 }
+
+/* the recovery part, which the Wallet tab opens Settings at: clear of the fixed way back */
+.settings-anchor {
+  scroll-margin-top: 72px;
+}

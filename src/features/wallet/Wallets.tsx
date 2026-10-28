@@ -145,7 +145,14 @@ export function Wallets({ store }: { store: WalletStore }) {
           {t('wallets.recovery')}
         </h2>
         <div className="wallets-list">
-          <button type="button" onClick={() => store.setScreen('settings')} className="wallets-row">
+          <button
+            type="button"
+            onClick={() => {
+              store.setScreen('settings');
+              store.replaceStep('recovery');
+            }}
+            className="wallets-row"
+          >
             <span className={cx('wallets-row-icon', rec?.enabled && 'is-on')} aria-hidden="true">
               <ShieldIcon />
             </span>

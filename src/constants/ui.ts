@@ -34,3 +34,7 @@ export const SCROLL_SMOOTH_MIN_PX = 50;
 
 /** What an arrow key scrolls by when the window forwards it (PageUp/Down take a screenful). */
 export const SCROLL_ARROW_PX = 40;
+
+/** How long a screen opened at one of its parts waits before scrolling there: its entrance
+ *  (--dur-base) moves the content, and its sections settle their height as they load. */
+export const SECTION_SCROLL_DELAY_MS = 450;
