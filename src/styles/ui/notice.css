@@ -1,6 +1,6 @@
 /* =====================================================================
-   src/ui/Notice.tsx — a flat panel: one fill, one line, a mark and the text.
-   The danger tone takes the danger tokens, which are AA in both themes.
+   src/ui/Notice.tsx — a line on the canvas, a mark and the text; no fill.
+   The danger tone draws its line and mark in --danger, AA in both themes.
    ===================================================================== */
 .notice {
   display: flex;
@@ -8,8 +8,8 @@
   gap: 12px;
   padding: 14px 16px;
   border-radius: 18px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-soft-bg);
+  border: 1px solid var(--line);
+  background: transparent;
   color: var(--text);
   font-size: 13.5px;
   font-weight: 400;
@@ -18,7 +18,6 @@
 
 .notice.is-danger {
   border-color: var(--danger);
-  background: var(--danger-soft);
 }
 
 .notice-icon {

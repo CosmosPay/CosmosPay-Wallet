@@ -1,15 +1,19 @@
 /* =====================================================================
-   src/features/onboarding/Verify.tsx — fill the gaps. Prefix: .verify-
+   src/features/onboarding/Verify.tsx — fill the gaps, by tap or by drag
+   (src/features/onboarding/useWordDrag.ts). Prefix: .verify-
    Slot looks are modifier classes on the WordCell (is-fixed / is-empty /
-   is-filled); a used chip is .is-used.
+   is-filled); a used chip is .is-used. While a word is dragged: the word
+   it came from is .is-lifted, the place under the pointer .is-over, and
+   .verify-ghost is the word under the finger.
    ===================================================================== */
 .verify-grid {
   margin-bottom: 20px;
 }
 
+/* a given word: the cell's line, its text muted — it is not the person's to change */
 .verify-word.is-fixed {
-  background: var(--glass-soft-bg);
-  border-color: var(--glass-soft-border);
+  background: transparent;
+  border-color: var(--line);
 }
 
 .verify-word.is-fixed .ob-word-text {
@@ -20,14 +24,41 @@
 .verify-word.is-empty {
   background: transparent;
   border: 1.5px dashed var(--dimmer);
+  transition: border-color var(--dur-quick) var(--ease-out);
 }
 
-/* a word placed by a tap: ink, so it reads as the person's own answer */
+/* while a word is in the air, the gaps say where it can go */
+.verify-grid.is-dragging .verify-word.is-empty {
+  border-color: var(--text);
+}
+
+/* a word placed by a tap or a drop: ink, so it reads as the person's own answer; it
+   lands with a small settle */
 .verify-word.is-filled {
   background: var(--text);
   border-color: var(--text);
   color: var(--bg);
-  cursor: pointer;
+  cursor: grab;
+  animation: popIn var(--dur-base) var(--ease-out);
+}
+
+/* the place under the pointer: the active indicator, brand blue (beats the rule above) */
+.verify-grid.is-dragging .verify-word.is-over {
+  border: 1.5px solid var(--brand);
+}
+
+/* a word that can be dragged: the browser neither scrolls nor selects under it */
+.verify-chip,
+.verify-word.is-filled {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* where the dragged word came from, while it is away */
+.verify-chip.is-lifted,
+.verify-word.is-filled.is-lifted {
+  opacity: 0.35;
 }
 
 .verify-word.is-filled .ob-word-num {
@@ -46,6 +77,45 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 24px;
+  border-radius: 16px;
+  outline: 1.5px dashed transparent;
+  outline-offset: 6px;
+  transition: outline-color var(--dur-quick) var(--ease-out);
+}
+
+/* a placed word dragged back over the bank */
+.verify-bank.is-over {
+  outline-color: var(--brand);
+}
+
+/* The word under the finger: a filled chip, slightly larger — lifted, with no shadow (the
+   flat look). Fixed at the pointer through --drag-x / --drag-y, which the drag writes;
+   .is-settling eases it into its gap, or back. */
+.verify-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--text);
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 15px;
+  font-weight: 600;
+  pointer-events: none;
+  transform: translate(var(--drag-x, 0), var(--drag-y, 0)) translate(-50%, -50%) scale(1.06);
+}
+
+.verify-ghost.is-on {
+  display: flex;
+}
+
+.verify-ghost.is-settling {
+  transition: transform var(--dur-base) var(--ease-in-out);
 }
 
 .verify-chip {
@@ -57,8 +127,9 @@
   font: inherit;
   font-size: 15px;
   font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.13s var(--ease-out), border-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
+  cursor: grab;
+  transition: transform 0.13s var(--ease-out), border-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out),
+    opacity var(--dur-quick) var(--ease-out);
 }
 
 .verify-chip.is-used {

@@ -126,10 +126,21 @@
 /* --------------------------- surfaces ---------------------------
    Three flat, matte surfaces (the names are older than the look): one solid fill and a
    1px line each. No blur, no shadow, no gradient, no idle animation — see theme.css. */
-.glass,
-.input {
+.glass {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
+}
+
+/* The redesign's surface: a line on the canvas, no fill (the brand's rule). */
+.outlined {
+  background: transparent;
+  border: 1px solid var(--line);
+}
+
+/* A field is outlined too; its edge is all that shows where it is, so --line-strong. */
+.input {
+  background: transparent;
+  border: 1px solid var(--line-strong);
 }
 
 .glass-soft {
@@ -227,9 +238,14 @@
   flex-shrink: 0;
 }
 
+/* Not yet available: the solid ink steps back to a line (the brand draws with lines, never a
+   grey fill — which is what ink at 40% opacity painted), and fills in again, eased, the
+   moment it becomes available. */
 .btn-primary:disabled {
   cursor: default;
-  opacity: 0.4;
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--dim);
 }
 
 .btn-ghost:disabled {

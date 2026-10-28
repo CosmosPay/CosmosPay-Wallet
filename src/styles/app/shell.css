@@ -20,6 +20,11 @@
   padding-right: var(--safe-r);
 }
 
+/* Shown only in the desktop split (see .auth-only in the desktop block below). */
+.auth-only {
+  display: none;
+}
+
 /* Device adaptation via a fluid column width (set by media queries in
    index.astro): full-width on phones, a wider comfortable column on
    tablets/desktop instead of a locked 440px. We deliberately do NOT scale
@@ -165,5 +170,83 @@ html.kb-open body {
   .shell-root.has-desktop-mode .pb-104,
   .shell-root.has-desktop-mode .pb-110 {
     padding-bottom: 32px;
+  }
+
+  /* Before a session the window splits in two (the user's design): the flow on the left in
+     a narrower column, the brand panel (src/app/AuthAside.tsx) on the right. Screens mark
+     what the panel replaces with .auth-chrome (their own hero and language/theme controls),
+     and a screen whose content is a short block (Welcome's two doors) asks to be centred
+     with .auth-center. */
+  .shell-root.has-desktop-mode.has-auth-split .shell-main {
+    flex: 1 1 50%;
+  }
+
+  /* 480px at a phone's scale; ×--k, the split's desktop scale (src/styles/app/auth-split.css). */
+  .shell-root.has-desktop-mode.has-auth-split .shell-content {
+    max-width: calc(480px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .auth-aside {
+    display: flex;
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .auth-chrome {
+    display: none;
+  }
+
+  /* The other way round: what the column shows only in the split, because on a phone the
+     hero it replaces is right there (Welcome's lockup and greeting). A flex box. */
+  .shell-root.has-desktop-mode.has-auth-split .auth-only {
+    display: flex;
+  }
+
+  /* `safe`: a block taller than the window starts at the top and scrolls, instead of being
+     centred past the top edge where no scroll reaches. The plain value is the fallback. */
+  .shell-root.has-desktop-mode.has-auth-split .auth-center {
+    justify-content: center;
+    justify-content: safe center;
+  }
+
+  /* Every step of the flow is built for a phone: content, a .spacer, then the CTA at the
+     bottom edge, where a thumb is. In a window as tall as a monitor that spacer opened a
+     gap of half a screen between the content and its button. Here the step is one block,
+     centred like Welcome's doors, its CTA a fixed step below the content. */
+  /* The top padding keeps the way back's corner clear: a step taller than the window starts
+     at the top, and at the narrowest desktop width the column reaches under that corner. */
+  .shell-root.has-desktop-mode.has-auth-split .screen {
+    justify-content: center;
+    justify-content: safe center;
+    padding-top: 72px;
+    padding-bottom: 40px;
+  }
+
+  /* On a desktop window the way back (ui/ScreenBar) belongs to the WINDOW, not to the
+     reading column: its top-left corner, mirroring the language and theme controls in the
+     top-right one (.auth-aside-bar: 18px down, 28px in) — the user's call. Fixed, so it is
+     the same spot on every step whatever the column holds. Beside the rail (a session
+     adding a wallet) it takes the corner of the area the rail leaves. */
+  .shell-root.has-desktop-mode .screen-bar.is-shown {
+    position: fixed;
+    top: calc(18px + var(--safe-t));
+    left: calc(28px + var(--safe-l));
+    z-index: 5;
+    margin: 0;
+    padding: 0;
+  }
+
+  .shell-root.has-desktop-mode:has(.shell-side) .screen-bar.is-shown {
+    left: calc(var(--desk-side-w) + 28px + var(--safe-l));
+  }
+
+  /* In the corner the button's own edge is the margin, like the theme button opposite. It
+     wears the canvas: at the narrowest width a tall step scrolls under that corner. */
+  .shell-root.has-desktop-mode .screen-bar-back {
+    margin-left: 0;
+    background: var(--bg);
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .screen > .spacer {
+    flex: 0 0 auto;
+    min-height: 32px;
   }
 }

@@ -1,11 +1,12 @@
 import { useState, type ReactNode } from 'react';
-import { cx } from '@/lib/cx';
+import { useKeptState } from '@/hooks/useKeptState';
+import { KEPT_INPUT } from '@/constants/keptInputs';
 import { copyText } from '@/lib/clipboard';
 import { inkHandlers } from '@/lib/ink';
 import { isAccessCode, isEmail, normalizeAccessCode } from '@/lib/validate';
 import type { TFn } from '@/lib/i18n';
-import type { SignInMethod, SignInOffer, SignInPhase, SignInProvider } from '@/constants/signIn';
-import { CosmosMark, GitHubLogo, GoogleLogo, MailIcon } from '@/ui/Icons';
+import { EMAIL_SOURCE_ID, type SignInOffer, type SignInPhase, type SignInProvider } from '@/constants/signIn';
+import { AccountIcon, CosmosMark, GitHubLogo, GoogleLogo, MailIcon } from '@/ui/Icons';
 import { Notice } from '@/ui/Notice';
 import { Spinner } from '@/ui/Spinner';
 import '@/styles/ui/sign-in-methods.css';
@@ -16,19 +17,30 @@ import '@/styles/ui/sign-in-methods.css';
  */
 const PROVIDER_LABEL: Record<SignInProvider, string> = { authentik: 'Cosmos Pay', google: 'Google', github: 'GitHub' };
 
-/** Each provider's own mark. Cosmos Pay is the preferred door (`SIGN_IN_PROVIDERS[0]`), so
- *  it is the one solid button; the rest are outlined equals. */
+/** Each provider's own mark. */
 const PROVIDER_MARK: Record<SignInProvider, ReactNode> = {
   authentik: <CosmosMark className="sign-in-mark" />,
   google: <GoogleLogo className="sign-in-mark" />,
   github: <GitHubLogo className="sign-in-mark" />,
 };
 
+/** An Authentik source's mark by its id; a source the wallet has no logo for gets a person. */
+const SOURCE_MARK: Record<string, ReactNode> = {
+  google: <GoogleLogo className="sign-in-mark" />,
+  github: <GitHubLogo className="sign-in-mark" />,
+  [EMAIL_SOURCE_ID]: <MailIcon className="sign-in-mark" />,
+};
+
 export type SignInStep = 'list' | 'email' | 'code';
 
 /**
- * The ways in, one step at a time: the list (Cosmos Pay, Google, GitHub, Email), then for
- * email its address, then the emailed code a sign-in can stop at.
+ * The ways in, one step at a time: the list, then for email its address, then the emailed
+ * code a sign-in can stop at.
+ *
+ * The list is the federated sign-ins Authentik has (Google, GitHub…, from `offer.sources`),
+ * each starting at its provider, plus email — all equals, outlined. A deployment that lists
+ * no sources gets one Authentik ("Cosmos Pay") button, whose login page offers them instead;
+ * one with no Authentik gets the direct Google / GitHub doors.
  *
  * Presentational: every action is a prop, and the caller (`features/onboarding/SignIn.tsx`)
  * owns the step — its header titles each one and its back button walks them — and decides
@@ -56,14 +68,16 @@ export function SignInMethods({
   phase: SignInPhase;
   /** The provider URL, for the copy fallback when the browser could not be opened. */
   url: string | null;
-  onProvider: (provider: SignInProvider) => void;
+  /** `source`: one of Authentik's (`offer.sources`), to start the sign-in there. */
+  onProvider: (provider: SignInProvider, source?: string) => void;
   /** "Email" in the list: the caller moves to the email step. */
   onEmailStep: () => void;
   onEmail: (email: string) => void;
   onCode: (code: string) => void;
   onCancel: () => void;
 }) {
-  const [email, setEmail] = useState('');
+  // The address survives a step back; the code, single-use, does not.
+  const [email, setEmail] = useKeptState(KEPT_INPUT.signInEmail, '');
   const [digits, setDigits] = useState('');
   const busy = phase !== 'idle' && phase !== 'code';
 
@@ -136,23 +150,40 @@ export function SignInMethods({
         </div>
       ) : (
         <>
-          {offer.providers.map((p, i) => (
+          {offer.sources.map((s) => (
             <button
-              key={p}
+              key={s.id}
               type="button"
-              className={cx(i === 0 ? 'btn-primary' : 'btn-ghost', 'ink sign-in-btn')}
+              className="btn-ghost ink sign-in-btn"
               disabled={busy}
-              onClick={() => onProvider(p)}
+              onClick={() => onProvider('authentik', s.id)}
               {...inkHandlers}
             >
-              {PROVIDER_MARK[p]}
-              {t('signin.continueWith', { provider: PROVIDER_LABEL[p] })}
+              {SOURCE_MARK[s.id] ?? <AccountIcon className="sign-in-mark" />}
+              {s.id === EMAIL_SOURCE_ID ? t('signin.emailCta') : t('signin.continueWith', { provider: s.name })}
             </button>
           ))}
-          {offer.email && (
+          {/* With its sources listed, Authentik needs no button of its own. */}
+          {offer.providers
+            .filter((p) => !(p === 'authentik' && offer.sources.length))
+            .map((p) => (
+              <button
+                key={p}
+                type="button"
+                className="btn-ghost ink sign-in-btn"
+                disabled={busy}
+                onClick={() => onProvider(p)}
+                {...inkHandlers}
+              >
+                {PROVIDER_MARK[p]}
+                {t('signin.continueWith', { provider: PROVIDER_LABEL[p] })}
+              </button>
+            ))}
+          {/* The in-app code, only where Authentik's email sign-in is not offered (it replaces it). */}
+          {offer.email && !offer.sources.some((s) => s.id === EMAIL_SOURCE_ID) && (
             <button
               type="button"
-              className={cx(offer.providers.length ? 'btn-ghost' : 'btn-primary', 'ink sign-in-btn')}
+              className="btn-ghost ink sign-in-btn"
               disabled={busy}
               onClick={onEmailStep}
               {...inkHandlers}

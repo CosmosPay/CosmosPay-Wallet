@@ -200,6 +200,13 @@ import {
   Sep10TokenShape,
 } from '@/lib/recoveryShapes';
 import type { SignInMethod, SignInProvider } from '@/constants/signIn';
+import {
+  EasyRecoveryClaimShape,
+  EasyRecoveryOfferedShape,
+  EasyRecoverySessionShape,
+  EasyRecoveryStatusShape,
+  type EasyRecoveryStatus,
+} from '@/lib/easyRecoveryShapes';
 
 /** SEP-30's view of a protected account, as either server reports it. */
 export interface RecoveryAccount {
@@ -395,7 +402,12 @@ export type SignInFinish =
 /** `GET {walletApiBase}/auth/providers` — what this deployment can offer. */
 export async function signInProviders(
   accessKey: string | null = null,
-): Promise<{ providers: string[]; email: boolean; mfaSettingsUrl?: string | null }> {
+): Promise<{
+  providers: string[];
+  sources?: { id: string; name: string }[];
+  email: boolean;
+  mfaSettingsUrl?: string | null;
+}> {
   return getPlatformJson(`${walletApiBase()}/auth/providers`, SignInProvidersShape, signInHeaders(accessKey));
 }
 
@@ -403,8 +415,12 @@ export async function signInProviders(
 export async function signInAuthorize(
   body: {
     provider: SignInProvider;
+    /** One of the offer's `sources` — only ever sent to a server that listed it. */
+    source?: string;
     codeChallenge: string;
     codeChallengeMethod: string;
+    /** The web build's return page (`signInReturnUrl`), when the server lists it. */
+    returnTo?: string;
   },
   accessKey: string | null = null,
 ): Promise<{ state: string; authorizationUrl: string; expiresAt: string }> {
@@ -412,7 +428,10 @@ export async function signInAuthorize(
 }
 
 /** `GET {walletApiBase}/auth/oauth/session/{state}` — a status, never an identity. */
-export async function signInPoll(state: string, accessKey: string | null = null): Promise<{ status: string; error?: string }> {
+export async function signInPoll(
+  state: string,
+  accessKey: string | null = null,
+): Promise<{ status: string; error?: string; bound?: boolean }> {
   return getPlatformJson(
     `${walletApiBase()}/auth/oauth/session/${encodeURIComponent(state)}`,
     SignInPollShape,
@@ -428,7 +447,7 @@ export async function signInPoll(state: string, accessKey: string | null = null)
  * consented, not who opened the sign-in, and a recovery identity is worth a wallet.
  */
 export async function signInClaim(
-  body: { state: string; codeVerifier: string; purpose?: 'sign-in' | 'recovery' },
+  body: { state: string; codeVerifier: string; purpose?: 'sign-in' | 'recovery'; binding?: string },
   accessKey: string | null = null,
 ): Promise<SignInClaim> {
   return postJson(`${walletApiBase()}/auth/oauth/claim`, body, signInHeaders(accessKey), true, SignInClaimShape);
@@ -479,6 +498,63 @@ export async function signInFinish(
     true,
     SignInFinishShape,
   );
+}
+
+/* ----------------------------- easy recovery ----------------------------- */
+/* The mailbox a wallet crosses devices through (src/lib/easyRecovery.ts). Every call carries
+   the shared public key, like the sign-in: the new device has no account yet. */
+
+const easyRecoveryBase = () => `${walletApiBase()}/easy-recovery/sessions`;
+
+/** `POST …/easy-recovery/sessions` — the new device opens a session for its public key. */
+export async function easyRecoveryOpen(
+  receiverKey: string,
+  accessKey: string | null = null,
+): Promise<{ id: string; expiresAt: string }> {
+  return postJson(easyRecoveryBase(), { receiverKey }, signInHeaders(accessKey), true, EasyRecoverySessionShape);
+}
+
+/** `GET …/easy-recovery/sessions/:id` — where the session is. Never its contents. */
+export async function easyRecoveryStatus(
+  sessionId: string,
+  accessKey: string | null = null,
+): Promise<{ status: EasyRecoveryStatus; expiresAt: string }> {
+  return getPlatformJson(
+    `${easyRecoveryBase()}/${encodeURIComponent(sessionId)}`,
+    EasyRecoveryStatusShape,
+    signInHeaders(accessKey),
+  );
+}
+
+/** `POST …/easy-recovery/sessions/:id/offer` — the old device leaves the sealed wallet and its code. */
+export async function easyRecoveryOffer(
+  sessionId: string,
+  body: { ciphertext: string; code: string },
+  accessKey: string | null = null,
+): Promise<void> {
+  await postJson(
+    `${easyRecoveryBase()}/${encodeURIComponent(sessionId)}/offer`,
+    body,
+    signInHeaders(accessKey),
+    true,
+    EasyRecoveryOfferedShape,
+  );
+}
+
+/** `POST …/easy-recovery/sessions/:id/claim` — the code the person typed; the payload if it is right. */
+export async function easyRecoveryClaim(
+  sessionId: string,
+  code: string,
+  accessKey: string | null = null,
+): Promise<string> {
+  const res = await postJson<{ ciphertext: string }>(
+    `${easyRecoveryBase()}/${encodeURIComponent(sessionId)}/claim`,
+    { code },
+    signInHeaders(accessKey),
+    true,
+    EasyRecoveryClaimShape,
+  );
+  return res.ciphertext;
 }
 
 /** `PUT {walletApiBase}/backup` — a signature by the backup's own address is the credential. */

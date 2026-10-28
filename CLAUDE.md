@@ -120,14 +120,16 @@ constant holding a colour string can only ever be consumed inline.
 The redesign (branch `feat/design-migration`, Figma file "Cosmos Wallet") follows the Figma
 screens, the brand manual and snap.cosmospay.lat. Four rules:
 
-- **Flat and matte.** Every surface is one solid colour and a 1px line. No gradients, no
-  translucent fills, no `backdrop-filter`, no drop shadows, no glow blobs, no idle "breathing"
-  animation. Depth is the step between `--bg`, `--glass-soft-bg` and `--glass-bg` (the
-  `--glass-*` names are older than the look and now hold solid colours).
+- **Flat and matte, drawn in lines.** No gradients, no translucent fills, no `backdrop-filter`,
+  no drop shadows, no glow blobs, no idle "breathing" animation — and, the user's rule, no grey
+  fills wherever a line will do: a card, a track, a divider, a selected row is `--line` on the
+  canvas (`.outlined`), a text field is `--line-strong` (3:1 on `--bg`, WCAG 1.4.11), and a
+  popup (sheet, dropdown, toast) is the canvas colour with a line. The `--glass-*` fills
+  (older names, solid colours) remain only on screens not yet redesigned.
 - **Ink is primary, blue is tertiary.** Primary buttons are solid ink (black in light, white in
-  dark); secondary buttons are the 1.5px outline alone. `--brand` (#4d66ff in dark, #3d55f0 in
-  light) is for focus rings, the active indicator and the outlined button's hover fill — never
-  a button's resting colour.
+  dark); secondary buttons are the 1.5px outline alone. `--brand` is the Figma palette's one
+  blue, `#4d66ff`, identical in both themes — never a derived shade. It is for focus rings, the
+  active indicator and the outlined button's hover fill, never a button's resting colour.
 - **Buttons ink on hover**, like snap's: `.ink` + `inkHandlers` from `src/lib/ink.ts` grow a
   circle of `--ink` from where the pointer entered (`PrimaryButton`/`GhostButton` already do).
   Solid buttons fill with the canvas, outlined ones with the brand blue. Touch has no hover.
@@ -157,8 +159,9 @@ the entry chunk.
 
 | New | Replaces |
 | --- | --- |
-| `ui/ScreenHeader` — back arrow on the LEFT, `h1` title, muted `desc` | `BackBar` (back on the right) + `Desc` / `.desc` paragraphs |
+| `ui/ScreenHeader` — `h1` title, muted `desc`; its back arrow goes on the shell's fixed bar (`ui/ScreenBar`), top left | `BackBar` (back on the right) + `Desc` / `.desc` paragraphs |
 | `ui/ChoiceCard` — whole-card option with icon, title, line, chevron | ad-hoc option buttons |
+| `ui/Segmented` — one question, two or three equal answers, one always chosen; a radio group with a sliding thumb | tabs or card pairs for a choice whose answer needs explaining before it is taken (`BackupChoice`) |
 | `ui/Notice` (`info` / `danger`) — mark + text, may hold a checkbox or a button | `.glass-soft` note boxes, pink warning boxes |
 | `.link-btn` — ink, bold, underlined, 44px target | coloured or grey `div onClick` links |
 | `PrimaryButton` / `GhostButton` (ink) | `.glass-soft` buttons, per-provider colours |
@@ -166,16 +169,48 @@ the entry chunk.
 | `ui/Icons` (line icons + `CosmosMark`, `GoogleLogo`, `GitHubLogo`) | emoji and text glyphs as icons (`‹`, `▼`, `✓`, `👋`) |
 
 The onboarding (Welcome → `backup-choice` / `restore-choice` → words or account → lock),
-Unlock, the device-unlock offer and Success are done.
+Unlock, the device-unlock offer and Success are done. **One question per step** (the user's
+call: a screen with every field was too much at once): `profile-setup` walks
+`PROFILE_STEPS` (`constants/onboarding.ts`) — the name, the email, the age and gender, the two
+optional consents — as `goStep` stops, under a line per step and "Paso n de 4"; Enter in a
+step's field goes on. A new step goes in that list, not as another field on an existing one.
 
-**Welcome has no logo and no headline**: its hero is a provisional video
+**Welcome has no logo and no headline on a phone**: its hero is a provisional video
 (`features/onboarding/WelcomeHero.tsx`, files in `public/brand/welcome/`, rendered by the
 Remotion project `cosmos-wallet-welcome-motion` outside this repo). An intro plays once per
 session, after the boot splash lifts (`lib/appReveal.ts`), and cuts to a seamless loop; one
 set per theme, WebM then MP4, the loop's poster as the fallback. To replace it, keep the
-file names and that contract. No pause control and no reduced-motion stop, both the user's
+file names and that contract. On a desktop window the hero is in the brand panel, so the
+column greets instead (`.welcome-head`, shown only in the split by `.auth-only`): the Cosmos C
+alone — never the full lockup, the user's call — over a greeting that varies per visit and
+with the hour (`welcomeGreeting` in `lib/greeting.ts`, Unlock's pool minus the name and the
+"welcome back"). No pause control and no reduced-motion stop, both the user's
 call — WCAG 2.2.2 asks for one; revisit with the final hero. `BackBar` and the rest of the old
 atoms remain only in screens not yet redesigned; replace them part by part.
+
+**Before a session the desktop window splits in two** (`AUTH_SCREENS` in `lib/screens.ts`):
+the flow on the left in a 480px column, the brand panel (`app/AuthAside.tsx`: the hero motion,
+language and theme) on the right. Chrome like the rail: `Shell` renders the panel, CSS shows it
+(`shell.css`), and it persists across the steps so the motion never restarts. A screen marks what
+the panel replaces with `.auth-chrome` (hidden in the split) and asks to be centred with
+`.auth-center`. Every step (`.screen`) is one block centred in that column: the phone's
+`.spacer`, which puts the CTA at the bottom edge where a thumb is, becomes a fixed 32px gap
+there, so a monitor-tall window does not open half a screen between content and button. A
+step taller than the window starts at the top and scrolls (`safe center`). **Design every
+step for both** — the phone column and that desktop block — and check both before calling
+it done. Chrome that frames the flow (the way back, language, theme) sits in the corners of the
+WINDOW on a desktop, not of the 480px column: the column is for reading, the window is the frame.
+**And the window scrolls the column** (the user's call): `.screen` is the one scroller, so a
+wheel beside it or over the brand panel used to find nothing to move. `Shell` forwards those
+(`lib/scrollForward.ts`), and the scroll keys when no control has the focus; whatever scrolls by
+itself, a dialog or dropdown, and ctrl+wheel are left alone.
+**The split is measured for a desktop** (`src/styles/app/auth-split.css`): phone sizes read small
+on a monitor (the user's call) and `zoom` is ruled out, so the split sets one factor `--k` by
+window size (1.12 from 1024×720, 1.25 from 1440×860, 1.35 from 1800×900, 1.55 from 2400×1200) and
+re-measures the flow's pieces there as phone size × `--k` — column, type, buttons, fields, cards,
+icons, the corners. A new piece in a pre-session step gets its line in that sheet too. Popups follow the same rule by device: a `Dropdown` under its trigger on a
+desktop window, a `Sheet` from the bottom on a phone — chosen at the tap with `isDesktopLayout()`
+(`lib/layout.ts`), the one place JS reads the breakpoint.
 
 **Every screen change inside a flow goes through `navigate`** (the store's `setScreen`), store
 actions included: a raw `setScreen` leaves no entry on the back stack, and "back" then skips
@@ -507,8 +542,55 @@ key-auth (the shared public key in `apikey`, awaited through `warmPublicKey` so 
 never sends none) proves a wallet is calling through the gateway, and the sign-in itself
 proves the person.
 
-**Cosmos Pay = Authentik.** The preferred door is the operator's OpenID Connect provider,
-shown as "Cosmos Pay" (`SIGN_IN_PROVIDERS[0]`). The community server runs it as a confidential
+**Once the inbox is proven, the old password is not asked for** (the user's call). A restore
+whose backup has the EMAIL door, on a sign-in carrying an ID token both recovery servers verify,
+opens through that door on its own (`tryEmailRestore` → `recoverBackup`) and the person only sets
+this device's lock — on a first run where passkeys work, one tap (`recoverBackupWithPasskey`: the
+passkey becomes the device's lock and, with the email door, the backup's doors; nothing typed),
+else a new password; "use my previous password" is a link. A passkey door this device can use
+stays first (one tap). A sign-in without an ID token (the in-app email code) cannot show the
+servers one, so each recovery server emails its own code and the screen asks for both
+(`tryEmailRestore` → `codes`, `submitRecoveryCodes`) — still no password. Locally the email door needs the recovery servers
+(`npm run dev:local -- all` on the community server; the wallet's `.env` points at :3002/:3003),
+and only a backup sealed while they answered has the door — an older one is given it the next
+time it is restored with its password. This lowers nothing: "forgot the password" already
+restored with the inbox alone, through the same two servers; it only stops being the long way.
+
+**The provider's tab closes itself when the sign-in ends.** The wallet keeps the handle of the
+tab it opened (`reserveExternalTab` → `ExternalTab.close`) and closes it when the poll ends or the
+person cancels; and the page the callback lands on closes its own tab too, for the case where the
+provider's cross-origin isolation took the tab out of the wallet's reach — the web build's return
+page (`src/pages/signed-in.astro`, sent as `returnTo` by `signInReturnUrl`), or, on the extension
+and the apps, the community server's own page (one script, `window.close()`, allowed by hash in its
+CSP). A tab the browser will not let a script close — one opened from a mail — stays on one line
+("Listo", in the wallet's look); the wallet's own tab carries on alone. A server that does not
+list the return page (`WALLET_AUTH_RETURN_URLS`) refuses it, and the wallet asks again without it
+(`SIGN_IN_RETURN_REFUSED`) for the rest of the session.
+
+**Cosmos Pay = Authentik.** The preferred door is the operator's OpenID Connect provider. When
+the deployment lists Authentik's sources (`sources` on `/auth/providers`, from the server's
+`WALLET_AUTH_OIDC_SOURCES`), the wallet shows one button per source — Google, GitHub… — that
+starts the Authentik sign-in at that source (`source` on `/oauth/authorize`; the server opens
+Authentik's `wallet-source-{slug}` flow with the authorization request as `next`), and no
+generic button. Without them it shows one Authentik button, "Cosmos Pay" (`SIGN_IN_PROVIDERS[0]`).
+`source` is only ever sent to a server that listed it: an older one refuses unknown fields.
+The source `email` (`EMAIL_SOURCE_ID`) is Authentik's email sign-in — a link it emails — and when
+listed it IS the email button (the in-app code is not offered beside it): its login proves the
+inbox and carries the ID token the recovery servers accept, so one email restores a backup with
+no password. Without it, the in-app code stays, and a restore asks each recovery server for its
+own code instead (`tryEmailRestore` → `codes`).
+**That one email counts only in the browser that opened the link** (the user's call: "bind it to
+the device"). The link proves whose inbox it is, not that the wallet holding the handshake is the
+one there — anyone can start a sign-in and send someone its URL. So the server's callback sends a
+one-time **device binding** in the fragment of its redirect to the web build's return page; that
+page (`app/SignInReturn.tsx`) wipes it off the address bar and leaves it in `localStorage` for the
+tab polling that `state` (`lib/signInBinding.ts`); the poll says `bound`, the tab waits up to
+`SIGN_IN_BINDING_WAIT_MS` for it and claims with it, and only then does an existing account skip
+the server's code. A wallet in another browser never has it and gets the code — an iPhone PWA
+whose mail opens Safari too, and the extension and the apps, which send no return page. Never
+send `binding` unless the poll said `bound` (an older server refuses the field), and never let
+the return page load anything that could read its URL first. `npm run test:e2e:signin-binding`
+moves the value between two tabs of one real browser. The community server runs it as a confidential
 client with its own PKCE and nonce and verifies the ID token against Authentik's published
 keys; Google and GitHub sit behind Authentik as sources. The direct Google/GitHub doors remain
 only for a deployment without Authentik, and `GET /v1/wallet/auth/providers` says which exist.
@@ -548,6 +630,55 @@ Eight rules:
 - **A finished sign-in lives in memory.** Its session token can create an account; the store
   keeps it in `signInDraft` for as long as the screen that uses it and exposes a summary to
   components, never the token or the box.
+
+### Easy recovery: a wallet crosses devices with a QR and a code
+
+`src/lib/easyRecovery.ts` (crypto, QR, code), `src/state/useEasyRecovery.ts` (the two halves),
+`features/onboarding/EasyRecoveryReceive.tsx` (new device: "Ya tengo una wallet → Desde otra
+Cosmos Wallet") and `features/settings/EasyRecoverySend.tsx` (old device: Ajustes → Transferir a otro
+dispositivo). The mailbox is the community server's `easy-recovery` module (its own repository):
+a session that expires in five minutes, holds one sealed payload, and is burned after five
+wrong codes.
+
+```
+NEW  X25519 key pair → opens a session → QR: session id + its PUBLIC key (no server URL)
+OLD  scans → confirms ("this device is mine") → unlocks → seals mnemonic|secret to that key
+     (ephemeral X25519 → HKDF-SHA256 → AES-256-GCM) → leaves it with a random 5-digit code
+     → SHOWS the code
+NEW  the person types the code → the server releases the payload only for it → opened here
+     → the ordinary import (profile, then this device's password or passkey)
+```
+
+Five rules, each a way this turns into a wallet thief:
+
+- **The code goes from the OLD device to the NEW one, never the reverse.** The abuse is a page
+  that shows its OWN QR ("scan to claim…"): whoever made it holds its private key and opens the
+  payload the moment they get it — and the server hands it over only for the code on the
+  victim's screen. That is why the code screen says never to dictate it, and why the
+  confirmation asks the person to state the other device is theirs and in front of them.
+- **The QR names no server.** Each device uses its own `walletApiBase()`. A QR that could point
+  the old device at a server of its choosing would also choose who checks the code.
+- **The receiver's private key lives in a ref** (`useEasyRecovery`), never in state, storage or
+  the URL, and is wiped when the session ends either way. One key, one session.
+- **`EASY_RECOVERY_HKDF_INFO` and the wire format never change** within `v1`: two devices may
+  run different releases. A new format is `v2` in the QR and in the payload's version byte.
+- **A re-keyed (SEP-30 recovered) wallet is refused**: its account is not its key's own address,
+  and the other device would import the wrong one.
+
+`tests/unit/easyRecovery.test.ts` pins the crypto and the QR parser; `npm run
+test:e2e:easy-recovery` moves a wallet between two real browsers against an in-memory mailbox and
+checks the server never sees the phrase.
+
+### Importing from another wallet
+
+No Stellar wallet hands a page its secret — Freighter, LOBSTR and the rest keep it that way on
+purpose — so "Desde otra wallet" (`features/onboarding/ImportWallet.tsx`) is a guide: the wallets
+by their logo (`IMPORT_WALLETS` in `constants/importWallet.ts`, icons in `public/brand/wallets/`),
+then that wallet's own steps to its phrase or secret key, and the paste goes through
+`importFromText`, the same import as the twelve words. The LOBSTR and Trust Wallet steps follow
+their official help centers; Freighter, xBull and Rabet publish none, so theirs name the menu
+loosely — check a wallet's UI before rewording its steps. A new wallet is a row there, its icon,
+and its two `importWallet.<id>.s1/.s2` keys.
 
 ### Passkeys: a password nobody types
 
@@ -1007,6 +1138,37 @@ compile error. Neither map has a `default` any more; an unknown screen used to r
   signature prompt. Dropping only the session left "back" walking straight from the
   unlock screen into a loaded payment form with a live send button.
 - **The bottom nav is derived** (`nav: true`), not a second list to keep in sync.
+- **The flow is browser history too** (the wallet is a PWA). Each stack entry is a PLACE — a
+  screen, plus the step for a screen with steps of its own (`store.goStep` / `navStep`: the
+  sign-in's email and code, the password's offer → form → consents). The store mirrors the path
+  into `history` (`src/lib/navHistory.ts`): a new place pushes an entry, the app's own back
+  rewinds one (so forward keeps the step left), a lock or a finished flow rewinds to the first.
+  The browser's back/forward, the mouse's side buttons (the wallet makes the move itself when
+  a WebView does not) and a phone's system back are answered by adopting the path the entry
+  carries — only if `canEnter` (`lib/screens.ts`) says its screen still has what it shows;
+  otherwise the traversal is undone and the person stays put. A step with steps of its own
+  uses `goStep`, never local state, or the browser's back skips past it.
+- **Going back never costs what was typed.** A step's answers survive leaving it and coming
+  back (the user's call): the store's drafts (profile, consents, the import text) and, for
+  what a screen holds itself, `useKeptState` (`hooks/useKeptState.ts` over `lib/keptInputs.ts`,
+  keys in `constants/keptInputs.ts`) — the backup choice, the two backup boxes, the sign-in's
+  email, the account to recover, the restore's passkey box, and the phrase check's gaps and
+  placed words. Never a password, a recovery phrase, a secret key or a one-time code, nor an
+  acknowledgement that gives something up (replacing a backup, a changed phrase): those are
+  asked again. Memory only; a terminal screen or a lock forgets it, and a new phrase clears
+  "I saved it".
+- **The phrase check takes a drag as well as a tap** (`features/onboarding/useWordDrag.ts`):
+  pointer events, so finger, mouse and pen alike — phone wallets work this way and the person
+  learns it here. The tap stays (WCAG 2.5.7). The dragged word is a ghost portalled into the
+  shell, because the screen's entrance animates a transform and a fixed element inside one is
+  placed against it.
+- **An error never moves the person.** It is said on the step where it happened (a toast, or a
+  `Notice` with the way on, like `SignInConflict`); only the person's own tap changes the view.
+- **The way back stays put.** `ui/ScreenBar` draws it in the shell, above the screen: the
+  screen's entrance and scroll never move it, and consecutive steps keep the same button. On a
+  phone it is the column's top-left corner; on a desktop window it is the WINDOW's (fixed,
+  mirroring language and theme in the top-right one), never the reading column's. Screens ask
+  for it through `ScreenHeader`'s `onBack`.
 
 Screens are lazy by default. Only `welcome`, `unlock` and the four tab screens are
 statically imported — everything else is `lazy()`, because the MV3 popup parses its

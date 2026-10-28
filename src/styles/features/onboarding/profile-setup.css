@@ -1,8 +1,40 @@
 /* =====================================================================
-   src/features/onboarding/ProfileSetup.tsx — about you. Prefix: .profile-setup-
-   The header is ui/ScreenHeader, the fields ui/Field; only the error lines'
-   place and the gender pills are here.
+   src/features/onboarding/ProfileSetup.tsx — about you, one question per
+   step. Prefix: .profile-setup-
+   The header is ui/ScreenHeader, the fields ui/Field; here are where the
+   steps stand (lines, not a filled bar), the error lines and the gender pills.
    ===================================================================== */
+.profile-setup-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.profile-setup-bars {
+  display: flex;
+  gap: 6px;
+}
+
+/* one line per step: the line colour until it is reached, ink from then on */
+.profile-setup-bar {
+  flex: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  transition: background-color var(--dur-base) var(--ease-out);
+}
+
+.profile-setup-bar.is-done {
+  background: var(--text);
+}
+
+.profile-setup-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 /* inline validation error, tucked under the field it is about */
 .profile-setup-err {
   margin: -6px 4px 14px;

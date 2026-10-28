@@ -1,19 +1,21 @@
 import { ExternalLink } from '@/ui/ExternalLink';
-import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
+import { useKeptState } from '@/hooks/useKeptState';
+import { KEPT_INPUT } from '@/constants/keptInputs';
 import { GhostButton, PrimaryButton } from '@/ui/Buttons';
 import { Notice } from '@/ui/Notice';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { useCopied } from '@/hooks/useCopied';
 import { TERMS_URL } from '@/constants/app';
-import { CheckRow } from '@/features/onboarding/CheckRow';
+import { CheckRow } from '@/ui/CheckRow';
 import { WordCell } from '@/features/onboarding/WordCell';
 import '@/styles/features/onboarding/backup.css';
 
 export function Backup({ store }: { store: WalletStore }) {
   const t = store.t;
-  const [saved, setSaved] = useState(false);
-  const [terms, setTerms] = useState(false);
+  // Kept while the person goes on to the check and back; a new phrase clears `saved`.
+  const [saved, setSaved] = useKeptState(KEPT_INPUT.backupSaved, false);
+  const [terms, setTerms] = useKeptState(KEPT_INPUT.backupTerms, false);
   const [copied, copy] = useCopied();
   const words = store.draftMnemonic.split(' ');
 

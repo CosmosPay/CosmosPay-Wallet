@@ -82,6 +82,18 @@ function probe() {
     // Set by src/app/Shell.tsx on every build that may enter desktop mode. Its absence in
     // the extension is what keeps a dragged-wide side panel a single column.
     deskCapable: !!document.querySelector('.shell-root.has-desktop-mode'),
+    // The pre-session split (src/app/AuthAside.tsx): the brand panel beside the column on a
+    // desktop window, and Welcome's own hero only on a phone column.
+    asideShown: (() => {
+      const a = document.querySelector('.auth-aside');
+      return !!a && a.getBoundingClientRect().width > 0;
+    })(),
+    asideLeft: Math.round(document.querySelector('.auth-aside')?.getBoundingClientRect().left ?? -1),
+    contentRight: Math.round(content?.getBoundingClientRect().right ?? -1),
+    welcomeHeroShown: (() => {
+      const h = document.querySelector('.welcome-screen .welcome-hero');
+      return !!h && h.getBoundingClientRect().height > 0;
+    })(),
     overflowX: de.scrollWidth - window.innerWidth,
     overflowY: de.scrollHeight - window.innerHeight,
   };
@@ -117,11 +129,16 @@ try {
       // guards. No session on the welcome screen, so there is no rail taking width.
       ok(m.contentW <= m.contentMax + 2, `${s.name}: the reading column stays capped (${m.contentW}px)`);
       ok(m.contentW > 400, `${s.name}: ...but did not collapse (${m.contentW}px)`);
+      ok(m.asideShown, `${s.name}: the brand panel is shown beside the flow`);
+      ok(m.asideLeft >= m.contentRight, `${s.name}: ...on the right of it (${m.asideLeft} >= ${m.contentRight})`);
+      ok(!m.welcomeHeroShown, `${s.name}: Welcome's own hero gives way to the panel`);
     } else {
       ok(m.frameDirection === 'column', `${s.name}: still a phone column (${m.frameDirection})`);
       if (s.wide) ok(m.frameW > 460, `${s.name}: column widened past phone size (${m.frameW}px)`);
       else ok(m.frameW <= 440, `${s.name}: column fits the phone width (${m.frameW}px)`);
       ok(m.frameW <= 640, `${s.name}: column stays capped (${m.frameW}px)`);
+      ok(!m.asideShown, `${s.name}: no brand panel on a column`);
+      ok(m.welcomeHeroShown, `${s.name}: Welcome shows its own hero`);
     }
 
     if (SHOTS) await page.screenshot({ path: `${SHOTS}/shot-${s.name}.png` });

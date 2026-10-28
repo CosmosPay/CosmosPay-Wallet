@@ -1,7 +1,7 @@
 /* =====================================================================
    src/features/onboarding/Import.tsx — the phrase or the secret key. Prefix: .import-
    ===================================================================== */
-/* On .glass, the flat control surface; the field's border turns blue on focus. */
+/* An outlined field like .input; its line turns blue on focus. */
 .import-textarea {
   width: 100%;
   min-height: 132px;
@@ -14,6 +14,8 @@
   line-height: 1.7;
   resize: none;
   outline: none;
+  border: 1px solid var(--line-strong);
+  background: transparent;
   transition: border-color var(--dur-quick) var(--ease-out);
 }
 

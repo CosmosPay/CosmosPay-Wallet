@@ -29,6 +29,8 @@ export const SCREEN_IDS = [
   'backup',
   'verify',
   'import',
+  'easy-recovery-receive',
+  'import-wallet',
   'profile-setup',
   'password',
   'device-auth',
@@ -52,6 +54,7 @@ export const SCREEN_IDS = [
   'confirm',
   'success',
   'export',
+  'easy-recovery-send',
   'settings',
   'about',
   'operations',
@@ -86,6 +89,10 @@ export interface BackContext {
    *  sealed under — the password screen was then reached from `sign-in`, and there is no
    *  seed draft and no `profile-setup` behind it to go back to. */
   hasSignInDraft: boolean;
+  /** True while onboarding holds the account it is about to create or import. */
+  hasDraftAccount: boolean;
+  /** True when the device holds at least one wallet (so `unlock` has something to open). */
+  hasWallets: boolean;
 }
 
 /** `'exit'` leaves the app on native; on the other shells it simply does nothing. */
@@ -120,6 +127,10 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // it must not walk into the flow that created the wallet.
   'device-auth': { back: 'home', terminal: true },
   import: { back: 'restore-choice' },
+  // Easy recovery's new device (the QR, then the code) and the guided import from another
+  // Stellar wallet: two more answers to "I already have a wallet".
+  'easy-recovery-receive': { back: 'restore-choice' },
+  'import-wallet': { back: 'restore-choice' },
   'profile-setup': { back: (c) => (c.hasDraftMnemonic ? 'verify' : 'import') },
   // Reached from either choice screen — on a first run, and on the add-wallet path, which
   // starts at 'welcome' too. Back goes wherever the stack says; these are only the
@@ -173,6 +184,8 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // settings
   settings: { back: profileOrHome },
   export: { back: profileOrHome },
+  // Easy recovery's old device: scan the new one's QR, confirm, show the code.
+  'easy-recovery-send': { back: 'settings' },
   about: { back: profileOrHome },
   'edit-profile': { back: 'profile' },
 
@@ -190,6 +203,59 @@ export function backTarget(screen: Screen, ctx: BackContext): Screen | 'exit' {
   const def = SCREENS[screen].back;
   return typeof def === 'function' ? def(ctx) : def;
 }
+
+/**
+ * Whether the browser's history may lead back (or forward) to this screen
+ * (src/lib/navHistory.ts). A step shows what an earlier one produced — the words, a finished
+ * sign-in, the account being created — and that may be gone: a lock dropped it, a finished
+ * flow wiped it. Such a step is refused, and the person stays where they are; a screen with
+ * nothing in it is never shown.
+ */
+export function canEnter(screen: Screen, c: BackContext): boolean {
+  // Arriving at a terminal screen means something just finished; history cannot repeat it.
+  if (screen === 'boot' || SCREENS[screen].terminal) return false;
+  switch (screen) {
+    case 'backup':
+    case 'verify':
+      return c.hasDraftMnemonic;
+    case 'profile-setup':
+      return c.hasDraftAccount;
+    case 'password':
+      return c.hasSignInDraft || c.hasDraftAccount;
+    case 'sign-in-password':
+    case 'recover':
+      return c.hasSignInDraft;
+    case 'unlock':
+      return !c.hasSession && c.hasWallets;
+    // The account door: a first run, or a session adding a wallet through it.
+    case 'sign-in':
+      return true;
+    default:
+      return AUTH_SCREENS.includes(screen) ? !c.hasSession || c.addingWallet : c.hasSession;
+  }
+}
+
+/**
+ * The screens before a session: starting, creating or restoring a wallet, and unlocking.
+ * On a desktop window they split in two — the flow on the left and the brand panel
+ * (motion, language, theme) on the right; see src/app/AuthAside.tsx.
+ */
+export const AUTH_SCREENS: readonly Screen[] = [
+  'welcome',
+  'backup-choice',
+  'restore-choice',
+  'backup',
+  'verify',
+  'import',
+  'easy-recovery-receive',
+  'import-wallet',
+  'profile-setup',
+  'password',
+  'sign-in',
+  'sign-in-password',
+  'recover',
+  'unlock',
+];
 
 /** Screens that show the bottom navigation bar (with an open session). */
 export const NAV_SCREENS: Screen[] = SCREEN_IDS.filter((s) => SCREENS[s].nav);

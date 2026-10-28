@@ -84,6 +84,13 @@ export interface ExternalTab {
   open(url: string): Promise<boolean>;
   /** Close the tab unused — the flow that reserved it failed before it had a URL. */
   cancel(): void;
+  /**
+   * Close the tab once the flow it served is over (finished or cancelled), so the person
+   * is not left on a provider page or a "go back to your wallet" page. Best effort: a tab
+   * the provider's cross-origin isolation took out of reach closes itself instead (the
+   * community server's callback page does), and a tab the OS opened is not ours to close.
+   */
+  close(): void;
 }
 
 /**
@@ -109,7 +116,7 @@ export function reserveExternalTab(): ExternalTab {
   // only handle on the login: strictly worse than a refused popup, which at least leaves
   // a copyable link behind. There it stays what it was, opened last, after the handshake
   // is on disk — and an extension page is not what a popup blocker is aimed at anyway.
-  if (isTauri() || isExtension()) return { open: openExternal, cancel: () => {} };
+  if (isTauri() || isExtension()) return { open: openExternal, cancel: () => {}, close: () => {} };
 
   let win: Window | null = null;
   try {
@@ -148,5 +155,6 @@ export function reserveExternalTab(): ExternalTab {
       }
     },
     cancel,
+    close: cancel,
   };
 }

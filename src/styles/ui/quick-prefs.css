@@ -10,7 +10,19 @@
   gap: 6px;
 }
 
-/* borderless pill: globe, the language's own name, a chevron */
+/* the language button and, on a desktop window, the dropdown it opens under itself */
+.quick-prefs-lang-wrap {
+  position: relative;
+}
+
+/* in the dropdown the rows are a little tighter than in the sheet */
+.dropdown .quick-prefs-opt {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 15px;
+}
+
+/* borderless pill: the flag, the language's own name, a chevron */
 .quick-prefs-lang {
   --ink: var(--text);
   --ink-text: var(--bg);
@@ -91,24 +103,25 @@
   align-items: center;
   gap: 10px;
   padding: 0 16px;
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text);
   font-size: 16px;
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: transform 0.13s var(--ease-out), background-color var(--dur-quick) var(--ease-out);
+  transition: transform 0.13s var(--ease-out), border-color var(--dur-quick) var(--ease-out);
 }
 
+/* The chosen language: its check and weight, and an ink line — no fill. */
 .quick-prefs-opt.is-on {
-  background: var(--glass-bg);
+  border-color: var(--text);
   font-weight: 700;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .quick-prefs-opt:not(.is-on):hover {
-    background: var(--glass-soft-bg);
+    border-color: var(--line);
     filter: none;
   }
 }

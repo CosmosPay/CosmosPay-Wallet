@@ -1,5 +1,5 @@
 import type { WalletStore } from '@/state/store';
-import { CheckRow } from '@/features/onboarding/CheckRow';
+import { CheckRow } from '@/ui/CheckRow';
 import '@/styles/features/onboarding/atoms.css';
 
 /**

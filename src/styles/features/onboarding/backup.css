@@ -1,7 +1,7 @@
 /* =====================================================================
    src/features/onboarding/Backup.tsx — the twelve words. Prefix: .backup-
    The warning is ui/Notice, the cells onboarding/WordCell, the checkboxes
-   onboarding/CheckRow; only this screen's spacing is here.
+   ui/CheckRow; only this screen's spacing is here.
    ===================================================================== */
 .backup-warning {
   margin-bottom: 20px;

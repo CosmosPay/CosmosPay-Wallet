@@ -73,6 +73,28 @@ export function AccountIcon(p: IconProps) {
   );
 }
 
+/** A QR code: easy recovery's door from another Cosmos Wallet. */
+export function QrIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.2" />
+      <rect x="14" y="3.5" width="6.5" height="6.5" rx="1.2" />
+      <rect x="3.5" y="14" width="6.5" height="6.5" rx="1.2" />
+      <path d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM14 20.5h1.5M20.5 14v1.5" />
+    </Svg>
+  );
+}
+
+/** Into a tray: bringing an account in from another wallet. */
+export function ImportIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 3.5v11M7.5 10l4.5 4.5 4.5-4.5" />
+      <path d="M4 15.5v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" />
+    </Svg>
+  );
+}
+
 export function InfoIcon(p: IconProps) {
   return (
     <Svg {...p}>

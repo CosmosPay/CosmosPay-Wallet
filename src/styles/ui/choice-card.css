@@ -1,6 +1,6 @@
 /* =====================================================================
-   src/ui/ChoiceCard.tsx — a whole-card option. Flat: the control surface and a
-   hairline; on hover it inks with the text colour, like every other control.
+   src/ui/ChoiceCard.tsx — a whole-card option. A line on the canvas, no fill;
+   on hover it inks with the text colour, like every other control.
    ===================================================================== */
 .choice-card {
   --ink: var(--text);
@@ -11,10 +11,10 @@
   align-items: center;
   gap: 14px;
   padding: 16px 18px 16px 16px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--line);
   /* base.css makes every button a pill; a two-line card wants a card's corner. */
   border-radius: 22px !important;
-  background: var(--glass-bg);
+  background: transparent;
   color: var(--text);
   text-align: left;
   cursor: pointer;
@@ -27,7 +27,7 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: var(--bg);
+  border: 1px solid var(--line);
   color: var(--text);
 }
 

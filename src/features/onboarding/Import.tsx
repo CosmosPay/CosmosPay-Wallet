@@ -23,7 +23,7 @@ export function Import({ store }: { store: WalletStore }) {
         autoCapitalize="off"
         autoCorrect="off"
         spellCheck={false}
-        className="glass import-textarea"
+        className="import-textarea"
       />
       {/* Live validity criterion (same pattern as the password checklist):
           grey while empty, green ✓ when valid, red ✗ when invalid. */}

@@ -91,7 +91,7 @@ export function Unlock({ store }: { store: WalletStore }) {
   return (
     <div className="scr screen col unlock-screen">
       {/* language and theme, top-right — the same controls as the Welcome screen */}
-      <div className="unlock-langbar">
+      <div className="unlock-langbar auth-chrome">
         <QuickPrefs t={t} lang={store.lang} onLang={store.setLang} theme={store.theme} onTheme={store.setThemePref} />
       </div>
       <div className="f1 col center unlock-hero">

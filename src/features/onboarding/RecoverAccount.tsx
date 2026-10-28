@@ -6,12 +6,14 @@ import { CheckIcon } from '@/ui/Icons';
 import { Notice } from '@/ui/Notice';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Spinner } from '@/ui/Spinner';
-import { CheckRow } from '@/features/onboarding/CheckRow';
+import { CheckRow } from '@/ui/CheckRow';
 import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
 import { shortAddr } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import { isAccessCode, normalizeAccessCode } from '@/lib/validate';
 import { RECOVERY_SERVER_COUNT } from '@/constants/recovery';
+import { useKeptState } from '@/hooks/useKeptState';
+import { KEPT_INPUT } from '@/constants/keptInputs';
 import '@/styles/features/onboarding/recover-account.css';
 
 /**
@@ -49,7 +51,7 @@ import '@/styles/features/onboarding/recover-account.css';
 export function RecoverAccount({ store }: { store: WalletStore }) {
   const t = store.t;
   const accounts = store.recoverable;
-  const [chosen, setChosen] = useState<string | null>(null);
+  const [chosen, setChosen] = useKeptState<string | null>(KEPT_INPUT.recoverAccount, null);
   const [pwd, setPwd] = useState('');
   const [ack, setAck] = useState(false);
   // One per server, filled with '' rather than left sparse: `every` skips holes, and a
@@ -73,7 +75,8 @@ export function RecoverAccount({ store }: { store: WalletStore }) {
   const whole = store.backupRecoverable;
   const wholeBackup = !!whole;
   const only = accounts?.length === 1 ? accounts[0].address : null;
-  const address = chosen ?? only;
+  // A kept choice counts only while the inbox still lists it.
+  const address = chosen && accounts?.some((a) => a.address === chosen) ? chosen : only;
   const ready = !!address && !!pwd && ack && !store.busy;
 
   return (

@@ -1,0 +1,46 @@
+/* =====================================================================
+   src/ui/ScreenBar.tsx — the way back, fixed at the top left of the column.
+   Outside the screen, so the screen's entrance (fadeUp) and its scroll never
+   move it; it only fades in when a step first needs it.
+   ===================================================================== */
+.screen-bar {
+  display: none;
+  flex-shrink: 0;
+}
+
+.screen-bar.is-shown {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 2px var(--gutter) 0;
+  margin-bottom: 12px;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+/* 44px target whose arrow sits on the gutter line: the negative margin gives back the
+   space around the 24px glyph. */
+.screen-bar-back {
+  --ink: var(--text);
+  --ink-text: var(--bg);
+  width: 44px;
+  height: 44px;
+  margin-left: -10px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Fixed means fixed: the control that must not move does not pop in either. Beats the
+   global button entrance in animations.css, which is !important too. */
+.screen-bar .screen-bar-back {
+  animation: none !important;
+}
+
+.screen-bar-back-icon {
+  width: 24px;
+  height: 24px;
+}

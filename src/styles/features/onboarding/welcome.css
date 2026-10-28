@@ -2,7 +2,9 @@
    src/features/onboarding/Welcome.tsx — the first screen. Prefix: .welcome-
    The controls row (language, theme; the way back while adding a wallet), the
    hero motion (WelcomeHero, its own sheet) taking the free height, the two
-   doors, and the Terms line. No logo and no headline: the hero carries them.
+   doors, and the Terms line. On a phone no logo and no headline: the hero
+   carries them. On a desktop window the hero moves to the brand panel and the
+   column gets its own welcome (.welcome-head, shown by .auth-only).
    ===================================================================== */
 .welcome-screen {
   flex: 1;
@@ -38,6 +40,48 @@
 .welcome-cancel-icon {
   width: 22px;
   height: 22px;
+}
+
+/* The column's welcome on a desktop window: the Cosmos C, the greeting, one line. Shown by
+   .auth-only (src/styles/app/shell.css), which owns its display; sized ×--k in
+   src/styles/app/auth-split.css. The mark is drawn in the text colour, so it follows the
+   theme like the type does. */
+.welcome-head {
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 56px;
+  text-align: center;
+}
+
+.welcome-mark {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 40px;
+  color: var(--text);
+}
+
+.welcome-mark-glyph {
+  width: 100%;
+  height: 100%;
+}
+
+.welcome-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.6px;
+  text-wrap: balance;
+}
+
+.welcome-lead {
+  margin: 14px 0 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--muted);
+  text-wrap: balance;
 }
 
 /* The Terms and privacy line under the two doors: small, muted, the links in ink. It uses

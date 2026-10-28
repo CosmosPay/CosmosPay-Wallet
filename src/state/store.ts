@@ -86,7 +86,13 @@ import {
 } from '@/constants/chains';
 import type { ChainExportKeys } from '@/lib/chainKeys';
 import type { ChainHoldings } from '@/lib/portfolio';
-import { SCREENS, backTarget, type BackContext, type Screen, type Tab } from '@/lib/screens';
+import { SCREENS, backTarget, canEnter, type BackContext, type Screen, type Tab } from '@/lib/screens';
+import { NAV_SESSION, navState, planSync, readNavState, type NavPlace } from '@/lib/navHistory';
+import { forgetKeptInput, forgetKeptInputs } from '@/lib/keptInputs';
+import { KEPT_INPUT } from '@/constants/keptInputs';
+import type { EasyRecoveryLink, EasyRecoveryPayload } from '@/lib/easyRecovery';
+import { useEasyRecovery, type EasyRecoveryClaimFailure } from '@/state/useEasyRecovery';
+import { MOUSE_NAV_GRACE_MS, NAV_REWIND_TIMEOUT_MS } from '@/constants/ui';
 import { hydrate, invalidate, run } from '@/lib/query';
 import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
@@ -518,8 +524,30 @@ export function useWalletStore() {
    * `lock()` empties the stack, and the onboarding actions push onto it. An action that
    * changed screen with the raw `setScreen` left no trace, so "back" from a screen it
    * opened skipped that screen's parent (verify went straight to Welcome).
+   *
+   * Each entry is a PLACE: a screen, and the step inside it for a screen with steps of its
+   * own (the sign-in's email and code, the password's consents) — so "back" walks those
+   * steps too, and the browser's history mirrors the same path (see "browser history").
    */
-  const stackRef = useRef<Screen[]>([]);
+  const stackRef = useRef<NavPlace[]>([]);
+  /**
+   * The step the current screen is on, tagged with the screen it belongs to: a screen change
+   * that does not name a step (every raw `setScreen`) lands on the new screen's first step
+   * without anything having to reset it.
+   */
+  const [stepPlace, setStepPlaceState] = useState<NavPlace | null>(null);
+  const stepPlaceRef = useRef<NavPlace | null>(null);
+  const setStepPlace = useCallback((p: NavPlace | null) => {
+    stepPlaceRef.current = p;
+    setStepPlaceState(p);
+  }, []);
+  const navStep = stepPlace && stepPlace.screen === screen ? stepPlace.step : undefined;
+  /** The place the person is on now, readable from an event handler. */
+  const placeNow = useCallback((): NavPlace => {
+    const cur = screenRef.current;
+    const p = stepPlaceRef.current;
+    return p && p.screen === cur && p.step !== undefined ? { screen: cur, step: p.step } : { screen: cur };
+  }, []);
 
   /* --------------------------- navigation ------------------------- */
   const navigate = useCallback((s: Screen) => {
@@ -531,13 +559,52 @@ export function useWalletStore() {
     if (cur !== s) {
       // A terminal screen (success) starts a fresh stack: "back" from it must not
       // walk back into the flow that produced it.
-      stackRef.current = SCREENS[s].terminal ? [] : [...stackRef.current, cur];
+      stackRef.current = SCREENS[s].terminal ? [] : [...stackRef.current, placeNow()];
       screenRef.current = s;
       setScreen(s);
     }
     const tab = SCREENS[s].tab;
     if (tab) setTab(tab);
-  }, []);
+  }, [placeNow]);
+
+  /**
+   * The current screen's next step: a stop on the way back like a screen, so "back" — the
+   * app's, the browser's, the mouse's — returns to the step before it, not past the screen.
+   */
+  const goStep = useCallback(
+    (step: string) => {
+      const from = placeNow();
+      if (from.step === step) return;
+      stackRef.current = [...stackRef.current, from];
+      setStepPlace({ screen: from.screen, step });
+    },
+    [placeNow, setStepPlace],
+  );
+
+  /**
+   * Back to the FIRST place on `screen` in the path — several stops at once, as one move (the
+   * browser rewinds by as many entries). A screen not in the path is navigated to instead.
+   */
+  const backTo = useCallback(
+    (s: Screen) => {
+      const i = stackRef.current.findIndex((p) => p.screen === s);
+      if (i < 0) return navigate(s);
+      const place = stackRef.current[i];
+      stackRef.current = stackRef.current.slice(0, i);
+      screenRef.current = place.screen;
+      setScreen(place.screen);
+      setStepPlace(place.step === undefined ? null : place);
+      const tab = SCREENS[place.screen].tab;
+      if (tab) setTab(tab);
+    },
+    [navigate, setStepPlace],
+  );
+
+  /** Correct the current step without adding a stop (a step whose input went away). */
+  const replaceStep = useCallback(
+    (step: string | undefined) => setStepPlace(step === undefined ? null : { screen: screenRef.current, step }),
+    [setStepPlace],
+  );
 
   const go = useCallback(
     (s: Screen, t?: Tab) => {
@@ -969,12 +1036,20 @@ export function useWalletStore() {
     setDraftMnemonic(mnemonic);
     setDraftAccount(acc);
     setDraftHasMnemonic(true);
+    // A new phrase: its check starts over, and "I saved it" was about the last one.
+    setVerifyTargets([]);
     setVerifyFilled({});
+    forgetKeptInput(KEPT_INPUT.backupSaved);
     navigate('backup');
   }, [navigate]);
 
   const beginVerify = useCallback(() => {
     const words = draftMnemonic.split(' ');
+    // Back from the check and on again: the same gaps, with the words already placed.
+    if (verifyTargets.length > 0 && verifyTargets.every((t) => words[t.index] === t.word)) {
+      navigate('verify');
+      return;
+    }
     const idx: number[] = [];
     while (idx.length < 3) {
       const r = Math.floor(Math.random() * words.length);
@@ -994,7 +1069,7 @@ export function useWalletStore() {
     setVerifyFilled({});
     setVerifyBank(bank);
     navigate('verify');
-  }, [draftMnemonic, navigate]);
+  }, [draftMnemonic, navigate, verifyTargets]);
 
   const tapChip = useCallback(
     (word: string) => {
@@ -1002,6 +1077,25 @@ export function useWalletStore() {
         const next = verifyTargets.find((t) => !(t.index in filled));
         if (!next) return filled;
         return { ...filled, [next.index]: word };
+      });
+    },
+    [verifyTargets],
+  );
+  /**
+   * A word dropped on gap `index` (the drag in `Verify.tsx`). A word sits in one gap at a time,
+   * so it leaves wherever it was; one dropped from the bank sends the gap's word back there,
+   * and one moved from another gap trades places with it.
+   */
+  const placeWord = useCallback(
+    (word: string, index: number, from: number | null) => {
+      if (!verifyTargets.some((t) => t.index === index)) return;
+      setVerifyFilled((filled) => {
+        const copy = { ...filled };
+        const displaced = copy[index];
+        for (const k of Object.keys(copy)) if (copy[Number(k)] === word) delete copy[Number(k)];
+        copy[index] = word;
+        if (from !== null && from !== index && displaced && displaced !== word) copy[from] = displaced;
+        return copy;
       });
     },
     [verifyTargets],
@@ -1019,10 +1113,14 @@ export function useWalletStore() {
     [verifyTargets, verifyFilled],
   );
 
-  const submitImport = useCallback(async () => {
+  /**
+   * Import a phrase or a secret key and go on to the profile. Shared by the import screen
+   * (what was pasted) and easy recovery (what another device sent). True when it parsed.
+   */
+  const importFromText = useCallback(async (text: string): Promise<boolean> => {
     try {
       const { importAccount } = await walletLib();
-      const { account: acc, mnemonic } = await importAccount(importText);
+      const { account: acc, mnemonic } = await importAccount(text);
       setDraftAccount(acc);
       setDraftMnemonic(mnemonic ?? '');
       setDraftHasMnemonic(!!mnemonic);
@@ -1031,13 +1129,18 @@ export function useWalletStore() {
       // these two events is the thing worth seeing.
       report(EVENT.walletImported, { category: 'lifecycle', props: { hasMnemonic: !!mnemonic } });
       navigate('profile-setup');
+      return true;
     } catch (e) {
       // The message only ever describes the FORM of what was pasted ("not a valid secret
       // key or recovery phrase"); the text itself is a seed and never leaves the device.
       reportError(EVENT.walletImported, e);
       flash((e as Error).message, 'err');
+      return false;
     }
-  }, [importText, flash, navigate]);
+  }, [flash, navigate]);
+
+  const submitImport = useCallback(() => importFromText(importText), [importFromText, importText]);
+
 
   /* ----------------------------- signing in ----------------------------- */
   /* Declared up here, not down with the sign-in actions, because `finishOnboarding` is a
@@ -1047,8 +1150,17 @@ export function useWalletStore() {
   /** Where a sign-in is and what this deployment offers — see `state/useSignIn.ts`. */
   const signIn = useSignIn(t, flash, () => warmPublicKey(networkEnv(network)));
 
+  /** Easy recovery's two halves — see `state/useEasyRecovery.ts` and `lib/easyRecovery.ts`. */
+  const easy = useEasyRecovery(() => warmPublicKey(networkEnv(network)));
+
   /** See {@link SignInDraft}: a finished sign-in waiting for its password. */
   const [signInDraft, setSignInDraft] = useState<SignInDraft | null>(null);
+  /**
+   * The server refused to create this sign-in's wallet: another device backed one up for the
+   * account since the sign-in began. Shown where it happened (the password step), with the
+   * way back to the sign-in that restores that backup — never by moving the person off it.
+   */
+  const [signInConflict, setSignInConflict] = useState(false);
 
   /**
    * Put a wallet a sign-in produced on this device: sealed under `vk`, with the account
@@ -1297,7 +1409,7 @@ export function useWalletStore() {
         accessKey: await warmPublicKey(networkEnv(network)),
       });
       if (res.status === 'backup_conflict') {
-        flash(t('backup.conflict'), 'err');
+        setSignInConflict(true);
         return null;
       }
       const entry = await landSignedInWallet({
@@ -1348,12 +1460,10 @@ export function useWalletStore() {
             ? { passkey: { id: passkeyDoor.credentialId, secret: passkeyDoor.backup } }
             : password;
           const entry = await createFromSignIn(signInDraft, doors, vk, consents);
+          // Backed up from another device meanwhile: the screen says so and offers the
+          // sign-in again, which restores that one. The draft stays until the person leaves.
+          if (!entry) return false;
           setSignInDraft(null);
-          if (!entry) {
-            // Backed up from another device meanwhile: signing in again restores that one.
-            setScreen('sign-in');
-            return false;
-          }
           report(EVENT.walletCreated, { category: 'lifecycle', props: { added: false, signIn: true } });
           setSuccessInfo({
             title: t('success.welcome', { name: entry.name }),
@@ -1668,6 +1778,8 @@ export function useWalletStore() {
     // longer exists; the epoch is how it finds out before it uses the key.
     sessionEpochRef.current += 1;
     exclusive.clear();
+    // A flow left half-way (adding a wallet) does not keep its inputs past a lock.
+    forgetKeptInputs();
     cancelPending();
     // Drop every account-scoped read: a locked wallet must not leave balances or
     // history on screen, and the next unlock should fetch rather than show stale data.
@@ -3694,6 +3806,47 @@ export function useWalletStore() {
   }, [signInDraft, recoveryCodes, network, listRecoverable, flash, t]);
 
   /**
+   * After a sign-in, open the backup through its EMAIL door without being asked — the user's
+   * call: once the inbox is proven, the old password is not needed. A sign-in carrying an ID
+   * token both recovery servers verify on their own (`identityRoute` → `oidc`, Authentik)
+   * opens it right away: `opened`. One without (the in-app email code) cannot — each server
+   * must prove the inbox itself, never on another's word — so each emails its own code and
+   * the screen asks for them (`submitRecoveryCodes`), still no password: `codes`, the user's
+   * call too. `no`: the backup has no email door, or no route reaches it.
+   *
+   * It lowers nothing: "forgot the password" already restores with the inbox alone, by the
+   * same two servers. It only stops making that the long way round.
+   */
+  const tryEmailRestore = useCallback(async (): Promise<'opened' | 'codes' | 'no'> => {
+    const draft = signInDraft;
+    if (!draft || draft.replace) return 'no';
+    if (!signInBackups(draft.ready).some((b) => backupDoorsOf(b.box)?.recovery)) return 'no';
+    try {
+      const cached = freshProof(recoveryProofRef.current, draft.ready.sessionToken);
+      if (cached) {
+        await listRecoverable(draft, cached);
+        return 'opened';
+      }
+      if (recoveryCodes?.key === draft.ready.sessionToken) return 'codes'; // already sent
+      const servers = await loadRecoveryServers(network);
+      const route = identityRoute(servers, draft.ready.idToken);
+      if (route?.kind === 'oidc') {
+        await listRecoverable(draft, await identityTokensFromIdToken(servers, draft.ready.idToken as string));
+        return 'opened';
+      }
+      if (route?.kind !== 'email') return 'no';
+      const email = draft.ready.identity.email;
+      const claims = await startRecoveryCodes(servers, email);
+      setRecoveryCodes({ key: draft.ready.sessionToken, email, claims });
+      return 'codes';
+    } catch (e) {
+      // The password stays the way in; nothing is said, nothing moves.
+      reportError(EVENT.signInFailed, e, { purpose: draft.purpose, step: 'email-restore' });
+      return 'no';
+    }
+  }, [signInDraft, recoveryCodes, network, listRecoverable]);
+
+  /**
    * Answer both servers' codes, in role order.
    *
    * Both, or nothing is listed: an identity one server accepted and the other did not is
@@ -5279,6 +5432,7 @@ export function useWalletStore() {
   const routeSignIn = useCallback(
     (ready: SignInReady | null, purpose: SignInPurpose): void => {
       if (!ready) return;
+      setSignInConflict(false);
       setSignInDraft({ ready, purpose, replace: false });
       navigate(ready.backup || purpose === 'add' ? 'sign-in-password' : 'password');
     },
@@ -5287,8 +5441,10 @@ export function useWalletStore() {
 
   const { startProvider, submitCode, resumeSignIn: resumeSignInRaw, startEmail, cancelSignIn: cancelSignInRaw } = signIn;
 
+  /** `source`: one of Authentik's sources (`signInMethods.sources`), to start there. */
   const signInWith = useCallback(
-    async (provider: SignInProvider, purpose: SignInPurpose) => routeSignIn(await startProvider(provider), purpose),
+    async (provider: SignInProvider, purpose: SignInPurpose, source?: string) =>
+      routeSignIn(await startProvider(provider, source), purpose),
     [startProvider, routeSignIn],
   );
 
@@ -5309,6 +5465,7 @@ export function useWalletStore() {
   const cancelSignIn = useCallback(() => {
     cancelSignInRaw();
     setSignInDraft(null);
+    setSignInConflict(false);
   }, [cancelSignInRaw]);
 
   /**
@@ -5512,10 +5669,7 @@ export function useWalletStore() {
             return false;
           }
           entry = await createFromSignIn(draft, password, live!.vaultKey, consents, epoch);
-          if (!entry) {
-            setSignInDraft(null);
-            return false;
-          }
+          if (!entry) return false;
         }
         landed = true;
         await settleSignIn(draft, entry);
@@ -5577,7 +5731,16 @@ export function useWalletStore() {
    * ledger. The recovery door stays: its halves still open it next time.
    */
   const recoverBackup = useCallback(
-    async (password: string): Promise<boolean> => {
+    async (
+      password: string,
+      /**
+       * A passkey made for this restore (`recoverBackupWithPasskey`): `password` is then the
+       * device password it holds, the backup is re-sealed with this passkey and the email
+       * door (never a password door nobody knows), and `enrol` puts the passkey on the device
+       * before the wallet lands — the door is written before the vault moves.
+       */
+      passkeyDoor?: { door: { id: string; secret: Uint8Array }; enrol: () => Promise<void> },
+    ): Promise<boolean> => {
       const draft = signInDraft;
       const target = backupRecoverable?.address;
       const backup = draft && target ? signInBackups(draft.ready).find((b) => b.stellarAddress === target) : undefined;
@@ -5586,7 +5749,9 @@ export function useWalletStore() {
       if (!draft || !backup || !held || !key || held.key !== draft.ready.sessionToken) return false;
       const live = sessionRef.current;
       if (draft.purpose !== 'onboarding' && !live) return false;
-      if (!appPasswordOk(password)) {
+      // A passkey restore is a first run only: an unlocked device keeps the lock it has.
+      if (passkeyDoor && draft.purpose !== 'onboarding') return false;
+      if (!passkeyDoor && !appPasswordOk(password)) {
         flash(t('pwd.weak', { n: MIN_APP_PWD_LEN }), 'err');
         return false;
       }
@@ -5597,7 +5762,14 @@ export function useWalletStore() {
         setBusy(true);
         try {
           const secret = await openBackup(backup.box, { recovery: key }, backup.stellarAddress);
-          const box = await resetBackupPassword(backup.box, key, password);
+          const box = passkeyDoor
+            ? await sealBackup(
+                { secret: secret.secret, mnemonic: secret.mnemonic },
+                { passkey: passkeyDoor.door, recovery: key },
+                backup.stellarAddress,
+                secret.rekeyedOn,
+              )
+            : await resetBackupPassword(backup.box, key, password);
           const res = await finishSignIn({
             sessionToken: draft.ready.sessionToken,
             email: draft.ready.identity.email,
@@ -5608,7 +5780,9 @@ export function useWalletStore() {
             accessKey: await warmPublicKey(networkEnv(network)),
           });
           if (res.status !== 'ready') throw new Error(t('backup.conflict'));
-          // On a first run the new password is this device's too, exactly as a restore does.
+          if (passkeyDoor) await passkeyDoor.enrol();
+          // On a first run the new password is this device's too, exactly as a restore does
+          // (with a passkey, the generated one it holds).
           const vk = draft.purpose === 'onboarding' ? await deriveVaultKey(password, newKdfParams()) : live!.vaultKey;
           if (draft.purpose === 'onboarding') setTelemetryEnabled(consents.metricsOptIn);
           const entry = await landSignedInWallet({
@@ -5623,8 +5797,10 @@ export function useWalletStore() {
           });
           report(EVENT.backupRestored, { category: 'lifecycle', props: { purpose: draft.purpose, emailRecovery: true } });
           // The rest of this inbox's backups, each with its own key and given the same new
-          // password: the forgotten one sealed all of them, not just the newest.
-          if (entry) {
+          // password: the forgotten one sealed all of them, not just the newest. Not on a
+          // passkey restore: they would get a password door nobody knows in place of the one
+          // they have, and they stay restorable by email, one by one, as they are.
+          if (entry && !passkeyDoor) {
             await restoreOtherBackups({
               ready: draft.ready,
               key: password,
@@ -5780,10 +5956,7 @@ export function useWalletStore() {
           consents,
           epoch,
         );
-        if (!entry) {
-          setSignInDraft(null);
-          return false;
-        }
+        if (!entry) return false;
       }
       enrolled = false; // landed: the door stays
       await settleSignIn(draft, entry);
@@ -5850,6 +6023,40 @@ export function useWalletStore() {
     }
   }, [session, wallets, signInDraft, draftEmail, draftName, finishOnboarding, flashPasskey, passkey]);
 
+  /**
+   * `recoverBackup` with nothing to type (the user's call: once the email is proven, no
+   * password): a passkey made now locks this device and becomes the backup's door beside the
+   * email one. One sheet. A first run on a build that can make passkeys; anywhere else the
+   * screen asks for this device's password.
+   */
+  const recoverBackupWithPasskey = useCallback(async (): Promise<boolean> => {
+    const draft = signInDraft;
+    if (!draft || draft.purpose !== 'onboarding' || session || wallets.length > 0) return false;
+    let secrets: PasskeySecrets;
+    try {
+      secrets = await createPasskey({
+        name: draft.ready.identity.email,
+        displayName: draft.ready.identity.name?.trim() || draft.ready.identity.email,
+      });
+    } catch (e) {
+      flashPasskey(e);
+      return false;
+    }
+    const devicePassword = newDevicePassword();
+    let ok = false;
+    try {
+      ok = await recoverBackup(devicePassword, {
+        door: { id: secrets.credentialId, secret: secrets.backup },
+        enrol: () => enrolPasskeyUnlock(secrets, devicePassword),
+      });
+      return ok;
+    } finally {
+      wipePasskeySecrets(secrets);
+      if (!ok) await dropPasskeyUnlock().catch(() => undefined);
+      await passkey.refreshPasskey();
+    }
+  }, [signInDraft, session, wallets, recoverBackup, flashPasskey, passkey]);
+
   /** `revealBackup`, answered by the passkey on a passkey device. One sheet. */
   const revealBackupWithPasskey = useCallback(async () => {
     let opened: { password: string; secrets: PasskeySecrets };
@@ -5862,6 +6069,56 @@ export function useWalletStore() {
     wipePasskeySecrets(opened.secrets);
     return revealBackup(opened.password);
   }, [revealBackup, flashPasskey]);
+
+  /**
+   * Easy recovery, NEW device: send the code typed from the other device's screen. On the
+   * right one the wallet arrives sealed, is opened here, and goes through the import like a
+   * pasted phrase — profile, then this device's password or passkey. Everything else stays
+   * on the screen that asked: a wrong code, a session that ended.
+   */
+  const claimEasyRecovery = useCallback(
+    async (code: string): Promise<EasyRecoveryClaimFailure | 'imported' | 'failed'> => {
+      let res: Awaited<ReturnType<typeof easy.claimEasyReceive>>;
+      try {
+        res = await easy.claimEasyReceive(code);
+      } catch (e) {
+        flash(errLine(e), 'err');
+        return 'failed';
+      }
+      if (typeof res === 'string') return res;
+      if (res.name) setDraftName(res.name);
+      return (await importFromText(res.value)) ? 'imported' : 'failed';
+    },
+    [easy, flash, errLine, importFromText],
+  );
+
+  /**
+   * Easy recovery, OLD device: after the person confirmed, unlock (password or passkey),
+   * seal this wallet for the scanned device and leave it with a fresh code. `locked`: the
+   * password did not open it (the screen keeps its field). A re-keyed wallet is refused: its
+   * account is not its key's own address, and the other device would import the wrong one.
+   */
+  const offerEasyRecovery = useCallback(
+    async (link: EasyRecoveryLink, unlock: { password: string } | 'passkey'): Promise<'offered' | 'ended' | 'locked' | 'refused' | 'failed'> => {
+      if (!meta) return 'refused';
+      if (meta.rekey) {
+        flash(t('easyRecovery.rekeyed'), 'err');
+        return 'refused';
+      }
+      const revealed = unlock === 'passkey' ? await revealBackupWithPasskey() : await revealBackup(unlock.password);
+      if (!revealed) return 'locked';
+      const payload: EasyRecoveryPayload = revealed.mnemonic
+        ? { v: 1, kind: 'mnemonic', value: revealed.mnemonic, ...(meta.name ? { name: meta.name } : {}) }
+        : { v: 1, kind: 'secret', value: revealed.secret, ...(meta.name ? { name: meta.name } : {}) };
+      try {
+        return await easy.offerEasySend(link, payload);
+      } catch (e) {
+        flash(errLine(e), 'err');
+        return 'failed';
+      }
+    },
+    [meta, flash, t, revealBackup, revealBackupWithPasskey, easy, errLine],
+  );
 
   /**
    * Give up the backup and make a new wallet instead — the person forgot the password that
@@ -5883,8 +6140,10 @@ export function useWalletStore() {
       addingWallet,
       hasDraftMnemonic: draftHasMnemonic && !!draftMnemonic,
       hasSignInDraft: !!signInDraft,
+      hasDraftAccount: !!draftAccount,
+      hasWallets: wallets.length > 0,
     }),
-    [session, tab, addingWallet, draftHasMnemonic, draftMnemonic, signInDraft],
+    [session, tab, addingWallet, draftHasMnemonic, draftMnemonic, signInDraft, draftAccount, wallets.length],
   );
 
   /**
@@ -5903,18 +6162,146 @@ export function useWalletStore() {
     if (screen === 'success' || screen === 'device-auth') setDeviceAuthOffer(false);
     const popped = stackRef.current.pop();
     if (popped) {
-      setScreen(popped);
-      const tabOf = SCREENS[popped].tab;
+      screenRef.current = popped.screen;
+      setScreen(popped.screen);
+      setStepPlace(popped.step === undefined ? null : popped);
+      const tabOf = SCREENS[popped.screen].tab;
       if (tabOf) setTab(tabOf);
       return true;
     }
     const target = backTarget(screen, backContext());
     if (target === 'exit') return false;
+    screenRef.current = target;
     setScreen(target);
+    setStepPlace(null);
     const tabOf = SCREENS[target].tab;
     if (tabOf) setTab(tabOf);
     return true;
-  }, [screen, backContext]);
+  }, [screen, backContext, setStepPlace]);
+
+  /* -------------------------- browser history ------------------------- */
+  /*
+   * The wallet is a PWA: the browser's back and forward buttons, the mouse's side buttons,
+   * Alt+arrows and a phone's system back must walk the flow one step at a time, exactly like
+   * the app's own back button, and only ever onto a step that can still be shown
+   * (src/lib/navHistory.ts). The app's stack stays the source of truth:
+   *
+   * - every change of place is mirrored here — a new step pushes an entry, the app's own
+   *   back rewinds the browser one entry (so "forward" still has the step that was left),
+   *   a lock or a finished flow rewinds to the first entry;
+   * - a traversal the browser makes is answered by adopting the path its entry carries,
+   *   after `canEnter` says its screen still has what it shows. When it does not, the
+   *   traversal is undone and the person stays where they were: no view is ever skipped to.
+   */
+  const histDepthRef = useRef<number | null>(null);
+  const rewindingRef = useRef(false);
+  const pendingPathRef = useRef<NavPlace[] | null>(null);
+  const lastPopRef = useRef(0);
+  const backContextRef = useRef(backContext);
+  backContextRef.current = backContext;
+
+  const syncHistory = useCallback((path: NavPlace[]) => {
+    if (typeof window === 'undefined') return;
+    if (rewindingRef.current) {
+      pendingPathRef.current = path;
+      return;
+    }
+    const h = window.history;
+    const depth = histDepthRef.current;
+    if (depth === null) {
+      h.replaceState(navState(NAV_SESSION, path), '');
+      histDepthRef.current = path.length - 1;
+      return;
+    }
+    const plan = planSync(depth, path);
+    if (plan.kind === 'replace') {
+      h.replaceState(navState(NAV_SESSION, path), '');
+    } else if (plan.kind === 'push') {
+      for (let i = plan.from; i < path.length; i++) h.pushState(navState(NAV_SESSION, path.slice(0, i + 1)), '');
+      histDepthRef.current = path.length - 1;
+    } else {
+      rewindingRef.current = true;
+      pendingPathRef.current = path;
+      h.go(plan.delta);
+      // A traversal the browser could not make (its history is shorter than we counted)
+      // never fires popstate; without this the mirror would wait for it forever.
+      window.setTimeout(() => {
+        if (!rewindingRef.current) return;
+        rewindingRef.current = false;
+        const want = pendingPathRef.current ?? path;
+        pendingPathRef.current = null;
+        histDepthRef.current = want.length - 1;
+        h.replaceState(navState(NAV_SESSION, want), '');
+      }, NAV_REWIND_TIMEOUT_MS);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (screen === 'boot') return;
+    // A terminal screen starts a fresh path however it was reached — several flows reach
+    // `success` with a raw `setScreen`, and back from it must not walk into the flow. What
+    // was typed along the way goes with it.
+    if (SCREENS[screen].terminal) {
+      stackRef.current = [];
+      forgetKeptInputs();
+    }
+    syncHistory([...stackRef.current, navStep === undefined ? { screen } : { screen, step: navStep }]);
+  }, [screen, navStep, syncHistory]);
+
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      lastPopRef.current = Date.now();
+      const path = readNavState(e.state, NAV_SESSION);
+      if (rewindingRef.current) {
+        // Our own traversal arriving.
+        rewindingRef.current = false;
+        histDepthRef.current = path ? path.length - 1 : 0;
+        const want = pendingPathRef.current;
+        pendingPathRef.current = null;
+        if (want) syncHistory(want);
+        return;
+      }
+      // An entry this page load did not write (an earlier load's entries reload the page
+      // instead of arriving here): nothing to adopt.
+      if (!path) return;
+      const from = histDepthRef.current ?? 0;
+      const target = path[path.length - 1];
+      if (!canEnter(target.screen, backContextRef.current())) {
+        rewindingRef.current = true;
+        pendingPathRef.current = [...stackRef.current, placeNow()];
+        histDepthRef.current = path.length - 1;
+        window.history.go(from - (path.length - 1));
+        return;
+      }
+      histDepthRef.current = path.length - 1;
+      const leaving = screenRef.current;
+      if (leaving === 'success' || leaving === 'device-auth') setDeviceAuthOffer(false);
+      stackRef.current = path.slice(0, -1);
+      screenRef.current = target.screen;
+      setScreen(target.screen);
+      setStepPlace(target.step === undefined ? null : target);
+      const tabOf = SCREENS[target.screen].tab;
+      if (tabOf) setTab(tabOf);
+    };
+    // The mouse's side buttons: every desktop browser walks its history on them, but a
+    // WebView may not. When no traversal followed the press, the wallet makes it.
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return;
+      const at = Date.now();
+      const back = e.button === 3;
+      window.setTimeout(() => {
+        if (lastPopRef.current >= at) return;
+        if (back) window.history.back();
+        else window.history.forward();
+      }, MOUSE_NAV_GRACE_MS);
+    };
+    window.addEventListener('popstate', onPop);
+    window.addEventListener('mouseup', onMouseUp);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, [placeNow, setStepPlace, syncHistory]);
 
   return {
     // state
@@ -5966,6 +6353,9 @@ export function useWalletStore() {
     signInMethods: signIn.signInMethods,
     loadSignInMethods: signIn.loadSignInMethods,
     signInWith,
+    /** Stop a sign-in still in flight (a provider window, an emailed code); a finished one stays. */
+    stopSignIn: cancelSignInRaw,
+    signInConflict,
     signInWithEmail: startEmail,
     submitSignInCode,
     resumeSignIn,
@@ -6010,6 +6400,7 @@ export function useWalletStore() {
      */
     recoverable,
     loadRecoverable,
+    tryEmailRestore,
     recoveryCodes: recoveryCodes && signInDraft && recoveryCodes.key === signInDraft.ready.sessionToken
       ? { email: recoveryCodes.email, count: recoveryCodes.claims.length }
       : null,
@@ -6065,6 +6456,11 @@ export function useWalletStore() {
     // setters used by screens
     setScreen: navigate, // tracked: records the origin so goBack() can return there
     goBack,
+    /** The step the current screen is on (undefined: its first). See `goStep`. */
+    navStep,
+    goStep,
+    replaceStep,
+    backTo,
     navMenuOpen,
     setNavMenuOpen,
     setTab,
@@ -6090,7 +6486,22 @@ export function useWalletStore() {
     beginVerify,
     tapChip,
     tapSlot,
+    placeWord,
     submitImport,
+    importFromText,
+    /*
+     * Easy recovery (`lib/easyRecovery.ts`): the new device's session and QR, and the old
+     * device's code. Neither carries a key: the receiver's stays in the slice's ref.
+     */
+    easyReceive: easy.easyReceive,
+    openEasyReceive: easy.openEasyReceive,
+    pollEasyReceive: easy.pollEasyReceive,
+    closeEasyReceive: easy.closeEasyReceive,
+    claimEasyRecovery,
+    easySend: easy.easySend,
+    offerEasyRecovery,
+    pollEasySend: easy.pollEasySend,
+    closeEasySend: easy.closeEasySend,
     finishOnboarding,
     unlock,
     lock,
@@ -6117,6 +6528,7 @@ export function useWalletStore() {
     submitCrossChain,
     backupRecoverable,
     recoverBackup,
+    recoverBackupWithPasskey,
     enableBackupRecovery,
     chainAddress,
     chainNet,

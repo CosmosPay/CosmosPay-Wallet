@@ -18,3 +18,10 @@ export const EMAIL_MAX_LEN = 80;
 
 /** Password policy: minimum length (the live criteria checklist mirrors this). */
 export const PWD_MIN_LEN = 8;
+
+/**
+ * The profile's steps, in order (`features/onboarding/ProfileSetup.tsx`): one question each,
+ * then the two optional consents. Each is a stop on the way back (`goStep`).
+ */
+export const PROFILE_STEPS = ['name', 'email', 'about', 'optional'] as const;
+export type ProfileStep = (typeof PROFILE_STEPS)[number];

@@ -18,8 +18,9 @@
     width: var(--desk-side-w);
     flex-shrink: 0;
     padding: 26px 16px 20px;
-    border-right: 1px solid var(--hairline);
-    background: var(--surface-2);
+    /* A line, not a grey panel: the brand draws surfaces with lines. */
+    border-right: 1px solid var(--line);
+    background: var(--bg);
     /* The vertical device insets are on .shell-content, which the rail is not inside, so
        it clears the status bar itself. Only relevant on a tablet in landscape, which is
        the one non-desktop device that reaches this breakpoint. */
@@ -71,11 +72,12 @@
     font-weight: 700;
     cursor: pointer;
     text-align: left;
-    transition: background-color 0.18s ease, color 0.18s ease;
+    transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out),
+      box-shadow var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
   }
 
   .desk-nav-item:hover {
-    background: var(--glass-soft-bg);
+    box-shadow: inset 0 0 0 1px var(--line);
     color: var(--text-soft);
   }
 

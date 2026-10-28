@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NAV_SCREENS, SCREENS, SCREEN_IDS, backTarget, type BackContext } from '@/lib/screens';
+import { NAV_SCREENS, SCREENS, SCREEN_IDS, backTarget, canEnter, type BackContext } from '@/lib/screens';
 
 const ctx = (over: Partial<BackContext> = {}): BackContext => ({
   hasSession: true,
@@ -12,6 +12,8 @@ const ctx = (over: Partial<BackContext> = {}): BackContext => ({
   addingWallet: false,
   hasDraftMnemonic: false,
   hasSignInDraft: false,
+  hasDraftAccount: false,
+  hasWallets: true,
   ...over,
 });
 
@@ -126,3 +128,36 @@ test('device-auth is terminal and returns home, not into onboarding', () => {
   assert.equal(SCREENS['device-auth'].back, 'home');
 });
 
+
+/**
+ * The browser's back and forward buttons lead to screens by history, not by the flow. A step
+ * whose input is gone must refuse, or it renders empty: the words after a lock, the backup's
+ * password after the sign-in was dropped.
+ */
+test('history only re-enters a step whose input still exists', () => {
+  const first = ctx({ hasSession: false });
+  assert.equal(canEnter('backup', first), false);
+  assert.equal(canEnter('backup', ctx({ hasSession: false, hasDraftMnemonic: true })), true);
+  assert.equal(canEnter('verify', first), false);
+  assert.equal(canEnter('profile-setup', first), false);
+  assert.equal(canEnter('profile-setup', ctx({ hasSession: false, hasDraftAccount: true })), true);
+  assert.equal(canEnter('password', first), false);
+  assert.equal(canEnter('password', ctx({ hasSession: false, hasSignInDraft: true })), true);
+  assert.equal(canEnter('sign-in-password', first), false);
+  assert.equal(canEnter('sign-in-password', ctx({ hasSession: false, hasSignInDraft: true })), true);
+  assert.equal(canEnter('welcome', first), true);
+  assert.equal(canEnter('backup-choice', first), true);
+});
+
+test('history never re-enters a finished flow or crosses the lock', () => {
+  for (const s of SCREEN_IDS) if (SCREENS[s].terminal) assert.equal(canEnter(s, ctx()), false, s);
+  assert.equal(canEnter('boot', ctx()), false);
+  // Locked: the wallet's screens are behind the password.
+  assert.equal(canEnter('home', ctx({ hasSession: false })), false);
+  assert.equal(canEnter('send', ctx({ hasSession: false })), false);
+  // Unlocked: the onboarding is not walked back into, except to add a wallet.
+  assert.equal(canEnter('backup-choice', ctx()), false);
+  assert.equal(canEnter('backup-choice', ctx({ addingWallet: true })), true);
+  assert.equal(canEnter('unlock', ctx()), false);
+  assert.equal(canEnter('unlock', ctx({ hasSession: false, hasWallets: false })), false);
+});

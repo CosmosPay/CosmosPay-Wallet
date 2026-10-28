@@ -40,6 +40,10 @@ async function mockServer(page: Page, ready: () => unknown, finishes: Captured[]
   };
   const env = (data: unknown, code = 200) => ({ status: code, headers: cors, body: JSON.stringify(data) });
   await page.unroute('**/v1/wallet/auth/**');
+  // No recovery servers, as in CI: a developer machine running them (`dev:local -- all` on the
+  // community server) would give every box an email door and change what this suite checks.
+  // Their discovery is refused, so the wallet sees none, whatever is running locally.
+  await page.route('**/.well-known/stellar.toml*', (route: Route) => route.abort());
   await page.route('**/v1/wallet/auth/**', async (route: Route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
@@ -63,7 +67,7 @@ async function mockServer(page: Page, ready: () => unknown, finishes: Captured[]
 async function signInWithEmail(page: Page) {
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
   await page.getByText('Crear una wallet nueva').click();
-  await page.getByRole('button', { name: 'Con mi cuenta' }).click();
+  await page.getByRole('button', { name: 'Continuar con mi cuenta' }).click();
   await page.getByRole('button', { name: 'Continuar con email' }).click();
   await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
   await page.getByRole('button', { name: 'Enviar código' }).click();

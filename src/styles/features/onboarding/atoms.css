@@ -1,76 +1,8 @@
 /* =====================================================================
-   Onboarding — shared atoms for src/features/onboarding/ (CheckRow, Criterion,
-   WordCell, OptionalConsents). Prefix: .ob-
+   Onboarding — shared atoms for src/features/onboarding/ (Criterion, WordCell,
+   OptionalConsents). Prefix: .ob- (CheckRow's moved to src/styles/ui/check-row.css)
    State-driven looks (checked / met / bad) are modifier classes.
    ===================================================================== */
-
-/* ---- CheckRow: a real checkbox, visually hidden, under a drawn ink box ---- */
-.ob-check {
-  position: relative;
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  min-height: 44px;
-  padding: 10px 0;
-  cursor: pointer;
-}
-
-.ob-check-input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.ob-check-box {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  border: 1.5px solid var(--text);
-  border-radius: 7px;
-  background: transparent;
-  color: var(--bg);
-  transition: background-color var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);
-}
-
-.ob-check-box.is-on {
-  background: var(--text);
-}
-
-.ob-check-tick {
-  opacity: 0;
-  transform: scale(0.6);
-  transition: opacity var(--dur-quick) var(--ease-out), transform var(--dur-base) var(--ease-out);
-}
-
-.ob-check-box.is-on .ob-check-tick {
-  opacity: 1;
-  transform: none;
-}
-
-/* The ring the hidden input would have drawn, on the box the person sees. */
-.ob-check-input:focus-visible + .ob-check-box {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
-
-.ob-check-text {
-  font-size: 14px;
-  font-weight: 400;
-  line-height: 1.5;
-  color: var(--text-soft);
-}
-
-.ob-check-text a {
-  color: var(--text);
-  font-weight: 700;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
 
 /* ---- Criterion: one live rule under a field ---- */
 .ob-crit {
@@ -137,9 +69,9 @@
   gap: 10px;
   min-height: 46px;
   padding: 0 16px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--line);
   border-radius: 999px;
-  background: var(--glass-bg);
+  background: transparent;
   color: var(--text);
   font: inherit;
   text-align: left;

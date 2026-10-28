@@ -1,12 +1,17 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import type { WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
 import { BottomNav } from '@/app/BottomNav';
 import { DesktopNav } from '@/app/DesktopNav';
 import { Toast } from '@/app/Toast';
 import { ConfirmSign } from '@/app/ConfirmSign';
+import { AuthAside } from '@/app/AuthAside';
+import { AUTH_SCREENS } from '@/lib/screens';
+import { ScreenBarHost } from '@/ui/ScreenBar';
 import { cx } from '@/lib/cx';
+import { forwardScrollKey, forwardWheel } from '@/lib/scrollForward';
 import '@/styles/app/shell.css';
+import '@/styles/app/auth-split.css';
 
 /** The frame that hosts the app: a phone column, or — past `--desk-min` — the whole screen.
  *
@@ -38,15 +43,40 @@ export function Shell({
   // came and went on every navigation would reflow the whole window, where the bottom bar
   // it replaces only ever floated over the content.
   const rail = chrome && !!store?.hasSession;
+  // Before a session, the desktop window splits: the flow on the left, the brand panel on
+  // the right (AuthAside). Whether it SHOWS is CSS, like the rail.
+  const authSplit = chrome && !!store && !store.hasSession && AUTH_SCREENS.includes(store.screen);
+
+  // The screen scrolls from anywhere in the window — the margins beside its column, the brand
+  // panel — and with the scroll keys when no control has the focus (lib/scrollForward.ts).
+  // Not in the extension, whose popup is the column. Passive: nothing here cancels a wheel.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!chrome || !root) return;
+    const onWheel = (e: WheelEvent) => forwardWheel(e, root);
+    const onKey = (e: KeyboardEvent) => forwardScrollKey(e, root);
+    window.addEventListener('wheel', onWheel, { passive: true });
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [chrome]);
 
   return (
-    <div className={cx('shell-root', chrome && 'has-desktop-mode')}>
+    <div ref={rootRef} className={cx('shell-root', chrome && 'has-desktop-mode', authSplit && 'has-auth-split')}>
       <div className="shell-frame">
         {rail && store && <DesktopNav store={store} />}
 
         <div className="shell-main">
-          <div className="shell-content">{children}</div>
+          <div className="shell-content">
+            {/* The way back, above the screen so it never moves with it (ui/ScreenBar). */}
+            <ScreenBarHost>{children}</ScreenBarHost>
+          </div>
         </div>
+
+        {authSplit && store && <AuthAside store={store} />}
 
         {showNav && store && chrome && <BottomNav store={store} />}
         {store && <Toast toast={store.toast} />}

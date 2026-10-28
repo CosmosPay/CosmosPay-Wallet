@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { cx } from '@/lib/cx';
-import '@/styles/features/onboarding/atoms.css';
+import '@/styles/ui/check-row.css';
 
 /**
  * A checkbox and its sentence. A real `<input type="checkbox">` inside a `<label>`, so

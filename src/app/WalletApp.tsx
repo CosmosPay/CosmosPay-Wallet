@@ -49,6 +49,10 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   backup: lazy(() => import('@/features/onboarding/Backup').then((m) => ({ default: m.Backup }))),
   verify: lazy(() => import('@/features/onboarding/Verify').then((m) => ({ default: m.Verify }))),
   import: lazy(() => import('@/features/onboarding/Import').then((m) => ({ default: m.Import }))),
+  'easy-recovery-receive': lazy(() =>
+    import('@/features/onboarding/EasyRecoveryReceive').then((m) => ({ default: m.EasyRecoveryReceive })),
+  ),
+  'import-wallet': lazy(() => import('@/features/onboarding/ImportWallet').then((m) => ({ default: m.ImportWallet }))),
   'profile-setup': lazy(() => import('@/features/onboarding/ProfileSetup').then((m) => ({ default: m.ProfileSetup }))),
   password: lazy(() => import('@/features/onboarding/PasswordSetup').then((m) => ({ default: m.PasswordSetup }))),
   'device-auth': lazy(() => import('@/features/onboarding/DeviceAuthSetup').then((m) => ({ default: m.DeviceAuthSetup }))),
@@ -90,6 +94,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   // lazy — settings
   settings: lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.Settings }))),
   export: lazy(() => import('@/features/settings/Export').then((m) => ({ default: m.Export }))),
+  'easy-recovery-send': lazy(() => import('@/features/settings/EasyRecoverySend').then((m) => ({ default: m.EasyRecoverySend }))),
   about: lazy(() => import('@/features/settings/About').then((m) => ({ default: m.About }))),
 
   // lazy — extras

@@ -7,13 +7,13 @@
   text-align: center;
 }
 
-/* the mark on the control surface: flat, no ring, no glow */
+/* the mark in a line: no fill, no glow */
 .device-auth-setup-icon {
   width: 88px;
   height: 88px;
   margin-bottom: 8px;
   border-radius: 50%;
-  background: var(--glass-bg);
+  border: 1px solid var(--line);
   color: var(--text);
 }
 

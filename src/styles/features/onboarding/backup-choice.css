@@ -1,5 +1,105 @@
-/* src/features/onboarding/BackupChoice.tsx — the cards are ui/ChoiceCard; only the note's
-   place at the foot of the screen is here. */
+/* =====================================================================
+   src/features/onboarding/BackupChoice.tsx — the question is ui/Segmented; here,
+   the card that says what the chosen backup means, and the note under the button.
+   ===================================================================== */
+.backup-choice-card {
+  display: grid;
+  margin-top: 16px;
+  padding: 20px 18px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+}
+
+/* Both answers share the card's one cell. Leaving, a panel only fades (--ease-in) and
+   then steps back down while invisible; arriving, it fades in and rises (--ease-out)
+   a beat later, so the two texts never read on top of each other. */
+.backup-choice-panel {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px);
+  transition:
+    opacity var(--dur-quick) var(--ease-in),
+    transform 0s var(--dur-quick),
+    visibility 0s var(--dur-quick);
+}
+
+.backup-choice-panel.is-on {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition:
+    opacity var(--dur-base) var(--ease-out) calc(var(--dur-quick) / 2),
+    transform var(--dur-base) var(--ease-out) calc(var(--dur-quick) / 2),
+    visibility 0s;
+}
+
+.backup-choice-icon {
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  color: var(--text);
+}
+
+.backup-choice-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.backup-choice-head {
+  gap: 4px;
+}
+
+.backup-choice-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.backup-choice-desc {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.backup-choice-points {
+  margin: 0;
+  padding: 16px 0 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.backup-choice-point {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+.backup-choice-mark {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
 .backup-choice-note {
-  margin-top: 20px;
+  margin: 14px 0 0;
+  text-align: center;
+  text-wrap: balance;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
 }

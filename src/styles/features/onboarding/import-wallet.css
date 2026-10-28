@@ -1,0 +1,70 @@
+/* =====================================================================
+   src/features/onboarding/ImportWallet.tsx — the wallets by their logo, then
+   one wallet's steps and the paste. Prefix: .import-wallet-
+   A logo is the wallet's own app icon: shown as it is, in a rounded square,
+   with no line around it; the generic guide keeps the line-drawn icon.
+   ===================================================================== */
+.import-wallet-card .choice-card-icon {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.import-wallet-card.has-logo .choice-card-icon {
+  border: 0;
+}
+
+.import-wallet-logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* one wallet's guide: its logo over the steps */
+.import-wallet-badge {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  margin-bottom: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.import-wallet-badge.has-logo {
+  border: 0;
+}
+
+.import-wallet-steps {
+  margin: 0 0 18px;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.import-wallet-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.import-wallet-step-n {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--text);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.import-wallet-notice {
+  margin-top: 4px;
+}

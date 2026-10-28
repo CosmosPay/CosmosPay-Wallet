@@ -25,12 +25,18 @@ let introSeen = false;
  *   user's call (2026-10-28). WCAG 2.2.2 asks for a way to stop motion that lasts over 5s;
  *   revisit when the final hero replaces this provisional one.
  * - A theme flip swaps the files without replaying the entrance.
+ * - It plays only while it is on screen (IntersectionObserver). On a desktop window two
+ *   copies exist — Welcome's own, hidden by the split, and the brand panel's — and a hidden
+ *   video that keeps decoding is a second one for nothing. A copy that comes into view after
+ *   the other already played the entrance goes straight to the loop.
  *
  * Decorative: no sound, no controls of its own, hidden from assistive technology; the screen's
  * buttons say what it is for.
  */
-export function WelcomeHero({ theme }: { theme: Theme }) {
+export function WelcomeHero({ theme, className }: { theme: Theme; className?: string }) {
   const [phase, setPhase] = useState<'intro' | 'loop'>(introSeen ? 'loop' : 'intro');
+  const [seen, setSeen] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
   const introRef = useRef<HTMLVideoElement>(null);
   const loopRef = useRef<HTMLVideoElement>(null);
   const firstTheme = useRef(theme);
@@ -44,7 +50,28 @@ export function WelcomeHero({ theme }: { theme: Theme }) {
     if (theme !== firstTheme.current) toLoop();
   }, [theme]);
 
+  // Seen or not: `display: none` and scrolled away both read as not intersecting.
   useEffect(() => {
+    const box = boxRef.current;
+    if (!box || typeof IntersectionObserver === 'undefined') {
+      setSeen(true);
+      return;
+    }
+    const io = new IntersectionObserver(([entry]) => setSeen(entry.isIntersecting));
+    io.observe(box);
+    return () => io.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!seen) {
+      introRef.current?.pause();
+      loopRef.current?.pause();
+      return;
+    }
+    if (phase === 'intro' && introSeen) {
+      toLoop();
+      return;
+    }
     const video = phase === 'intro' ? introRef.current : loopRef.current;
     if (!video) return;
     return whenAppRevealed(() => {
@@ -53,10 +80,10 @@ export function WelcomeHero({ theme }: { theme: Theme }) {
         if (phase === 'intro') toLoop();
       });
     });
-  }, [phase, theme]);
+  }, [phase, theme, seen]);
 
   return (
-    <div className="welcome-hero">
+    <div ref={boxRef} className={cx('welcome-hero', className)}>
       <video
         key={`loop-${theme}`}
         ref={loopRef}

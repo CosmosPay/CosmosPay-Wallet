@@ -101,6 +101,7 @@ export function Settings({ store }: { store: WalletStore }) {
           />
         )}
         <SettingsRow label={t('settings.exportPhrase')} onClick={() => store.setScreen('export')} />
+        <SettingsRow label={t('settings.easyRecovery')} onClick={() => store.setScreen('easy-recovery-send')} />
         {/* The Cosmos Pay ACCOUNT's second factors, in Authentik — not the device passkey
             below, which opens this wallet. Optional: the sign-in only offers one, so this row
             is where anyone who said "not now" adds a key, an authenticator app or recovery

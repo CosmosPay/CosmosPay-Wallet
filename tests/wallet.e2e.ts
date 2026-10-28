@@ -32,9 +32,21 @@ try {
   // create flow generates a seed in-browser (bip39 + SEP-5): Welcome -> how to back it up
   // -> the twelve words
   await page.getByText('Crear una wallet nueva').click();
-  await page.getByRole('button', { name: 'Con 12 palabras' }).click();
+  ok((await page.getByRole('radio', { name: 'Mi cuenta' }).getAttribute('aria-checked')) === 'true', 'The account backup is chosen first');
+  await page.getByRole('radio', { name: '12 palabras' }).click();
+  await page.getByRole('button', { name: 'Continuar con 12 palabras' }).click();
   await page.getByText('Frase de recuperación', { exact: false }).first().waitFor();
   ok((await page.locator('text=/^[a-z]{3,}$/').count()) >= 12, 'Seed phrase generated in browser');
+
+  // The flow is browser history too (src/lib/navHistory.ts): back and forward walk it one step
+  // at a time, and a step comes back showing what it showed.
+  const words = await page.locator('.ob-word-text').allTextContents();
+  await page.goBack();
+  await page.getByRole('radio', { name: '12 palabras' }).waitFor();
+  ok(true, 'Browser back returns to the backup choice');
+  await page.goForward();
+  await page.getByText('Frase de recuperación', { exact: false }).first().waitFor();
+  ok((await page.locator('.ob-word-text').allTextContents()).join() === words.join(), 'Browser forward shows the same words');
 
   // import the deterministic test vector: back twice (the words, the choice) to Welcome,
   // then "I already have one" -> with my 12 words
@@ -45,15 +57,27 @@ try {
   await page.locator('textarea').fill(MNEMONIC);
   await page.getByRole('button', { name: 'Importar wallet' }).click();
 
-  // profile step: name + email + a valid 13+ birthdate + a gender pick are all
-  // required to enable "Continuar" (the two consent checkboxes are optional).
+  // profile, one question per step: the name, the email, a valid 13+ birthdate and a
+  // gender pick, then the two optional consents. Each step is a stop in the history.
   await page.getByText('¿Cómo te llamas?').waitFor({ timeout: 8000 });
+  ok(await page.getByText('Paso 1 de 4').isVisible(), 'Profile: the steps say where the person is');
+  ok(await page.getByRole('button', { name: 'Continuar' }).isDisabled(), 'Profile: no name, no next step');
   await page.getByPlaceholder('p. ej. Alex').fill('Test User');
+  await page.getByPlaceholder('p. ej. Alex').press('Enter');
+  await page.getByPlaceholder('tu@correo.com').waitFor();
+  ok(true, 'Profile: Enter in the field goes on');
   await page.getByPlaceholder('tu@correo.com').fill('test@cosmos.com');
+  await page.getByRole('button', { name: 'Continuar' }).click();
   await page.locator('input[type="date"]').fill('1990-05-15');
   await page.getByRole('button', { name: 'Masculino' }).click();
+  await page.goBack();
+  ok((await page.getByPlaceholder('tu@correo.com').inputValue()) === 'test@cosmos.com', 'Profile: back walks the steps and keeps what was typed');
+  await page.goForward();
+  ok((await page.locator('input[type="date"]').inputValue()) === '1990-05-15', 'Profile: forward returns to the step, still filled');
   await page.getByRole('button', { name: 'Continuar' }).click();
-  ok(true, 'Profile step (name/email/dob/gender) captured');
+  await page.getByRole('heading', { name: 'Opcionales' }).waitFor();
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  ok(true, 'Profile steps (name, email, dob/gender, optional) captured');
 
   // seal vault. Where the browser can make a passkey the screen offers one first; this
   // suite is about the password vault, so it takes the password.
@@ -75,6 +99,11 @@ try {
     return a ? !!localStorage.getItem('cosmos.w.' + a) : false;
   });
   ok(sealed, 'Encrypted vault persisted');
+
+  // A finished flow is not walked back into: forward from success stays on it.
+  await page.goForward();
+  await page.waitForTimeout(600);
+  ok((await page.getByRole('button', { name: 'Ver mi wallet' }).count()) === 1, 'Forward from success does not re-enter the flow');
 
   await page.getByRole('button', { name: 'Ver mi wallet' }).click();
   await page.getByText('Valor del portafolio').waitFor({ timeout: 10000 });

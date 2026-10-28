@@ -33,6 +33,11 @@
   --on-brand: #ffffff;
   --glass-bg: #171a22;
   --glass-border: #262a35;
+  /* The brand draws surfaces with LINES, not grey fills (the user's rule): a card, a track,
+     a divider is --line on the canvas. A control whose edge is the only thing that shows
+     where it is (a text field, a checkbox) takes --line-strong, 3:1 on --bg (WCAG 1.4.11). */
+  --line: #2a2e39;
+  --line-strong: #5d6273;
   --glass-soft-bg: #11131a;
   --glass-soft-border: #1f232d;
   --primary-bg: #ffffff;
@@ -69,10 +74,13 @@
   --dimmer: #84879a;
   --accent: #000000;
   --on-accent: #ffffff;
-  --brand: #3d55f0;
+  /* The Figma palette's one blue, the same in both themes (4.5:1 on white). */
+  --brand: #4d66ff;
   --on-brand: #ffffff;
   --glass-bg: #f2f3f6;
   --glass-border: #e3e5eb;
+  --line: #dcdfe6;
+  --line-strong: #8a8e9b;
   --glass-soft-bg: #f7f8fa;
   --glass-soft-border: #eceef2;
   --primary-bg: #000000;

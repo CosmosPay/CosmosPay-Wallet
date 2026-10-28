@@ -1,89 +1,97 @@
-/* Toast — the kind (.is-ok / .is-err / neutral base) picks the surface, and
-   .is-leaving swaps the entrance animation for the exit one. TOAST_EXIT_MS in
-   TOAST_EXIT_MS in src/constants/ui.ts must match the .23s exit durations below. */
-
-/* Extension (popup/side panel): a bottom card that slides up for a moment and
-   slides back down — less intrusive than a centered overlay in a small surface.
-   Fixed to the viewport so it never sinks below the visible area. */
-.toast-ext-wrap {
-  position: fixed;
-  left: 14px;
-  right: 14px;
-  bottom: 14px;
-  z-index: 80;
-  display: flex;
-  justify-content: center;
-  pointer-events: none;
-}
-.toast-ext-card {
-  width: 100%;
-  max-width: 380px;
-  animation: toastUp 0.3s cubic-bezier(0.2, 0.9, 0.3, 1);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 16px;
-  padding: 13px 16px;
-  font-size: 13.5px;
-  font-weight: 700;
-  text-align: center;
-  line-height: 1.45;
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.45);
-}
-
-/* Flex-centered overlay so the card is centered from the first frame; only the
-   inner card scales in (animating transform on the card itself would fight the
-   centering and make it appear off to one side before snapping to the middle). */
-.toast-overlay {
+/* =====================================================================
+   src/app/Toast.tsx — the one notification, at the bottom of the frame.
+   Flat like every surface: the sheet surface a step above the canvas and a
+   line, a mark per kind (ok: --up, err: the danger tokens, info: muted), no
+   shadow. It rises in and sinks out on the motion tokens; TOAST_EXIT_MS in
+   src/constants/ui.ts must match the exit duration below.
+   ===================================================================== */
+.toast-wrap {
+  /* Where it comes in from: above on a phone, below on a desktop window. */
+  --toast-from: -14px;
   position: absolute;
-  inset: 0;
+  left: 0;
+  right: 0;
+  /* On a phone, at the top under the status bar: never over the actions at the bottom
+     (the primary button, the Terms line), which are what the person acts on next. */
+  top: calc(var(--safe-t) + 12px);
   z-index: 60;
   display: flex;
-  align-items: center;
   justify-content: center;
-  /* Same reason as .confirm-sign-overlay: absolute inside the frame, so it has to
-     clear the keyboard itself or a message lands behind the keys. */
-  padding: 24px 24px calc(24px + var(--kb-h));
-  /* Re-centres with the keyboard rather than jumping to the new middle. */
-  transition: padding-bottom 0.22s ease;
+  padding: 0 16px;
   pointer-events: none;
 }
-.toast-ext-card.is-leaving {
-  animation: toastDown 0.23s ease forwards;
+
+/* The extension's popup and side panel: pinned to the viewport, so it never lands outside
+   the visible area of a panel the browser sized. */
+.toast-wrap.is-ext {
+  position: fixed;
+  top: 12px;
 }
 
-.toast-card {
-  max-width: 320px;
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* A banner across the top bar on a phone, like the system's own: half over a control
+     it read as a mistake. A compact card on a desktop window (below). */
   width: 100%;
-  animation: pop 0.28s ease;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-radius: 18px;
-  padding: 16px 18px;
-  font-size: 14px;
-  font-weight: 700;
-  text-align: center;
-  line-height: 1.45;
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
-}
-
-.toast-card.is-leaving {
-  animation: popOut 0.23s ease forwards;
-}
-
-/* ------------------------- kinds ------------------------- */
-/* neutral (info) is the base surface both cards share */
-.toast-card,
-.toast-ext-card {
-  background: var(--glass-bg);
+  max-width: 420px;
+  /* Tall enough to cover the 44px controls row and its margin under it. */
+  min-height: 54px;
+  padding: 11px 18px 11px 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--bg);
   color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.45;
+  animation: toastIn var(--dur-base) var(--ease-out) both;
 }
 
-.toast-card.is-ok,
-.toast-ext-card.is-ok {
-  background: var(--accent);
-  color: var(--on-accent);
+.toast.is-leaving {
+  animation: toastOut 0.23s var(--ease-in) forwards;
 }
 
-.toast-card.is-err,
-.toast-ext-card.is-err {
-  background: rgba(210, 64, 64, 0.92);
-  color: #fff;
+.toast-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.toast.is-ok .toast-icon {
+  color: var(--up);
+}
+
+.toast.is-err {
+  border-color: var(--danger);
+  background: var(--bg);
+}
+
+.toast.is-err .toast-icon {
+  color: var(--danger);
+}
+
+.toast-msg {
+  min-width: 0;
+}
+
+/* A desktop window: the bottom-right corner, rising in — clear of the split's divider and
+   of the controls at the top. */
+@media (min-width: 1024px) {
+  .shell-root.has-desktop-mode .toast-wrap {
+    --toast-from: 14px;
+    top: auto;
+    bottom: 24px;
+    left: auto;
+    right: 24px;
+    padding: 0;
+    justify-content: flex-end;
+  }
+
+  .shell-root.has-desktop-mode .toast {
+    width: fit-content;
+    min-height: 0;
+  }
 }
