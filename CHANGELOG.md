@@ -2,6 +2,26 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.14.0] - 2026-10-28
+
+### Features
+- Sign by hand for an account this key signs for (a sub-account) (5d16e60)
+
+### Bug Fixes
+- Store the deploy scripts with LF line endings (90fbf73)
+- Another account's envelope must be this key's alone and authorize only that account (c14c2e6)
+- Clear the production dependency audit (c32dd02)
+
+### Miscellaneous
+- Pull the latest release from the server instead of pushing from CI (5e3fb3b)
+- Sync the community server contract from dev (e70b027)
+
+### CI/CD
+- Deploy the web build to cosmospay.lat/wallet on every push to main (7e7e3f4)
+
+### Dependencies
+- Bump the minor-and-patch group (12 updates) (2251ab5)
+
 ## [1.13.1] - 2026-10-07
 
 ### Miscellaneous
