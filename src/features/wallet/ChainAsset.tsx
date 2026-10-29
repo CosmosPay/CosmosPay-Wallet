@@ -4,8 +4,6 @@ import { GhostButton, PrimaryButton } from '@/ui/Buttons';
 import { Notice } from '@/ui/Notice';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { ExternalLink } from '@/ui/ExternalLink';
-import { Spinner } from '@/ui/Spinner';
-import { useBusy } from '@/hooks/useBusy';
 import { chainRows } from '@/lib/portfolio';
 import { fmt, trim } from '@/lib/format';
 import {
@@ -35,7 +33,6 @@ export function ChainAsset({ store }: { store: WalletStore }) {
   const holdings = store.chainHoldings;
   const row = chainRows(holdings, net, store.prices).find((r) => r.chain === chain && r.asset === token.asset);
   const unreadable = !!holdings && holdings[chain] === null;
-  const [busy, run] = useBusy();
   const networkName = t(`chains.net.${net}.${chain}`);
 
   const send = () => store.setScreen('chain-send');
@@ -47,11 +44,6 @@ export function ChainAsset({ store }: { store: WalletStore }) {
     store.setSwapOrigin(chain);
     store.setScreen('swap');
   };
-  const airdrop = () =>
-    run(async () => {
-      if (await store.airdropTestnetSol()) await store.loadChainHoldings(true);
-    });
-
   return (
     <div className="scr screen col pb-30">
       <ScreenHeader title={token.symbol} desc={networkName} onBack={store.goBack} />
@@ -87,11 +79,8 @@ export function ChainAsset({ store }: { store: WalletStore }) {
           </h2>
           <p className="asset-note">{t('chains.descTestnet')}</p>
           <div className="asset-fund-actions">
-            {chain === 'solana' && (
-              <GhostButton onClick={() => void airdrop()} disabled={busy}>
-                {busy ? <Spinner size={15} /> : t('chains.airdrop')}
-              </GhostButton>
-            )}
+            {/* The faucets are web pages now: Solana closed the devnet RPC airdrop (it answers
+                410 "The RPC faucet is closed on this cluster"), so no button here can pay. */}
             <ExternalLink href={CHAIN_TESTNET_FAUCET[chain]} className="link-btn">
               {t(chain === 'solana' ? 'chains.webFaucet' : 'chains.getMon')}
             </ExternalLink>

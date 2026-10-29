@@ -79,7 +79,6 @@ import {
   CHAIN_SWAP_SLIPPAGE_BPS,
   CHAIN_TESTNET_EXPLORER_TX,
   OTHER_CHAINS,
-  SOLANA_AIRDROP_LAMPORTS,
   type ChainNet,
   type ChainToken,
   type OtherChain,
@@ -2837,37 +2836,6 @@ export function useWalletStore() {
   const [swapOrigin, setSwapOrigin] = useState<CrossChainNetwork>('stellar');
   /** Which network's tab the receive screen opens on; the Home card sets it, Receive clears it. */
   const [receiveNet, setReceiveNet] = useState<CrossChainNetwork>('stellar');
-
-  /**
-   * Airdrop 1 devnet SOL to this phrase's Solana address and wait for it to confirm, so
-   * the balance read straight after already includes it. Devnet rate-limits the airdrop
-   * per IP; a refusal says so and points at the web faucet. Nothing is signed.
-   */
-  const airdropTestnetSol = useCallback(async (): Promise<boolean> => {
-    const owner = meta?.chainAddresses?.solana;
-    if (!owner || networkEnv(network) !== 'dev') return false;
-    try {
-      const rpcLib = await chainRpcLib();
-      const sig = await rpcLib.solanaDevnetAirdrop(owner, SOLANA_AIRDROP_LAMPORTS);
-      const deadline = Date.now() + CHAIN_CONFIRM_TIMEOUT_MS;
-      for (;;) {
-        const done = await rpcLib.solanaDevnetConfirmed(sig);
-        if (done === false) throw new Error('airdrop failed on chain');
-        if (done) break;
-        if (Date.now() > deadline) {
-          // Sent but not seen yet: it usually lands; the next balance read will show it.
-          flash(t('chains.airdropPending'), 'info');
-          return true;
-        }
-        await new Promise((r) => setTimeout(r, CHAIN_CONFIRM_POLL_MS));
-      }
-      flash(t('chains.airdropOk'), 'ok');
-      return true;
-    } catch {
-      flash(t('chains.airdropFailed'), 'err');
-      return false;
-    }
-  }, [meta, network, t, flash]);
 
   /** The signing key of `chain`, checked against the address on screen. */
   const chainSigner = useCallback(
@@ -6639,7 +6607,6 @@ export function useWalletStore() {
     receiveNet,
     setReceiveNet,
     submitChainSend,
-    airdropTestnetSol,
     quoteChainSwap,
     submitChainSwap,
     quoteCrossChainFrom,

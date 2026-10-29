@@ -182,24 +182,3 @@ export async function monadReceipt(hash: string, net: ChainNet = 'mainnet'): Pro
   const r = await mon<{ status?: string } | null>('eth_getTransactionReceipt', [hash], net);
   return r ? r.status === '0x1' : null;
 }
-
-/* ----------------------------- test networks ----------------------------- */
-// The devnet airdrop. Nothing here signs — a faucet needs only the address it pays.
-
-/** Ask Solana devnet to airdrop `lamports` to `owner`; answers the transaction signature. */
-export async function solanaDevnetAirdrop(owner: string, lamports: bigint): Promise<string> {
-  return rpc<string>(testnetRpcUrl('solana'), 'requestAirdrop', [owner, Number(lamports), { commitment: 'confirmed' }]);
-}
-
-/** true once devnet reports `signature` confirmed, false if it failed, null while pending. */
-export async function solanaDevnetConfirmed(signature: string): Promise<boolean | null> {
-  const r = await rpc<{ value: ({ err: unknown; confirmationStatus?: string } | null)[] }>(
-    testnetRpcUrl('solana'),
-    'getSignatureStatuses',
-    [[signature]],
-  );
-  const status = r.value[0];
-  if (!status) return null;
-  if (status.err) return false;
-  return status.confirmationStatus === 'confirmed' || status.confirmationStatus === 'finalized' ? true : null;
-}
