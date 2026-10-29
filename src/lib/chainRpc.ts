@@ -182,3 +182,48 @@ export async function monadReceipt(hash: string, net: ChainNet = 'mainnet'): Pro
   const r = await mon<{ status?: string } | null>('eth_getTransactionReceipt', [hash], net);
   return r ? r.status === '0x1' : null;
 }
+
+/* ------------------------- any EVM or SVM network ------------------------- */
+// The same calls against a node the caller names — the registry's (`constants/networks.ts`) for
+// the networks beyond Solana and Monad. The node is trusted for state and relaying only, as above,
+// and `lib/networkSend.ts` checks it serves the chain id a transaction is signed for.
+
+export async function evmChainIdAt(url: string): Promise<number> {
+  return Number(BigInt(await rpc<string>(url, 'eth_chainId', [])));
+}
+
+export async function evmNonceAt(url: string, owner: string): Promise<bigint> {
+  return BigInt(await rpc<string>(url, 'eth_getTransactionCount', [owner, 'pending']));
+}
+
+/** `maxPriorityFeePerGas` and the latest block's base fee. */
+export async function evmFeesAt(url: string): Promise<{ tip: bigint; baseFee: bigint }> {
+  const [tip, block] = await Promise.all([
+    rpc<string>(url, 'eth_maxPriorityFeePerGas', []),
+    rpc<{ baseFeePerGas?: string }>(url, 'eth_getBlockByNumber', ['latest', false]),
+  ]);
+  return { tip: BigInt(tip), baseFee: BigInt(block.baseFeePerGas ?? '0x0') };
+}
+
+export async function evmEstimateGasAt(url: string, call: { from: string; to: string; data: string; value: bigint }): Promise<bigint> {
+  return BigInt(await rpc<string>(url, 'eth_estimateGas', [{ ...call, value: hexQty(call.value) }]));
+}
+
+export async function evmSendAt(url: string, raw: string): Promise<string> {
+  return rpc<string>(url, 'eth_sendRawTransaction', [raw]);
+}
+
+export async function svmLamportsAt(url: string, owner: string): Promise<bigint> {
+  const r = await rpc<{ value: number }>(url, 'getBalance', [owner, { commitment: 'confirmed' }]);
+  return BigInt(r.value);
+}
+
+export async function svmBlockhashAt(url: string): Promise<string> {
+  const r = await rpc<{ value: { blockhash: string } }>(url, 'getLatestBlockhash', [{ commitment: 'confirmed' }]);
+  return r.value.blockhash;
+}
+
+/** Broadcast a signed transaction; answers its id. Preflight runs, so a doomed one is refused here. */
+export async function svmSendAt(url: string, signed: Uint8Array): Promise<string> {
+  return rpc<string>(url, 'sendTransaction', [base64.encode(signed), { encoding: 'base64', preflightCommitment: 'confirmed' }]);
+}

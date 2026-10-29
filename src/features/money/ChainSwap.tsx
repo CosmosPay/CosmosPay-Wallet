@@ -1,17 +1,18 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Notice } from '@/ui/Notice';
 import { Spinner } from '@/ui/Spinner';
 import { trim } from '@/lib/format';
 import { cx } from '@/lib/cx';
-import { CROSS_CHAIN_TARGET_SYMBOLS, QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
+import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
+import { NETWORKS, NETWORK_IDS, type NetworkId } from '@/constants/networks';
+import { crossChainDestinations } from '@/lib/crossChainDest';
+import { NetworkPicker } from '@/features/money/NetworkPicker';
 import { CHAIN_TOKENS, NATIVE_RESERVE, type ChainToken, type OtherChain } from '@/constants/chains';
 import type { CrossChainAsset, CrossChainNetwork, CrossChainQuote, SwapQuote } from '@/lib/cosmospay';
 import { networkEnv } from '@/lib/stellar';
 import { fromMinorUnits, parseDecimalOr0, sanitizeDecimalInput, toMinorUnitsBig } from '@/lib/amount';
-
-const TARGETS: CrossChainNetwork[] = ['stellar', 'solana', 'monad'];
 
 const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-6)}`;
 
@@ -55,7 +56,10 @@ export function ChainSwap({ store, origin, header }: { store: WalletStore; origi
   const mainnet = networkEnv(store.network) === 'prod';
   const owner = store.chainAddress(origin);
   const recipient = crossChain ? store.chainAddress(target) : owner;
-  const chainName = (c: CrossChainNetwork) => t(`xswap.chain.${c}`);
+  const chainName = (c: NetworkId) => NETWORKS[c].name;
+  // Where the output may land: this chain (a Jupiter / Kuru swap) or any other the wallet holds.
+  const { addressOn } = store;
+  const targets = useMemo(() => NETWORK_IDS.filter((id) => id === 'stellar' || !!addressOn(id)), [addressOn]);
 
   // Balances on the origin chain; reloaded after each swap (busy → false).
   useEffect(() => {
@@ -80,9 +84,7 @@ export function ChainSwap({ store, origin, header }: { store: WalletStore; origi
     ? []
     : target === 'stellar'
       ? xAssets.filter((a) => a.chain === 'stellar')
-      : CROSS_CHAIN_TARGET_SYMBOLS[target]
-          .map((sym) => xAssets.find((a) => a.chain === target && a.symbol === sym))
-          .filter((a): a is CrossChainAsset => !!a);
+      : crossChainDestinations(xAssets, target);
   const xDest = destOptions.find((a) => a.assetId === xDestId) ?? destOptions[0] ?? null;
 
   const balance = balances?.[from.asset] ?? 0n;
@@ -168,13 +170,9 @@ export function ChainSwap({ store, origin, header }: { store: WalletStore; origi
     <>
       {header}
 
-      <div className="swap-target" role="radiogroup" aria-label={t('xswap.receiveOn')}>
+      <div className="swap-target">
         <div className="swap-target-label">{t('xswap.receiveOn')}</div>
-        {TARGETS.map((c) => (
-          <button key={c} type="button" role="radio" aria-checked={target === c} className={cx('swap-target-btn', target === c && 'is-on')} onClick={() => setTarget(c)}>
-            {chainName(c)}
-          </button>
-        ))}
+        <NetworkPicker value={target} onPick={setTarget} networks={targets} t={t} />
       </div>
 
       <div className="exchange-stack">

@@ -32,6 +32,12 @@ export const recoveryKey = (networkId: string, publicKey: string) => `recovery${
  */
 export const chainsKey = (networkId: string, publicKey: string) => `chains${scopeKey(networkId, publicKey)}`;
 
+/**
+ * The balances on every other network the wallet holds an address on (`constants/networks.ts`)
+ * — mainnet only, read from public APIs. Scoped like `chainsKey`, for the same reason.
+ */
+export const networksKey = (networkId: string, publicKey: string) => `networks${scopeKey(networkId, publicKey)}`;
+
 /** Prices are global — the same USD quote regardless of which wallet is open. */
 export const PRICES_KEY = 'prices';
 

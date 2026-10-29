@@ -2,9 +2,6 @@
    src/features/money/Receive.tsx — an address per network: its QR on the
    canvas (no box), the address, copy and share. Prefix: .receive-
    ===================================================================== */
-.receive-tabs {
-  margin-bottom: 8px;
-}
 
 .receive-panel {
   display: flex;

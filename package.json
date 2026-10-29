@@ -47,6 +47,7 @@
     "@noble/hashes": "^2.4.0",
     "@scure/base": "^2.4.0",
     "@scure/bip32": "^2.4.0",
+    "@scure/starknet": "^2.4.0",
     "@stellar/stellar-sdk": "^17.3.0",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-clipboard-manager": "^2.5.0",

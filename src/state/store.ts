@@ -7,13 +7,37 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // onboarding (create / import). A returning user who unlocks an existing wallet never
 // touches it, so it is imported on demand instead of at module load. The type import
 // is erased at compile time and costs nothing.
+import {
+  NETWORKS,
+  NETWORK_ADDRESSES_VERSION,
+  NETWORK_BALANCE_TTL_MS,
+  NETWORK_IDS,
+  type NetworkAddresses,
+  type NetworkId,
+  type NetworkToken,
+} from '@/constants/networks';
+import { isKnownNetwork, sameNetworkAddress } from '@/lib/crossChainDest';
 import type { DerivedAccount } from '@/lib/wallet';
 const walletLib = () => import('@/lib/wallet');
-// Solana + Monad derivation (bip32, secp256k1, keccak): only when an address is first shown.
+// Every network's address derivation (bip32, secp256k1, ed25519, hashes): only when one is first shown.
 const chainLib = () => import('@/lib/chainAddresses');
+/**
+ * The phrase a wallet's other networks come from: its own, or — for a wallet imported from a bare
+ * Stellar secret — the one that secret derives, so the secret alone always brings them back.
+ */
+const networksPhraseOf = (
+  v: { secret: string; mnemonic: string | null },
+  lib: { networksPhraseFromSecret: (secret: string) => string },
+): string => v.mnemonic ?? lib.networksPhraseFromSecret(v.secret);
 // Signing on Solana / Monad: loaded on the first swap paid from there, not at startup.
 const chainKeysLib = () => import('@/lib/chainKeys');
 const chainSwapLib = () => import('@/lib/chainSwap');
+// Balances on every other network: public APIs, read after unlock.
+const networkBalancesLib = () => import('@/lib/networkBalances');
+// Sending on the EVM networks and Fogo: loaded on the first such send.
+const networkSendLib = () => import('@/lib/networkSend');
+/** The networks Home reads beyond Stellar, Solana and Monad, which keep their own reads (test networks too). */
+const HOLDING_NETWORKS = NETWORK_IDS.filter((id) => id !== 'stellar' && id !== 'solana' && id !== 'monad' && NETWORKS[id].balance !== null);
 // Solana devnet / Monad testnet balances and the devnet airdrop: only on a test network.
 const chainRpcLib = () => import('@/lib/chainRpc');
 import {
@@ -84,7 +108,7 @@ import {
   type OtherChain,
 } from '@/constants/chains';
 import type { ChainExportKeys } from '@/lib/chainKeys';
-import type { ChainHoldings } from '@/lib/portfolio';
+import type { ChainHoldings, NetworkHoldings } from '@/lib/portfolio';
 import { SCREENS, backTarget, canEnter, type BackContext, type Screen, type Tab } from '@/lib/screens';
 import { NAV_SESSION, navState, planSync, readNavState, type NavPlace } from '@/lib/navHistory';
 import { forgetKeptInput, forgetKeptInputs } from '@/lib/keptInputs';
@@ -133,6 +157,7 @@ import {
   accountKey,
   chainsKey,
   historyKey,
+  networksKey,
   opsKey,
   recoveryKey,
   type OpsDomain,
@@ -317,13 +342,14 @@ async function secretOf(s: Session): Promise<string> {
  * device.
  */
 /**
- * What the Export screen shows after the password check: the phrase, the Stellar key, and
- * the phrase's Solana / Monad keys — null for a wallet imported from a bare secret, which
- * has no phrase to derive them from.
+ * What the Export screen shows after the password check: the phrase, the Stellar key, and the
+ * Solana / EVM keys of the phrase the other networks come from. A wallet imported from a bare
+ * secret has no phrase of its own; `networksPhrase` is then the one its secret derives.
  */
 export interface RevealedBackup {
   secret: string;
   mnemonic: string | null;
+  networksPhrase: string | null;
   chainKeys: ChainExportKeys | null;
 }
 
@@ -686,6 +712,7 @@ export function useWalletStore() {
   const historyK = historyKey(scope.net, scope.pub);
   const account = useQueryValue<AccountState>(accountK) ?? null;
   const chainHoldings = useQueryValue<ChainHoldings>(chainsKey(scope.net, scope.pub)) ?? null;
+  const networkHoldings = useQueryValue<NetworkHoldings>(networksKey(scope.net, scope.pub)) ?? null;
   const prices = useQueryValue<Record<string, PriceInfo>>(PRICES_KEY) ?? EMPTY_PRICES;
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -2457,20 +2484,21 @@ export function useWalletStore() {
   );
 
   /**
-   * The Solana and Monad addresses of the active wallet's recovery phrase, derived once and
-   * kept on its entry. Opens the vault with the session's key — no prompt, nothing leaves the
-   * device — and does nothing for a wallet imported from a bare secret key, which has none.
+   * The active wallet's address on every network family, derived once (and again when the
+   * derivation gains a family, `NETWORK_ADDRESSES_VERSION`) and kept on its entry. Opens the
+   * vault with the session's key — no prompt, nothing leaves the device. A wallet imported from
+   * a bare Stellar secret derives them from the phrase that secret gives (`networksPhraseOf`):
+   * the wallet is never Stellar-only (the user's call).
    */
   const ensureChainAddresses = useCallback(async (): Promise<void> => {
-    if (!session || !meta || meta.chainAddresses) return;
+    if (!session || !meta || meta.networkAddresses?.v === NETWORK_ADDRESSES_VERSION) return;
     const epoch = sessionEpochRef.current;
     try {
       const vaulted = await openVault(meta.id, session.vaultKey);
-      if (!vaulted.mnemonic) return;
-      const { chainAddressesFromMnemonic } = await chainLib();
-      const chainAddresses = await chainAddressesFromMnemonic(vaulted.mnemonic);
+      const lib = await chainLib();
+      const byKind = await lib.networkAddressesFromMnemonic(networksPhraseOf(vaulted, lib));
       guardSession(epoch);
-      const list = await updateWalletMeta(meta.id, { chainAddresses });
+      const list = await updateWalletMeta(meta.id, { networkAddresses: { v: NETWORK_ADDRESSES_VERSION, byKind } });
       setWallets(list);
       const entry = list.find((w) => w.id === meta.id);
       if (entry) setMetaState(entry);
@@ -2478,6 +2506,26 @@ export function useWalletStore() {
       /* Shown again next time; a derivation failure costs a line on a screen, not a wallet. */
     }
   }, [session, meta, guardSession]);
+
+  /**
+   * The wallet's address per family: the derived set, or — until it is derived — the Solana and
+   * Monad pair an older release stored. Null before either exists.
+   */
+  const networkAddresses = useMemo((): NetworkAddresses | null => {
+    if (meta?.networkAddresses) return meta.networkAddresses.byKind;
+    const legacy = meta?.chainAddresses;
+    return legacy ? { svm: legacy.solana, evm: legacy.monad } : null;
+  }, [meta]);
+
+  /** Our address on `net`, or null while it is not derived (or this build cannot derive it). */
+  const addressOnNetwork = useCallback(
+    (net: NetworkId): string | null => {
+      const kind = NETWORKS[net].address;
+      if (kind === 'stellar') return session?.publicKey ?? meta?.publicKey ?? null;
+      return networkAddresses?.[kind] ?? null;
+    },
+    [session, meta, networkAddresses],
+  );
 
   /**
    * A wallet recovered before re-keys were recorded carries an account its key may sign for
@@ -2724,7 +2772,7 @@ export function useWalletStore() {
     const apiKey = openAccessKey();
     if (!apiKey) return [];
     try {
-      return await cpListCrossChainAssets(apiKey);
+      return (await cpListCrossChainAssets(apiKey)).filter((a) => isKnownNetwork(a.chain));
     } catch {
       return [];
     }
@@ -2732,8 +2780,8 @@ export function useWalletStore() {
 
   /** The request both the quote and the create send. The recipient is always our own. */
   const crossChainInput = useCallback(
-    (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset): CrossChainSwapInput | null => {
-      const recipient = meta?.chainAddresses?.[target];
+    (amount: string, from: SwapAsset, target: NetworkId, dest: CrossChainAsset): CrossChainSwapInput | null => {
+      const recipient = target === 'stellar' ? null : addressOnNetwork(target);
       if (!session || !recipient) return null;
       return {
         originChain: 'stellar',
@@ -2746,11 +2794,11 @@ export function useWalletStore() {
         slippageBps: CROSS_CHAIN_SLIPPAGE_BPS,
       };
     },
-    [session, meta],
+    [session, addressOnNetwork],
   );
 
   const quoteCrossChain = useCallback(
-    async (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
+    async (amount: string, from: SwapAsset, target: NetworkId, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
       const apiKey = openAccessKey();
       const input = crossChainInput(amount, from, target, dest);
       if (!apiKey || !input) return null;
@@ -2776,7 +2824,7 @@ export function useWalletStore() {
    * three must be.
    */
   const submitCrossChain = useCallback(
-    async (amount: string, from: SwapAsset, target: CrossChainTarget, dest: CrossChainAsset, quote: CrossChainQuote) => {
+    async (amount: string, from: SwapAsset, target: NetworkId, dest: CrossChainAsset, quote: CrossChainQuote) => {
       if (!session) return;
       const apiKey = openAccessKey();
       const input = crossChainInput(amount, from, target, dest);
@@ -2785,14 +2833,14 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('confirmSig.swapTitle'),
-          message: t('xswap.confirmMsg', { amount, code: from.code, dest: quote.destination.asset, chain: t(`xswap.chain.${target}`) }),
+          message: t('xswap.confirmMsg', { amount, code: from.code, dest: quote.destination.asset, chain: NETWORKS[target].name }),
         });
         if (!okSig) return;
         setBusy(true);
         try {
           const swap = await cpCreateCrossChainSwap(apiKey, input);
           if (
-            swap.recipient !== input.recipient ||
+            !sameNetworkAddress(target, swap.recipient, input.recipient) ||
             swap.refundTo !== session.publicKey ||
             swap.originChain !== 'stellar' ||
             swap.destinationChain !== target ||
@@ -2821,7 +2869,7 @@ export function useWalletStore() {
           setSuccessInfo({
             kind: 'ok',
             title: t('xswap.success'),
-            msg: t('xswap.successMsg', { chain: t(`xswap.chain.${target}`), seconds: String(swap.timeEstimateSeconds) }),
+            msg: t('xswap.successMsg', { chain: NETWORKS[target].name, seconds: String(swap.timeEstimateSeconds) }),
             rows: [
               { label: t('swap.pay'), val: `${amount} ${from.code}` },
               { label: t('swap.receiveEst'), val: `${swap.amountOutEstimated} ${quote.destination.asset}` },
@@ -2855,11 +2903,7 @@ export function useWalletStore() {
   const chainNet: ChainNet = networkEnv(network) === 'dev' ? 'testnet' : 'mainnet';
 
   /** Our address on `chain`, or null for a wallet imported from a bare Stellar secret. */
-  const chainAddress = useCallback(
-    (chain: CrossChainNetwork): string | null =>
-      chain === 'stellar' ? session?.publicKey ?? null : meta?.chainAddresses?.[chain] ?? null,
-    [session, meta],
-  );
+  const chainAddress = useCallback((chain: CrossChainNetwork): string | null => addressOnNetwork(chain), [addressOnNetwork]);
 
   /**
    * Base-unit balances of the tokens offered on `chain` (`CHAIN_TOKENS_BY_NET[chainNet]`) at
@@ -2868,7 +2912,7 @@ export function useWalletStore() {
    */
   const chainBalances = useCallback(
     async (chain: OtherChain): Promise<Record<string, bigint> | null> => {
-      const owner = meta?.chainAddresses?.[chain];
+      const owner = addressOnNetwork(chain);
       if (!owner) return null;
       try {
         return await (await chainSwapLib()).chainBalances(chain, owner, chainNet);
@@ -2876,7 +2920,7 @@ export function useWalletStore() {
         return null;
       }
     },
-    [meta, chainNet],
+    [addressOnNetwork, chainNet],
   );
 
   /**
@@ -2886,8 +2930,10 @@ export function useWalletStore() {
    */
   const loadChainHoldings = useCallback(
     async (force = false): Promise<void> => {
-      const addrs = meta?.chainAddresses;
-      if (!session || !meta || !addrs) return;
+      const solana = addressOnNetwork('solana');
+      const monad = addressOnNetwork('monad');
+      if (!session || !meta || !solana || !monad) return;
+      const addrs: Record<OtherChain, string> = { solana, monad };
       const net = chainNet;
       try {
         await run(
@@ -2908,7 +2954,41 @@ export function useWalletStore() {
         /* The rows stay as they were; the next poll tries again. */
       }
     },
-    [session, meta, chainNet, networkId],
+    [session, meta, addressOnNetwork, chainNet, networkId],
+  );
+
+  /**
+   * The balances on every other network (`lib/networkBalances.ts`), mainnet only — none of them
+   * has a test network here. One read per network, each on its own, so one public API that is
+   * down or rate-limiting costs its own rows only; null means unknown, never zero.
+   */
+  const loadNetworkHoldings = useCallback(
+    async (force = false): Promise<void> => {
+      if (!session || !meta || !networkAddresses || chainNet !== 'mainnet') return;
+      const reads = HOLDING_NETWORKS.flatMap((id) => {
+        const address = addressOnNetwork(id);
+        return address ? [{ id, address }] : [];
+      });
+      try {
+        await run(
+          {
+            key: networksKey(networkId, meta.publicKey),
+            fetcher: async () => {
+              const { readNetworkBalances } = await networkBalancesLib();
+              const read = await Promise.all(
+                reads.map(async ({ id, address }) => [id, await readNetworkBalances(id, address).catch(() => null)] as const),
+              );
+              return Object.fromEntries(read) as NetworkHoldings;
+            },
+            ttl: NETWORK_BALANCE_TTL_MS,
+          },
+          force,
+        );
+      } catch {
+        /* The rows stay as they were; the next poll tries again. */
+      }
+    },
+    [session, meta, networkAddresses, addressOnNetwork, chainNet, networkId],
   );
 
   // The addresses are derived once per wallet (`ensureChainAddresses`), then read like a balance.
@@ -2921,25 +3001,30 @@ export function useWalletStore() {
     const id = setInterval(() => void loadChainHoldings(), 30_000);
     return () => clearInterval(id);
   }, [session, loadChainHoldings]);
+  useEffect(() => {
+    if (!session) return;
+    void loadNetworkHoldings();
+    const id = setInterval(() => void loadNetworkHoldings(), NETWORK_BALANCE_TTL_MS);
+    return () => clearInterval(id);
+  }, [session, loadNetworkHoldings]);
 
   /** The Solana / Monad holding Home opened, and the one the send screen starts on. */
   const [chainAsset, setChainAsset] = useState<{ chain: OtherChain; asset: string }>({ chain: 'solana', asset: 'native' });
   /** Which chain the swap screen pays from when it opens; the Home card sets it, Swap clears it. */
-  const [swapOrigin, setSwapOrigin] = useState<CrossChainNetwork>('stellar');
+  const [swapOrigin, setSwapOrigin] = useState<'stellar' | OtherChain>('stellar');
   /** Which network's tab the receive screen opens on; the Home card sets it, Receive clears it. */
-  const [receiveNet, setReceiveNet] = useState<CrossChainNetwork>('stellar');
+  const [receiveNet, setReceiveNet] = useState<NetworkId>('stellar');
 
   /** The signing key of `chain`, checked against the address on screen. */
   const chainSigner = useCallback(
     async (chain: OtherChain): Promise<{ owner: string; secret: Uint8Array }> => {
-      const owner = meta?.chainAddresses?.[chain];
-      const missing = () => new Error(t('xswap.noAddress', { chain: t(`xswap.chain.${chain}`) }));
+      const owner = addressOnNetwork(chain);
+      const missing = () => new Error(t('xswap.noAddress', { chain: NETWORKS[chain].name }));
       if (!session || !owner) throw missing();
-      const { mnemonic } = await openVault(session.walletId, session.vaultKey);
-      if (!mnemonic) throw missing();
-      return { owner, secret: await (await chainKeysLib()).chainSecret(mnemonic, chain, owner) };
+      const phrase = networksPhraseOf(await openVault(session.walletId, session.vaultKey), await chainLib());
+      return { owner, secret: await (await chainKeysLib()).chainSecret(phrase, chain, owner) };
     },
-    [session, meta, t],
+    [session, addressOnNetwork, t],
   );
 
   /** A refusal from `lib/chainSwap.ts` as a sentence; anything else as it came. */
@@ -3017,6 +3102,77 @@ export function useWalletStore() {
     [session, chainNet, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, loadChainHoldings, t],
   );
 
+  /** A fresh read of one network's balances (the send form's); null when it cannot be read. */
+  const networkBalances = useCallback(
+    async (net: NetworkId): Promise<Record<string, bigint> | null> => {
+      const owner = addressOnNetwork(net);
+      if (!owner) return null;
+      try {
+        return await (await networkBalancesLib()).readNetworkBalances(net, owner);
+      } catch {
+        return null;
+      }
+    },
+    [addressOnNetwork],
+  );
+
+  /**
+   * Send on any other network the wallet signs on (`lib/networkSend.ts`): the EVM ones with the
+   * phrase's EVM key, Fogo with its SVM key — each checked against the address on screen.
+   * Solana and Monad go through `submitChainSend`, which also knows their test networks.
+   */
+  const submitNetworkSend = useCallback(
+    async (net: NetworkId, token: NetworkToken, to: string, amount: string) => {
+      if (net === 'solana' || net === 'monad') return submitChainSend(net, token, to, amount);
+      const def = NETWORKS[net];
+      const units = toMinorUnitsBig(amount, token.decimals);
+      const destination = to.trim();
+      if (!session || !def.send || !units || units <= 0n || chainNet !== 'mainnet') return;
+      const short = `${destination.slice(0, 6)}…${destination.slice(-6)}`;
+      await exclusive.run('send', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('chainSend.confirmTitle'),
+          message: t('chainSend.confirmMsg', { amount, code: token.symbol, net: def.name, to: short }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const lib = await networkSendLib();
+          if (!lib.isNetworkAddress(net, destination)) throw new (await chainSwapLib()).ChainSwapRefused('address');
+          // One key per family: every EVM network signs with the phrase's EVM key, Fogo with its SVM one.
+          const { owner, secret } = await chainSigner(def.address === 'svm' ? 'solana' : 'monad');
+          guardSession(epoch);
+          let hash: string;
+          try {
+            hash = await lib.sendNetworkTransfer({ network: net, secret, owner, asset: token.asset, to: destination, amount: units });
+          } finally {
+            secret.fill(0);
+          }
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('chainSend.success'),
+            msg: t('chainSend.successMsg', { net: def.name }),
+            rows: [
+              { label: t('chainSend.amount'), val: `${amount} ${token.symbol}` },
+              { label: t('chainSend.to'), val: short },
+            ],
+            hash,
+            ...(def.explorerTx ? { explorer: def.explorerTx.replace('{tx}', hash) } : {}),
+          });
+          setScreen('success');
+        } catch (e) {
+          setSuccessInfo({ kind: 'err', title: t('chainSend.failed'), msg: chainSwapMessage(e), rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+          void loadNetworkHoldings(true);
+        }
+      });
+    },
+    [session, chainNet, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, submitChainSend, loadNetworkHoldings, t],
+  );
+
   const quoteChainSwap = useCallback(
     async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken): Promise<SwapQuote | null> => {
       const apiKey = openAccessKey();
@@ -3045,7 +3201,7 @@ export function useWalletStore() {
   const submitChainSwap = useCallback(
     async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, quote: SwapQuote) => {
       const apiKey = openAccessKey();
-      const owner = meta?.chainAddresses?.[chain];
+      const owner = addressOnNetwork(chain);
       const units = toMinorUnitsBig(amount, from.decimals);
       const minimum = toMinorUnitsBig(quote.destination.minimum, to.decimals);
       if (!session || !apiKey || !owner || !units || minimum === null) return;
@@ -3053,7 +3209,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('confirmSig.swapTitle'),
-          message: t('xswap.chainConfirmMsg', { amount, code: from.symbol, dest: to.symbol, chain: t(`xswap.chain.${chain}`) }),
+          message: t('xswap.chainConfirmMsg', { amount, code: from.symbol, dest: to.symbol, chain: NETWORKS[chain].name }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -3109,7 +3265,7 @@ export function useWalletStore() {
           setSuccessInfo({
             kind: 'ok',
             title: t('xswap.chainSuccess'),
-            msg: t('xswap.chainSuccessMsg', { chain: t(`xswap.chain.${chain}`) }),
+            msg: t('xswap.chainSuccessMsg', { chain: NETWORKS[chain].name }),
             rows: [
               { label: t('swap.pay'), val: `${amount} ${from.symbol}` },
               { label: t('swap.receiveEst'), val: `${swap.destEstimated} ${to.symbol}` },
@@ -3182,16 +3338,15 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('confirmSig.swapTitle'),
-          message: t('xswap.confirmMsg', { amount, code: from.symbol, dest: quote.destination.asset, chain: t(`xswap.chain.${dest.chain}`) }),
+          message: t('xswap.confirmMsg', { amount, code: from.symbol, dest: quote.destination.asset, chain: NETWORKS[dest.chain].name }),
         });
         if (!okSig) return;
         setBusy(true);
         try {
           const swap = await cpCreateCrossChainSwap(apiKey, input);
-          const same = (a: string, b: string) => (origin === 'monad' ? a.toLowerCase() === b.toLowerCase() : a === b);
           if (
-            swap.recipient !== input.recipient ||
-            !same(swap.refundTo, input.refundTo) ||
+            !sameNetworkAddress(dest.chain, swap.recipient, input.recipient) ||
+            !sameNetworkAddress(origin, swap.refundTo, input.refundTo) ||
             swap.originChain !== origin ||
             swap.destinationChain !== dest.chain ||
             !sameDecimal(swap.amountIn, amount)
@@ -3234,8 +3389,8 @@ export function useWalletStore() {
             kind: 'ok',
             title: t('xswap.success'),
             msg: t('xswap.successFromMsg', {
-              origin: t(`xswap.chain.${origin}`),
-              chain: t(`xswap.chain.${dest.chain}`),
+              origin: NETWORKS[origin].name,
+              chain: NETWORKS[dest.chain].name,
               seconds: String(swap.timeEstimateSeconds),
             }),
             rows: [
@@ -5550,15 +5705,20 @@ export function useWalletStore() {
         // The same phrase's Solana and Monad keys, so one screen restores every chain it
         // holds. A derivation that disagrees with the addresses on screen drops them rather
         // than the whole reveal: the phrase and the Stellar key are still right.
+        // A wallet imported from a bare secret has no phrase of its own, so its other networks
+        // come from the phrase that secret derives — shown too, so another wallet can hold them.
+        const lib = await chainLib();
+        const phrase = networksPhraseOf(v, lib);
         let chainKeys: ChainExportKeys | null = null;
-        if (v.mnemonic) {
-          try {
-            chainKeys = await (await chainKeysLib()).chainExportKeys(v.mnemonic, meta.chainAddresses);
-          } catch {
-            chainKeys = null;
-          }
+        try {
+          chainKeys = await (await chainKeysLib()).chainExportKeys(phrase, {
+            ...(networkAddresses?.svm ? { solana: networkAddresses.svm } : {}),
+            ...(networkAddresses?.evm ? { monad: networkAddresses.evm } : {}),
+          });
+        } catch {
+          chainKeys = null;
         }
-        return { secret: v.secret, mnemonic: v.mnemonic, chainKeys };
+        return { secret: v.secret, mnemonic: v.mnemonic, networksPhrase: v.mnemonic ? null : phrase, chainKeys };
       } catch (err) {
         // Counted by `claimAttempt` before the derivation; released again when the throw
         // was a missing or corrupt vault rather than a wrong guess.
@@ -5566,7 +5726,7 @@ export function useWalletStore() {
         return null;
       }
     },
-    [meta, claimAttempt, forgetAttempt, flash],
+    [meta, networkAddresses, claimAttempt, forgetAttempt, flash],
   );
 
   /* ----------------------------- sign-in ----------------------------- */
@@ -6682,6 +6842,9 @@ export function useWalletStore() {
     enableReceiving,
     submitLinkCode,
     ensureChainAddresses,
+    /** The wallet's address per family, and on one network (`constants/networks.ts`). */
+    networkAddresses,
+    addressOn: addressOnNetwork,
     cancelLink,
     quoteSwap,
     submitSwap,
@@ -6696,6 +6859,10 @@ export function useWalletStore() {
     chainNet,
     chainBalances,
     chainHoldings,
+    /** Balances on every other network, mainnet only; null while unread. */
+    networkHoldings,
+    networkBalances,
+    submitNetworkSend,
     loadChainHoldings,
     chainAsset,
     setChainAsset,

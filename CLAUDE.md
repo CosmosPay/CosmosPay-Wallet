@@ -186,13 +186,15 @@ blue line). Home is greeting, total balance with its 24h move, four ringed actio
 Activos (every network's holdings, a network filter, each token's network coin on its corner) ·
 Actividad (in days, `ActivityList`) · Análisis (the split by network and asset) · Favoritos.
 **The Wallet tab** (`features/wallet/Wallets.tsx`) is everything about the wallet itself, so using
-several networks is one place: the active wallet's address on Stellar, Solana and Monad (copy, or
-its QR on Receive), the Stellar ledger, recovery (account recovery, transfer to another device, the
-phrase) and the wallets on this device. **Adding a wallet is one short flow**
+several networks is one place: the active wallet's addresses — one row per address, not per network
+(the sixteen EVM networks are one 0x account) — with copy and the QR on Receive, the Stellar ledger,
+recovery (account recovery, transfer to another device, the phrase) and the wallets on this device. **Adding a wallet is one short flow**
 (`features/onboarding/AddWallet.tsx`, the user's call): create (a phrase to keep) or import, a name,
 done — sealed under the session's key with the person's own profile, no account, no profile and no
-password screen (`prepareNewWallet` / `prepareImportedWallet` → `addWalletToDevice`). Send and
-Receive take one tab per network. **One question per step** (the user's
+password screen (`prepareNewWallet` / `prepareImportedWallet` → `addWalletToDevice`). Send,
+Receive and Swap choose the network with `features/money/NetworkPicker.tsx` — a searchable list
+grouped by shared address, in a sheet on a phone and a dropdown on a desktop; thirty-odd networks
+do not fit a row of tabs. **One question per step** (the user's
 call: a screen with every field was too much at once): `profile-setup` walks
 `PROFILE_STEPS` (`constants/onboarding.ts`) — the name, the email, its code, the age and gender,
 the two optional consents — as `goStep` stops, under a line per step and "Paso n de 5"; Enter in a
@@ -1013,6 +1015,42 @@ go last, as they went on.
 `tests/unit/recovery.test.ts` is the file to extend: it holds the template refusals (each one
 a way an envelope can look like a recovery setup and be a takeover) and the challenge
 refusals. Add a case there before changing anything in `assertRecoveryTemplate`.
+
+## The wallet is every network NEAR Intents settles, not a Stellar wallet with extras
+
+The user's call. `src/constants/networks.ts` is the registry: the 35 networks the community
+server's cross-chain swaps accept, under the server's own ids (`tests/unit/networks.test.ts` pins
+the list), each with its address family, coin, EVM chain id, a public keyless CORS endpoint for its
+balance, the canonical stablecoin contracts read there and its explorers. Five rules:
+
+- **One phrase, one address per family.** `lib/chainAddresses.ts` derives every family from the
+  recovery phrase at the paths the mainstream wallets use, so the same phrase shows the same
+  addresses elsewhere; the entry keeps them as `networkAddresses` (`v` = `NETWORK_ADDRESSES_VERSION`:
+  bump it when a family is added and every wallet derives again on its next unlock). A family the
+  build cannot derive is ABSENT, never guessed — the screens only offer networks with an address
+  (`store.addressOn`). The EVM networks share one 0x account, Solana and Fogo one SVM account, Aptos
+  and Movement one Move account; screens say so rather than listing one address thirty times.
+- **No wallet is Stellar-only.** A wallet imported from a bare Stellar secret gets its other networks
+  from the phrase that secret derives (`networksPhraseFromSecret`: HKDF of the seed → 12 words), so
+  the secret alone — backup, transfer, export — always brings them back; nothing new is stored or
+  backed up. Export shows that phrase so another wallet can hold those addresses. Never change its
+  derivation: every address it ever gave would stop being this wallet's.
+- **Signing stays narrow.** The wallet sends natively on Stellar, Solana, Monad, the EVM networks
+  with a verified chain id and Fogo (`send` in the registry; `lib/networkSend.ts`); the others
+  receive and are swap destinations. An EVM transfer asserts the node serves the chain id it is
+  signed for, and only the coin or a registry contract is ever paid out. One key per family: every
+  EVM network signs with the phrase's EVM key, checked against the address on screen.
+- **Balances are unknown before they are zero.** `lib/networkBalances.ts` reads each network from
+  its public API; a read that fails is `null` (no rows), never 0, and only what is held is listed.
+  Mainnet only: Solana and Monad keep their own reads, which follow the Stellar network onto their
+  test networks; on a test network the others show their (real) address with a notice saying so.
+- **A swap's output is checked as the server spells it.** NEAR Intents can deliver to any network;
+  the wallet still refuses a swap whose recipient or refund is not its own, comparing with
+  `sameNetworkAddress` (hex and bech32 in one case, cashaddr with or without its prefix, base58
+  exactly) — an exact compare would refuse every EVM swap, a case-folding one would weaken base58.
+
+The extension derives its `host_permissions` from the registry's endpoints
+(`scripts/build-extension.ts`), so a new endpoint is reachable from the popup without a second list.
 
 ## An asset is a (code, issuer) pair, and the registry says whose
 

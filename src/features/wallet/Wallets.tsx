@@ -18,11 +18,17 @@ import { shortAddr } from '@/lib/format';
 import { addressOn } from '@/lib/accountAddress';
 import { buildKind } from '@/lib/platform';
 import { cx } from '@/lib/cx';
-import type { CrossChainNetwork } from '@/lib/cosmospay';
+import type { TFn } from '@/lib/i18n';
+import { NETWORKS, NETWORK_GROUPS, type NetworkId } from '@/constants/networks';
 import '@/styles/features/wallet/wallets.css';
 
-/** The coin that names each network. */
-const NETWORK_COIN: Record<CrossChainNetwork, string> = { stellar: 'XLM', solana: 'SOL', monad: 'MON' };
+/** The names of the networks one address serves: "Solana y Fogo", "Ethereum, Base y 14 más". */
+function groupLabel(networks: readonly NetworkId[], t: TFn): string {
+  const names = networks.map((id) => NETWORKS[id].name);
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return t('wallets.groupTwo', { a: names[0], b: names[1] });
+  return t('wallets.groupMore', { names: names.slice(0, 2).join(', '), n: names.length - 2 });
+}
 
 /**
  * The Wallet tab: everything about the wallet itself, so using several networks is one place.
@@ -43,17 +49,17 @@ export function Wallets({ store }: { store: WalletStore }) {
     void loadRecovery();
   }, [loadRecovery, store.publicKey, store.network.id]);
 
-  const chains = store.meta?.chainAddresses;
-  const addresses: { net: CrossChainNetwork; label: string; address: string }[] = [
-    { net: 'stellar', label: `Stellar · ${store.network.label}`, address: store.publicKey ?? '' },
-    ...(chains
-      ? ([
-          { net: 'solana', label: t(`chains.net.${store.chainNet}.solana`), address: chains.solana },
-          { net: 'monad', label: t(`chains.net.${store.chainNet}.monad`), address: chains.monad },
-        ] as const)
-      : []),
-  ];
-  const showQr = (net: CrossChainNetwork) => {
+  // One row per address, not per network: the sixteen EVM networks are one 0x account, and
+  // saying so is what tells a person the same address works on all of them.
+  const netAddress = store.addressOn;
+  const addresses = NETWORK_GROUPS.flatMap((g) => {
+    const net = g.networks[0];
+    const address = netAddress(net);
+    if (!address) return [];
+    const label = net === 'stellar' ? `Stellar · ${store.network.label}` : groupLabel(g.networks, t);
+    return [{ net, kind: g.kind, coin: NETWORKS[net].coin, label, address }];
+  });
+  const showQr = (net: NetworkId) => {
     store.setReceiveNet(net);
     store.setScreen('receive');
   };
@@ -86,8 +92,8 @@ export function Wallets({ store }: { store: WalletStore }) {
         </div>
         <div className="wallets-addresses">
           {addresses.map((a) => (
-            <div key={a.net} className="wallets-addr">
-              <AssetLogo code={NETWORK_COIN[a.net]} size={34} />
+            <div key={a.kind} className="wallets-addr">
+              <AssetLogo code={a.coin} size={34} />
               <div className="wallets-addr-main">
                 <span className="wallets-addr-net">{a.label}</span>
                 <span className="wallets-addr-value">{shortAddr(a.address, 6, 6)}</span>
@@ -106,7 +112,6 @@ export function Wallets({ store }: { store: WalletStore }) {
             </div>
           ))}
         </div>
-        {!chains && <p className="wallets-note">{t('wallets.keyOnly')}</p>}
       </section>
 
       {/* ---- the Stellar ledger ---- */}

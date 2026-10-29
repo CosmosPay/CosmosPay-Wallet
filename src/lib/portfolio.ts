@@ -3,6 +3,7 @@ import type { AccountState, PriceInfo } from '@/lib/stellar';
 import { findRegistryAsset, registrySnapshot } from '@/lib/assetRegistry';
 import { fromMinorUnits } from '@/lib/amount';
 import { CHAIN_TOKENS_BY_NET, OTHER_CHAINS, type ChainNet, type OtherChain } from '@/constants/chains';
+import { NETWORKS, NETWORK_IDS, type NetworkId } from '@/constants/networks';
 
 export interface AssetRow {
   code: string;
@@ -13,18 +14,27 @@ export interface AssetRow {
   isNative: boolean;
   /** Set on a Solana / Monad holding; absent on a Stellar one. */
   chain?: OtherChain;
+  /** Set on a holding on any other network (`networkRows`). */
+  network?: NetworkId;
   /** The token on `chain`: `native`, or its SPL mint / ERC-20 address. */
   asset?: string;
 }
 
 /** A row's identity. A code is not one: USDC on Stellar and USDC on Solana are two rows. */
-export const rowKey = (r: AssetRow): string => (r.chain ? `${r.chain}:${r.asset}` : `${r.code}:${r.issuer ?? ''}`);
+export const rowKey = (r: AssetRow): string =>
+  r.network ? `${r.network}:${r.asset}` : r.chain ? `${r.chain}:${r.asset}` : `${r.code}:${r.issuer ?? ''}`;
 
 /**
  * Base-unit balances of the phrase's Solana and Monad tokens, per chain. A chain whose node
  * could not be read is `null`, and contributes no rows — a zero would read as "emptied".
  */
 export type ChainHoldings = Partial<Record<OtherChain, Record<string, bigint> | null>>;
+
+/**
+ * Base-unit balances on the networks beyond Stellar, Solana and Monad (`lib/networkBalances.ts`):
+ * `native` and each registry token by its asset. A network that could not be read is `null`.
+ */
+export type NetworkHoldings = Partial<Record<NetworkId, Record<string, bigint> | null>>;
 
 /**
  * Dollar stablecoins on the other chains. Unlike a Stellar code these are safe to price by
@@ -57,6 +67,38 @@ export function chainRows(holdings: ChainHoldings | null, net: ChainNet, prices:
         value: price !== null ? amount * price : null,
         isNative: false,
         chain,
+        asset: token.asset,
+      });
+    }
+  }
+  return rows;
+}
+
+/**
+ * The holdings on every other network as portfolio rows — only what is held: thirty networks of
+ * zero coins would bury the ones that matter. Stablecoins are the registry's canonical contracts,
+ * so pricing them at $1 is safe; a coin without a live price shows its amount and adds nothing.
+ */
+export function networkRows(holdings: NetworkHoldings | null, prices: Record<string, PriceInfo>): AssetRow[] {
+  if (!holdings) return [];
+  const rows: AssetRow[] = [];
+  for (const id of NETWORK_IDS) {
+    const balances = holdings[id];
+    if (!balances) continue;
+    const def = NETWORKS[id];
+    for (const token of [{ symbol: def.coin, asset: 'native', decimals: def.decimals }, ...def.tokens]) {
+      const units = balances[token.asset] ?? 0n;
+      if (units === 0n) continue;
+      const amount = parseFloat(fromMinorUnits(units, token.decimals) ?? '0') || 0;
+      const price = prices[token.symbol]?.usd ?? (CHAIN_STABLE.has(token.symbol) ? 1 : null);
+      rows.push({
+        code: token.symbol,
+        issuer: null,
+        amount,
+        price,
+        value: price !== null ? amount * price : null,
+        isNative: false,
+        network: id,
         asset: token.asset,
       });
     }

@@ -30,6 +30,7 @@
 // per request as developer-mode override -> PUBLIC_* env -> same-origin default,
 // so a dev can repoint them live from Settings without rebuilding. The gateway
 // still exposes the payments API behind an entry prefix (default `/cosmos-api`).
+import type { NetworkId } from '@/constants/networks';
 import type { LedgerName } from '@/lib/stellar';
 import { gatewayApi, walletApiBase } from '@/lib/endpoints';
 import { newTraceId } from '@/lib/trace';
@@ -882,10 +883,10 @@ export async function createSwap(apiKey: string, input: CreateSwapInput): Promis
  * the gateway refuses a testnet key.
  */
 
-/** The chains besides Stellar: a Jupiter / Kuru swap, or one end of a cross-chain one. */
+/** The chains besides Stellar the gateway swaps ON: a Jupiter (Solana) or Kuru (Monad) swap. */
 export type CrossChainTarget = 'solana' | 'monad';
-/** Any end of a cross-chain swap. */
-export type CrossChainNetwork = 'stellar' | CrossChainTarget;
+/** Any end of a cross-chain swap: every network NEAR Intents settles (`constants/networks.ts`). */
+export type CrossChainNetwork = NetworkId;
 
 export interface CrossChainAsset {
   chain: CrossChainNetwork;

@@ -3,10 +3,6 @@
    the network tabs, the destination with its scan or paste beside it, the
    amount, the memo. Prefix: .send-   Fields are lines; no grey fills.
    ===================================================================== */
-.send-tabs {
-  margin-bottom: 18px;
-}
-
 .send-panel {
   display: flex;
   flex: 1;

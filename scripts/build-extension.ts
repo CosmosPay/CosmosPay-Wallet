@@ -27,6 +27,7 @@ import {
   DEFAULT_SOLANA_RPC_URL,
   DEFAULT_SOLANA_TESTNET_RPC_URL,
 } from '../src/constants/backends.ts';
+import { NETWORKS } from '../src/constants/networks.ts';
 import { cosmosHostPermissions, hostPattern } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
@@ -280,13 +281,26 @@ const COSMOS_HOST_PERMISSIONS = cosmosHostPermissions([
 // and their test networks, where Home reads test balances and asks devnet for an airdrop.
 // Not CORS-exempt otherwise, exactly like the backends above.
 const CHAIN_RPC_HOST_PERMISSIONS = [
-  env.PUBLIC_SOLANA_RPC_URL || DEFAULT_SOLANA_RPC_URL,
-  env.PUBLIC_MONAD_RPC_URL || DEFAULT_MONAD_RPC_URL,
-  env.PUBLIC_SOLANA_TESTNET_RPC_URL || DEFAULT_SOLANA_TESTNET_RPC_URL,
-  env.PUBLIC_MONAD_TESTNET_RPC_URL || DEFAULT_MONAD_TESTNET_RPC_URL,
-]
-  .map(hostPattern)
-  .filter((p): p is string => p !== null);
+  ...new Set(
+    [
+      env.PUBLIC_SOLANA_RPC_URL || DEFAULT_SOLANA_RPC_URL,
+      env.PUBLIC_MONAD_RPC_URL || DEFAULT_MONAD_RPC_URL,
+      env.PUBLIC_SOLANA_TESTNET_RPC_URL || DEFAULT_SOLANA_TESTNET_RPC_URL,
+      env.PUBLIC_MONAD_TESTNET_RPC_URL || DEFAULT_MONAD_TESTNET_RPC_URL,
+      // Every other network's balance source and node (`src/constants/networks.ts`), and the
+      // two balance APIs named by coin rather than by URL there.
+      ...Object.values(NETWORKS).flatMap((n) => {
+        const b = n.balance;
+        if (!b) return [];
+        if (b.kind === 'blockcypher') return ['https://api.blockcypher.com'];
+        if (b.kind === 'blockchair') return ['https://api.blockchair.com'];
+        return [b.kind === 'sui' ? b.graphql : 'rpc' in b ? b.rpc : b.api];
+      }),
+    ]
+      .map(hostPattern)
+      .filter((p): p is string => p !== null),
+  ),
+];
 
 // MV3 manifest
 const manifest = {

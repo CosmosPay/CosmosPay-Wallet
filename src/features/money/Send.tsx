@@ -1,37 +1,41 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
 import { CheckIcon, CloseIcon, LinkIcon, ScanIcon } from '@/ui/Icons';
 import { ScreenHeader } from '@/ui/ScreenHeader';
-import { Tabs } from '@/ui/Tabs';
 import { readText } from '@/lib/clipboard';
 import { fmt, trim } from '@/lib/format';
 import { isValidPublicKey } from '@/lib/wallet';
 import { cx } from '@/lib/cx';
 import { AssetSelect } from '@/features/money/AssetSelect';
 import { ChainSendForm } from '@/features/money/ChainSend';
+import { NetworkPicker } from '@/features/money/NetworkPicker';
 import { findAsset, isNativeRef } from '@/lib/asset';
 import { parseDecimalOr0, sanitizeDecimalInput } from '@/lib/amount';
 import { clampMemoText, memoProblem } from '@/lib/memo';
 import { spendableXlm, sendableAssets } from '@/lib/balances';
-import type { CrossChainNetwork } from '@/lib/cosmospay';
+import { NETWORKS, NETWORK_IDS, type NetworkId } from '@/constants/networks';
 import '@/styles/ui/field.css';
 import '@/styles/features/money/send.css';
 
-const NETWORKS: readonly CrossChainNetwork[] = ['stellar', 'solana', 'monad'];
+/** The networks whose test network the wallet follows; on a test Stellar network only these send. */
+const TEST_NETWORKS: readonly NetworkId[] = ['stellar', 'solana', 'monad'];
 
 /* ------------------------------- SEND ------------------------------- */
 /**
- * Send from any network the wallet holds, one tab each: Stellar (any trustline, a memo, a pay
- * link pasted or scanned) and the phrase's own Solana and Monad addresses. Opened from a
- * Solana / Monad holding (the `chain-send` screen) it starts on that network.
+ * Send from any network the wallet signs on, chosen with the network picker: Stellar (any
+ * trustline, a memo, a pay link pasted or scanned), Solana, Monad, every EVM network and Fogo
+ * (`constants/networks.ts`, `send`). Opened from a Solana / Monad holding (the `chain-send`
+ * screen) it starts on that network.
  */
 export function Send({ store }: { store: WalletStore }) {
   const t = store.t;
-  const chains = store.meta?.chainAddresses;
-  const [net, setNet] = useState<CrossChainNetwork>(store.screen === 'chain-send' ? store.chainAsset.chain : 'stellar');
-  const panelId = useId();
-  const { ensureChainAddresses } = store;
+  const [net, setNet] = useState<NetworkId>(store.screen === 'chain-send' ? store.chainAsset.chain : 'stellar');
+  const { ensureChainAddresses, addressOn, chainNet } = store;
+  const offered = useMemo(
+    () => NETWORK_IDS.filter((id) => NETWORKS[id].send && !!addressOn(id) && (chainNet === 'mainnet' || TEST_NETWORKS.includes(id))),
+    [addressOn, chainNet],
+  );
   useEffect(() => {
     void ensureChainAddresses();
   }, [ensureChainAddresses]);
@@ -39,17 +43,8 @@ export function Send({ store }: { store: WalletStore }) {
   return (
     <div className="scr screen col pb-24">
       <ScreenHeader title={t('send.title')} onBack={store.goBack} />
-      {chains && (
-        <Tabs
-          tabs={NETWORKS.map((n) => ({ key: n, label: t(`xswap.chain.${n}`) }))}
-          value={net}
-          onChange={setNet}
-          label={t('receive.network')}
-          panelId={panelId}
-          className="send-tabs"
-        />
-      )}
-      <div id={panelId} role="tabpanel" className="send-panel">
+      {offered.length > 1 && <NetworkPicker value={net} onPick={setNet} networks={offered} t={t} />}
+      <div className="send-panel">
         {net === 'stellar' ? <StellarSend store={store} /> : <ChainSendForm key={net} store={store} chain={net} />}
       </div>
     </div>

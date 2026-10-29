@@ -27,7 +27,7 @@ import { ProtectAccountCard } from '@/features/wallet/ProtectAccountCard';
 import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
 import { useKeptState } from '@/hooks/useKeptState';
 import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
-import { chainRows, computePortfolio, rowKey, type AssetRow } from '@/lib/portfolio';
+import { chainRows, networkRows, computePortfolio, rowKey, type AssetRow } from '@/lib/portfolio';
 import { fmt, splitMoney, pct } from '@/lib/format';
 import { getGreeting } from '@/lib/greeting';
 import { networkEnv } from '@/lib/stellar';
@@ -36,6 +36,7 @@ import { cx } from '@/lib/cx';
 import { KEPT_INPUT } from '@/constants/keptInputs';
 import { MARKET_TOKENS } from '@/constants/markets';
 import { HOME_ACTIVITY_ROWS, HOME_TABS, NETWORK_FILTERS, type HomeTab, type NetworkFilter } from '@/constants/home';
+import { NETWORKS, NETWORK_IDS, type NetworkId } from '@/constants/networks';
 import '@/styles/features/wallet/home.css';
 
 /** Cap a name to `max` chars, cutting back to its last vowel so it reads naturally
@@ -47,7 +48,7 @@ function shortName(name: string, max = 12): string {
   return m ? m[0] : cut;
 }
 
-const networkOf = (r: AssetRow): Exclude<NetworkFilter, 'all'> => r.chain ?? 'stellar';
+const networkOf = (r: AssetRow): NetworkId => r.network ?? r.chain ?? 'stellar';
 
 /* ------------------------------- HOME -------------------------------- */
 /**
@@ -57,8 +58,8 @@ const networkOf = (r: AssetRow): Exclude<NetworkFilter, 'all'> => r.chain ?? 'st
  */
 export function Home({ store }: { store: WalletStore }) {
   const t = store.t;
-  // Stellar balances and the same phrase's Solana / Monad ones are one list and one total.
-  const extra = chainRows(store.chainHoldings, store.chainNet, store.prices);
+  // Stellar balances and the same phrase's other networks are one list and one total.
+  const extra = [...chainRows(store.chainHoldings, store.chainNet, store.prices), ...networkRows(store.networkHoldings, store.prices)];
   const { total, rows, changePct, deltaUsd } = computePortfolio(store.account, store.prices, store.network.id, extra);
   // Every portfolio number eases towards its live value (colours and arrows follow the target).
   const money = splitMoney(useAnimatedNumber(total));
@@ -89,16 +90,31 @@ export function Home({ store }: { store: WalletStore }) {
   );
   const firstName = shortName((store.meta?.name || 'astronauta').trim().split(/\s+/)[0]);
 
-  // The networks this wallet holds an address on: Stellar always, the others with a phrase.
-  const networks = NETWORK_FILTERS.filter((n) => n === 'all' || n === 'stellar' || !!store.meta?.chainAddresses);
+  // The filters: Stellar, Solana and Monad once the addresses exist, and any other network
+  // while something is held there — thirty networks of nothing would bury the ones in use.
+  const held = new Set(rows.map(networkOf));
+  const networks: NetworkFilter[] = [
+    ...NETWORK_FILTERS.filter((n) => n === 'all' || n === 'stellar' || !!store.networkAddresses),
+    ...NETWORK_IDS.filter((n) => n !== 'stellar' && n !== 'solana' && n !== 'monad' && held.has(n)),
+  ];
   const shown = filter === 'all' ? rows : rows.filter((r) => networkOf(r) === filter);
-  // Stellar's ledger is named only when it is not the real one, the way the others are.
-  const networkName = (n: Exclude<NetworkFilter, 'all'>) =>
-    n === 'stellar' ? (testnet ? `Stellar ${store.network.label}` : 'Stellar') : t(`chains.net.${store.chainNet}.${n}`);
+  // Stellar's ledger is named only when it is not the real one, the way Solana's and Monad's are.
+  const networkName = (n: NetworkId) =>
+    n === 'stellar'
+      ? testnet
+        ? `Stellar ${store.network.label}`
+        : 'Stellar'
+      : n === 'solana' || n === 'monad'
+        ? t(`chains.net.${store.chainNet}.${n}`)
+        : NETWORKS[n].name;
 
   const openRow = (r: AssetRow) => {
     const { chain, asset } = r;
-    if (chain && asset) {
+    if (r.network) {
+      // No details screen for these networks yet: their address and QR, where more arrives.
+      store.setReceiveNet(r.network);
+      store.setScreen('receive');
+    } else if (chain && asset) {
       store.setChainAsset({ chain, asset });
       store.setScreen('chain-asset');
     } else {
@@ -201,7 +217,7 @@ export function Home({ store }: { store: WalletStore }) {
                     onClick={() => setFilter(n)}
                     className={cx('home-filter', filter === n && 'is-on')}
                   >
-                    {n === 'all' ? t('home.allNetworks') : t(`xswap.chain.${n}`)}
+                    {n === 'all' ? t('home.allNetworks') : NETWORKS[n].name}
                   </button>
                 ))}
               </div>
@@ -284,22 +300,21 @@ function Performance({
   store: WalletStore;
   rows: AssetRow[];
   total: number;
-  networkName: (n: Exclude<NetworkFilter, 'all'>) => string;
+  networkName: (n: NetworkId) => string;
 }) {
   const t = store.t;
-  const byNetwork = (['stellar', 'solana', 'monad'] as const)
-    .map((n) => ({ n, value: rows.filter((r) => networkOf(r) === n).reduce((s, r) => s + (r.value ?? 0), 0) }))
-    .filter((x) => x.value > 0 || x.n === 'stellar');
+  const byNetwork = NETWORK_IDS.map((n) => ({ n, value: rows.filter((r) => networkOf(r) === n).reduce((s, r) => s + (r.value ?? 0), 0) }))
+    .filter((x) => x.value > 0 || x.n === 'stellar')
+    .sort((a, b) => (a.n === 'stellar' ? -1 : b.n === 'stellar' ? 1 : b.value - a.value));
   const held = rows.filter((r) => (r.value ?? 0) > 0).sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   const share = (v: number) => (total > 0 ? (v / total) * 100 : 0);
-  const coin = { stellar: 'XLM', solana: 'SOL', monad: 'MON' } as const;
 
   return (
     <div className="home-perf">
       <h3 className="home-perf-title">{t('home.byNetwork')}</h3>
       {byNetwork.map(({ n, value }) => (
         <div key={n} className="home-perf-row">
-          <AssetLogo code={coin[n]} size={28} />
+          <AssetLogo code={NETWORKS[n].coin} size={28} />
           <div className="home-perf-main">
             <div className="home-perf-line">
               <span className="home-perf-name">{networkName(n)}</span>

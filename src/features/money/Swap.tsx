@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { EnableReceivingCard } from '@/features/cosmospay/EnableReceivingCard';
 import { ScreenHeader } from '@/ui/ScreenHeader';
@@ -8,11 +8,14 @@ import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { trim } from '@/lib/format';
 import { cx } from '@/lib/cx';
-import { CROSS_CHAIN_TARGET_SYMBOLS, QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
-import type { CrossChainAsset, CrossChainQuote, CrossChainTarget, SwapQuote } from '@/lib/cosmospay';
+import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
+import type { CrossChainAsset, CrossChainQuote, SwapQuote } from '@/lib/cosmospay';
+import { crossChainDestinations } from '@/lib/crossChainDest';
+import { NETWORKS, NETWORK_IDS, type NetworkId } from '@/constants/networks';
 import { networkEnv } from '@/lib/stellar';
 import { AssetSelect } from '@/features/money/AssetSelect';
 import { ChainSwap } from '@/features/money/ChainSwap';
+import { NetworkPicker } from '@/features/money/NetworkPicker';
 import type { OtherChain } from '@/constants/chains';
 import { assetKey, findAsset, gatewayAssetLabel, isSameAsset, XLM, type AssetRef } from '@/lib/asset';
 import { parseDecimalOr0, sanitizeDecimalInput } from '@/lib/amount';
@@ -26,9 +29,8 @@ import '@/styles/features/money/swap.css';
 // Horizon path search, so we don't poll every second — drop QUOTE_REFRESH_MS to 1000
 // if you want literal 1s refresh. The executed swap re-prices server-side regardless.
 
-/** Where the output lands: Stellar (a path payment) or another network (NEAR Intents). */
-type Target = 'stellar' | CrossChainTarget;
-const TARGETS: Target[] = ['stellar', 'solana', 'monad'];
+/** Where the output lands: Stellar (a path payment) or any other network (NEAR Intents). */
+type Target = NetworkId;
 /** Where the swap pays from. Stellar is this screen; Solana / Monad are `ChainSwap`. */
 type Origin = 'stellar' | OtherChain;
 const ORIGINS: Origin[] = ['stellar', 'solana', 'monad'];
@@ -104,17 +106,16 @@ export function Swap({ store }: { store: WalletStore }) {
 
   // --- cross-chain ---
   const mainnet = networkEnv(store.network) === 'prod';
-  const recipient = crossChain ? store.meta?.chainAddresses?.[target as CrossChainTarget] ?? null : null;
+  const recipient = crossChain ? store.addressOn(target) : null;
+  // Where the output may land: Stellar, and every network the wallet holds an address on.
+  const { addressOn } = store;
+  const targets = useMemo(() => NETWORK_IDS.filter((id) => id === 'stellar' || !!addressOn(id)), [addressOn]);
   // What may leave Stellar is what NEAR Intents lists there (XLM, Circle USDC).
   const stellarListed = xAssets.filter((a) => a.chain === 'stellar');
   const fromListed = stellarListed.some(
     (a) => a.symbol === fromRef.code && (a.contract ?? null) === (fromRef.code === 'XLM' ? null : fromRef.issuer ?? null),
   );
-  const destOptions = crossChain
-    ? CROSS_CHAIN_TARGET_SYMBOLS[target as CrossChainTarget]
-        .map((sym) => xAssets.find((a) => a.chain === target && a.symbol === sym))
-        .filter((a): a is CrossChainAsset => !!a)
-    : [];
+  const destOptions: CrossChainAsset[] = crossChain ? crossChainDestinations(xAssets, target) : [];
   const xDest = destOptions.find((a) => a.assetId === xDestId) ?? destOptions[0] ?? null;
   const canCrossSwap =
     enabled && mainnet && !!recipient && fromListed && !!from && !!xDest && payNum > 0 && !insufficient && !!xQuote;
@@ -158,7 +159,7 @@ export function Swap({ store }: { store: WalletStore }) {
     const run = async () => {
       setQuoting(true);
       if (crossChain) {
-        const q = await store.quoteCrossChain(pay, from, target as CrossChainTarget, xDest!);
+        const q = await store.quoteCrossChain(pay, from, target, xDest!);
         if (cancelled) return;
         setQuoting(false);
         if (q) setXQuote(q);
@@ -211,7 +212,7 @@ export function Swap({ store }: { store: WalletStore }) {
       <div className="swap-target-label">{t('xswap.payFrom')}</div>
       {ORIGINS.map((c) => (
         <button key={c} type="button" role="radio" aria-checked={origin === c} className={cx('swap-target-btn', origin === c && 'is-on')} onClick={() => setOrigin(c)}>
-          {t(`xswap.chain.${c}`)}
+          {NETWORKS[c].name}
         </button>
       ))}
     </div>
@@ -232,13 +233,9 @@ export function Swap({ store }: { store: WalletStore }) {
 
       {originPicker}
 
-      <div className="swap-target" role="radiogroup" aria-label={t('xswap.receiveOn')}>
+      <div className="swap-target">
         <div className="swap-target-label">{t('xswap.receiveOn')}</div>
-        {TARGETS.map((c) => (
-          <button key={c} type="button" role="radio" aria-checked={target === c} className={cx('swap-target-btn', target === c && 'is-on')} onClick={() => setTarget(c)}>
-            {t(`xswap.chain.${c}`)}
-          </button>
-        ))}
+        <NetworkPicker value={target} onPick={setTarget} networks={targets} t={t} />
       </div>
 
       <div className={cx('exchange-stack', openSel && 'is-open')}>
@@ -263,7 +260,7 @@ export function Swap({ store }: { store: WalletStore }) {
           )}
         </div>
         <div className={cx('exchange-card exchange-card--to', openSel === 'to' && 'is-active')}>
-          <div className="exchange-label">{t('swap.receiveEst')}{crossChain ? ` · ${t(`xswap.chain.${target}`)}` : ''}</div>
+          <div className="exchange-label">{t('swap.receiveEst')}{crossChain ? ` · ${NETWORKS[target].name}` : ''}</div>
           <div className="row between g10">
             {crossChain ? (
               <div className="swap-dest-chips" role="radiogroup">
@@ -294,7 +291,7 @@ export function Swap({ store }: { store: WalletStore }) {
       {/* Cross-chain guards: network, an address on the target, and a source NEAR lists. */}
       {crossChain && !mainnet && <Notice className="exchange-notice">{t('xswap.mainnetOnly')}</Notice>}
       {crossChain && mainnet && !recipient && (
-        <Notice className="exchange-notice">{t('xswap.noAddress', { chain: t(`xswap.chain.${target}`) })}</Notice>
+        <Notice className="exchange-notice">{t('xswap.noAddress', { chain: NETWORKS[target].name })}</Notice>
       )}
       {crossChain && mainnet && recipient && stellarListed.length > 0 && !fromListed && (
         <Notice className="exchange-notice">{t('xswap.unsupportedFrom', { list: stellarListed.map((a) => a.symbol).join(', ') })}</Notice>
@@ -334,7 +331,7 @@ export function Swap({ store }: { store: WalletStore }) {
       {/* When enabled, a short note; otherwise the CosmosPay card below explains the step. */}
       {enabled && (
         <Notice className="exchange-notice">
-          {crossChain ? t('xswap.note', { chain: t(`xswap.chain.${target}`) }) : t('swap.note2')}
+          {crossChain ? t('xswap.note', { chain: NETWORKS[target].name }) : t('swap.note2')}
         </Notice>
       )}
 
@@ -356,7 +353,7 @@ export function Swap({ store }: { store: WalletStore }) {
           {crossChain ? (
             <PrimaryButton
               disabled={store.busy || !canCrossSwap}
-              onClick={() => from && xDest && xQuote && store.submitCrossChain(pay, from, target as CrossChainTarget, xDest, xQuote)}
+              onClick={() => from && xDest && xQuote && store.submitCrossChain(pay, from, target, xDest, xQuote)}
             >
               {store.busy ? <Spinner /> : t('swap.cta')}
             </PrimaryButton>

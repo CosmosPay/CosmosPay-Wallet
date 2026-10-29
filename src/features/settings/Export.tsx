@@ -43,6 +43,7 @@ export function Export({ store }: { store: WalletStore }) {
   const mnemonic = backup?.mnemonic ?? null;
   const secret = backup?.secret ?? '';
   const chainKeys = backup?.chainKeys ?? null;
+  const networksPhrase = backup?.networksPhrase ?? null;
 
   return (
     <div className="scr screen col pb-30">
@@ -80,6 +81,11 @@ export function Export({ store }: { store: WalletStore }) {
         <>
           {mnemonic ? (
             <Reveal title={t('export.phraseTitle')} value={mnemonic} mono={false} copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'phrase'} onCopy={() => copy(mnemonic, 'phrase')} grid />
+          ) : networksPhrase ? (
+            <>
+              <Reveal title={t('export.networksPhraseTitle')} value={networksPhrase} mono={false} copyLabel={t('common.copy')} copiedLabel={t('common.copied')} copied={copied === 'networks'} onCopy={() => copy(networksPhrase, 'networks')} grid />
+              <div className="export-compat">{t('export.networksPhraseDesc')}</div>
+            </>
           ) : (
             <div className="glass export-nophrase">
               {t('export.noPhrase')}
