@@ -24,7 +24,7 @@
  */
 import { AUTO_LOCK_CHOICES_MS } from '@/constants/app';
 import { importVaultKey, type KdfParams, type VaultKey } from '@/lib/crypto';
-import { AUTH_SCREENS, TAB_SCREEN, isScreen, isTab, type Screen, type Tab } from '@/lib/screens';
+import { AUTH_SCREENS, TAB_SCREEN, isScreen, isScreenOn, isTab, type Screen, type Tab } from '@/lib/screens';
 
 /** Where the person was: the screen, and the tab it belongs to. */
 export interface KeptPlace {
@@ -228,5 +228,7 @@ const NOT_RESTORED: ReadonlySet<Screen> = new Set<Screen>([
 export function landingScreen(place: KeptPlace | null): Screen {
   if (!place) return 'home';
   if (place.screen === 'boot' || AUTH_SCREENS.includes(place.screen)) return 'home';
-  return NOT_RESTORED.has(place.screen) ? TAB_SCREEN[place.tab] : place.screen;
+  const land = NOT_RESTORED.has(place.screen) ? TAB_SCREEN[place.tab] : place.screen;
+  // A place kept before its section was switched off is no longer a way in.
+  return isScreenOn(land) ? land : 'home';
 }

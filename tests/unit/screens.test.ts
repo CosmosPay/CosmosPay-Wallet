@@ -4,7 +4,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NAV_SCREENS, SCREENS, SCREEN_IDS, TAB_SCREEN, backTarget, canEnter, type BackContext } from '@/lib/screens';
+import { EARN_ENABLED } from '@/constants/features';
+import { EARN_SCREENS, NAV_SCREENS, SCREENS, SCREEN_IDS, TAB_SCREEN, backTarget, canEnter, isScreenOn, type BackContext } from '@/lib/screens';
 
 const ctx = (over: Partial<BackContext> = {}): BackContext => ({
   hasSession: true,
@@ -109,6 +110,15 @@ test('only the true roots exit the app', () => {
 test('the nav bar is derived from the table, not a second list', () => {
   assert.deepEqual([...NAV_SCREENS].sort(), ['earn', 'home', 'markets', 'profile', 'wallets'].sort());
   for (const s of NAV_SCREENS) assert.equal(SCREENS[s].nav, true);
+});
+
+test('a switched-off section has no way in: history cannot reach any of its screens', () => {
+  for (const s of EARN_SCREENS) {
+    assert.equal(isScreenOn(s), EARN_ENABLED, s);
+    if (!EARN_ENABLED) assert.equal(canEnter(s, ctx()), false, s);
+  }
+  // only the section itself: every other screen stays reachable
+  for (const s of SCREEN_IDS.filter((id) => !EARN_SCREENS.includes(id))) assert.equal(isScreenOn(s), true, s);
 });
 
 test('every tab opens a screen that activates it', () => {

@@ -7,6 +7,7 @@
  */
 import { beforeEach, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { EARN_ENABLED } from '@/constants/features';
 import { importVaultKey, newKdfParams } from '@/lib/crypto';
 import {
   dropKeptSession,
@@ -96,4 +97,9 @@ test('the landing screen: the one it was on, unless it needs a flow it no longer
   assert.equal(landingScreen({ screen: 'confirm', tab: 'home' }), 'home');
   assert.equal(landingScreen({ screen: 'export', tab: 'profile' }), 'profile');
   assert.equal(landingScreen({ screen: 'unlock', tab: 'home' }), 'home');
+  // a place in a switched-off section (constants/features.ts) lands on Home
+  if (!EARN_ENABLED) {
+    assert.equal(landingScreen({ screen: 'defindex', tab: 'earn' }), 'home');
+    assert.equal(landingScreen({ screen: 'lp-deposit', tab: 'earn' }), 'home');
+  }
 });

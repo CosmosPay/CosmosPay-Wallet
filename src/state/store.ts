@@ -115,7 +115,7 @@ import {
 } from '@/constants/chains';
 import type { ChainExportKeys } from '@/lib/chainKeys';
 import type { ChainHoldings, NetworkHoldings } from '@/lib/portfolio';
-import { SCREENS, backTarget, canEnter, type BackContext, type Screen, type Tab } from '@/lib/screens';
+import { SCREENS, backTarget, canEnter, isScreenOn, type BackContext, type Screen, type Tab } from '@/lib/screens';
 import { NAV_SESSION, navState, planSync, readNavState, type NavPlace } from '@/lib/navHistory';
 import { forgetKeptInput, forgetKeptInputs } from '@/lib/keptInputs';
 import { KEPT_INPUT } from '@/constants/keptInputs';
@@ -584,6 +584,8 @@ export function useWalletStore() {
 
   /* --------------------------- navigation ------------------------- */
   const navigate = useCallback((s: Screen) => {
+    // A switched-off section (constants/features.ts) has no way in, whatever asks for it.
+    if (!isScreenOn(s)) return;
     // The stack is pushed HERE, not inside the `setScreen` updater. React requires
     // updaters to be pure and may call one twice (StrictMode, a discarded concurrent
     // render); mutating the stack in there pushed two entries per navigation and made
@@ -641,6 +643,7 @@ export function useWalletStore() {
 
   const go = useCallback(
     (s: Screen, t?: Tab) => {
+      if (!isScreenOn(s)) return;
       navigate(s);
       if (t) setTab(t);
     },

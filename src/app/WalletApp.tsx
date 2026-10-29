@@ -2,7 +2,7 @@ import '@/styles/app/wallet-app.css';
 import { Suspense, lazy, useEffect, useRef, useState, type ComponentType, type LazyExoticComponent } from 'react';
 import { SPLASH_REVEAL_MS, SPLASH_DONE_MS } from '@/constants/app';
 import { markAppRevealed } from '@/lib/appReveal';
-import { NAV_SCREENS, type Screen } from '@/lib/screens';
+import { NAV_SCREENS, isScreenOn, type Screen } from '@/lib/screens';
 import { useWalletStore, type WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
 import { Shell } from '@/app/Shell';
@@ -144,7 +144,7 @@ function WalletAppShell() {
   useEffect(() => {
     if (!store.hasSession || typeof window === 'undefined') return;
     const path = window.location.pathname.replace(/\/+$/, '');
-    if (path.endsWith('/earn') && store.screen !== 'earn') store.go('earn', 'earn');
+    if (path.endsWith('/earn') && store.screen !== 'earn' && isScreenOn('earn')) store.go('earn', 'earn');
   }, [store, store.hasSession, store.screen]);
 
   // Publishes --kb-h / .kb-open for the whole document, so every screen's footer can

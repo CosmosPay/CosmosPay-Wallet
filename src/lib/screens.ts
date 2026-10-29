@@ -17,6 +17,7 @@
  * FALLBACK: the store keeps a real navigation stack and pops it first, so a screen
  * reachable from several places returns to where the user actually came from.
  */
+import { EARN_ENABLED } from '@/constants/features';
 
 export type Tab = 'home' | 'wallet' | 'earn' | 'markets' | 'profile';
 
@@ -234,7 +235,7 @@ export function backTarget(screen: Screen, ctx: BackContext): Screen | 'exit' {
  */
 export function canEnter(screen: Screen, c: BackContext): boolean {
   // Arriving at a terminal screen means something just finished; history cannot repeat it.
-  if (screen === 'boot' || SCREENS[screen].terminal) return false;
+  if (screen === 'boot' || SCREENS[screen].terminal || !isScreenOn(screen)) return false;
   switch (screen) {
     case 'backup':
     case 'verify':
@@ -277,6 +278,14 @@ export const AUTH_SCREENS: readonly Screen[] = [
   'recover',
   'unlock',
 ];
+
+/** The investing screens: the Earn tab and everything reached only through it. */
+export const EARN_SCREENS: readonly Screen[] = ['earn', 'defindex', 'liquidity', 'lp-deposit', 'lp-withdraw'];
+
+/** Whether a screen can be reached at all: a switched-off section (constants/features.ts) cannot. */
+export function isScreenOn(screen: Screen): boolean {
+  return EARN_ENABLED || !EARN_SCREENS.includes(screen);
+}
 
 /** Screens that show the bottom navigation bar (with an open session). */
 export const NAV_SCREENS: Screen[] = SCREEN_IDS.filter((s) => SCREENS[s].nav);

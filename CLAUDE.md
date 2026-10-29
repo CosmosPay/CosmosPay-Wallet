@@ -182,7 +182,9 @@ The onboarding (Welcome → `backup-choice` / `restore-choice` → words or acco
 Unlock, the device-unlock offer and Success are done. **The wallet follows the Figma's Home**
 (node 1:2, plus its Activity variant 108:272): the bar is Home · Wallet · the QR scanner raised on
 the brand blue · Earn · More (`app/navModel.tsx`; the rail marks the active place with the same
-blue line). Home is greeting, total balance with its 24h move, four ringed actions, and the tabs
+blue line). Investing (Earn, DeFindex, liquidity) is switched off for now (`EARN_ENABLED` in
+`src/constants/features.ts`): `isScreenOn` in `lib/screens.ts` drops its tab from every bar and
+keeps `/earn`, history (`canEnter`), a kept session and `store.go` out of its screens. Home is greeting, total balance with its 24h move, four ringed actions, and the tabs
 Activos (every network's holdings, a network filter, each token's network coin on its corner) ·
 Actividad (in days, `ActivityList`; a send is red, mark and amount, money received is green, a swap
 blue, and a commission keeps the ink with its own receipt mark, `FeeIcon` — never a send's arrow) · Análisis (the split by network and asset) · Favoritos.
