@@ -139,3 +139,16 @@ export function networkMemoProblem(network: NetworkId, value: string): 'tag' | '
   if (network === 'ton') return memoByteLength(v) <= TON_COMMENT_MAX_BYTES ? null : 'length';
   return 'length';
 }
+
+/**
+ * A transaction's memo as a person reads it: a text memo's words, an id as its number, a hash or
+ * a return as hex. stellar-sdk 17 hands a decoded text memo over as its bytes, and `String()` on
+ * those printed "67,111,115,…" where the memo said "Cos…".
+ */
+export function memoForDisplay(memo: { type?: unknown; value?: unknown } | null | undefined): string {
+  const value = memo?.value;
+  if (value == null) return '';
+  if (!(value instanceof Uint8Array)) return String(value);
+  if (String(memo?.type ?? 'text') === 'text') return new TextDecoder().decode(value);
+  return Array.from(value, (b) => b.toString(16).padStart(2, '0')).join('');
+}

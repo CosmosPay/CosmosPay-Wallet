@@ -5,6 +5,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { Account, Keypair, Memo, Networks, Operation, TimeoutInfinite, TransactionBuilder, type Transaction } from '@stellar/stellar-sdk';
 import {
   MEMO_TEXT_MAX_BYTES,
   clampMemoText,
@@ -12,6 +13,7 @@ import {
   defaultMemoText,
   isValidMemoId,
   memoByteLength,
+  memoForDisplay,
   memoKindFromSep7,
   memoProblem,
   networkMemoProblem,
@@ -137,4 +139,21 @@ test('another network memo: XRP tags are uint32 digits, TON comments byte-bounde
   assert.equal(networkMemoProblem('ton', 'ñ'.repeat(61)), 'length');
   // a network whose transfer carries no memo accepts none
   assert.equal(networkMemoProblem('btc', 'anything'), 'length');
+});
+
+test('a memo as a person reads it: a text memo its words, a hash as hex, an id as its number', () => {
+  // stellar-sdk 17 decodes a text memo to its bytes; String() on them read "67,111,…"
+  const text = (TransactionBuilder.fromXDR(
+    new TransactionBuilder(new Account(Keypair.random().publicKey(), '0'), { fee: '100', networkPassphrase: Networks.TESTNET })
+      .addOperation(Operation.manageData({ name: 'k', value: 'v' }))
+      .addMemo(Memo.text('Cosmos Pay private account'))
+      .setTimeout(TimeoutInfinite)
+      .build()
+      .toXDR(),
+    Networks.TESTNET,
+  ) as Transaction).memo;
+  assert.equal(memoForDisplay(text), 'Cosmos Pay private account');
+  assert.equal(memoForDisplay({ type: 'hash', value: new Uint8Array([0, 171, 255]) }), '00abff');
+  assert.equal(memoForDisplay({ type: 'id', value: '42' }), '42');
+  assert.equal(memoForDisplay({ type: 'none', value: null }), '');
 });

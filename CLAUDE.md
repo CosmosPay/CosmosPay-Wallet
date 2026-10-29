@@ -614,7 +614,12 @@ the wallet's own native plugin. Eight rules, and most of them are holes it shipp
   (`foreignEnvelopeProblem`: no operation of another source, ours above all, which would spend
   from this account under a prompt naming the sub-account; no fee bump). The confirmation names
   the account in full (`confirmSig.signForeignMsg`); anything else is refused
-  (`sign.foreignSource`, `sign.foreignOps`). The two enrolment paths
+  (`sign.foreignSource`, `sign.foreignOps`). A pasted envelope names no network, and a signature
+  commits to one passphrase, so the screen asks which network it is for ("Red de la transacción",
+  the wallet's own by default) and `signRawXdr(xdr, networkId)` reviews, checks control and signs
+  for that one without moving the wallet's mode: Cosmos Pay's private accounts are on Testnet, and
+  a Mainnet wallet signing them by default was why the platform could not use its signatures
+  (2026-10-29). The two enrolment paths
   also check the epoch **on both sides of `enableDeviceUnlock`, and undo the enrolment if it
   moved.** Checking only before is what the code did and it guarded nothing: the OS sheet
   lives *inside* that call and the envelope commits *after* it, so the idle auto-lock fires

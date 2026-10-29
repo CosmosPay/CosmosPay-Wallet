@@ -909,9 +909,9 @@ export function useWalletStore() {
    * so what the wallet is willing to put its name to is decided in exactly one place.
    */
   const signEnvelope = useCallback(
-    async (xdr: string): Promise<string> => {
+    async (xdr: string, on: NetConfig = network): Promise<string> => {
       if (!session) throw new Error(t('unlock.autoLocked'));
-      return signXdr(network, await secretOf(session), xdr);
+      return signXdr(on, await secretOf(session), xdr);
     },
     [session, network, t],
   );
@@ -5995,9 +5995,14 @@ export function useWalletStore() {
    * user at all. The epoch is captured for the same reason every money flow captures it.
    */
   const signRawXdr = useCallback(
-    async (xdr: string): Promise<string | null> => {
+    async (xdr: string, networkId?: string): Promise<string | null> => {
       if (!session) return null;
       const epoch = sessionEpochRef.current;
+      // The network the signature is for. A signature commits to one network's passphrase, and
+      // a pasted envelope carries none: one built for another network (a Cosmos Pay private
+      // account lives on Testnet) is signed for the network the person picks on the screen,
+      // without moving the wallet's own mode. Only a network this wallet lists.
+      const on = networks.find((n) => n.id === networkId) ?? network;
       // Review only — a manual signature is deliberately allowed to carry operations
       // the automated flows refuse, but it must be decodable and either OUR account's or that
       // of an account our key alone controls (a sub-account, e.g. a Cosmos Pay private
@@ -6005,25 +6010,27 @@ export function useWalletStore() {
       // authorize that account and nothing else: no operation of another source (ours above
       // all, which would spend from this account under a prompt naming the sub-account), no
       // fee-bump wrapper. The confirmation then names that account in full.
-      const review = reviewTx(network, xdr.trim());
+      const review = reviewTx(on, xdr.trim());
       const foreign = review.source !== session.publicKey;
       if (foreign) {
         const problem = foreignEnvelopeProblem(review);
         if (problem) throw new Error(t(problem));
-        if (!(await controlsAccount(network, review.source, session.publicKey))) throw new Error(t('sign.foreignSource'));
+        if (!(await controlsAccount(on, review.source, session.publicKey))) throw new Error(t('sign.foreignSource', { network: on.label }));
       }
       const ok = await requestSignature(
         {
           title: t('confirmSig.signTitle'),
-          message: foreign ? t('confirmSig.signForeignMsg', { source: review.source }) : t('confirmSig.signMsg'),
+          message: foreign
+            ? t('confirmSig.signForeignMsg', { source: review.source, network: on.label })
+            : t('confirmSig.signMsg', { network: on.label }),
         },
         true,
       );
       if (!ok) return null;
       guardSession(epoch);
-      return signEnvelope(xdr.trim());
+      return signEnvelope(xdr.trim(), on);
     },
-    [session, network, requestSignature, guardSession, signEnvelope, t],
+    [session, network, networks, requestSignature, guardSession, signEnvelope, t],
   );
 
   /**
