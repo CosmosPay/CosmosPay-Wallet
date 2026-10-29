@@ -895,6 +895,8 @@ export interface CrossChainAsset {
   decimals: number;
   /** SPL mint / ERC-20 / Stellar issuer; null for the native coin. */
   contract: string | null;
+  /** NEAR Intents' own USD price, when it has one: the fallback for a token no feed prices. */
+  priceUsd?: number | null;
 }
 
 export interface CrossChainQuote {

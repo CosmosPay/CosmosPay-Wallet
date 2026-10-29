@@ -5,7 +5,8 @@ import '@/styles/ui/sheet.css';
 type Phase = 'closed' | 'mounting' | 'open' | 'closing';
 
 /**
- * Bottom sheet on the native `<dialog>`. `showModal()` brings the focus trap, Escape, an
+ * Bottom sheet on the native `<dialog>` — or, with `placement="center"`, a dialog in the middle
+ * of a PC window. `showModal()` brings the focus trap, Escape, an
  * inert page behind and the top layer with it, in every shell the wallet runs in (popup,
  * side panel, WebView, tab), so none of that is re-implemented here.
  *
@@ -27,12 +28,15 @@ export function Sheet({
   onClose,
   labelledBy,
   children,
+  placement = 'bottom',
 }: {
   open: boolean;
   onClose: () => void;
   /** Id of the sheet's visible title. */
   labelledBy: string;
   children: ReactNode;
+  /** `center`: a dialog in the middle of a PC window, for a list too long to drop from a button. */
+  placement?: 'bottom' | 'center';
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -96,7 +100,7 @@ export function Sheet({
     <dialog
       ref={ref}
       aria-labelledby={labelledBy}
-      className={cx('sheet', phase === 'open' && 'is-open')}
+      className={cx('sheet', placement === 'center' && 'is-center', phase === 'open' && 'is-open')}
       onClick={onScrim}
       onCancel={(e) => {
         // Escape: slide out like every other way of closing.

@@ -1,5 +1,6 @@
 /**
- * Device preferences: theme, language, the manual-signing toggle, and diagnostics.
+ * Device preferences: theme, language, the manual-signing toggle, the idle auto-lock, and
+ * diagnostics.
  *
  * Split out of the store hook, which was doing routing, session, network, prices,
  * history, CosmosPay, fiat, liquidity, toasts, theme and i18n in one 2100-line
@@ -14,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '@/lib/i18n';
 import { setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
+import { AUTO_LOCK_CHOICES_MS, AUTO_LOCK_KEY, DEFAULT_AUTO_LOCK_MS, type AutoLockMs } from '@/constants/app';
 
 /** What is painted. */
 export type Theme = 'dark' | 'light';
@@ -72,6 +74,16 @@ export function savedRequireConfirm(): boolean {
   }
 }
 
+/** How long an idle session stays open (constants/app.ts). Anything but a listed choice is the default. */
+export function savedAutoLockMs(): AutoLockMs {
+  try {
+    const v = Number(localStorage.getItem(AUTO_LOCK_KEY));
+    return (AUTO_LOCK_CHOICES_MS as readonly number[]).includes(v) ? (v as AutoLockMs) : DEFAULT_AUTO_LOCK_MS;
+  } catch {
+    return DEFAULT_AUTO_LOCK_MS;
+  }
+}
+
 /** Apply the persisted theme to <html> as soon as the store module loads. The first paint
  *  is public/theme-boot.js's; this covers a shell that does not load it (the extension's
  *  approval window). */
@@ -86,6 +98,7 @@ export function usePreferences(onLangChange: (message: string) => void) {
   const [lang, setLangState] = useState<Lang>(savedLang);
   const [requireConfirm, setRequireConfirmState] = useState<boolean>(savedRequireConfirm);
   const [diagnostics, setDiagnosticsState] = useState<boolean>(telemetryEnabled);
+  const [autoLockMs, setAutoLockMsState] = useState<AutoLockMs>(savedAutoLockMs);
 
   const t = useMemo(() => makeT(lang), [lang]);
   const locale = useMemo(() => localeOf(lang), [lang]);
@@ -94,6 +107,15 @@ export function usePreferences(onLangChange: (message: string) => void) {
     setRequireConfirmState(on);
     try {
       localStorage.setItem(CONFIRM_KEY, on ? 'on' : 'off');
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const setAutoLockMs = useCallback((ms: AutoLockMs) => {
+    setAutoLockMsState(ms);
+    try {
+      localStorage.setItem(AUTO_LOCK_KEY, String(ms));
     } catch {
       /* ignore */
     }
@@ -159,5 +181,19 @@ export function usePreferences(onLangChange: (message: string) => void) {
     [onLangChange],
   );
 
-  return { theme, themePref, setThemePref, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics };
+  return {
+    theme,
+    themePref,
+    setThemePref,
+    lang,
+    setLang,
+    t,
+    locale,
+    requireConfirm,
+    setRequireConfirm,
+    diagnostics,
+    setDiagnostics,
+    autoLockMs,
+    setAutoLockMs,
+  };
 }

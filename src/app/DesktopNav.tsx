@@ -25,10 +25,12 @@ export function DesktopNav({ store }: { store: WalletStore }) {
 
   return (
     <nav className="shell-side">
-      <div className="desk-brand">
+      {/* The logo goes home — the wallet's Home, inside the session; never a page load,
+          which would leave the app (and, before the session was kept, end it). */}
+      <button type="button" className="desk-brand" onClick={() => navGo(store, 'home')} aria-label={store.t('error.goHome')}>
         <CosmosMark className="desk-brand-mark" />
         <span className="desk-brand-name">Cosmos Wallet</span>
-      </div>
+      </button>
 
       <div className="desk-nav-list">
         {tabs.map((tb) => (

@@ -455,3 +455,29 @@ test('no answer at all throws "network"; any other status throws "http"', async 
   stub(() => ({ status: 503, body: 'Service Unavailable' }));
   await fails(readNetworkBalances('near', NEAR), 'http');
 });
+
+test('NEAR: a token is its contract’s ft_balance_of, a JSON string of digits as bytes, read even for an account not opened yet', async () => {
+  const bytes = (s: string) => Array.from(new TextEncoder().encode(JSON.stringify(s)));
+  const calls = stub(({ body }) => {
+    const p = (body as { params: { request_type: string; account_id: string; method_name?: string; args_base64?: string } }).params;
+    if (p.request_type === 'view_account') return { body: { jsonrpc: '2.0', id: 1, error: { cause: { name: 'UNKNOWN_ACCOUNT' } } } };
+    assert.equal(p.method_name, 'ft_balance_of');
+    assert.equal(JSON.parse(Buffer.from(p.args_base64 ?? '', 'base64').toString()).account_id, NEAR);
+    return { body: { jsonrpc: '2.0', id: 1, result: { result: bytes(p.account_id === 'wrap.near' ? '1500000000000000000000000' : '0') } } };
+  });
+  const tokens = [
+    { symbol: 'wNEAR', asset: 'wrap.near', decimals: 24 },
+    { symbol: 'mpDAO', asset: 'mpdao-token.near', decimals: 6 },
+  ];
+  assert.deepEqual(await readNetworkBalances('near', NEAR, tokens), { native: 0n, 'wrap.near': 1500000000000000000000000n, 'mpdao-token.near': 0n });
+  assert.equal(calls.length, 3);
+});
+
+test('added tokens are read with the registry’s (EVM, one batch)', async () => {
+  const added = { symbol: 'BRETT', asset: '0x532f27101965dd16442e59d40670faf5ebb142e4', decimals: 18 };
+  stub(({ body }) => ({
+    body: (body as { id: number; method: string }[]).map((c) => ({ jsonrpc: '2.0', id: c.id, result: c.method === 'eth_getBalance' ? '0x0' : '0x' + (c.id === NETWORKS.base.tokens.length + 1 ? '5' : '0').padStart(64, '0') })),
+  }));
+  const read = await readNetworkBalances('base', EVM, [...NETWORKS.base.tokens, added]);
+  assert.equal(read[added.asset], 5n);
+});

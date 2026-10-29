@@ -93,6 +93,21 @@ async function addAuthenticator(context: BrowserContext, page: Page) {
   });
 }
 
+/**
+ * A reload keeps the session now (src/lib/sessionKeep.ts), so reaching the lock screen means
+ * forgetting it first — what a lock, or an auto-lock running out, does — and then reloading.
+ */
+async function forgetKeptSessionAndReload(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const req = indexedDB.deleteDatabase('cosmos-session');
+        req.onsuccess = req.onerror = req.onblocked = () => resolve(null);
+      }),
+  );
+  await page.reload({ waitUntil: 'domcontentloaded' });
+}
+
 const browser = await chromium.launch(process.env.E2E_CHANNEL ? { channel: process.env.E2E_CHANNEL } : {});
 const pageErrors: string[] = [];
 try {
@@ -137,7 +152,7 @@ try {
   );
 
   /* --------------------------- 2. the lock screen opens with it --------------------------- */
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await forgetKeptSessionAndReload(page);
   const open = page.getByRole('button', { name: 'Abrir con passkey' });
   await open.waitFor({ timeout: 15000 });
   ok((await page.locator('input[type="password"]').count()) === 0, 'the lock screen shows no password field');
@@ -240,7 +255,7 @@ try {
   );
   ok(finishesD[0]?.body.stellarAddress === addrC, 'for the same account');
   ok(!!(await page.evaluate(() => localStorage.getItem('cosmos.passkey'))), 'and this device opens with the passkey');
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await forgetKeptSessionAndReload(page);
   await page.getByRole('button', { name: 'Abrir con passkey' }).waitFor({ timeout: 15000 });
   await page.getByRole('button', { name: 'Abrir con passkey' }).click();
   await page.getByRole('button', { name: 'Abrir con passkey' }).waitFor({ state: 'detached', timeout: 30000 });

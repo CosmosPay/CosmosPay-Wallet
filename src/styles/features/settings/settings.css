@@ -89,45 +89,7 @@
   color: var(--muted);
 }
 
-/* ---- the switch: a line track; on, an ink track with the canvas knob ---- */
-.settings-switch {
-  position: relative;
-  flex-shrink: 0;
-  width: 50px;
-  height: 30px;
-  padding: 0;
-  border: 1.5px solid var(--line-strong);
-  background: transparent;
-  cursor: pointer;
-  transition: background-color var(--dur-quick) var(--ease-out), border-color var(--dur-quick) var(--ease-out);
-}
-
-.settings-switch.is-on {
-  border-color: var(--text);
-  background: var(--text);
-}
-
-.settings-switch-knob {
-  position: absolute;
-  top: 50%;
-  left: 3px;
-  width: 21px;
-  height: 21px;
-  border-radius: 50%;
-  background: var(--text);
-  transform: translateY(-50%);
-  transition: left var(--dur-base) var(--ease-in-out), background-color var(--dur-quick) var(--ease-out);
-}
-
-.settings-switch.is-on .settings-switch-knob {
-  left: 22px;
-  background: var(--bg);
-}
-
-.settings-switch:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 3px;
-}
+/* ---- the switch: src/ui/Switch.tsx (src/styles/ui/switch.css) ---- */
 
 /* ---- choices (theme, language) ---- */
 .settings-choices {
@@ -222,6 +184,15 @@
 
 .settings-subform-desc {
   margin: 4px 0 8px;
+}
+
+/* the auto-lock section's one line on what it does, above its choices */
+.settings-autolock-desc {
+  margin: 0;
+  padding-top: 4px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
 }
 
 .settings-dev-desc {

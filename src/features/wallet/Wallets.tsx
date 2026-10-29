@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { WalletStore } from '@/state/store';
-import { AssetLogo } from '@/ui/AssetLogo';
+import { NetworkLogo } from '@/ui/AssetLogo';
 import { NavMenu } from '@/app/NavMenu';
 import {
   CheckIcon,
@@ -23,8 +23,8 @@ import { NETWORKS, NETWORK_GROUPS, type NetworkId } from '@/constants/networks';
 import '@/styles/features/wallet/wallets.css';
 
 /** The names of the networks one address serves: "Solana y Fogo", "Ethereum, Base y 14 más". */
-function groupLabel(networks: readonly NetworkId[], t: TFn): string {
-  const names = networks.map((id) => NETWORKS[id].name);
+function groupLabel(networks: readonly NetworkId[], nameOf: (id: NetworkId) => string, t: TFn): string {
+  const names = networks.map(nameOf);
   if (names.length === 1) return names[0];
   if (names.length === 2) return t('wallets.groupTwo', { a: names[0], b: names[1] });
   return t('wallets.groupMore', { names: names.slice(0, 2).join(', '), n: names.length - 2 });
@@ -50,14 +50,16 @@ export function Wallets({ store }: { store: WalletStore }) {
   }, [loadRecovery, store.publicKey, store.network.id]);
 
   // One row per address, not per network: the sixteen EVM networks are one 0x account, and
-  // saying so is what tells a person the same address works on all of them.
+  // saying so is what tells a person the same address works on all of them. In the wallet's
+  // mode: on a test network, the networks with a test network here, by their test names.
   const netAddress = store.addressOn;
   const addresses = NETWORK_GROUPS.flatMap((g) => {
-    const net = g.networks[0];
-    const address = netAddress(net);
-    if (!address) return [];
-    const label = net === 'stellar' ? `Stellar · ${store.network.label}` : groupLabel(g.networks, t);
-    return [{ net, kind: g.kind, coin: NETWORKS[net].coin, label, address }];
+    const nets = g.networks.filter((id) => !!netAddress(id));
+    const net = nets[0];
+    const address = net ? netAddress(net) : null;
+    if (!net || !address) return [];
+    const label = net === 'stellar' ? `Stellar · ${store.network.label}` : groupLabel(nets, store.networkName, t);
+    return [{ net, kind: g.kind, label, address }];
   });
   const showQr = (net: NetworkId) => {
     store.setReceiveNet(net);
@@ -93,7 +95,7 @@ export function Wallets({ store }: { store: WalletStore }) {
         <div className="wallets-addresses">
           {addresses.map((a) => (
             <div key={a.kind} className="wallets-addr">
-              <AssetLogo code={a.coin} size={34} />
+              <NetworkLogo network={a.net} size={34} />
               <div className="wallets-addr-main">
                 <span className="wallets-addr-net">{a.label}</span>
                 <span className="wallets-addr-value">{shortAddr(a.address, 6, 6)}</span>

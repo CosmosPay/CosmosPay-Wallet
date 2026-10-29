@@ -228,6 +228,12 @@ export async function svmGenesisAt(url: string): Promise<string> {
   return rpc<string>(url, 'getGenesisHash', []);
 }
 
+/** Whether the SVM node at `url` would accept `blockhash` as recent. */
+export async function svmBlockhashValidAt(url: string, blockhash: string): Promise<boolean> {
+  const r = await rpc<{ value: boolean }>(url, 'isBlockhashValid', [blockhash, { commitment: 'processed' }]);
+  return r.value === true;
+}
+
 export async function svmBlockhashAt(url: string): Promise<string> {
   const r = await rpc<{ value: { blockhash: string } }>(url, 'getLatestBlockhash', [{ commitment: 'confirmed' }]);
   return r.value.blockhash;

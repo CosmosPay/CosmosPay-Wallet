@@ -3,13 +3,16 @@
  * stubbed node. What is pinned is what keeps a public node from deciding anything: an EVM send is
  * refused when the node serves another chain or when its fees and gas would cost more than the
  * network's fee reserve, and a Fogo send — whose key is Solana's too — is refused when the node is
- * not Fogo's or when Solana would accept the blockhash. Nothing is broadcast in any of those.
+ * not Fogo's or when Solana would accept the blockhash. In test mode the same holds against the
+ * test network: its chain id, its genesis, and a blockhash neither Solana nor Fogo's main network
+ * knows; and only its coin is paid. Nothing is broadcast in any of those.
  */
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { base58 } from '@scure/base';
 import { NETWORKS, SEND_FEE_RESERVE, SVM_GENESIS_HASH } from '@/constants/networks';
+import { TESTNETS, TEST_SVM_GENESIS_HASH } from '@/constants/testnets';
 import { sendNetworkTransfer } from '@/lib/networkSend';
 import { evmAddressOf } from '@/lib/evmTx';
 
@@ -135,4 +138,41 @@ test('Solana is asked only after the settle wait, so a blockhash too fresh for i
   });
   assert.equal(await refusal(sendNetworkTransfer(fogoTransfer(), 50)), 'chain');
   assert.ok(!called.includes('sendTransaction'));
+});
+
+test('in test mode an EVM send is signed for the test chain, and only its coin is paid', async () => {
+  const sepolia = TESTNETS.base!.evmChainId!;
+  const called = node(baseEvm({ tip: 1_000_000n, base: 5_000_000n, gas: 21_000n }, sepolia));
+  assert.match(await sendNetworkTransfer({ ...evmTransfer(), env: 'testnet' }), /^0x[0-9a-f]{64}$/);
+  assert.ok(called.includes('eth_sendRawTransaction'));
+  // a node answering the MAIN chain id in test mode is refused
+  const mainNode = node(baseEvm({ tip: 1n, base: 1n, gas: 21_000n }));
+  assert.equal(await refusal(sendNetworkTransfer({ ...evmTransfer(), env: 'testnet' })), 'chain');
+  assert.ok(!mainNode.includes('eth_sendRawTransaction'));
+  // a registry token is a main-network contract: never paid on a test network
+  node(baseEvm({ tip: 1n, base: 1n, gas: 60_000n }, sepolia));
+  const usdc = NETWORKS.base.tokens[0].asset;
+  assert.equal(await refusal(sendNetworkTransfer({ ...evmTransfer(), asset: usdc, env: 'testnet' })), 'address');
+});
+
+test('a Fogo testnet send needs its own genesis and a blockhash Fogo mainnet does not know either', async () => {
+  const ok = node(fogoNode(TEST_SVM_GENESIS_HASH.fogo!, false));
+  assert.ok((await sendNetworkTransfer({ ...fogoTransfer(), env: 'testnet' }, 0)).length > 40);
+  assert.ok(ok.includes('sendTransaction'));
+  // the main network's genesis is not the test network's
+  const mainGenesis = node(fogoNode(SVM_GENESIS_HASH.fogo!, false));
+  assert.equal(await refusal(sendNetworkTransfer({ ...fogoTransfer(), env: 'testnet' }, 0)), 'chain');
+  assert.ok(!mainGenesis.includes('sendTransaction'));
+  // a blockhash Solana does not know but Fogo's MAIN network does: the signature would move real FOGO
+  const fogoMain = (NETWORKS.fogo.balance as { rpc: string }).rpc;
+  const answers = fogoNode(TEST_SVM_GENESIS_HASH.fogo!, false);
+  const sent: string[] = [];
+  globalThis.fetch = (async (url: string, init: RequestInit = {}) => {
+    const { method } = JSON.parse(String(init.body)) as Rpc;
+    sent.push(method);
+    const result = method === 'isBlockhashValid' ? { context: { slot: 1 }, value: String(url) === fogoMain } : answers[method as keyof typeof answers]();
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: 1, result }), { status: 200 });
+  }) as typeof fetch;
+  assert.equal(await refusal(sendNetworkTransfer({ ...fogoTransfer(), env: 'testnet' }, 0)), 'chain');
+  assert.ok(!sent.includes('sendTransaction'));
 });

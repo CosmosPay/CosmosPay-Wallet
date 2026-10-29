@@ -169,9 +169,19 @@ try {
   await page.waitForTimeout(800);
   ok((await page.getByText('Conecta Cosmos Pay').count()) === 0, 'Home does not offer an account the wallet already has');
 
-  // reload -> must require unlock (greets by name, no address/network), then decrypt
+  // reload -> the session is kept (src/lib/sessionKeep.ts): back on Home, nothing asked
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByText('Saldo total').waitFor({ timeout: 15000 });
+  ok((await page.getByRole('button', { name: 'Desbloquear' }).count()) === 0, 'Reload keeps the session: Home, no unlock');
+
+  // lock -> the lock screen (greets by name, no address/network), then decrypt; a reload
+  // after a lock stays locked, because the lock dropped what was kept
+  await page.locator('.bottom-nav').getByRole('button', { name: 'Más' }).click();
+  await page.locator('.more-lock').click();
+  await page.getByRole('button', { name: 'Desbloquear' }).waitFor({ timeout: 10000 });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Desbloquear' }).waitFor({ timeout: 10000 });
+  ok(true, 'A lock survives a reload');
   ok((await page.getByText('Test User').count()) > 0, 'Unlock greets by name');
   ok((await page.getByText('Red', { exact: false }).count()) === 0, 'Unlock hides network');
   await page.getByPlaceholder('Contraseña').fill('wrong');
@@ -182,7 +192,7 @@ try {
   await page.getByPlaceholder('Contraseña').fill('Test-pass-123');
   await page.getByRole('button', { name: 'Desbloquear' }).click();
   await page.getByText('Saldo total').waitFor({ timeout: 10000 });
-  ok(true, 'Reload -> unlock (decrypt) -> home');
+  ok(true, 'Lock -> unlock (decrypt) -> home');
   await page.waitForTimeout(800);
   ok((await page.getByText('Conecta Cosmos Pay').count()) === 0, 'The account is sealed with the wallet: still there after unlock');
 

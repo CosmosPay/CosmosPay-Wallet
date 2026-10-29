@@ -184,7 +184,8 @@ Unlock, the device-unlock offer and Success are done. **The wallet follows the F
 the brand blue · Earn · More (`app/navModel.tsx`; the rail marks the active place with the same
 blue line). Home is greeting, total balance with its 24h move, four ringed actions, and the tabs
 Activos (every network's holdings, a network filter, each token's network coin on its corner) ·
-Actividad (in days, `ActivityList`) · Análisis (the split by network and asset) · Favoritos.
+Actividad (in days, `ActivityList`; a send is red, mark and amount, money received is green, a swap
+blue, and a commission keeps the ink with its own receipt mark, `FeeIcon` — never a send's arrow) · Análisis (the split by network and asset) · Favoritos.
 **The Wallet tab** (`features/wallet/Wallets.tsx`) is everything about the wallet itself, so using
 several networks is one place: the active wallet's addresses — one row per address, not per network
 (the sixteen EVM networks are one 0x account) — with copy and the QR on Receive, the Stellar ledger,
@@ -273,10 +274,88 @@ test:responsive` guards the column across 320px → 1920px.
 
 Past `--desk-min` the app takes the WHOLE window: edge to edge, no card and no cap, a
 navigation rail down the left edge (`src/app/DesktopNav.tsx`) and the screen column
-centred in what is left. **No screen knows this happened**, and none should — all forty
-are built for a narrow column, and stretching a payment form to 1900px is how a layout
-pass silently restyles work nobody re-checked. The frame is what fills the screen; the
-reading column inside it stays capped at `--desk-content-w`.
+centred in what is left. A screen built for the narrow column does not know this happened,
+and must not — stretching a payment form to 1900px is how a layout pass silently restyles
+work nobody re-checked. The frame fills the screen; the reading column inside it stays
+capped at `--desk-content-w`.
+
+**Screen by screen, the inside becomes a PC layout too** (the user, 2026-10-29: inside, the
+wallet looked like a phone). A screen redesigned for a PC window says so with `wide: true`
+in the screen table (`src/lib/screens.ts`); the shell then gives it the whole width beside
+the rail (`--desk-wide-w: 100%`, gutters `clamp(32px, 3.2vw, 64px)`) via
+`.shell-content.is-wide`, and the screen's own sheet lays it out in columns under
+`@media (min-width: 1024px) { .has-desktop-mode .is-wide … }` — use the width for columns, never
+for one stretched row. Home is the first: who you are across the top, the balance, actions and
+cards in a left column that stays in view, and on the right the tabs with the assets as a table
+(asset, price, 24 h, balance, value; each cell placed by column number so a missing one leaves a
+gap, figures on one line). Mark a screen `wide` only in the change that gives it that layout, and
+check it at 1366 and 1920. The logo at the top of the rail (and of the extension's menu) is a
+button to Home, inside the session. Home's header ends with the Stellar network pill — always,
+mainnet too — that switches networks (`HomeNetworkButton`), the notifications bell from the Figma
+(`HomeNotifications`, `lib/notifications.ts`: payments, swaps and the account's creation from the
+loaded history, a blue dot for what came after the last open, kept per wallet and network), and
+the settings; each opens a panel under it on a PC window and a sheet on a phone.
+
+**Home's assets are what is held, and the tools are a search and a network selector** (the user:
+the old chips showed Stellar, Solana and Monad whatever was held, squashed). `lib/assetList.ts`:
+Stellar lists XLM and its trustlines; every other network — Solana and Monad included — only a
+balance above zero. `AssetToolbar` is a search (name, symbol or network; every word, accents
+aside; `ui/SearchField`, the app's one search box) and a network selector over every network
+with an address in the mode: the held ones first with their value and asset count, then the
+rest saying "no assets" or "balance unavailable" (a failed read is never shown as zero). A
+network with nothing shows so, with "Receive on …". No chips: thirty-odd networks do not fit a
+row. The search takes all the room the selector leaves; "all networks" wears the Cosmos Wallet
+mark (`ui/NetworkSelect`, shared with "add an asset").
+
+**Send is one structure on every network** (the user: it was "desestructurada"). What (an asset
+card opening every sendable asset of every network the wallet signs on, held first, with a
+search — choosing the asset chooses the network: `SendAssetPicker`), to whom (one field, paste and
+scan inside; pasting a SEP-7 link fills the draft), how much (one field, the code and "Max"
+inside; worth and available under it), Stellar's memo folded until asked for or set, then the
+button — docked over the keyboard on a phone, right after the form on a PC window. The pieces are
+`features/money/SendParts.tsx`; Stellar and `ChainSendForm` both use them. No network picker and
+no percentage chips.
+
+**Receive is laid out like Send**: the network card (`NetworkPicker variant="card"`, its line
+"same address on N networks" or the coin; the panel grouped by shared address), then the QR on
+the canvas with the network's mark over its centre — generated at error correction `H` for that
+(`qrDataUrl(text, 'H')`; verified decoding with jsQR) — the whole address, copy and share, and a
+plain note (not an error) that only this network's assets arrive. On a PC window the QR stands
+beside the address.
+
+**Swap works like the developer platform's swaps** (the user's call): one widget (`Swap.tsx`) —
+"you pay" / "you receive" panels with a token button naming its network, the flip on their seam,
+the quote following the inputs on its own (debounced, refreshed while it sits, quoted whatever
+the balance; an answer for stale inputs dropped), an estimate from NEAR Intents' prices before it,
+the rate (tap to invert) with the details folded under it, slippage in the header's gear (Auto,
+0.5, 1, 2%) threaded through every quote AND its swap, and one button that says what is missing;
+quote errors show under it, never as toasts. Routes are `lib/swapCatalog.ts` (the platform's
+catalogue, unit-tested): Stellar DEX / Jupiter / Kuru Flow within Stellar, Solana, Monad; NEAR
+Intents across networks or within any network without a market. The wallet PAYS only from networks
+it signs on (off the three markets, only the coin or a registry token — `sendNetworkTransfer`'s
+rule; EVM and Fogo origins fund the deposit through `submitCrossChainFromNetwork`) and RECEIVES only
+on its own addresses. A test network swaps on Stellar's market only. Not ported from the platform:
+USDT0's LayerZero route, a recipient other than the wallet, a token pasted by address.
+The token list is a sheet from the bottom on a phone and a dialog in the middle of a PC window
+(`Sheet placement="center"`), like the platform's modal — the user's call: never a bottom sheet on a PC.
+
+**"Add an asset" covers every network.** Stellar keeps its trustline flow (verified registry rows
+with their issuer first; the rest, the warning and the manual form only under the Stellar filter).
+Every other network lists its coin and registry tokens as "included" and each other token NEAR
+Intents lists (`lib/assetCatalog.ts`, from `store.intentsAssets`) as a switch: on, the token is
+tracked (`lib/trackedTokens.ts`, per wallet in storage, checked on the way in and out) and read
+with the registry's by `readNetworkBalances(network, address, tokens)` — EVM, SVM, Tron, NEAR
+(`ft_balance_of`), Sui, Aptos/Movement; not TON jettons or Starknet yet. A tracked token is listed
+even at zero, is priced ONLY by NEAR Intents for that contract (never by symbol or parity), and is
+never payable: `sendNetworkTransfer` still pays the coin and registry contracts only. In test
+mode the catalog is each test network's coin and tracked tokens are neither read nor listed —
+they are main-network contracts.
+
+**The top and bottom safe zones.** Inside a session a PC window keeps 32px above the screen
+(`.has-rail`), with the rail's logo on the header's line; a phone keeps 14px plus the status-bar
+inset, and the bottom bar grows by the gesture inset. Once a screen has scrolled, a hairline marks
+the top edge where content goes under that strip (`.is-scrolled`, set by `Shell.tsx`; drawn by
+`.wallet-app-screen::before`), so text is never just cut in half there.
 
 Everything the mode does lives in `src/styles/app/shell.css` and
 `src/styles/app/desktop-nav.css`, under the `--desk-*` tokens in `theme.css`.
@@ -1042,8 +1121,18 @@ balance, the canonical stablecoin contracts read there and its explorers. Five r
   EVM network signs with the phrase's EVM key, checked against the address on screen.
 - **Balances are unknown before they are zero.** `lib/networkBalances.ts` reads each network from
   its public API; a read that fails is `null` (no rows), never 0, and only what is held is listed.
-  Mainnet only: Solana and Monad keep their own reads, which follow the Stellar network onto their
-  test networks; on a test network the others show their (real) address with a notice saying so.
+  **A mode shows its own networks, never the other's** (the user, 2026-10-29: "no tiene sentido si
+  está en testnet que se muestren saldos de mainnet"). The Testnet/Mainnet pill moves EVERY network:
+  Solana and Monad to devnet/testnet (`constants/chains.ts`), the rest to the test networks in
+  `constants/testnets.ts` (27 in all, each endpoint probed: keyless, CORS, EVM chain ids checked).
+  `lib/testnets.ts` gives a network as it is in a mode (`networkDefOn`: its own endpoint, name and
+  chain id, coin only, never a main definition), its test name, and the same key's address there
+  (`tb1…`/`tltc1…` re-encoded; the same string elsewhere). `store.addressOn` answers in the mode, so
+  a network with no test network here (Scroll, Dogecoin, Bitcoin Cash, Dash, Zcash, Cardano,
+  Starknet) has no address, row or balance in test mode. `store.networkName` names every network
+  in the mode. Sending in test mode (`sendsOn`): Stellar's, Solana devnet, Monad testnet, every EVM
+  test network (bound by its own chain id) and Fogo testnet (its own genesis, and a blockhash neither
+  Solana nor Fogo mainnet knows — the same key holds both) — each its coin only.
 - **A swap's output is checked as the server spells it.** NEAR Intents can deliver to any network;
   the wallet still refuses a swap whose recipient or refund is not its own, comparing with
   `sameNetworkAddress` (hex and bech32 in one case, cashaddr with or without its prefix, base58
@@ -1051,6 +1140,16 @@ balance, the canonical stablecoin contracts read there and its explorers. Five r
 
 The extension derives its `host_permissions` from the registry's endpoints
 (`scripts/build-extension.ts`), so a new endpoint is reachable from the popup without a second list.
+
+**Every network and asset has its own logo** (the user's call). `src/lib/logos.ts` maps symbols and
+network ids to the official artwork in `public/logos/` — copied as is from the developer platform,
+where its fetch-token-logos script generates it (sources and licences in each folder's
+`SOURCES.md`); refresh it there and copy it again, never draw or edit one by hand. `NETWORK_LOGOS` is
+typed `Record<NetworkId, string>`, so a network without its mark does not compile. Draw a network
+with `NetworkLogo` (Base is Base, not ETH) and an asset with `AssetLogo`; a row's asset wears its
+network's mark on the corner everywhere but a coin on its home network (`isHomeCoin`: ETH on
+Ethereum alone, ETH on Base with Base's). A code with no artwork shows its glyph ring;
+`tests/unit/logos.test.ts` lists the ones still missing (AQUA, USDB, yXLM), so a new gap fails.
 
 ## An asset is a (code, issuer) pair, and the registry says whose
 
@@ -1188,6 +1287,17 @@ rule here can be checked by a test, prefer writing the test over writing the sen
 covered end-to-end). `tests/unit/crypto.test.ts` was called `vault.test.ts` and never
 imported `@/lib/vault`, which is why "the vault is covered" read as true.
 
+## The debug navigator (dev builds only)
+
+`npm run dev` shows a "Debug" tab on the window's right edge (`src/app/DebugNav.tsx`): every screen
+one tap away, a test session without onboarding, email or passkey, and "reopen on reload" to come
+back to the last screen after a full reload. A screen that needs a session opens one on the test
+wallet (`src/constants/debug.ts`: SEP-5's public test phrase, password `debug-wallet-pass`), created
+on a browser with no wallet; a browser that already holds a wallet under another password cannot be
+opened this way (one key seals every wallet on a device) — use a private window. WalletApp mounts it
+behind `import.meta.env.DEV` and the store exposes `devOpenSession` only there, so a production build
+has neither (check: no `Debug navigator` in `dist/`). Its copy is English: a developer tool, not UI.
+
 ## Navigation is a table, not four switches
 
 `src/lib/screens.ts` is the single source of truth: `SCREEN_IDS` derives the
@@ -1276,6 +1386,22 @@ Both live in `lib/`, not in the store hook — the hook is unreachable from
   a gateway generates no input events. Every flow captures `sessionEpochRef` before
   its first await and calls `guardSession(epoch)` immediately before the key is used.
   `lock()` increments it and clears the exclusive runner.
+
+## The session is kept, and the auto-lock bounds it
+
+The user's call (2026-10-29): a session survives a reload, a closed popup and a browser
+restart, and comes back on the screen it was on. `src/lib/sessionKeep.ts` seals the vault key
+under a NON-EXTRACTABLE AES-GCM key generated in the browser, bound to the wallet id, and keeps
+both in IndexedDB with `lastActive`, the auto-lock and the place; the store keeps it when a
+session opens or changes key, drops it (record and wrapping key) when one ends, and restores
+it at boot only inside the auto-lock window, for the active wallet, and when the key still
+opens that wallet's box. Screens that need a flow's passing data, the camera or secrets
+(`confirm`, `success`, `export`, …) come back as their tab. Know what it is NOT: protection
+from whoever uses this browser profile, or from malware copying the profile off the disk —
+the idle auto-lock (Settings: 15 min, 1 h, 1 day by default, 7 days; `AUTO_LOCK_CHOICES_MS`)
+is what bounds it, and "confirm signatures" still asks before every signature. The dapp
+approval window does not use it: it unlocks on its own, as before. A test that needs the lock
+screen after a reload must lock first (or delete the `cosmos-session` database).
 
 ## The session is not a field
 

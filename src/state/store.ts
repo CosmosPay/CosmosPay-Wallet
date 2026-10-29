@@ -37,7 +37,9 @@ const networkBalancesLib = () => import('@/lib/networkBalances');
 // Sending on the EVM networks and Fogo: loaded on the first such send.
 const networkSendLib = () => import('@/lib/networkSend');
 /** The networks Home reads beyond Stellar, Solana and Monad, which keep their own reads (test networks too). */
-const HOLDING_NETWORKS = NETWORK_IDS.filter((id) => id !== 'stellar' && id !== 'solana' && id !== 'monad' && NETWORKS[id].balance !== null);
+/** The networks read by `loadNetworkHoldings` in a mode: the ones with a balance source there. */
+const holdingNetworks = (env: ChainNet) =>
+  NETWORK_IDS.filter((id) => id !== 'stellar' && id !== 'solana' && id !== 'monad' && !!networkDefOn(id, env)?.balance);
 // Solana devnet / Monad testnet balances and the devnet airdrop: only on a test network.
 const chainRpcLib = () => import('@/lib/chainRpc');
 import {
@@ -85,7 +87,10 @@ import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset, XLM, type AssetRe
 import { FIAT_DECIMALS, fromMinorUnits, toMinorUnitsBig } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
 import { recoveryShortfall, sendableAssets, spendableCeiling } from '@/lib/balances';
-import { AUTO_LOCK_MS, AUTO_LOCK_CHECK_MS } from '@/constants/app';
+import { AUTO_LOCK_CHECK_MS, type AutoLockMs } from '@/constants/app';
+import { dropKeptSession, keepSession, landingScreen, restoreKeptSession, touchKeptSession } from '@/lib/sessionKeep';
+import { readTracked, toTrackedToken, tokensToRead, withToken, withoutToken, writeTracked, type TrackedTokens } from '@/lib/trackedTokens';
+import { networkDefOn, networkNameOn, testnetAddress } from '@/lib/testnets';
 import { RECOVERY_PROOF_TTL_MS } from '@/constants/recovery';
 import { retryOnNetworkError } from '@/lib/retryNetwork';
 import { CROSS_CHAIN_SLIPPAGE_BPS } from '@/constants/swap';
@@ -158,6 +163,7 @@ import {
   chainsKey,
   historyKey,
   networksKey,
+  INTENTS_ASSETS_KEY,
   opsKey,
   recoveryKey,
   type OpsDomain,
@@ -713,6 +719,25 @@ export function useWalletStore() {
   const account = useQueryValue<AccountState>(accountK) ?? null;
   const chainHoldings = useQueryValue<ChainHoldings>(chainsKey(scope.net, scope.pub)) ?? null;
   const networkHoldings = useQueryValue<NetworkHoldings>(networksKey(scope.net, scope.pub)) ?? null;
+  const intentsAssets = useQueryValue<CrossChainAsset[]>(INTENTS_ASSETS_KEY) ?? null;
+  /** The tokens this wallet added beyond the registry's (lib/trackedTokens.ts), read from storage per wallet. */
+  const [trackedTokens, setTrackedTokens] = useState<TrackedTokens>({});
+  const trackedRef = useRef<TrackedTokens>({});
+  useEffect(() => {
+    const id = metaEntry?.id;
+    trackedRef.current = {};
+    setTrackedTokens({});
+    if (!id) return;
+    let live = true;
+    void readTracked(id).then((t) => {
+      if (!live) return;
+      trackedRef.current = t;
+      setTrackedTokens(t);
+    });
+    return () => {
+      live = false;
+    };
+  }, [metaEntry?.id]);
   const prices = useQueryValue<Record<string, PriceInfo>>(PRICES_KEY) ?? EMPTY_PRICES;
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -744,8 +769,21 @@ export function useWalletStore() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [meta, network, networkId]);
-  const { theme, themePref, setThemePref, lang, setLang, t, locale, requireConfirm, setRequireConfirm, diagnostics, setDiagnostics } =
-    usePreferences(useCallback((msg: string) => flash(msg, 'info'), [flash]));
+  const {
+    theme,
+    themePref,
+    setThemePref,
+    lang,
+    setLang,
+    t,
+    locale,
+    requireConfirm,
+    setRequireConfirm,
+    diagnostics,
+    setDiagnostics,
+    autoLockMs,
+    setAutoLockMs,
+  } = usePreferences(useCallback((msg: string) => flash(msg, 'info'), [flash]));
 
   // onboarding drafts
   const [draftMnemonic, setDraftMnemonic] = useState<string>('');
@@ -956,6 +994,28 @@ export function useWalletStore() {
       setCustomNetworksState(custom);
       setNetworkIdState(netId);
       if (active) setMetaState(active);
+      // The session kept from before the reload, the closed popup or the restart
+      // (lib/sessionKeep.ts): reopened on the screen it was on — only inside its auto-lock
+      // window, only for the wallet that is active, and only when its key still opens that
+      // wallet's box. Anything else is dropped and the lock screen shows, as before.
+      const kept = active ? await restoreKeptSession().catch(() => null) : null;
+      if (kept && active && kept.walletId === active.id) {
+        try {
+          await openWalletBox(active, kept.vaultKey);
+          await openSession(active, kept.vaultKey);
+          const land = landingScreen(kept.place);
+          // Arriving, not navigating: nothing behind it but the screen's own way back.
+          stackRef.current = [];
+          screenRef.current = land;
+          setScreen(land);
+          if (kept.place) setTab(kept.place.tab);
+          return;
+        } catch {
+          void dropKeptSession().catch(() => {});
+        }
+      } else if (kept) {
+        void dropKeptSession().catch(() => {});
+      }
       setScreen(list.length > 0 ? 'unlock' : 'welcome');
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1878,26 +1938,75 @@ export function useWalletStore() {
       lastActiveRef.current = Date.now();
     };
     touch();
+    // The kept session's clock (lib/sessionKeep.ts): written at most once per check, and when
+    // the page goes out of view — a popup closing or a browser quitting gives no later chance.
+    let written = 0;
+    const note = () => {
+      const last = lastActiveRef.current;
+      if (last === written) return;
+      written = last;
+      void touchKeptSession({ lastActive: last }).catch(() => {});
+    };
     const onVisible = () => {
       // Coming back into view counts as activity; going away deliberately does not,
       // so a backgrounded panel still expires on schedule.
       if (document.visibilityState === 'visible') touch();
+      else note();
     };
     const events: (keyof WindowEventMap)[] = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
     for (const e of events) window.addEventListener(e, touch, { passive: true });
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pagehide', note);
     const id = setInterval(() => {
-      if (Date.now() - lastActiveRef.current >= AUTO_LOCK_MS) {
+      if (Date.now() - lastActiveRef.current >= autoLockMs) {
         lock();
         flash(t('unlock.autoLocked'), 'info');
+        return;
       }
+      note();
     }, AUTO_LOCK_CHECK_MS);
     return () => {
       clearInterval(id);
       for (const e of events) window.removeEventListener(e, touch);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pagehide', note);
     };
-  }, [session, lock, flash, t]);
+  }, [session, lock, flash, t, autoLockMs]);
+
+  /**
+   * The session outlives the page (lib/sessionKeep.ts): kept when it opens or its key changes
+   * (an unlock, a restore, a sign-in, a new password, another wallet), dropped when it ENDS.
+   * Only an ending drops it: the first render has no session yet, and must not erase the one
+   * the boot is about to restore.
+   */
+  const keptRef = useRef<Session | null>(null);
+  useEffect(() => {
+    const prev = keptRef.current;
+    keptRef.current = rawSession;
+    if (rawSession) {
+      if (prev?.walletId !== rawSession.walletId || prev?.vaultKey !== rawSession.vaultKey) {
+        void keepSession(rawSession.walletId, rawSession.vaultKey, autoLockMs, null).catch(() => {});
+      }
+    } else if (prev) {
+      void dropKeptSession().catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawSession]);
+
+  // Where the person is, so a restore lands there. After the keep above in the same commit,
+  // and the module runs one operation at a time, so the first place lands on the new record.
+  useEffect(() => {
+    if (rawSession && screen !== 'boot') void touchKeptSession({ place: { screen, tab } }).catch(() => {});
+  }, [rawSession, screen, tab]);
+
+  /** The idle auto-lock the person chose, applied to the kept session too. */
+  const setAutoLock = useCallback(
+    (ms: AutoLockMs) => {
+      setAutoLockMs(ms);
+      void touchKeptSession({ lockMs: ms }).catch(() => {});
+    },
+    [setAutoLockMs],
+  );
 
   /** Wipe EVERY wallet (used by "forgot password" — nothing can be decrypted). */
   /** Lock screen: choose which wallet to unlock (no decryption — just sets it active). */
@@ -2525,13 +2634,18 @@ export function useWalletStore() {
   }, [meta]);
 
   /** Our address on `net`, or null while it is not derived (or this build cannot derive it). */
+  // The wallet's address on `net` in the current mode: on a test Stellar network, the same key's
+  // address on that network's test network (lib/testnets.ts) — or none, where it has no test
+  // network here, so a test mode never offers or reads a main network.
+  const testMode = networkEnv(network) === 'dev';
   const addressOnNetwork = useCallback(
     (net: NetworkId): string | null => {
       const kind = NETWORKS[net].address;
       if (kind === 'stellar') return session?.publicKey ?? meta?.publicKey ?? null;
-      return networkAddresses?.[kind] ?? null;
+      const main = networkAddresses?.[kind] ?? null;
+      return testMode && main ? testnetAddress(net, main) : main;
     },
-    [session, meta, networkAddresses],
+    [session, meta, networkAddresses, testMode],
   );
 
   /**
@@ -2617,7 +2731,7 @@ export function useWalletStore() {
 
   /** Fetch a swap quote for `from` -> `to`. Returns null on error / not enabled. */
   const quoteSwap = useCallback(
-    async (amount: string, from: SwapAsset, to: SwapAsset): Promise<SwapQuote | null> => {
+    async (amount: string, from: SwapAsset, to: SwapAsset, slippageBps: number = DEFAULT_SLIPPAGE_BPS): Promise<SwapQuote | null> => {
       // This account's key when it has one, the shared public key otherwise — a
       // quote needs no account, only a commission rate, and the gateway injects
       // that per consumer.
@@ -2630,11 +2744,11 @@ export function useWalletStore() {
           sourceAssetIssuer: from.issuer ?? undefined,
           destAssetCode: to.code,
           destAssetIssuer: to.issuer ?? undefined,
-          slippageBps: DEFAULT_SLIPPAGE_BPS,
+          slippageBps,
         });
       } catch (e) {
-        flash((e as Error).message || t('swap.quoteError'), 'err');
-        return null;
+        // The swap form says it under its button — it quotes as the person types, so no toast.
+        throw e instanceof Error && e.message ? e : new Error(t('swap.quoteError'));
       }
     },
     [cosmosPay, network, t, flash],
@@ -2645,7 +2759,7 @@ export function useWalletStore() {
    * (server sends it to Horizon). Lands on the success screen either way.
    */
   const submitSwap = useCallback(
-    async (amount: string, from: SwapAsset, to: SwapAsset, quote: SwapQuote) => {
+    async (amount: string, from: SwapAsset, to: SwapAsset, quote: SwapQuote, slippageBps: number = DEFAULT_SLIPPAGE_BPS) => {
       if (!session) return;
       const apiKey = openAccessKey();
       if (!apiKey) return;
@@ -2665,7 +2779,7 @@ export function useWalletStore() {
             destAssetCode: to.code,
             destAssetIssuer: to.issuer ?? undefined,
             source: session.publicKey,
-            slippageBps: DEFAULT_SLIPPAGE_BPS,
+            slippageBps,
           });
           // The gateway builds this envelope; we sign it. Verify it actually does what
           // was just confirmed — source, destination, operation set, fee, what leaves
@@ -2787,7 +2901,7 @@ export function useWalletStore() {
 
   /** The request both the quote and the create send. The recipient is always our own. */
   const crossChainInput = useCallback(
-    (amount: string, from: SwapAsset, target: NetworkId, dest: CrossChainAsset): CrossChainSwapInput | null => {
+    (amount: string, from: SwapAsset, target: NetworkId, dest: CrossChainAsset, slippageBps: number = CROSS_CHAIN_SLIPPAGE_BPS): CrossChainSwapInput | null => {
       const recipient = target === 'stellar' ? null : addressOnNetwork(target);
       if (!session || !recipient) return null;
       return {
@@ -2798,22 +2912,22 @@ export function useWalletStore() {
         amount,
         recipient,
         refundTo: session.publicKey,
-        slippageBps: CROSS_CHAIN_SLIPPAGE_BPS,
+        slippageBps,
       };
     },
     [session, addressOnNetwork],
   );
 
   const quoteCrossChain = useCallback(
-    async (amount: string, from: SwapAsset, target: NetworkId, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
+    async (amount: string, from: SwapAsset, target: NetworkId, dest: CrossChainAsset, slippageBps: number = CROSS_CHAIN_SLIPPAGE_BPS): Promise<CrossChainQuote | null> => {
       const apiKey = openAccessKey();
-      const input = crossChainInput(amount, from, target, dest);
+      const input = crossChainInput(amount, from, target, dest, slippageBps);
       if (!apiKey || !input) return null;
       try {
         return await cpQuoteCrossChainSwap(apiKey, input);
       } catch (e) {
-        flash((e as Error).message || t('swap.quoteError'), 'err');
-        return null;
+        // The swap form says it under its button — it quotes as the person types, so no toast.
+        throw e instanceof Error && e.message ? e : new Error(t('swap.quoteError'));
       }
     },
     [openAccessKey, crossChainInput, t, flash],
@@ -2831,10 +2945,10 @@ export function useWalletStore() {
    * three must be.
    */
   const submitCrossChain = useCallback(
-    async (amount: string, from: SwapAsset, target: NetworkId, dest: CrossChainAsset, quote: CrossChainQuote) => {
+    async (amount: string, from: SwapAsset, target: NetworkId, dest: CrossChainAsset, quote: CrossChainQuote, slippageBps: number = CROSS_CHAIN_SLIPPAGE_BPS) => {
       if (!session) return;
       const apiKey = openAccessKey();
-      const input = crossChainInput(amount, from, target, dest);
+      const input = crossChainInput(amount, from, target, dest, slippageBps);
       if (!apiKey || !input) return;
       await exclusive.run('swap', async () => {
         const epoch = sessionEpochRef.current;
@@ -2965,16 +3079,26 @@ export function useWalletStore() {
   );
 
   /**
-   * The balances on every other network (`lib/networkBalances.ts`), mainnet only — none of them
-   * has a test network here. One read per network, each on its own, so one public API that is
-   * down or rate-limiting costs its own rows only; null means unknown, never zero.
+   * The balances on every other network (`lib/networkBalances.ts`), in the wallet's mode: the
+   * main networks, or — on a test Stellar network — each one's test network (constants/testnets.ts),
+   * never a main one (the user's rule). One read per network, each on its own, so one public API
+   * that is down or rate-limiting costs its own rows only; null means unknown, never zero.
    */
   const loadNetworkHoldings = useCallback(
     async (force = false): Promise<void> => {
-      if (!session || !meta || !networkAddresses || chainNet !== 'mainnet') return;
-      const reads = HOLDING_NETWORKS.flatMap((id) => {
+      if (!session || !meta || !networkAddresses) return;
+      // Each network with its registry tokens and the ones the person added; Solana and Monad
+      // (read with their test networks by `loadChainHoldings`) only for added tokens, which are
+      // main-network contracts, so only while Stellar is on its main network.
+      // On a test network: the test networks only (no address elsewhere), their coin only — the
+      // registry's and the added tokens are main-network contracts.
+      const legacy = chainNet === 'mainnet' ? (['solana', 'monad'] as const) : [];
+      const reads = [...holdingNetworks(chainNet), ...legacy].flatMap((id) => {
         const address = addressOnNetwork(id);
-        return address ? [{ id, address }] : [];
+        const tokens =
+          chainNet === 'testnet' ? [] : id === 'solana' || id === 'monad' ? trackedTokens[id] ?? [] : tokensToRead(trackedTokens, id);
+        if (!address || ((id === 'solana' || id === 'monad') && tokens.length === 0)) return [];
+        return [{ id, address, tokens }];
       });
       try {
         await run(
@@ -2983,7 +3107,7 @@ export function useWalletStore() {
             fetcher: async () => {
               const { readNetworkBalances } = await networkBalancesLib();
               const read = await Promise.all(
-                reads.map(async ({ id, address }) => [id, await readNetworkBalances(id, address).catch(() => null)] as const),
+                reads.map(async ({ id, address, tokens }) => [id, await readNetworkBalances(id, address, tokens, chainNet).catch(() => null)] as const),
               );
               return Object.fromEntries(read) as NetworkHoldings;
             },
@@ -2995,7 +3119,76 @@ export function useWalletStore() {
         /* The rows stay as they were; the next poll tries again. */
       }
     },
-    [session, meta, networkAddresses, addressOnNetwork, chainNet, networkId],
+    [session, meta, networkAddresses, addressOnNetwork, chainNet, networkId, trackedTokens],
+  );
+
+  // A token added or removed is read (or dropped) now, not at the next poll.
+  const trackedSig = JSON.stringify(trackedTokens);
+  const trackedSeen = useRef(trackedSig);
+  useEffect(() => {
+    if (trackedSeen.current === trackedSig) return;
+    trackedSeen.current = trackedSig;
+    void loadNetworkHoldings(true);
+  }, [trackedSig, loadNetworkHoldings]);
+
+  /**
+   * What NEAR Intents lists — every network's tokens with a USD price — for "add an asset" and
+   * as the price of a held token no feed prices. Global and cached ten minutes.
+   */
+  const loadIntentsAssets = useCallback(async (): Promise<void> => {
+    try {
+      await run({
+        key: INTENTS_ASSETS_KEY,
+        fetcher: async () => {
+          const list = await crossChainAssets();
+          if (list.length === 0) throw new Error('no assets');
+          return list;
+        },
+        ttl: 10 * 60_000,
+      });
+    } catch {
+      /* Nothing listed: the screens offer what the registry has. */
+    }
+  }, [crossChainAssets]);
+
+  /**
+   * A network's name in the wallet's mode — what every screen calls it: "Stellar Testnet",
+   * "Solana Devnet", "Ethereum Sepolia" on a test network; the main names otherwise.
+   */
+  const networkName = useCallback(
+    (id: NetworkId): string => {
+      if (id === 'stellar') return networkEnv(network) === 'dev' ? `Stellar ${network.label}` : 'Stellar';
+      if (id === 'solana' || id === 'monad') return t(`chains.net.${chainNet}.${id}`);
+      return networkNameOn(id, chainNet);
+    },
+    [network, chainNet, t],
+  );
+
+  /** Add a token to read on `network` (lib/trackedTokens.ts). False when it is not one. */
+  const trackToken = useCallback(
+    async (network: NetworkId, token: NetworkToken): Promise<boolean> => {
+      const id = metaEntry?.id;
+      const checked = toTrackedToken(network, token);
+      if (!id || !checked) return false;
+      const next = withToken(trackedRef.current, network, checked);
+      trackedRef.current = next;
+      setTrackedTokens(next);
+      await writeTracked(id, next);
+      return true;
+    },
+    [metaEntry?.id],
+  );
+
+  const untrackToken = useCallback(
+    async (network: NetworkId, asset: string): Promise<void> => {
+      const id = metaEntry?.id;
+      if (!id) return;
+      const next = withoutToken(trackedRef.current, network, asset);
+      trackedRef.current = next;
+      setTrackedTokens(next);
+      await writeTracked(id, next);
+    },
+    [metaEntry?.id],
   );
 
   // The addresses are derived once per wallet (`ensureChainAddresses`), then read like a balance.
@@ -3115,26 +3308,26 @@ export function useWalletStore() {
       const owner = addressOnNetwork(net);
       if (!owner) return null;
       try {
-        return await (await networkBalancesLib()).readNetworkBalances(net, owner);
+        return await (await networkBalancesLib()).readNetworkBalances(net, owner, undefined, chainNet);
       } catch {
         return null;
       }
     },
-    [addressOnNetwork],
+    [addressOnNetwork, chainNet],
   );
 
   /**
    * Send on any other network the wallet signs on (`lib/networkSend.ts`): the EVM ones with the
-   * phrase's EVM key, Fogo with its SVM key — each checked against the address on screen.
-   * Solana and Monad go through `submitChainSend`, which also knows their test networks.
+   * phrase's EVM key, Fogo with its SVM key — each checked against the address on screen. In test
+   * mode, on that network's test network (its coin). Solana and Monad go through `submitChainSend`.
    */
   const submitNetworkSend = useCallback(
     async (net: NetworkId, token: NetworkToken, to: string, amount: string) => {
       if (net === 'solana' || net === 'monad') return submitChainSend(net, token, to, amount);
-      const def = NETWORKS[net];
+      const def = networkDefOn(net, chainNet);
       const units = toMinorUnitsBig(amount, token.decimals);
       const destination = to.trim();
-      if (!session || !def.send || !units || units <= 0n || chainNet !== 'mainnet') return;
+      if (!session || !def?.send || !units || units <= 0n) return;
       const short = `${destination.slice(0, 6)}…${destination.slice(-6)}`;
       await exclusive.run('send', async () => {
         const epoch = sessionEpochRef.current;
@@ -3152,7 +3345,7 @@ export function useWalletStore() {
           guardSession(epoch);
           let hash: string;
           try {
-            hash = await lib.sendNetworkTransfer({ network: net, secret, owner, asset: token.asset, to: destination, amount: units });
+            hash = await lib.sendNetworkTransfer({ network: net, secret, owner, asset: token.asset, to: destination, amount: units, env: chainNet });
           } finally {
             secret.fill(0);
           }
@@ -3181,7 +3374,7 @@ export function useWalletStore() {
   );
 
   const quoteChainSwap = useCallback(
-    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken): Promise<SwapQuote | null> => {
+    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, slippageBps: number = CHAIN_SWAP_SLIPPAGE_BPS): Promise<SwapQuote | null> => {
       const apiKey = openAccessKey();
       if (!apiKey) return null;
       try {
@@ -3190,11 +3383,11 @@ export function useWalletStore() {
           amount,
           sourceAssetCode: from.asset,
           destAssetCode: to.asset,
-          slippageBps: CHAIN_SWAP_SLIPPAGE_BPS,
+          slippageBps,
         });
       } catch (e) {
-        flash((e as Error).message || t('swap.quoteError'), 'err');
-        return null;
+        // The swap form says it under its button — it quotes as the person types, so no toast.
+        throw e instanceof Error && e.message ? e : new Error(t('swap.quoteError'));
       }
     },
     [openAccessKey, t, flash],
@@ -3206,7 +3399,7 @@ export function useWalletStore() {
    * amount typed and the quote's minimum — never the create response's.
    */
   const submitChainSwap = useCallback(
-    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, quote: SwapQuote) => {
+    async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, quote: SwapQuote, slippageBps: number = CHAIN_SWAP_SLIPPAGE_BPS) => {
       const apiKey = openAccessKey();
       const owner = addressOnNetwork(chain);
       const units = toMinorUnitsBig(amount, from.decimals);
@@ -3228,7 +3421,7 @@ export function useWalletStore() {
             amount,
             sourceAssetCode: from.asset,
             destAssetCode: to.asset,
-            slippageBps: CHAIN_SWAP_SLIPPAGE_BPS,
+            slippageBps,
           });
           if (
             swap.chain !== chain ||
@@ -3296,7 +3489,7 @@ export function useWalletStore() {
 
   /** The request a cross-chain swap from Solana / Monad sends: both ends are our own. */
   const crossChainFromInput = useCallback(
-    (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset): CrossChainSwapInput | null => {
+    (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset, slippageBps: number = CROSS_CHAIN_SLIPPAGE_BPS): CrossChainSwapInput | null => {
       const refundTo = chainAddress(origin);
       const recipient = chainAddress(dest.chain);
       if (!refundTo || !recipient || dest.chain === origin) return null;
@@ -3309,22 +3502,22 @@ export function useWalletStore() {
         amount,
         recipient,
         refundTo,
-        slippageBps: CROSS_CHAIN_SLIPPAGE_BPS,
+        slippageBps,
       };
     },
     [chainAddress],
   );
 
   const quoteCrossChainFrom = useCallback(
-    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset): Promise<CrossChainQuote | null> => {
+    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset, slippageBps: number = CROSS_CHAIN_SLIPPAGE_BPS): Promise<CrossChainQuote | null> => {
       const apiKey = openAccessKey();
-      const input = crossChainFromInput(origin, amount, from, dest);
+      const input = crossChainFromInput(origin, amount, from, dest, slippageBps);
       if (!apiKey || !input) return null;
       try {
         return await cpQuoteCrossChainSwap(apiKey, input);
       } catch (e) {
-        flash((e as Error).message || t('swap.quoteError'), 'err');
-        return null;
+        // The swap form says it under its button — it quotes as the person types, so no toast.
+        throw e instanceof Error && e.message ? e : new Error(t('swap.quoteError'));
       }
     },
     [openAccessKey, crossChainFromInput, t, flash],
@@ -3336,9 +3529,9 @@ export function useWalletStore() {
    * refund comes back to OUR origin address, the amount is the one on screen.
    */
   const submitCrossChainFrom = useCallback(
-    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset, quote: CrossChainQuote) => {
+    async (origin: OtherChain, amount: string, from: ChainToken, dest: CrossChainAsset, quote: CrossChainQuote, slippageBps: number = CROSS_CHAIN_SLIPPAGE_BPS) => {
       const apiKey = openAccessKey();
-      const input = crossChainFromInput(origin, amount, from, dest);
+      const input = crossChainFromInput(origin, amount, from, dest, slippageBps);
       const units = toMinorUnitsBig(amount, from.decimals);
       if (!session || !apiKey || !input || !units) return;
       await exclusive.run('swap', async () => {
@@ -3537,6 +3730,118 @@ export function useWalletStore() {
    * substituting it would turn a clear "connect an account" prompt into a 403
    * from somewhere the user cannot act on.
    */
+
+  /** The request a NEAR Intents swap paid from an EVM network or Fogo sends: both ends are ours. */
+  const crossChainFromNetworkInput = useCallback(
+    (origin: NetworkId, amount: string, from: NetworkToken, dest: CrossChainAsset, slippageBps: number = CROSS_CHAIN_SLIPPAGE_BPS): CrossChainSwapInput | null => {
+      const refundTo = addressOnNetwork(origin);
+      const recipient = addressOnNetwork(dest.chain);
+      // Within the same network too: one without a market of its own swaps through NEAR Intents.
+      if (!refundTo || !recipient || !NETWORKS[origin].send) return null;
+      return {
+        originChain: origin,
+        originAsset: from.asset === 'native' ? from.symbol : from.asset,
+        destinationChain: dest.chain,
+        destinationAsset: dest.chain === 'stellar' && dest.contract ? `${dest.symbol}:${dest.contract}` : dest.contract ?? dest.symbol,
+        amount,
+        recipient,
+        refundTo,
+        slippageBps,
+      };
+    },
+    [addressOnNetwork],
+  );
+
+  const quoteCrossChainFromNetwork = useCallback(
+    async (origin: NetworkId, amount: string, from: NetworkToken, dest: CrossChainAsset, slippageBps: number = CROSS_CHAIN_SLIPPAGE_BPS): Promise<CrossChainQuote | null> => {
+      const apiKey = openAccessKey();
+      const input = crossChainFromNetworkInput(origin, amount, from, dest, slippageBps);
+      if (!apiKey || !input) return null;
+      try {
+        return await cpQuoteCrossChainSwap(apiKey, input);
+      } catch (e) {
+        // The swap form says it under its button — it quotes as the person types, so no toast.
+        throw e instanceof Error && e.message ? e : new Error(t('swap.quoteError'));
+      }
+    },
+    [openAccessKey, crossChainFromNetworkInput, t, flash],
+  );
+
+  /**
+   * Open a NEAR Intents swap paid from an EVM network or Fogo and fund it with a transfer the
+   * wallet builds itself (`sendNetworkTransfer`: the coin or a registry token, the node's chain
+   * id asserted, the fee bounded). Checked first, as from Stellar: the output goes to OUR address,
+   * a refund comes back to OUR origin address, the amount is the one on screen.
+   */
+  const submitCrossChainFromNetwork = useCallback(
+    async (origin: NetworkId, amount: string, from: NetworkToken, dest: CrossChainAsset, quote: CrossChainQuote, slippageBps: number = CROSS_CHAIN_SLIPPAGE_BPS) => {
+      const apiKey = openAccessKey();
+      const input = crossChainFromNetworkInput(origin, amount, from, dest, slippageBps);
+      const units = toMinorUnitsBig(amount, from.decimals);
+      const def = NETWORKS[origin];
+      if (!session || !apiKey || !input || !units || chainNet !== 'mainnet') return;
+      await exclusive.run('swap', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('confirmSig.swapTitle'),
+          message: t('xswap.confirmMsg', { amount, code: from.symbol, dest: quote.destination.asset, chain: NETWORKS[dest.chain].name }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const swap = await cpCreateCrossChainSwap(apiKey, input);
+          const lib = await networkSendLib();
+          if (
+            !sameNetworkAddress(dest.chain, swap.recipient, input.recipient) ||
+            !sameNetworkAddress(origin, swap.refundTo, input.refundTo) ||
+            swap.originChain !== origin ||
+            swap.destinationChain !== dest.chain ||
+            !sameDecimal(swap.amountIn, amount) ||
+            !lib.isNetworkAddress(origin, swap.depositAddress)
+          ) {
+            throw new Error(t('xswap.mismatch'));
+          }
+          // One key per family: every EVM network signs with the phrase's EVM key, Fogo with its SVM one.
+          const { owner, secret } = await chainSigner(def.address === 'svm' ? 'solana' : 'monad');
+          guardSession(epoch);
+          let hash: string;
+          try {
+            hash = await lib.sendNetworkTransfer({ network: origin, secret, owner, asset: from.asset, to: swap.depositAddress, amount: units, env: 'mainnet' });
+          } finally {
+            secret.fill(0);
+          }
+          // Best effort: NEAR Intents watches the address anyway; this only starts it sooner.
+          cpReportCrossChainDeposit(apiKey, swap.id, hash).catch(() => {});
+          report(EVENT.swapSubmitted, {
+            category: 'transaction',
+            props: { from: from.symbol, to: quote.destination.asset, origin, chain: dest.chain, amount, received: swap.amountOutEstimated, txHash: hash, crossChain: true },
+          });
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('xswap.success'),
+            msg: t('xswap.successFromMsg', { origin: def.name, chain: NETWORKS[dest.chain].name, seconds: String(swap.timeEstimateSeconds) }),
+            rows: [
+              { label: t('swap.pay'), val: `${amount} ${from.symbol}` },
+              { label: t('swap.receiveEst'), val: `${swap.amountOutEstimated} ${quote.destination.asset}` },
+              { label: t('xswap.to'), val: `${input.recipient.slice(0, 6)}…${input.recipient.slice(-6)}` },
+            ],
+            hash,
+            ...(def.explorerTx ? { explorer: def.explorerTx.replace('{tx}', hash) } : {}),
+          });
+          setScreen('success');
+          if (dest.chain === 'stellar') refresh(true);
+        } catch (e) {
+          reportError(EVENT.swapFailed, e, { from: from.symbol, to: dest.symbol, amount, origin, crossChain: true });
+          setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: chainSwapMessage(e), rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+          void loadNetworkHoldings(true);
+        }
+      });
+    },
+    [session, chainNet, openAccessKey, crossChainFromNetworkInput, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, loadNetworkHoldings, refresh, t],
+  );
   const cosmosApiKey = useCallback((): string | null => {
     const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
     if (!apiKey) flash(t(cosmosPay ? 'cosmospay.noKeyForNetwork' : 'cosmospay.enableFirst'), 'info');
@@ -6822,7 +7127,14 @@ export function useWalletStore() {
     closeEasySend: easy.closeEasySend,
     finishOnboarding,
     unlock,
+    /**
+     * DEV BUILDS ONLY (`app/DebugNav.tsx`): open a session on a wallet the debug navigator
+     * unlocked itself, past the unlock screen. Undefined in a production build.
+     */
+    devOpenSession: import.meta.env.DEV ? openSession : undefined,
     lock,
+    autoLockMs,
+    setAutoLock,
     selectWalletForUnlock,
     removeWalletLocked,
     startAddWallet,
@@ -6868,6 +7180,12 @@ export function useWalletStore() {
     chainHoldings,
     /** Balances on every other network, mainnet only; null while unread. */
     networkHoldings,
+    trackedTokens,
+    trackToken,
+    untrackToken,
+    networkName,
+    intentsAssets,
+    loadIntentsAssets,
     networkBalances,
     submitNetworkSend,
     loadChainHoldings,
@@ -6882,6 +7200,8 @@ export function useWalletStore() {
     submitChainSwap,
     quoteCrossChainFrom,
     submitCrossChainFrom,
+    quoteCrossChainFromNetwork,
+    submitCrossChainFromNetwork,
     // liquidity pools
     lpTarget,
     listPools,

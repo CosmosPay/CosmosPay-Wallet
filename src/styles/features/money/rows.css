@@ -55,6 +55,12 @@
   color: var(--up);
 }
 
+/* money out: a send is red, mark and amount; a commission (.is-fee) keeps the ink */
+.activity-mark.is-out {
+  border-color: var(--down);
+  color: var(--down);
+}
+
 .activity-mark.is-swap {
   border-color: var(--brand);
   color: var(--brand);
@@ -168,7 +174,7 @@
 }
 
 .activity-amount.is-down {
-  color: var(--text);
+  color: var(--down);
 }
 
 .activity-amount.is-failed {

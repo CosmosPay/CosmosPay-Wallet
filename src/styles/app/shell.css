@@ -157,6 +157,19 @@ html.kb-open body {
     --gutter: 26px;
   }
 
+  /* Inside the session a PC window keeps more air above the screen than a phone's 14px —
+     the rail's logo sits on the same line as the screen's header (desktop-nav.css). */
+  .shell-root.has-desktop-mode.has-rail .shell-content {
+    padding-top: 32px;
+  }
+
+  /* A screen with its own desktop layout (`.is-wide`, from the screen table's `wide`): nearly
+     the whole width beside the rail, its margins growing with the window. */
+  .shell-root.has-desktop-mode .shell-content.is-wide {
+    max-width: var(--desk-wide-w);
+    --gutter: clamp(32px, 3.2vw, 64px);
+  }
+
   /* The tab bar is a phone affordance. The rail replaces it, and leaving both would put
      two navigations on one screen disagreeing about where "back" goes. */
   .shell-root.has-desktop-mode .bottom-nav {

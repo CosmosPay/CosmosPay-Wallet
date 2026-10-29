@@ -1,69 +1,83 @@
 /* =====================================================================
-   src/features/money/Receive.tsx — an address per network: its QR on the
-   canvas (no box), the address, copy and share. Prefix: .receive-
+   src/features/money/Receive.tsx — laid out like Send: the network card (Send's section and
+   label, src/styles/features/money/send.css), then the QR on the canvas (no box) with the
+   network's mark at its centre, the whole address, copy and share, and a note. On a PC window
+   the QR stands beside the address. Prefix: .receive-
    ===================================================================== */
 
-.receive-panel {
+.receive-body {
   display: flex;
   flex-direction: column;
+  gap: 24px;
+  margin-top: 28px;
   animation: fadeIn var(--dur-base) var(--ease-out);
 }
 
-/* The QR stands on the canvas as itself, with no box around it (the user's call). The image
-   is dark modules on white, so in the dark theme it carries its own white quiet zone. */
+/* The QR stands on the canvas as itself, with no box around it (the user's call). The image is
+   dark modules on white, so in the dark theme it carries its own white quiet zone. */
 .receive-qr {
+  position: relative;
   display: grid;
   place-items: center;
-  min-height: 236px;
-  margin: 18px 0 20px;
+  align-self: center;
+  width: 240px;
+  height: 240px;
 }
 
 .receive-qr-img {
-  width: 220px;
-  height: 220px;
+  width: 240px;
+  height: 240px;
   image-rendering: pixelated;
-  border-radius: 12px;
+  border-radius: 14px;
+}
+
+/* the network's mark over the centre, on a white ring of its own (the code is read at `H`) */
+.receive-qr-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  padding: 5px;
+  border-radius: 50%;
+  background: #fff;
+  translate: -50% -50%;
+}
+
+.receive-details {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
 }
 
 .receive-addr {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 16px;
-}
-
-.receive-addr-main {
-  min-width: 0;
-  display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
 }
 
 .receive-addr-label {
+  color: var(--muted);
   font-size: 13px;
   font-weight: 600;
-  color: var(--muted);
 }
 
 .receive-addr-value {
   font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: 14px;
+  line-height: 1.5;
   word-break: break-all;
-}
-
-.receive-warn {
-  margin-bottom: 16px;
+  user-select: all;
 }
 
 .receive-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 22px;
+  gap: 12px;
 }
 
 .receive-actions svg {
@@ -142,4 +156,22 @@
   width: 18px;
   height: 18px;
   color: var(--muted);
+}
+
+/* A PC window: the QR on the left, what to share on the right. The 1024px is --desk-min. */
+@media (min-width: 1024px) {
+  .has-desktop-mode .receive-body {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 32px;
+  }
+
+  .has-desktop-mode .receive-qr {
+    flex-shrink: 0;
+    align-self: flex-start;
+  }
+
+  .has-desktop-mode .receive-details {
+    flex: 1;
+  }
 }

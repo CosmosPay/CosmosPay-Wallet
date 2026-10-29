@@ -1,7 +1,8 @@
 /* =====================================================================
    src/ui/Sheet.tsx — bottom sheet on the native <dialog>.
    The dialog spans the viewport (a click on it is a click on the scrim) and the panel
-   sits at its bottom, capped to the app column. Flat: one solid fill a step above the
+   sits at its bottom, capped to the app column — or, `.is-center`, in the middle of a PC
+   window. Flat: one solid fill a step above the
    canvas and a hairline, no shadow.
    ===================================================================== */
 .sheet {
@@ -73,6 +74,35 @@
 .sheet.is-open .sheet-panel {
   transform: none;
   transition: transform var(--dur-slow) var(--ease-out);
+}
+
+/* Centred (`placement="center"`, a PC window): the panel in the middle of the window, lined
+   on every side, no handle. It rises a little and settles while it fades in — still a
+   transform transition, so Sheet.tsx closes the dialog on the same transitionend. */
+.sheet.is-center {
+  justify-content: center;
+  padding: 24px;
+}
+
+.sheet.is-center .sheet-panel {
+  max-width: 460px;
+  max-height: min(84vh, 760px);
+  border-bottom: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 20px 20px 16px;
+  opacity: 0;
+  transform: translateY(16px) scale(0.98);
+  transition: transform var(--dur-quick) var(--ease-in), opacity var(--dur-quick) var(--ease-in);
+}
+
+.sheet.is-center.is-open .sheet-panel {
+  opacity: 1;
+  transform: none;
+  transition: transform var(--dur-base) var(--ease-out), opacity var(--dur-base) var(--ease-out);
+}
+
+.sheet.is-center .sheet-handle {
+  display: none;
 }
 
 /* The sheet moves as ONE piece: its controls must not run the app-wide entrance pop

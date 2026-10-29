@@ -27,8 +27,11 @@ import {
   type BalanceSource,
   type NetworkDef,
   type NetworkId,
+  type NetworkToken,
 } from '@/constants/networks';
 import { toMinorUnitsBig } from '@/lib/amount';
+import type { ChainNet } from '@/constants/chains';
+import { networkDefOn } from '@/lib/testnets';
 import { ApiShapeError, arrayOf, bool, object, parseShape, str, type Check } from '@/lib/apiShape';
 import { balanceOfCalldata } from '@/lib/evmTx';
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, decodeTokenAccount } from '@/lib/solanaTx';
@@ -361,16 +364,36 @@ async function readTrongrid(io: Io, api: string, def: NetworkDef, address: strin
 /**
  * NEAR: `view_account` at final finality, `amount` in yoctoNEAR (liquid; staked `locked` is not
  * spendable and not counted). `UNKNOWN_ACCOUNT` is a known zero: an implicit account exists only
- * once something has been sent to it.
+ * once something has been sent to it. A token (NEP-141) is its contract's `ft_balance_of`, a JSON
+ * string of digits returned as bytes; a token balance is kept by the contract under the account
+ * id, so it is read even for an account that does not exist yet.
  */
 async function readNear(io: Io, rpc: string, def: NetworkDef, address: string): Promise<Record<string, bigint>> {
-  const env = await jsonRpc(io, rpc, 'query', { request_type: 'view_account', finality: 'final', account_id: address });
-  if (env.error !== undefined) {
-    const cause = env.error && typeof env.error === 'object' ? (env.error as { cause?: { name?: unknown } }).cause : undefined;
-    if (cause?.name === 'UNKNOWN_ACCOUNT') return balances(0n, def, () => 0n);
-    refused(io, 'view_account', env.error);
-  }
-  return balances(BigInt(parseShape(io.label, object({ amount: uint }), env.result).amount), def, () => 0n);
+  const native = async () => {
+    const env = await jsonRpc(io, rpc, 'query', { request_type: 'view_account', finality: 'final', account_id: address });
+    if (env.error !== undefined) {
+      const cause = env.error && typeof env.error === 'object' ? (env.error as { cause?: { name?: unknown } }).cause : undefined;
+      if (cause?.name === 'UNKNOWN_ACCOUNT') return 0n;
+      refused(io, 'view_account', env.error);
+    }
+    return BigInt(parseShape(io.label, object({ amount: uint }), env.result).amount);
+  };
+  const args = base64.encode(new TextEncoder().encode(JSON.stringify({ account_id: address })));
+  const token = async (contract: string) => {
+    const env = await jsonRpc(io, rpc, 'query', { request_type: 'call_function', finality: 'final', account_id: contract, method_name: 'ft_balance_of', args_base64: args });
+    if (env.error !== undefined) refused(io, 'ft_balance_of', env.error);
+    const { result } = parseShape(io.label, object({ result: arrayOf(uint) }), env.result);
+    const text = String.fromCharCode(...result.map(Number));
+    let digits: unknown;
+    try {
+      digits = JSON.parse(text);
+    } catch {
+      io.fail('shape', 'ft_balance_of');
+    }
+    return BigInt(uint(digits, 'ft_balance_of', io.label));
+  };
+  const [coin, ...tokens] = await Promise.all([native(), ...def.tokens.map((t) => token(t.asset))]);
+  return balances(coin, def, (_asset, _decimals, i) => tokens[i]);
 }
 
 /** Sui's coin type. The registry keeps tokens; the native coin is the framework's. */
@@ -471,12 +494,21 @@ function readSource(io: Io, source: BalanceSource, def: NetworkDef, address: str
 }
 
 /**
- * Base-unit balances of `address` on `network`: `native` for the coin, and each of the network's
- * `tokens` by its `asset`. Throws (a typed error) when the source cannot be read — the caller
- * treats that as "unknown", never as zero.
+ * Base-unit balances of `address` on `network`: `native` for the coin, and each token by its
+ * `asset` — the network's registry tokens, or the `tokens` given (the registry's plus the ones
+ * the person added: lib/trackedTokens.ts). Throws (a typed error) when the source cannot be read
+ * — the caller treats that as "unknown", never as zero.
  */
-export async function readNetworkBalances(network: NetworkId, address: string): Promise<Record<string, bigint>> {
-  const def = NETWORKS[network];
+export async function readNetworkBalances(
+  network: NetworkId,
+  address: string,
+  tokens?: readonly NetworkToken[],
+  env: ChainNet = 'mainnet',
+): Promise<Record<string, bigint>> {
+  // The network as it is in this mode: on a test network its own endpoint — never the main one's.
+  const base = networkDefOn(network, env);
+  if (!base) throw new NetworkBalanceError(network, 'unsupported');
+  const def: NetworkDef = tokens ? { ...base, tokens: [...tokens] } : base;
   const source = def.balance;
   if (!source) throw new NetworkBalanceError(network, 'unsupported');
   const io = openIo(network, source.kind);

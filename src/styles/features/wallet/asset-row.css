@@ -112,3 +112,9 @@
   font-size: 12.5px;
   color: var(--muted);
 }
+
+/* The price and the day's move as columns of their own: only Home's table on a PC window
+   draws them (home.css); everywhere else the line under the name says the same. */
+.asset-row-col {
+  display: none;
+}

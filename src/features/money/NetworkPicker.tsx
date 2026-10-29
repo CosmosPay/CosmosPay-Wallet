@@ -1,7 +1,8 @@
 import { useId, useMemo, useRef, useState } from 'react';
-import { AssetLogo } from '@/ui/AssetLogo';
+import { NetworkLogo } from '@/ui/AssetLogo';
 import { Dropdown } from '@/ui/Dropdown';
 import { Sheet } from '@/ui/Sheet';
+import { SearchField } from '@/ui/SearchField';
 import { CheckIcon, ChevronDownIcon, CloseIcon } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
 import { inkHandlers } from '@/lib/ink';
@@ -21,12 +22,20 @@ export function NetworkPicker({
   value,
   onPick,
   networks,
+  nameOf = (id) => NETWORKS[id].name,
+  variant = 'pill',
+  subOf,
   t,
 }: {
   value: NetworkId;
   onPick: (net: NetworkId) => void;
   /** The networks offered, in any order; the list keeps the registry's grouping. */
   networks: readonly NetworkId[];
+  /** Each network's name as the screen calls it (the store's, in the wallet's mode). */
+  nameOf?: (id: NetworkId) => string;
+  /** `card`: a full-width card naming the network and `subOf`'s line, like Send's asset card. */
+  variant?: 'pill' | 'card';
+  subOf?: (id: NetworkId) => string;
   t: TFn;
 }) {
   const [open, setOpen] = useState<null | 'menu' | 'sheet'>(null);
@@ -42,20 +51,22 @@ export function NetworkPicker({
   const groups = useMemo(() => {
     const offered = new Set(networks);
     const q = query.trim().toLowerCase();
-    const match = (id: NetworkId) => !q || NETWORKS[id].name.toLowerCase().includes(q) || NETWORKS[id].coin.toLowerCase().includes(q);
+    const match = (id: NetworkId) => !q || nameOf(id).toLowerCase().includes(q) || NETWORKS[id].coin.toLowerCase().includes(q);
     return NETWORK_GROUPS.map((g) => ({ kind: g.kind, ids: g.networks.filter((id) => offered.has(id) && match(id)) })).filter((g) => g.ids.length > 0);
-  }, [networks, query]);
+  }, [networks, query, nameOf]);
 
-  const list = (
+  // The search takes the focus on a PC window only: on a phone it would raise the keyboard
+  // over the list it searches.
+  const list = (desktop: boolean) => (
     <div className="network-picker-body">
-      <input
-        type="search"
+      <SearchField
         value={query}
-        onChange={(e) => setQuery((e.target as HTMLInputElement).value)}
+        onChange={setQuery}
         placeholder={t('networks.search')}
-        aria-label={t('networks.search')}
-        className="input network-picker-search"
-        data-autofocus
+        label={t('networks.search')}
+        clearLabel={t('common.clearSearch')}
+        autoFocus={desktop}
+        compact
       />
       <div role="listbox" aria-label={t('receive.network')} className="network-picker-list">
         {groups.map((g) => (
@@ -73,8 +84,8 @@ export function NetworkPicker({
                 }}
                 className={cx('network-picker-item', id === value && 'is-on')}
               >
-                <AssetLogo code={NETWORKS[id].coin} size={26} />
-                <span className="network-picker-name">{NETWORKS[id].name}</span>
+                <NetworkLogo network={id} size={26} />
+                <span className="network-picker-name">{nameOf(id)}</span>
                 <span className="network-picker-coin">{NETWORKS[id].coin}</span>
                 {id === value && <CheckIcon className="network-picker-check" />}
               </button>
@@ -87,23 +98,42 @@ export function NetworkPicker({
   );
 
   return (
-    <div className="network-picker">
-      <button
-        ref={trigger}
-        type="button"
-        aria-haspopup="dialog"
-        aria-expanded={open !== null}
-        aria-label={t('networks.pick', { network: current.name })}
-        onClick={() => setOpen((o) => (o ? null : isDesktopLayout() ? 'menu' : 'sheet'))}
-        className="network-picker-btn ink"
-        {...inkHandlers}
-      >
-        <AssetLogo code={current.coin} size={26} />
-        <span className="network-picker-current">{current.name}</span>
-        <ChevronDownIcon className={cx('network-picker-caret', open && 'is-open')} />
-      </button>
+    <div className={cx('network-picker', variant === 'card' && 'is-card')}>
+      {variant === 'card' ? (
+        <button
+          ref={trigger}
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={open !== null}
+          aria-label={t('networks.pick', { network: nameOf(value) })}
+          onClick={() => setOpen((o) => (o ? null : isDesktopLayout() ? 'menu' : 'sheet'))}
+          className="network-picker-card"
+        >
+          <NetworkLogo network={value} size={44} />
+          <span className="network-picker-card-text">
+            <span className="network-picker-card-name">{nameOf(value)}</span>
+            {subOf && <span className="network-picker-card-sub">{subOf(value)}</span>}
+          </span>
+          <ChevronDownIcon className={cx('network-picker-caret', open && 'is-open')} />
+        </button>
+      ) : (
+        <button
+          ref={trigger}
+          type="button"
+          aria-haspopup="dialog"
+          aria-expanded={open !== null}
+          aria-label={t('networks.pick', { network: nameOf(value) })}
+          onClick={() => setOpen((o) => (o ? null : isDesktopLayout() ? 'menu' : 'sheet'))}
+          className="network-picker-btn ink"
+          {...inkHandlers}
+        >
+          <NetworkLogo network={value} size={26} />
+          <span className="network-picker-current">{nameOf(value)}</span>
+          <ChevronDownIcon className={cx('network-picker-caret', open && 'is-open')} />
+        </button>
+      )}
       <Dropdown open={open === 'menu'} onClose={close} anchorRef={trigger} label={t('receive.network')} className="network-picker-menu">
-        {list}
+        {list(true)}
       </Dropdown>
       <Sheet open={open === 'sheet'} onClose={close} labelledBy={titleId}>
         <div className="sheet-head">
@@ -114,7 +144,7 @@ export function NetworkPicker({
             <CloseIcon />
           </button>
         </div>
-        {list}
+        {list(false)}
       </Sheet>
     </div>
   );

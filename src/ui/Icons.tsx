@@ -240,6 +240,16 @@ export function SentIcon(p: IconProps) {
   );
 }
 
+/** A receipt with a percent on it: a commission, set apart from a send's arrow. */
+export function FeeIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M6 3.5h12v17l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z" />
+      <path d="M9.5 14l5-5M9.75 9.25h.01M14.25 13.75h.01" />
+    </Svg>
+  );
+}
+
 /** Two opposite arrows: exchange. */
 export function ExchangeIcon(p: IconProps) {
   return (
@@ -253,6 +263,33 @@ export function DotsIcon(p: IconProps) {
   return (
     <Svg {...p}>
       <path d="M6 12h.01M12 12h.01M18 12h.01" />
+    </Svg>
+  );
+}
+
+export function ClipboardIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="8" y="3" width="8" height="4" rx="1.5" />
+      <path d="M16 5h1.5A1.5 1.5 0 0 1 19 6.5v13a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-13A1.5 1.5 0 0 1 6.5 5H8" />
+    </Svg>
+  );
+}
+
+export function SearchIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </Svg>
+  );
+}
+
+export function BellIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" />
+      <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
     </Svg>
   );
 }

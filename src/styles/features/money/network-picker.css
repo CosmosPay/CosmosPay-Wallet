@@ -58,10 +58,6 @@
   gap: 10px;
 }
 
-.network-picker-search {
-  width: 100%;
-}
-
 .network-picker-list {
   display: flex;
   flex-direction: column;
@@ -139,4 +135,72 @@
   margin: 8px 14px;
   color: var(--muted);
   font-size: 14px;
+}
+
+/* ---- the card trigger (Receive): a full-width card like Send's asset card ---- */
+.network-picker.is-card {
+  display: block;
+}
+
+.network-picker-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 72px;
+  padding: 0 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 18px !important;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.network-picker-card:hover {
+  border-color: var(--text);
+}
+
+.network-picker-card:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.network-picker-card-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.network-picker-card-name {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.network-picker-card-sub {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.network-picker-card .network-picker-caret {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+}
+
+/* under a card the panel is the card's width */
+.network-picker.is-card .dropdown.network-picker-menu {
+  left: 0;
+  right: 0;
+  width: auto;
+  translate: none;
+  padding: 12px;
 }

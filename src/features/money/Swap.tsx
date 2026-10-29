@@ -1,374 +1,463 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { EnableReceivingCard } from '@/features/cosmospay/EnableReceivingCard';
 import { ScreenHeader } from '@/ui/ScreenHeader';
-import { Notice } from '@/ui/Notice';
-import { ExchangeIcon } from '@/ui/Icons';
 import { PrimaryButton } from '@/ui/Buttons';
+import { Dropdown } from '@/ui/Dropdown';
 import { Spinner } from '@/ui/Spinner';
-import { trim } from '@/lib/format';
+import { ChevronDownIcon, ExchangeIcon, GearIcon } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
-import { QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
-import type { CrossChainAsset, CrossChainQuote, SwapQuote } from '@/lib/cosmospay';
-import { crossChainDestinations } from '@/lib/crossChainDest';
-import { NETWORKS, NETWORK_IDS, type NetworkId } from '@/constants/networks';
-import { networkEnv } from '@/lib/stellar';
-import { AssetSelect } from '@/features/money/AssetSelect';
-import { ChainSwap } from '@/features/money/ChainSwap';
-import { NetworkPicker } from '@/features/money/NetworkPicker';
-import type { OtherChain } from '@/constants/chains';
-import { assetKey, findAsset, gatewayAssetLabel, isSameAsset, XLM, type AssetRef } from '@/lib/asset';
-import { parseDecimalOr0, sanitizeDecimalInput } from '@/lib/amount';
-import { spendableXlm, sendableAssets } from '@/lib/balances';
-import '@/styles/ui/exchange-card.css';
+import { fmt, trim } from '@/lib/format';
+import { isDesktopLayout } from '@/lib/layout';
+import { fromMinorUnits, sanitizeDecimalInput } from '@/lib/amount';
+import { spendableXlm } from '@/lib/balances';
+import { registrySnapshot } from '@/lib/assetRegistry';
+import { DEFAULT_SLIPPAGE_BPS, type CrossChainQuote, type SwapQuote } from '@/lib/cosmospay';
+import { buildSwapCatalog, canPayWith, estimateOut, receivableFrom, routeFor, type SwapRoute, type SwapToken } from '@/lib/swapCatalog';
+import { SwapTokenPicker, TokenMark } from '@/features/money/SwapTokenPicker';
+import { CHAIN_SWAP_SLIPPAGE_BPS, CHAIN_TOKENS_BY_NET, NATIVE_RESERVE, type ChainToken } from '@/constants/chains';
+import { CROSS_CHAIN_SLIPPAGE_BPS, QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
+import { NETWORKS, SEND_FEE_RESERVE, type NetworkId, type NetworkToken } from '@/constants/networks';
 import '@/styles/features/money/swap.css';
 
+/** Slippage choices in basis points; '' is the route's own default (Auto). */
+const SLIPPAGES = ['', '50', '100', '200'] as const;
+type Slippage = (typeof SLIPPAGES)[number];
+
+type Quoted = { kind: 'dex'; q: SwapQuote } | { kind: 'near'; q: CrossChainQuote };
+type QuoteState = { status: 'idle' | 'loading' | 'ready' | 'error'; data: Quoted | null; error: string; key: string };
+
+const LEGACY = (c: NetworkId): c is 'solana' | 'monad' => c === 'solana' || c === 'monad';
+
 /* ------------------------------- SWAP ------------------------------- */
-// Auto-quote cadence: re-price this long after the last input change (debounce),
-// and refresh on this interval so a sitting quote stays fresh. Each quote is a real
-// Horizon path search, so we don't poll every second — drop QUOTE_REFRESH_MS to 1000
-// if you want literal 1s refresh. The executed swap re-prices server-side regardless.
-
-/** Where the output lands: Stellar (a path payment) or any other network (NEAR Intents). */
-type Target = NetworkId;
-/** Where the swap pays from. Stellar is this screen; Solana / Monad are `ChainSwap`. */
-type Origin = 'stellar' | OtherChain;
-const ORIGINS: Origin[] = ['stellar', 'solana', 'monad'];
-
 /**
- * Swap any trustlined asset for another via CosmosPay (preferential rate per the
- * org plan). The gateway builds the transaction (XDR), we sign it locally with the
- * wallet secret, and the gateway submits it — the wallet stays non-custodial.
+ * Swap, the way the developer platform's swap works (its SwapWidget): "You pay" and "You receive"
+ * panels — a big amount and a token button naming its network — a flip between them, the quote
+ * following the amount and tokens on its own, its details folded under the rate, the slippage in
+ * the header's settings, and one button whose words say what is missing.
  *
- * "Receive on" Solana or Monad makes it a cross-chain swap instead: the wallet pays a
- * NEAR Intents deposit address from its Stellar account (a payment it builds and signs
- * itself), and the output lands on its own Solana / Monad address — the one the same
- * recovery phrase derives. Mainnet only.
- *
- * "Pay from" Solana or Monad hands the screen to `ChainSwap`: a Jupiter / Kuru Flow swap
- * on that chain, or a NEAR Intents swap from it to another (Stellar included).
+ * Every token on every network (lib/swapCatalog.ts): Stellar, Solana and Monad through their own
+ * market; everything else, and every pair across networks, through NEAR Intents (a deposit
+ * address the wallet pays from its own address). The wallet pays from networks it signs on and
+ * receives on its own address — wherever the output lands is this wallet's. A test network swaps
+ * on Stellar's market only. The flows, their checks and signatures are the store's.
  */
 export function Swap({ store }: { store: WalletStore }) {
   const t = store.t;
-  // Both sides can be any trustlined asset (XLM always present).
-  const assets = sendableAssets(store.account);
-  const firstDest = assets.find((a) => !a.isNative && a.code !== 'XLM');
+  const env = store.chainNet;
+  const { loadIntentsAssets, setSwapOrigin, addressOn } = store;
+  useEffect(() => {
+    void loadIntentsAssets();
+  }, [loadIntentsAssets]);
 
-  // Both sides are held as full (code, issuer) refs. Keeping only the code meant
-  // `assets.find(a => a.code === …)` picked whichever look-alike Horizon listed first.
-  const [fromRef, setFromRef] = useState<AssetRef>(XLM);
-  const [toRef, setToRef] = useState<AssetRef>(
-    firstDest ? { code: firstDest.code, issuer: firstDest.issuer } : { code: 'USDC', issuer: null },
+  // Stellar's assets: the registry's verified ones and whatever the account holds, XLM always.
+  const stellar = useMemo(() => {
+    const out: { code: string; issuer: string | null; issuerName: string | null }[] = [{ code: 'XLM', issuer: null, issuerName: null }];
+    const seen = new Set(['XLM:']);
+    const add = (code: string, issuer: string | null, issuerName: string | null) => {
+      const k = `${code}:${issuer ?? ''}`;
+      if (!seen.has(k)) (seen.add(k), out.push({ code, issuer, issuerName }));
+    };
+    for (const b of store.account?.balances ?? []) if (!b.isNative) add(b.code, b.issuer, null);
+    for (const a of registrySnapshot(store.network.id)) if (a.verified && a.issuer) add(a.code, a.issuer, a.issuerName);
+    return out;
+  }, [store.account, store.network.id]);
+
+  const catalog = useMemo(
+    () => buildSwapCatalog({ intents: store.intentsAssets, env, stellar, chainTokens: CHAIN_TOKENS_BY_NET[env] }),
+    [store.intentsAssets, env, stellar],
   );
-  const [pay, setPay] = useState('1');
-  const [quote, setQuote] = useState<SwapQuote | null>(null);
-  const [quoting, setQuoting] = useState(false);
-  // Which token dropdown is open. The glass cards each create a backdrop-filter stacking
-  // context, so an open menu would be painted under the sibling card / quote below it.
-  // We lift the active card (and the whole stack) above the rest while a menu is open.
-  const [openSel, setOpenSel] = useState<null | 'from' | 'to'>(null);
+  const signs = (c: NetworkId) => !!addressOn(c) && (c === 'stellar' || LEGACY(c) || NETWORKS[c].send);
+  const receives = (c: NetworkId) => !!addressOn(c);
+  const payable = useMemo(() => catalog.filter((x) => canPayWith(x, signs)), [catalog, addressOn]);
 
-  // Cross-chain state: the network the output lands on, what NEAR Intents lists, the
-  // chosen destination asset and its quote.
-  // Opens on the chain the Home card asked for, once: the next visit starts from Stellar.
-  const [origin, setOrigin] = useState<Origin>(store.swapOrigin);
-  const { setSwapOrigin } = store;
+  // What the wallet holds of a token, in its units (null: nothing, or not read).
+  const unitsOf = (tk: SwapToken): number | null => {
+    if (tk.chain === 'stellar') {
+      const b = store.account?.balances.find((x) => x.code === tk.symbol && (x.isNative ? null : x.issuer) === tk.contract);
+      return b ? parseFloat(b.balance) || 0 : null;
+    }
+    const held = LEGACY(tk.chain) ? store.chainHoldings?.[tk.chain] : store.networkHoldings?.[tk.chain];
+    if (!held) return null;
+    const asset = tk.contract === null ? 'native' : NETWORKS[tk.chain].address === 'evm' ? tk.contract.toLowerCase() : tk.contract;
+    const units = held[asset] ?? held[tk.contract ?? 'native'];
+    return units === undefined ? null : parseFloat(fromMinorUnits(units, tk.decimals) ?? '0') || 0;
+  };
+  const heldOf = (tk: SwapToken) => {
+    const n = unitsOf(tk);
+    return n !== null && n > 0 ? trim(n, 6) : null;
+  };
+  // What can be paid: XLM keeps its reserve, a network's coin its fee reserve.
+  const spendable = (tk: SwapToken): number => {
+    const n = unitsOf(tk) ?? 0;
+    if (tk.chain === 'stellar') return tk.contract === null ? spendableXlm(store.account) : n;
+    if (tk.contract !== null) return n;
+    const reserve = LEGACY(tk.chain) ? NATIVE_RESERVE[tk.chain] : SEND_FEE_RESERVE[tk.chain] ?? 0n;
+    return Math.max(0, n - (parseFloat(fromMinorUnits(reserve, tk.decimals) ?? '0') || 0));
+  };
+
+  // The pair: XLM to USDC on Stellar by default — the one that works on both networks — or the
+  // coin of the network a Home holding opened from.
+  const [fromKey, setFromKey] = useState<string | null>(null);
+  const [toKey, setToKey] = useState<string | null>(null);
+  const opened = useRef(store.swapOrigin);
   useEffect(() => {
     setSwapOrigin('stellar');
   }, [setSwapOrigin]);
-  const [target, setTarget] = useState<Target>('stellar');
-  const [xAssets, setXAssets] = useState<CrossChainAsset[]>([]);
-  const [xDestId, setXDestId] = useState<string | null>(null);
-  const [xQuote, setXQuote] = useState<CrossChainQuote | null>(null);
-  const crossChain = target !== 'stellar';
-
-  const from = findAsset(assets, fromRef);
-  const to = findAsset(assets, toRef);
-  const fromBal = parseDecimalOr0(from?.balance);
-  const payNum = parseDecimalOr0(pay);
-  // "Enabled" for swapping means we have a CosmosPay key for the wallet's CURRENT network
-  // (testnet -> dev, mainnet -> prod). If the account exists but lacks this network's key
-  // (e.g. an older single-key account), the link card shows so the user can mint both.
-  // Swapping needs a gateway credential, not an ACCOUNT. Without one of their own
-  // the user swaps on the shared public key at the community rate (150 bps); with
-  // one they get their plan's. Gating this on `cosmosPay` — as it did — put a
-  // registration wall in front of the feature, when the account only ever changed
-  // the price. `store.publicAccess` is what the rate notice below reads.
-  const enabled = store.gatewayAccess;
-  const sameAsset = isSameAsset(fromRef, toRef);
-  // Spendable amount of the source asset — XLM keeps the account's minimum reserve free,
-  // so the swap (which sends the gross amount) can't exceed it. Prevents op_underfunded.
-  const availFrom = from ? (from.isNative ? spendableXlm(store.account) : parseFloat(from.balance) || 0) : 0;
-  const insufficient = payNum > 0 && payNum > availFrom;
-  // `!!quote` is a requirement, not a nicety: the guard bounds the signature by the
-  // quote's "minimum received", so swapping without one would have nothing to bound.
-  const canSwap = enabled && payNum > 0 && !sameAsset && !!from && !!to && !insufficient && !!quote;
-
-  // --- cross-chain ---
-  const mainnet = networkEnv(store.network) === 'prod';
-  const recipient = crossChain ? store.addressOn(target) : null;
-  // Where the output may land: Stellar, and every network the wallet holds an address on.
-  const { addressOn } = store;
-  const targets = useMemo(() => NETWORK_IDS.filter((id) => id === 'stellar' || !!addressOn(id)), [addressOn]);
-  // What may leave Stellar is what NEAR Intents lists there (XLM, Circle USDC).
-  const stellarListed = xAssets.filter((a) => a.chain === 'stellar');
-  const fromListed = stellarListed.some(
-    (a) => a.symbol === fromRef.code && (a.contract ?? null) === (fromRef.code === 'XLM' ? null : fromRef.issuer ?? null),
-  );
-  const destOptions: CrossChainAsset[] = crossChain ? crossChainDestinations(xAssets, target) : [];
-  const xDest = destOptions.find((a) => a.assetId === xDestId) ?? destOptions[0] ?? null;
-  const canCrossSwap =
-    enabled && mainnet && !!recipient && fromListed && !!from && !!xDest && payNum > 0 && !insufficient && !!xQuote;
-
-  // The receive amount comes straight from the gateway quote — no CoinGecko/market
-  // approximation here, so what's shown is exactly what the swap routes.
-  const receive = crossChain
-    ? xQuote ? parseFloat(xQuote.destination.amount) || 0 : 0
-    : quote ? parseFloat(quote.destination.estimated) || 0 : 0;
-  // Commission rate the user is actually charged (bps -> %), shown for transparency.
-  const feePct = crossChain ? (xQuote ? xQuote.fee.bps / 100 : null) : quote ? quote.fee.bps / 100 : null;
-  // Effective rate the user actually gets (fee included): dest per 1 unit paid.
-  const rate = receive > 0 && payNum > 0 ? receive / payNum : null;
-  const receiveCode = crossChain ? xDest?.symbol ?? '' : toRef.code;
-
-  // Clear a stale quote the instant the amount, either asset or the network changes.
   useEffect(() => {
-    setQuote(null);
-    setXQuote(null);
-  }, [pay, assetKey(fromRef), assetKey(toRef), target, xDest?.assetId]);
-
-  // The cross-chain side needs NEAR Intents' list and this phrase's addresses.
+    if (!catalog.length) return;
+    setFromKey((k) =>
+      k && payable.some((x) => x.key === k)
+        ? k
+        : (payable.find((x) => x.chain === opened.current && x.contract === null) ?? payable.find((x) => x.chain === 'stellar' && x.contract === null))?.key ?? null,
+    );
+  }, [catalog, payable]);
+  const from = payable.find((x) => x.key === fromKey) ?? null;
+  const receivable = useMemo(() => (from ? receivableFrom(from, catalog, env, receives) : []), [from, catalog, env, addressOn]);
   useEffect(() => {
-    if (!crossChain) return;
-    store.ensureChainAddresses();
-    if (xAssets.length) return;
-    let cancelled = false;
-    store.crossChainAssets().then((list) => { if (!cancelled) setXAssets(list); });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [crossChain]);
+    if (!from) return;
+    setToKey((k) =>
+      k && receivable.some((x) => x.key === k)
+        ? k
+        : (receivable.find((x) => x.chain === from.chain && x.symbol === 'USDC') ?? receivable.find((x) => x.symbol === 'USDC') ?? receivable[0])?.key ?? null,
+    );
+  }, [from, receivable]);
+  const to = receivable.find((x) => x.key === toKey) ?? null;
+  const route: SwapRoute | null = from && to ? routeFor(from, to, env) : null;
 
-  // Auto-quote: re-price shortly after any change (debounced) and refresh on an
-  // interval, so the shown cost stays coherent — no manual "get quote" step. The
-  // executed swap re-prices server-side on submit and enforces destMin, so the user
-  // is protected even if the displayed quote is a few seconds old.
-  useEffect(() => {
-    if (!enabled || payNum <= 0 || !from) return;
-    if (crossChain ? !mainnet || !recipient || !fromListed || !xDest : !to || sameAsset) return;
-    let cancelled = false;
-    const run = async () => {
-      setQuoting(true);
-      if (crossChain) {
-        const q = await store.quoteCrossChain(pay, from, target, xDest!);
-        if (cancelled) return;
-        setQuoting(false);
-        if (q) setXQuote(q);
-      } else {
-        const q = await store.quoteSwap(pay, from, to!);
-        if (cancelled) return;
-        setQuoting(false);
-        if (q) setQuote(q);
-      }
-    };
-    const debounce = setTimeout(run, QUOTE_DEBOUNCE_MS);
-    const refresh = setInterval(run, QUOTE_REFRESH_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(debounce);
-      clearInterval(refresh);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pay, assetKey(fromRef), assetKey(toRef), enabled, store.account, target, xDest?.assetId, recipient, fromListed, mainnet]);
+  const [amount, setAmount] = useState('');
+  const [slippage, setSlippage] = useState<Slippage>('');
+  const [picker, setPicker] = useState<null | 'from' | 'to'>(null);
+  const [details, setDetails] = useState(false);
+  const [inverse, setInverse] = useState(false);
+  const [flipped, setFlipped] = useState(false);
+  const [slipOpen, setSlipOpen] = useState(false);
+  const slipRef = useRef<HTMLButtonElement>(null);
 
-  // Swap the two sides (and any quote, which no longer applies). Only on Stellar:
-  // a cross-chain swap leaves Stellar, it does not come back to it here.
-  const invert = () => {
-    setFromRef(toRef);
-    setToRef(fromRef);
-    setQuote(null);
+  const amt = parseFloat(amount) || 0;
+  const avail = from ? spendable(from) : 0;
+  const insufficient = amt > 0 && amt > avail;
+  const bps = (r: SwapRoute | null) =>
+    slippage ? Number(slippage) : r?.kind === 'near' ? CROSS_CHAIN_SLIPPAGE_BPS : r?.kind === 'dex' && r.chain !== 'stellar' ? CHAIN_SWAP_SLIPPAGE_BPS : DEFAULT_SLIPPAGE_BPS;
+
+  // The store's flows, by route and by where the swap pays from.
+  const stellarRef = (tk: SwapToken) => ({ code: tk.symbol, issuer: tk.contract });
+  const chainToken = (tk: SwapToken): ChainToken => ({ symbol: tk.symbol, asset: tk.contract ?? 'native', decimals: tk.decimals });
+  const networkToken = (tk: SwapToken): NetworkToken =>
+    tk.contract === null
+      ? { symbol: tk.symbol, asset: 'native', decimals: tk.decimals }
+      : NETWORKS[tk.chain].tokens.find((r) => r.asset.toLowerCase() === tk.contract!.toLowerCase()) ?? { symbol: tk.symbol, asset: tk.contract, decimals: tk.decimals };
+
+  const fetchQuote = async (): Promise<Quoted | null> => {
+    if (!from || !to || !route || route.kind === 'none') return null;
+    const s = bps(route);
+    if (route.kind === 'dex') {
+      const q =
+        route.chain === 'stellar'
+          ? await store.quoteSwap(amount, stellarRef(from), stellarRef(to), s)
+          : await store.quoteChainSwap(route.chain as 'solana' | 'monad', amount, chainToken(from), chainToken(to), s);
+      return q ? { kind: 'dex', q } : null;
+    }
+    if (!to.near) return null;
+    const q =
+      from.chain === 'stellar'
+        ? await store.quoteCrossChain(amount, stellarRef(from), to.chain, to.near, s)
+        : LEGACY(from.chain)
+          ? await store.quoteCrossChainFrom(from.chain, amount, chainToken(from), to.near, s)
+          : await store.quoteCrossChainFromNetwork(from.chain, amount, networkToken(from), to.near, s);
+    return q ? { kind: 'near', q } : null;
   };
 
-  const quoteRows: [string, string][] = crossChain
-    ? xQuote
-      ? [
-          [t('swap.feeRate'), feePct !== null ? `${trim(feePct, 2)}%` : '—'],
-          [t('swap.fee'), `${trim(parseFloat(xQuote.fee.amount) || 0, 4)} ${xQuote.fee.asset}`],
-          [t('swap.receiveEst'), `${trim(parseFloat(xQuote.destination.amount) || 0, 4)} ${xQuote.destination.asset}`],
-          [t('swap.minReceived'), `${trim(parseFloat(xQuote.destination.minimum) || 0, 4)} ${xQuote.destination.asset}`],
-          [t('xswap.eta'), `~${xQuote.timeEstimateSeconds} s`],
-        ]
-      : []
-    : quote
-      ? [
-          [t('swap.feeRate'), feePct !== null ? `${trim(feePct, 2)}%` : '—'],
-          [t('swap.fee'), `${trim(parseFloat(quote.fee.amount) || 0, 4)} ${gatewayAssetLabel(quote.fee.asset)}`],
-          [t('swap.receiveEst'), `${trim(parseFloat(quote.destination.estimated) || 0, 4)} ${quote.destination.asset}`],
-          [t('swap.minReceived'), `${trim(parseFloat(quote.destination.minimum) || 0, 4)} ${quote.destination.asset}`],
-        ]
-      : [];
+  // The quote follows the inputs on its own, a moment after the last keystroke, and stays fresh
+  // while it sits; an answer for inputs that have since changed is dropped.
+  // Quoted whatever the balance, as swap apps do: the person sees what they would get, and the
+  // button says what is missing.
+  const quotable = !!route && route.kind !== 'none' && amt > 0 && store.gatewayAccess;
+  const quoteKey = quotable && from && to ? JSON.stringify([from.key, to.key, amount, bps(route)]) : '';
+  const [quote, setQuote] = useState<QuoteState>({ status: 'idle', data: null, error: '', key: '' });
+  const latest = useRef('');
+  const ask = (k: string) => {
+    latest.current = k;
+    setQuote((q) => ({ status: 'loading', data: q.key === k ? q.data : null, error: '', key: k }));
+    fetchQuote()
+      .then((data) => {
+        if (latest.current === k) setQuote({ status: data ? 'ready' : 'error', data, error: data ? '' : t('swap.quoteError'), key: k });
+      })
+      .catch((e: unknown) => {
+        if (latest.current === k) setQuote({ status: 'error', data: null, error: (e as Error).message || t('swap.quoteError'), key: k });
+      });
+  };
+  useEffect(() => {
+    if (!quoteKey) {
+      latest.current = '';
+      setQuote({ status: 'idle', data: null, error: '', key: '' });
+      return;
+    }
+    const h = setTimeout(() => ask(quoteKey), QUOTE_DEBOUNCE_MS);
+    const r = setInterval(() => ask(quoteKey), QUOTE_REFRESH_MS);
+    return () => {
+      clearTimeout(h);
+      clearInterval(r);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteKey]);
 
-  const originPicker = (
-    <div className="swap-target" role="radiogroup" aria-label={t('xswap.payFrom')}>
-      <div className="swap-target-label">{t('xswap.payFrom')}</div>
-      {ORIGINS.map((c) => (
-        <button key={c} type="button" role="radio" aria-checked={origin === c} className={cx('swap-target-btn', origin === c && 'is-on')} onClick={() => setOrigin(c)}>
-          {NETWORKS[c].name}
-        </button>
-      ))}
+  const fresh = quote.key === quoteKey ? quote.data : null;
+  const out = fresh ? (fresh.kind === 'dex' ? fresh.q.destination.estimated : fresh.q.destination.amount) : null;
+  // Before the quote: NEAR Intents' listed prices.
+  const estimate = !out && from && to ? estimateOut(amt, from, to) : null;
+  const shownOut = out ?? (estimate !== null ? String(estimate) : '');
+  const usd = (n: number | null) => (n === null || !Number.isFinite(n) ? null : `≈ $${fmt(n, 2)}`);
+  const payUsd = from?.priceUsd && amt > 0 ? usd(amt * from.priceUsd) : null;
+  const getUsd = to?.priceUsd && shownOut ? usd(Number(shownOut) * to.priceUsd) : null;
+  const rate = shownOut && amt > 0 ? Number(shownOut) / amt : null;
+  const venue = !route || route.kind === 'none' ? '' : route.kind === 'near' ? t('swapw.venue.near') : t(`swapw.venue.${route.chain}`);
+  const num = (v: string | number, dp = 7) => trim(Number(v) || 0, dp);
+
+  // The button: what is missing, or the action.
+  const cta = (() => {
+    if (!from || !to || !route) return { label: t('swapw.ctaSelect'), ok: false };
+    if (route.kind === 'none') return { label: t(route.reason === 'same-token' ? 'swapw.ctaSame' : route.reason === 'mainnet-only' ? 'swapw.ctaMainnet' : 'swapw.ctaUnsupported'), ok: false };
+    if (!store.gatewayAccess) return { label: t('swapw.ctaUnavailable'), ok: false };
+    if (!amount.trim() || amt <= 0) return { label: t('swapw.ctaAmount'), ok: false };
+    if (insufficient) return { label: t('swapw.ctaInsufficient', { code: from.symbol }), ok: false };
+    if (quote.status === 'error' && quote.key === quoteKey) return { label: t('swapw.ctaRetry'), ok: true, retry: true };
+    if (!fresh) return { label: t('swapw.ctaQuoting'), ok: false };
+    return { label: route.kind === 'near' ? t('swapw.ctaNear') : t('swapw.ctaSwap', { venue }), ok: true };
+  })();
+
+  const submit = () => {
+    if ('retry' in cta && cta.retry) return ask(quoteKey);
+    if (!cta.ok || !from || !to || !route || !fresh || store.busy) return;
+    const s = bps(route);
+    if (fresh.kind === 'dex' && route.kind === 'dex') {
+      if (route.chain === 'stellar') void store.submitSwap(amount, stellarRef(from), stellarRef(to), fresh.q, s);
+      else void store.submitChainSwap(route.chain as 'solana' | 'monad', amount, chainToken(from), chainToken(to), fresh.q, s);
+      return;
+    }
+    if (fresh.kind === 'near' && to.near) {
+      if (from.chain === 'stellar') void store.submitCrossChain(amount, stellarRef(from), to.chain, to.near, fresh.q, s);
+      else if (LEGACY(from.chain)) void store.submitCrossChainFrom(from.chain, amount, chainToken(from), to.near, fresh.q, s);
+      else void store.submitCrossChainFromNetwork(from.chain, amount, networkToken(from), to.near, fresh.q, s);
+    }
+  };
+
+  // Picking the received token to pay with swaps the two, as swap apps do; the other side stays
+  // only while the pair still has a route.
+  const pick = (tk: SwapToken) => {
+    const side = picker;
+    setPicker(null);
+    if (side === 'from') {
+      if (tk.key === toKey && from) setToKey(from.key);
+      setFromKey(tk.key);
+    } else {
+      setToKey(tk.key);
+    }
+  };
+  const flippable = !!to && payable.some((x) => x.key === to.key) && !!from && routeFor(to, from, env).kind !== 'none';
+  const flip = () => {
+    if (!flippable || !from || !to) return;
+    setFlipped((f) => !f);
+    setFromKey(to.key);
+    setToKey(from.key);
+    if (shownOut) setAmount(String(Number(Number(shownOut).toFixed(Math.min(7, to.decimals)))));
+  };
+
+  const tokenButton = (side: 'from' | 'to', tk: SwapToken | null) => (
+    <button
+      type="button"
+      onClick={() => setPicker(side)}
+      aria-haspopup="dialog"
+      aria-label={tk ? t('swapw.changeToken', { token: tk.symbol, network: store.networkName(tk.chain) }) : t('swapw.selectToken')}
+      className={cx('swapw-token', !tk && 'is-empty')}
+    >
+      {tk ? (
+        <>
+          <TokenMark token={tk} size="button" />
+          <span className="swapw-token-text">
+            <span className="swapw-token-sym">{tk.symbol}</span>
+            <span className="swapw-token-net">{store.networkName(tk.chain)}</span>
+          </span>
+        </>
+      ) : (
+        <span className="swapw-token-sym">{t('swapw.selectToken')}</span>
+      )}
+      <ChevronDownIcon className="swapw-token-chev" />
+    </button>
+  );
+
+  const slippageMenu = (
+    <div className="swapw-slip">
+      <button
+        ref={slipRef}
+        type="button"
+        onClick={() => setSlipOpen((o) => !o)}
+        aria-expanded={slipOpen}
+        aria-label={t('swapw.settings')}
+        title={t('swapw.settings')}
+        className="swapw-slip-btn"
+      >
+        <GearIcon />
+      </button>
+      <Dropdown open={slipOpen} onClose={() => setSlipOpen(false)} anchorRef={slipRef} label={t('swapw.slippage')} className="swapw-slip-panel">
+        <p className="swapw-slip-title" id="swapw-slip-title">
+          {t('swapw.slippage')}
+        </p>
+        <div className="swapw-slip-options" role="group" aria-labelledby="swapw-slip-title">
+          {SLIPPAGES.map((s) => (
+            <button
+              key={s || 'auto'}
+              type="button"
+              aria-pressed={slippage === s}
+              onClick={() => {
+                setSlippage(s);
+                setSlipOpen(false);
+              }}
+              className={cx('swapw-slip-opt', slippage === s && 'is-on')}
+            >
+              {s ? `${Number(s) / 100}%` : t('swapw.slippageAuto')}
+            </button>
+          ))}
+        </div>
+      </Dropdown>
     </div>
   );
 
-  if (origin !== 'stellar') {
-    return (
-      <div className="scr screen col pb-104">
-        <ScreenHeader title={t('swap.title')} onBack={store.goBack} />
-        <ChainSwap store={store} origin={origin} header={originPicker} />
-      </div>
-    );
-  }
-
   return (
-    <div className="scr screen col pb-104">
-      <ScreenHeader title={t('swap.title')} onBack={store.goBack} />
+    <div className="scr screen col pb-24 swapw">
+      <ScreenHeader title={t('swap.title')} onBack={store.goBack} right={slippageMenu} />
 
-      {originPicker}
+      <div className="swapw-panels">
+        <div className="swapw-panel">
+          <div className="swapw-panel-top">
+            <label htmlFor="swapw-pay">{t('swapw.pay')}</label>
+            {payUsd && <span className="swapw-usd">{payUsd}</span>}
+          </div>
+          <div className="swapw-panel-row">
+            <input
+              id="swapw-pay"
+              value={amount}
+              onChange={(e) => {
+                const v = sanitizeDecimalInput((e.target as HTMLInputElement).value.replace(',', '.'));
+                if (v !== null) setAmount(v);
+              }}
+              inputMode="decimal"
+              placeholder="0"
+              autoComplete="off"
+              aria-invalid={insufficient || undefined}
+              className={cx('swapw-amount', insufficient && 'is-invalid')}
+            />
+            {tokenButton('from', from)}
+          </div>
+          {from && (
+            <div className="swapw-panel-foot">
+              <span>
+                {t('swap.balance')}: {trim(avail, 6)} {from.symbol}
+              </span>
+              <button type="button" onClick={() => setAmount(String(Math.floor(avail * 1e6) / 1e6))} disabled={avail <= 0} className="swapw-max">
+                {t('send.max')}
+              </button>
+            </div>
+          )}
+        </div>
 
-      <div className="swap-target">
-        <div className="swap-target-label">{t('xswap.receiveOn')}</div>
-        <NetworkPicker value={target} onPick={setTarget} networks={targets} t={t} />
+        <button type="button" onClick={flip} disabled={!flippable} aria-label={t('swap.invert')} title={t('swap.invert')} className={cx('swapw-flip', flipped && 'is-turned')}>
+          <ExchangeIcon />
+        </button>
+
+        <div className="swapw-panel is-get" aria-busy={quote.status === 'loading' || undefined}>
+          <div className="swapw-panel-top">
+            <span id="swapw-get">{t('swapw.receive')}</span>
+            {getUsd && <span className="swapw-usd">{getUsd}</span>}
+          </div>
+          <div className="swapw-panel-row">
+            <output aria-labelledby="swapw-get" aria-live="polite" className={cx('swapw-amount is-out', !shownOut && 'is-empty', !out && estimate !== null && 'is-estimate')}>
+              {quote.status === 'loading' && !shownOut ? <Spinner size={18} tone="text" /> : shownOut ? `${!out ? '≈ ' : ''}${num(shownOut)}` : '0'}
+            </output>
+            {tokenButton('to', to)}
+          </div>
+          {to && <div className="swapw-panel-foot is-plain">{t('swapw.receiveOn', { network: store.networkName(to.chain) })}</div>}
+        </div>
       </div>
 
-      <div className={cx('exchange-stack', openSel && 'is-open')}>
-        <div className={cx('exchange-card', openSel === 'from' && 'is-active')}>
-          <div className="exchange-label">{t('swap.pay')}</div>
-          <div className="row between g10">
-            <AssetSelect assets={assets} value={fromRef} onPick={(a) => setFromRef({ code: a.code, issuer: a.issuer })} open={openSel === 'from'} onToggle={(n) => setOpenSel(n ? 'from' : null)} />
-            <input value={pay} onChange={(e) => { const v = sanitizeDecimalInput((e.target as HTMLInputElement).value); if (v !== null) setPay(v); }} inputMode="decimal" className="exchange-input" />
-          </div>
-          <div className="exchange-balance">
-            {t('swap.balance')}: {trim(fromBal, 4)} {fromRef.code}
-          </div>
-        </div>
-        {/* Zero-height anchor BETWEEN the cards: the button centres on the exact seam
-            (from-card bottom + half the 10px gap) no matter how tall each card is —
-            top:50% of the whole wrapper sat visibly too high. */}
-        <div className="swap-seam">
-          {!crossChain && (
-            <button type="button" onClick={invert} aria-label={t('swap.invert')} className="swap-invert">
-              <ExchangeIcon />
+      {rate !== null && from && to && (
+        <div className={cx('swapw-quote', details && 'is-open')}>
+          <div className="swapw-quote-head">
+            <button type="button" onClick={() => setInverse((v) => !v)} title={t('swapw.invertRate')} className="swapw-rate">
+              {inverse ? `1 ${to.symbol} = ${num(1 / rate, 8)} ${from.symbol}` : `1 ${from.symbol} = ${num(rate, 8)} ${to.symbol}`}
             </button>
-          )}
-        </div>
-        <div className={cx('exchange-card exchange-card--to', openSel === 'to' && 'is-active')}>
-          <div className="exchange-label">{t('swap.receiveEst')}{crossChain ? ` · ${NETWORKS[target].name}` : ''}</div>
-          <div className="row between g10">
-            {crossChain ? (
-              <div className="swap-dest-chips" role="radiogroup">
-                {destOptions.map((a) => (
-                  <button key={a.assetId} type="button" role="radio" aria-checked={xDest?.assetId === a.assetId} className={cx('swap-target-btn', xDest?.assetId === a.assetId && 'is-on')} onClick={() => setXDestId(a.assetId)}>
-                    {a.symbol}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <AssetSelect assets={assets} value={toRef} onPick={(a) => setToRef({ code: a.code, issuer: a.issuer })} open={openSel === 'to'} onToggle={(n) => setOpenSel(n ? 'to' : null)} />
-            )}
-            <div className={cx('swap-receive', !receive && 'is-empty')}>{receive ? trim(receive, 4) : '—'}</div>
+            <button type="button" aria-expanded={details} aria-controls="swapw-details" onClick={() => setDetails((d) => !d)} className="swapw-quote-toggle">
+              <span>{venue}</span>
+              <ChevronDownIcon className={cx('swapw-quote-chev', details && 'is-open')} />
+              <span className="sr-only">{t('swapw.details')}</span>
+            </button>
           </div>
-          {rate !== null && (
-            <div className="swap-rate">
-              1 {fromRef.code} ≈ {trim(rate, rate < 1 ? 6 : 4)} {receiveCode}
-            </div>
-          )}
-          {crossChain && recipient && (
-            <div className="swap-rate">
-              {t('xswap.to')}: {recipient.slice(0, 6)}…{recipient.slice(-6)}
-            </div>
-          )}
+          <div id="swapw-details" className="swapw-quote-body" inert={!details}>
+            <dl className="swapw-rows">
+              {fresh && (
+                <div>
+                  <dt>{t('swapw.minimum')}</dt>
+                  <dd>
+                    {num(fresh.q.destination.minimum)} {to.symbol}
+                  </dd>
+                </div>
+              )}
+              {fresh && (
+                <div>
+                  <dt>{t('swap.fee')}</dt>
+                  <dd>
+                    {num(fresh.q.fee.amount)} {fresh.kind === 'near' ? fresh.q.fee.asset : from.symbol} ({fresh.q.fee.bps / 100}%)
+                  </dd>
+                </div>
+              )}
+              {fresh?.kind === 'near' && (
+                <div>
+                  <dt>{t('swapw.eta')}</dt>
+                  <dd>{t('swapw.seconds', { n: fresh.q.timeEstimateSeconds })}</dd>
+                </div>
+              )}
+              <div>
+                <dt>{t('swapw.slippage')}</dt>
+                <dd>{slippage ? `${Number(slippage) / 100}%` : `${t('swapw.slippageAuto')} · ${bps(route) / 100}%`}</dd>
+              </div>
+              <div>
+                <dt>{t('swapw.route')}</dt>
+                <dd>{venue}</dd>
+              </div>
+            </dl>
+          </div>
         </div>
+      )}
+
+      <div className="swapw-foot kb-dock">
+        <PrimaryButton disabled={!cta.ok || store.busy} onClick={submit}>
+          {store.busy ? <Spinner /> : cta.label}
+        </PrimaryButton>
+        {quote.status === 'error' && quote.key === quoteKey && quote.error && (
+          <p className="swapw-error" role="alert">
+            {quote.error}
+          </p>
+        )}
       </div>
 
-      {/* Cross-chain guards: network, an address on the target, and a source NEAR lists. */}
-      {crossChain && !mainnet && <Notice className="exchange-notice">{t('xswap.mainnetOnly')}</Notice>}
-      {crossChain && mainnet && !recipient && (
-        <Notice className="exchange-notice">{t('xswap.noAddress', { chain: NETWORKS[target].name })}</Notice>
-      )}
-      {crossChain && mainnet && recipient && stellarListed.length > 0 && !fromListed && (
-        <Notice className="exchange-notice">{t('xswap.unsupportedFrom', { list: stellarListed.map((a) => a.symbol).join(', ') })}</Notice>
-      )}
-
-      {/* Same-asset guard. */}
-      {enabled && !crossChain && sameAsset && (
-        <Notice className="exchange-notice">{t('swap.sameAsset')}</Notice>
-      )}
-
-      {/* Insufficient-balance guard (reserve-aware for XLM). */}
-      {enabled && (crossChain || !sameAsset) && insufficient && (
-        <Notice tone="danger" className="exchange-notice">
-          {t('swap.insufficient', { avail: trim(availFrom, 4), code: fromRef.code })}
-        </Notice>
-      )}
-
-      {/* Quotes refresh automatically — show a subtle indicator while re-pricing. */}
-      {enabled && quoting && (
-        <div className="center g8 swap-quoting">
-          <Spinner tone="dim" /> {t('swap.quoting')}
-        </div>
-      )}
-
-      {/* Quote breakdown: commission RATE + amount + min, so the cost is transparent. */}
-      {quoteRows.length > 0 && (
-        <div className="exchange-quote">
-          {quoteRows.map(([label, val]) => (
-            <div key={label} className="exchange-quote-row">
-              <span className="exchange-quote-label">{label}</span>
-              <span className="exchange-quote-val">{val}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* When enabled, a short note; otherwise the CosmosPay card below explains the step. */}
-      {enabled && (
-        <Notice className="exchange-notice">
-          {crossChain ? t('xswap.note', { chain: NETWORKS[target].name }) : t('swap.note2')}
-        </Notice>
-      )}
-
-      {/* On the shared key: say what it costs and what an account would change.
-          The percentage shown in the rows above is always the gateway's own
-          number from the quote — this is the offer, not the price. */}
-      {enabled && store.publicAccess && (
-        <Notice className="exchange-notice">
-          {t('swap.publicRate')}
-        </Notice>
-      )}
-
-      <div className="spacer" />
-      {enabled ? (
-        // The quote travels with the submit: the guard bounds the envelope by what THIS
-        // card showed (pay, and the "minimum received" row), never by the create
-        // response that carries the XDR.
-        <div className="kb-dock">
-          {crossChain ? (
-            <PrimaryButton
-              disabled={store.busy || !canCrossSwap}
-              onClick={() => from && xDest && xQuote && store.submitCrossChain(pay, from, target, xDest, xQuote)}
-            >
-              {store.busy ? <Spinner /> : t('swap.cta')}
-            </PrimaryButton>
-          ) : (
-            <PrimaryButton disabled={store.busy || !canSwap} onClick={() => from && to && quote && store.submitSwap(pay, from, to, quote)}>
-              {store.busy ? <Spinner /> : t('swap.cta')}
-            </PrimaryButton>
-          )}
-        </div>
-      ) : (
-        // No credential at all: the platform was unreachable and this build shipped
-        // no compiled-in public key. Falling back to the account flow is right —
-        // it is the one path that does not depend on that fetch.
-        <EnableReceivingCard store={store} />
-      )}
+      <SwapTokenPicker
+        open={picker !== null}
+        title={picker === 'to' ? t('swapw.pickReceive') : t('swapw.pickPay')}
+        tokens={picker === 'to' ? receivable : payable}
+        selectedKey={picker === 'to' ? toKey : fromKey}
+        heldOf={heldOf}
+        networkName={store.networkName}
+        onPick={pick}
+        onClose={() => setPicker(null)}
+        desktop={isDesktopLayout()}
+        labels={{
+          search: t('home.searchAssets'),
+          clear: t('common.clearSearch'),
+          close: t('a11y.close'),
+          held: t('swapw.held'),
+          all: t('swapw.all'),
+          none: t('send.noAsset'),
+        }}
+      />
     </div>
   );
 }

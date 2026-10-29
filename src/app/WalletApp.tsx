@@ -24,6 +24,10 @@ import { EVENT } from '@/constants/telemetry';
 
 type ScreenComponent = ComponentType<{ store: WalletStore }> | LazyExoticComponent<ComponentType<{ store: WalletStore }>>;
 
+/** The screen navigator for development (app/DebugNav.tsx). `import.meta.env.DEV` is false in a
+ *  production build, so the bundler drops the import and the module never ships. */
+const DebugNav = import.meta.env.DEV ? lazy(() => import('@/app/DebugNav').then((m) => ({ default: m.DebugNav }))) : null;
+
 /**
  * Screen -> component.
  *
@@ -227,6 +231,12 @@ function WalletAppShell() {
       </div>
 
       {intro !== 'done' && <Splash fading={intro !== 'show'} />}
+
+      {DebugNav && (
+        <Suspense fallback={null}>
+          <DebugNav store={store} />
+        </Suspense>
+      )}
     </>
   );
 }

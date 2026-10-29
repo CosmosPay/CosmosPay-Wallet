@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode, type UIEvent } from 'react';
 import type { WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
 import { BottomNav } from '@/app/BottomNav';
@@ -6,7 +6,7 @@ import { DesktopNav } from '@/app/DesktopNav';
 import { Toast } from '@/app/Toast';
 import { ConfirmSign } from '@/app/ConfirmSign';
 import { AuthAside } from '@/app/AuthAside';
-import { AUTH_SCREENS } from '@/lib/screens';
+import { AUTH_SCREENS, SCREENS } from '@/lib/screens';
 import { ScreenBarHost } from '@/ui/ScreenBar';
 import { cx } from '@/lib/cx';
 import { forwardScrollKey, forwardWheel } from '@/lib/scrollForward';
@@ -46,6 +46,20 @@ export function Shell({
   // Before a session, the desktop window splits: the flow on the left, the brand panel on
   // the right (AuthAside). Whether it SHOWS is CSS, like the rail.
   const authSplit = chrome && !!store && !store.hasSession && AUTH_SCREENS.includes(store.screen);
+  // A screen with its own desktop layout (`wide` in the screen table) gets the wide column
+  // beside the rail; every other one keeps the reading column. Whether it APPLIES is CSS.
+  const wide = rail && !!store && SCREENS[store.screen]?.wide === true;
+
+  // The top safe zone's edge: once the screen has scrolled, a hairline marks where its content
+  // goes under the strip above it (wallet-app.css), instead of text simply cut in half there.
+  // Scroll does not bubble, so it is caught on the way down; a new screen starts unscrolled.
+  const [scrolled, setScrolled] = useState(false);
+  const onScroll = (e: UIEvent<HTMLDivElement>) => {
+    const el = e.target as HTMLElement;
+    if (el.classList?.contains('screen')) setScrolled(el.scrollTop > 0);
+  };
+  const screen = store?.screen;
+  useEffect(() => setScrolled(false), [screen]);
 
   // The screen scrolls from anywhere in the window — the margins beside its column, the brand
   // panel — and with the scroll keys when no control has the focus (lib/scrollForward.ts).
@@ -65,12 +79,12 @@ export function Shell({
   }, [chrome]);
 
   return (
-    <div ref={rootRef} className={cx('shell-root', chrome && 'has-desktop-mode', authSplit && 'has-auth-split')}>
+    <div ref={rootRef} className={cx('shell-root', chrome && 'has-desktop-mode', rail && 'has-rail', authSplit && 'has-auth-split')}>
       <div className="shell-frame">
         {rail && store && <DesktopNav store={store} />}
 
         <div className="shell-main">
-          <div className="shell-content">
+          <div className={cx('shell-content', wide && 'is-wide', scrolled && 'is-scrolled')} onScrollCapture={onScroll}>
             {/* The way back, above the screen so it never moves with it (ui/ScreenBar). */}
             <ScreenBarHost>{children}</ScreenBarHost>
           </div>

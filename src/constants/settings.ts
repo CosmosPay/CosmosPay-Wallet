@@ -16,5 +16,13 @@ export const THEME_OPTIONS = [
   { id: 'dark', labelKey: 'settings.dark', icon: 'moon' },
 ] as const;
 
+/** Idle auto-lock choices — Settings security section (`AUTO_LOCK_CHOICES_MS`, same order). */
+export const AUTO_LOCK_OPTIONS = [
+  { ms: 15 * 60_000, labelKey: 'settings.autoLock15m' },
+  { ms: 60 * 60_000, labelKey: 'settings.autoLock1h' },
+  { ms: 24 * 60 * 60_000, labelKey: 'settings.autoLock1d' },
+  { ms: 7 * 24 * 60 * 60_000, labelKey: 'settings.autoLock7d' },
+] as const;
+
 /** Characters of an ID kept before the ellipsis (Cosmos Pay org / receiver ids). */
 export const ID_PREVIEW_LEN = 12;

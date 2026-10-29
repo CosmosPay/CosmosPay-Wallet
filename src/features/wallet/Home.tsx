@@ -1,11 +1,11 @@
-import { useEffect, useId, useMemo } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { NavMenu } from '@/app/NavMenu';
 import { SurfaceToggle } from '@/features/wallet/SurfaceToggle';
 import { EnableReceivingCard } from '@/features/cosmospay/EnableReceivingCard';
 import { Spinner } from '@/ui/Spinner';
 import { Tabs } from '@/ui/Tabs';
-import { AssetLogo, assetMeta } from '@/ui/AssetLogo';
+import { AssetLogo, NetworkLogo, assetMeta } from '@/ui/AssetLogo';
 import {
   ChevronRightIcon,
   CosmosMark,
@@ -22,20 +22,22 @@ import {
 import { ActivityList } from '@/features/money/ActivityList';
 import { HomeAction } from '@/features/wallet/HomeAction';
 import { AssetListRow } from '@/features/wallet/AssetListRow';
-import { ActivateCard } from '@/features/wallet/ActivateCard';
+import { HomeNetworkButton } from '@/features/wallet/HomeNetworkButton';
+import { HomeNotifications } from '@/features/wallet/HomeNotifications';
+import { AssetToolbar } from '@/features/wallet/AssetToolbar';
 import { ProtectAccountCard } from '@/features/wallet/ProtectAccountCard';
 import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
 import { useKeptState } from '@/hooks/useKeptState';
 import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
-import { chainRows, networkRows, computePortfolio, rowKey, type AssetRow } from '@/lib/portfolio';
+import { chainRows, networkRows, computePortfolio, intentsPriceOf, rowKey, type AssetRow } from '@/lib/portfolio';
 import { fmt, splitMoney, pct } from '@/lib/format';
 import { getGreeting } from '@/lib/greeting';
-import { networkEnv } from '@/lib/stellar';
 import { buildKind } from '@/lib/platform';
 import { cx } from '@/lib/cx';
 import { KEPT_INPUT } from '@/constants/keptInputs';
 import { MARKET_TOKENS } from '@/constants/markets';
-import { HOME_ACTIVITY_ROWS, HOME_TABS, NETWORK_FILTERS, type HomeTab, type NetworkFilter } from '@/constants/home';
+import { HOME_ACTIVITY_ROWS, HOME_TABS, type HomeTab, type NetworkFilter } from '@/constants/home';
+import { listedRows, networkOfRow, networkSummaries, rowMatches } from '@/lib/assetList';
 import { NETWORKS, NETWORK_IDS, type NetworkId } from '@/constants/networks';
 import '@/styles/features/wallet/home.css';
 
@@ -48,7 +50,7 @@ function shortName(name: string, max = 12): string {
   return m ? m[0] : cut;
 }
 
-const networkOf = (r: AssetRow): NetworkId => r.network ?? r.chain ?? 'stellar';
+const networkOf = networkOfRow;
 
 /* ------------------------------- HOME -------------------------------- */
 /**
@@ -59,7 +61,13 @@ const networkOf = (r: AssetRow): NetworkId => r.network ?? r.chain ?? 'stellar';
 export function Home({ store }: { store: WalletStore }) {
   const t = store.t;
   // Stellar balances and the same phrase's other networks are one list and one total.
-  const extra = [...chainRows(store.chainHoldings, store.chainNet, store.prices), ...networkRows(store.networkHoldings, store.prices)];
+  // Added tokens are read with each network's own, and priced by NEAR Intents when no feed does.
+  const priceOf = useMemo(() => intentsPriceOf(store.intentsAssets), [store.intentsAssets]);
+  const extra = [
+    ...chainRows(store.chainHoldings, store.chainNet, store.prices),
+    // Added tokens are main-network contracts: read and listed on the main networks only.
+    ...networkRows(store.networkHoldings, store.prices, { tracked: store.chainNet === 'mainnet' ? store.trackedTokens : undefined, priceOf }),
+  ];
   const { total, rows, changePct, deltaUsd } = computePortfolio(store.account, store.prices, store.network.id, extra);
   // Every portfolio number eases towards its live value (colours and arrows follow the target).
   const money = splitMoney(useAnimatedNumber(total));
@@ -68,13 +76,15 @@ export function Home({ store }: { store: WalletStore }) {
   const notActivated = store.account && !store.account.exists;
   // Offered only when both recovery servers answer — see `recoveryReachable`.
   const recoveryUp = useRecoveryReachable(store.network) === true;
-  const testnet = networkEnv(store.network) === 'dev';
 
   const [tab, setTab] = useKeptState<HomeTab>(KEPT_INPUT.homeTab, 'assets');
   const [filter, setFilter] = useKeptState<NetworkFilter>(KEPT_INPUT.homeNetwork, 'all');
   const panelId = useId();
 
-  const { loadHistory, ensureChainAddresses } = store;
+  const { loadHistory, ensureChainAddresses, loadIntentsAssets } = store;
+  useEffect(() => {
+    void loadIntentsAssets();
+  }, [loadIntentsAssets]);
   useEffect(() => {
     loadHistory();
   }, [loadHistory, store.meta?.id, store.network.id]);
@@ -90,23 +100,25 @@ export function Home({ store }: { store: WalletStore }) {
   );
   const firstName = shortName((store.meta?.name || 'astronauta').trim().split(/\s+/)[0]);
 
-  // The filters: Stellar, Solana and Monad once the addresses exist, and any other network
-  // while something is held there — thirty networks of nothing would bury the ones in use.
-  const held = new Set(rows.map(networkOf));
-  const networks: NetworkFilter[] = [
-    ...NETWORK_FILTERS.filter((n) => n === 'all' || n === 'stellar' || !!store.networkAddresses),
-    ...NETWORK_IDS.filter((n) => n !== 'stellar' && n !== 'solana' && n !== 'monad' && held.has(n)),
-  ];
-  const shown = filter === 'all' ? rows : rows.filter((r) => networkOf(r) === filter);
-  // Stellar's ledger is named only when it is not the real one, the way Solana's and Monad's are.
-  const networkName = (n: NetworkId) =>
-    n === 'stellar'
-      ? testnet
-        ? `Stellar ${store.network.label}`
-        : 'Stellar'
-      : n === 'solana' || n === 'monad'
-        ? t(`chains.net.${store.chainNet}.${n}`)
-        : NETWORKS[n].name;
+  // What is held, as it is (lib/assetList.ts): Stellar's rows and, elsewhere, balances above zero.
+  // The filter offers every network the wallet has an address on, on Stellar's test network as
+  // much as on its main one, each with what it holds or why it is empty.
+  const listed = listedRows(rows);
+  const offered = NETWORK_IDS.filter((n) => !!store.addressOn(n));
+  const known = (n: NetworkId) =>
+    n === 'stellar' ? !!store.account : n === 'solana' || n === 'monad' ? !!store.chainHoldings?.[n] : !!store.networkHoldings?.[n];
+  const summaries = networkSummaries(listed, offered, known);
+  // A network kept from another session that is not offered now reads as all of them.
+  const active: NetworkFilter = filter === 'all' || offered.includes(filter) ? filter : 'all';
+  const [query, setQuery] = useState('');
+  // Each network named in the wallet's mode (store.networkName): on a test network, its test name.
+  const networkName = store.networkName;
+  const shown = listed.filter(
+    (r) =>
+      (active === 'all' || networkOf(r) === active) &&
+      rowMatches(query, [assetMeta(r.code).name, r.code, networkName(networkOf(r)), NETWORKS[networkOf(r)].name]),
+  );
+  const activeSummary = active === 'all' ? null : summaries.find((x) => x.id === active) ?? null;
 
   const openRow = (r: AssetRow) => {
     const { chain, asset } = r;
@@ -140,11 +152,10 @@ export function Home({ store }: { store: WalletStore }) {
         </button>
         <div className="home-head-end">
           {store.loading && <Spinner size={15} tone="text" />}
-          {testnet && (
-            <button type="button" onClick={() => store.go('wallets', 'wallet')} className="home-net-pill">
-              {store.network.label}
-            </button>
-          )}
+          {/* The network, always, and the notifications, beside the settings (the user's call;
+              the bell is the Figma's). */}
+          <HomeNetworkButton store={store} />
+          <HomeNotifications store={store} />
           {buildKind() === 'ext' ? (
             <>
               {/* popup ⇄ side panel, the extension's own choice of surface */}
@@ -159,116 +170,149 @@ export function Home({ store }: { store: WalletStore }) {
         </div>
       </header>
 
-      <section className="home-balance" aria-label={t('home.balance')}>
-        <p className="home-balance-label">{t('home.balance')}</p>
-        <p className="home-total">
-          {money.whole}
-          <span className="home-cents">{money.cents}</span>
-        </p>
-        <p className={cx('home-change', changePct >= 0 ? 'is-up' : 'is-down')}>
-          {changePct >= 0 ? <TrendUpIcon className="home-change-icon" /> : <TrendDownIcon className="home-change-icon" />}
-          <span className="home-change-pct">{pct(shownPct)}</span>
-          <span className="home-change-delta">
-            {deltaUsd >= 0 ? '+' : '−'}${fmt(Math.abs(shownDelta), 2)} · {t('home.in24h')}
-          </span>
-        </p>
-      </section>
+      {/* Two columns on a PC window (home.css): what you have and what you can do on the
+          left, the lists on the right. On a phone both wrappers are `display: contents`. */}
+      <div className="home-summary">
+        <section className="home-balance" aria-label={t('home.balance')}>
+          <p className="home-balance-label">{t('home.balance')}</p>
+          <p className="home-total">
+            {money.whole}
+            <span className="home-cents">{money.cents}</span>
+          </p>
+          <p className={cx('home-change', changePct >= 0 ? 'is-up' : 'is-down')}>
+            {changePct >= 0 ? <TrendUpIcon className="home-change-icon" /> : <TrendDownIcon className="home-change-icon" />}
+            <span className="home-change-pct">{pct(shownPct)}</span>
+            <span className="home-change-delta">
+              {deltaUsd >= 0 ? '+' : '−'}${fmt(Math.abs(shownDelta), 2)} · {t('home.in24h')}
+            </span>
+          </p>
+        </section>
 
-      <nav className="home-actions" aria-label={t('home.actions')}>
-        <HomeAction label={t('common.send')} onClick={() => store.setScreen('send')}>
-          <SendIcon />
-        </HomeAction>
-        <HomeAction label={t('common.receive')} onClick={() => store.setScreen('receive')}>
-          <ReceiveIcon />
-        </HomeAction>
-        <HomeAction label={t('home.swap')} onClick={() => store.setScreen('swap')}>
-          <ExchangeIcon />
-        </HomeAction>
-        <HomeAction label={t('home.more')} onClick={() => store.setScreen('operations')}>
-          <DotsIcon />
-        </HomeAction>
-      </nav>
+        <nav className="home-actions" aria-label={t('home.actions')}>
+          <HomeAction label={t('common.send')} onClick={() => store.setScreen('send')}>
+            <SendIcon />
+          </HomeAction>
+          <HomeAction label={t('common.receive')} onClick={() => store.setScreen('receive')}>
+            <ReceiveIcon />
+          </HomeAction>
+          <HomeAction label={t('home.swap')} onClick={() => store.setScreen('swap')}>
+            <ExchangeIcon />
+          </HomeAction>
+          <HomeAction label={t('home.more')} onClick={() => store.setScreen('operations')}>
+            <DotsIcon />
+          </HomeAction>
+        </nav>
 
-      {notActivated && <ActivateCard store={store} />}
-      {/* Recovery can only go on a funded account. The card itself decides from the ledger. */}
-      {!notActivated && recoveryUp && <ProtectAccountCard store={store} />}
-      {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
+        {/* Recovery can only go on a funded account. The card itself decides from the ledger. */}
+        {!notActivated && recoveryUp && <ProtectAccountCard store={store} />}
+        {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
+      </div>
 
-      <Tabs
-        tabs={HOME_TABS.map((k) => ({ key: k, label: t(`home.tab.${k}`) }))}
-        value={tab}
-        onChange={setTab}
-        label={t('home.tabs')}
-        panelId={panelId}
-        className="home-tabs"
-      />
+      <div className="home-main">
+        <Tabs
+          tabs={HOME_TABS.map((k) => ({ key: k, label: t(`home.tab.${k}`) }))}
+          value={tab}
+          onChange={setTab}
+          label={t('home.tabs')}
+          panelId={panelId}
+          className="home-tabs"
+        />
 
-      <div id={panelId} role="tabpanel" className="home-panel">
-        {tab === 'assets' && (
-          <>
-            {networks.length > 2 && (
-              <div role="radiogroup" aria-label={t('home.network')} className="home-filters">
-                {networks.map((n) => (
+        <div id={panelId} role="tabpanel" className="home-panel">
+          {tab === 'assets' && (
+            <>
+              <AssetToolbar
+                store={store}
+                query={query}
+                onQuery={setQuery}
+                filter={active}
+                onFilter={setFilter}
+                summaries={summaries}
+                total={total}
+                networkName={networkName}
+              />
+              {shown.length > 0 && (
+                <>
+                  {/* The table's heading on a PC window (home.css); the rows say it all on a phone. */}
+                  <div className="home-asset-head" aria-hidden="true">
+                    <span className="home-asset-head-asset">{t('home.col.asset')}</span>
+                    <span>{t('home.col.price')}</span>
+                    <span>{t('home.in24h')}</span>
+                    <span>{t('home.col.balance')}</span>
+                    <span>{t('home.col.value')}</span>
+                  </div>
+                  <div className="home-asset-list">
+                    {shown.map((r, i) => (
+                      <AssetListRow
+                        key={rowKey(r)}
+                        row={r}
+                        chg={store.prices[r.code]?.change24h}
+                        network={networkName(networkOf(r))}
+                        index={i}
+                        onClick={() => openRow(r)}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+              {shown.length === 0 && query.trim() !== '' && (
+                <p className="home-asset-none">{t('home.noAssetMatch', { q: query.trim() })}</p>
+              )}
+              {/* A network with nothing on it: say so, and offer what makes it not empty. */}
+              {shown.length === 0 && query.trim() === '' && activeSummary && (
+                <div className="home-net-empty">
+                  <NetworkLogo network={activeSummary.id} size={44} />
+                  <p className="home-net-empty-text">
+                    {t(activeSummary.status === 'unknown' ? 'home.netUnreadable' : 'home.netEmpty', { network: networkName(activeSummary.id) })}
+                  </p>
                   <button
-                    key={n}
                     type="button"
-                    role="radio"
-                    aria-checked={filter === n}
-                    onClick={() => setFilter(n)}
-                    className={cx('home-filter', filter === n && 'is-on')}
+                    className="home-net-empty-btn"
+                    onClick={() => {
+                      store.setReceiveNet(activeSummary.id);
+                      store.setScreen('receive');
+                    }}
                   >
-                    {n === 'all' ? t('home.allNetworks') : NETWORKS[n].name}
+                    <ReceiveIcon />
+                    {t('home.receiveOn', { network: networkName(activeSummary.id) })}
                   </button>
-                ))}
-              </div>
-            )}
-            <div className="home-asset-list">
-              {shown.map((r, i) => (
-                <AssetListRow
-                  key={rowKey(r)}
-                  row={r}
-                  chg={store.prices[r.code]?.change24h}
-                  network={networkName(networkOf(r))}
-                  index={i}
-                  onClick={() => openRow(r)}
-                />
-              ))}
-            </div>
-            {(filter === 'all' || filter === 'stellar') && (
+                </div>
+              )}
+              {/* Any network's asset can be added now (features/extras/AddAsset.tsx). */}
               <button type="button" onClick={() => store.setScreen('add-asset')} className="home-add">
                 <span className="home-add-ring" aria-hidden="true">
                   <PlusIcon />
                 </span>
                 {t('addAsset.title')}
               </button>
-            )}
-          </>
-        )}
+            </>
+          )}
 
-        {tab === 'activity' && (
-          <>
-            {store.history.length === 0 && store.historyLoading ? (
-              <div className="home-panel-wait">
-                <Spinner tone="text" />
-              </div>
-            ) : (
-              <ActivityList
-                store={store}
-                items={store.history.slice(0, HOME_ACTIVITY_ROWS)}
-                complete={store.history.length <= HOME_ACTIVITY_ROWS}
-              />
-            )}
-            {store.history.length > HOME_ACTIVITY_ROWS && (
-              <button type="button" onClick={() => store.setScreen('history')} className="link-btn home-more-link">
-                {t('home.allActivity')}
-              </button>
-            )}
-          </>
-        )}
+          {tab === 'activity' && (
+            <>
+              {store.history.length === 0 && store.historyLoading ? (
+                <div className="home-panel-wait">
+                  <Spinner tone="text" />
+                </div>
+              ) : (
+                <ActivityList
+                  store={store}
+                  items={store.history.slice(0, HOME_ACTIVITY_ROWS)}
+                  complete={store.history.length <= HOME_ACTIVITY_ROWS}
+                />
+              )}
+              {store.history.length > HOME_ACTIVITY_ROWS && (
+                <button type="button" onClick={() => store.setScreen('history')} className="link-btn home-more-link">
+                  {t('home.allActivity')}
+                </button>
+              )}
+            </>
+          )}
 
-        {tab === 'performance' && <Performance store={store} rows={rows} total={total} networkName={networkName} />}
+          {tab === 'performance' && <Performance store={store} rows={rows} total={total} networkName={networkName} />}
 
-        {tab === 'watchlist' && <Watchlist store={store} />}
+          {tab === 'watchlist' && <Watchlist store={store} />}
+        </div>
       </div>
     </div>
   );
@@ -314,7 +358,7 @@ function Performance({
       <h3 className="home-perf-title">{t('home.byNetwork')}</h3>
       {byNetwork.map(({ n, value }) => (
         <div key={n} className="home-perf-row">
-          <AssetLogo code={NETWORKS[n].coin} size={28} />
+          <NetworkLogo network={n} size={28} />
           <div className="home-perf-main">
             <div className="home-perf-line">
               <span className="home-perf-name">{networkName(n)}</span>

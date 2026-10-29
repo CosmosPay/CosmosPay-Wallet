@@ -79,10 +79,19 @@ export function NavMenu({ store }: { store: WalletStore }) {
       {mounted && (
         <div className={cx('nav-drawer nav-menu-drawer', shown && 'is-open', restoredRef.current && 'is-instant')}>
           <div className="row between nav-menu-header">
-            <div className="row g8 nav-menu-brand">
+            {/* The logo goes home, inside the session, like the desktop rail's. */}
+            <button
+              type="button"
+              className="row g8 nav-menu-brand"
+              aria-label={store.t('error.goHome')}
+              onClick={() => {
+                closeDrawer();
+                navGo(store, 'home');
+              }}
+            >
               <CosmosMark className="nav-menu-mark" />
               Cosmos Wallet
-            </div>
+            </button>
             <button type="button" onClick={closeDrawer} aria-label={store.t('a11y.close')} className="glass-soft circle-btn">
               <CloseIcon />
             </button>

@@ -20,7 +20,7 @@ import { cx } from '@/lib/cx';
 import { openExternal } from '@/lib/openExternal';
 import { LANGUAGES } from '@/lib/i18n';
 import { deviceAuthFailureKey } from '@/lib/deviceAuth';
-import { THEME_OPTIONS } from '@/constants/settings';
+import { AUTO_LOCK_OPTIONS, THEME_OPTIONS } from '@/constants/settings';
 import '@/styles/features/settings/settings.css';
 
 export function Settings({ store }: { store: WalletStore }) {
@@ -98,6 +98,23 @@ export function Settings({ store }: { store: WalletStore }) {
             {copied ? t('common.copied') : t('common.copy')}
           </span>
         </button>
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.autoLock')}>
+        <p className="settings-autolock-desc">{t('settings.autoLockDesc')}</p>
+        <div className="settings-choices is-wrap" role="group" aria-label={t('settings.autoLock')}>
+          {AUTO_LOCK_OPTIONS.map((o) => (
+            <button
+              key={o.ms}
+              type="button"
+              aria-pressed={store.autoLockMs === o.ms}
+              onClick={() => store.setAutoLock(o.ms)}
+              className={cx('settings-lang-btn', store.autoLockMs === o.ms && 'is-on')}
+            >
+              {t(o.labelKey)}
+            </button>
+          ))}
+        </div>
       </SettingsSection>
 
       <SettingsSection title={t('settings.security')}>

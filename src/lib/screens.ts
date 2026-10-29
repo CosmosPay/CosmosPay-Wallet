@@ -110,6 +110,10 @@ export interface ScreenDef {
   /** Terminal screen: arriving here clears the stack, so back cannot re-enter the
    *  flow that produced it (e.g. back from `success` must not return to `confirm`). */
   terminal?: boolean;
+  /** Has its own desktop layout: past `--desk-min` it gets `--desk-wide-w` instead of the
+   *  reading column (src/app/Shell.tsx). Set screen by screen, as each one is redesigned
+   *  for a PC window — never on a screen built only for the narrow column. */
+  wide?: boolean;
 }
 
 const profileOrHome = (c: BackContext): Screen => (c.hasSession ? 'profile' : 'home');
@@ -160,7 +164,7 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   unlock: { back: 'exit' },
 
   // tabs
-  home: { back: 'exit', tab: 'home', nav: true },
+  home: { back: 'exit', tab: 'home', nav: true, wide: true },
   earn: { back: 'home', tab: 'earn', nav: true },
   defindex: { back: 'earn' },
   // A tab of Home (its Watchlist) rather than a place in the bar.
@@ -174,7 +178,8 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // money
   receive: { back: 'home' },
   send: { back: 'home' },
-  swap: { back: 'home', nav: true },
+  // A form with its button docked at the bottom, like Send: no tab bar under it.
+  swap: { back: 'home' },
   select: { back: 'send' },
   confirm: { back: 'send' },
   success: { back: (c) => (c.hasSession ? 'home' : 'unlock'), terminal: true },
@@ -276,8 +281,15 @@ export const AUTH_SCREENS: readonly Screen[] = [
 /** Screens that show the bottom navigation bar (with an open session). */
 export const NAV_SCREENS: Screen[] = SCREEN_IDS.filter((s) => SCREENS[s].nav);
 
-// There was an `isScreen()` guard here, documented as protecting against a screen id
-// arriving from storage or a URL. Nothing in `src/` ever called it, and no such input
-// exists: every navigation goes through `navigate(s: Screen)`. It has been removed
-// rather than left as a promise the code does not keep — if a deeplink ever does
-// carry a screen id, the guard comes back with the caller that needs it.
+/**
+ * Is this string one of ours? A screen id now does arrive from storage: the kept session
+ * remembers where the person was (`lib/sessionKeep.ts`), and what storage hands back is
+ * not a `Screen` until this says so.
+ */
+export function isScreen(value: unknown): value is Screen {
+  return typeof value === 'string' && (SCREEN_IDS as readonly string[]).includes(value);
+}
+
+export function isTab(value: unknown): value is Tab {
+  return typeof value === 'string' && Object.hasOwn(TAB_SCREEN, value);
+}

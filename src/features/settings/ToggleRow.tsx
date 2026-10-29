@@ -1,5 +1,5 @@
 import { useId } from 'react';
-import { cx } from '@/lib/cx';
+import { Switch } from '@/ui/Switch';
 import '@/styles/features/settings/settings.css';
 
 /** A setting that is on or off: its name (and why), and a switch — a real `role="switch"`. */
@@ -17,17 +17,7 @@ export function ToggleRow({ label, desc, on, onChange }: { label: string; desc?:
           </span>
         )}
       </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        aria-labelledby={`${id}-label`}
-        aria-describedby={desc ? `${id}-desc` : undefined}
-        onClick={() => onChange(!on)}
-        className={cx('settings-switch', on && 'is-on')}
-      >
-        <span className="settings-switch-knob" />
-      </button>
+      <Switch on={on} onChange={onChange} labelledBy={`${id}-label`} describedBy={desc ? `${id}-desc` : undefined} />
     </div>
   );
 }

@@ -24,15 +24,30 @@
     /* The vertical device insets are on .shell-content, which the rail is not inside, so
        it clears the status bar itself. Only relevant on a tablet in landscape, which is
        the one non-desktop device that reaches this breakpoint. */
-    padding-top: calc(26px + var(--safe-t));
+    /* The logo's line is the screen header's: .shell-content's 32px plus the header's own
+       inset (shell.css, home.css). */
+    padding-top: calc(44px + var(--safe-t));
     padding-bottom: calc(20px + var(--safe-b));
   }
 
+  /* the logo is a button home: no box of its own, the focus ring when the keyboard reaches it */
   .desk-brand {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 0 10px 22px;
+    margin: 0 0 14px;
+    padding: 4px 10px 8px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .desk-brand:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
   }
 
   .desk-brand-mark {

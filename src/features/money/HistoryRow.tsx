@@ -4,7 +4,7 @@ import { explorerTxUrl, type HistoryOp } from '@/lib/stellar';
 import { staggerClass } from '@/lib/stagger';
 import { useCopied } from '@/hooks/useCopied';
 import { ExternalLink } from '@/ui/ExternalLink';
-import { CheckIcon, CopyIcon, DotsIcon, ExchangeIcon, ReceiveIcon, SentIcon } from '@/ui/Icons';
+import { CheckIcon, CopyIcon, DotsIcon, ExchangeIcon, FeeIcon, ReceiveIcon, SentIcon } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
 import '@/styles/features/money/rows.css';
 
@@ -18,8 +18,8 @@ const TITLES: Record<string, string> = {
 const FEE_TITLES: Record<string, string> = { liquidity: 'history.feeLiquidity', swap: 'history.feeSwap' };
 
 /**
- * One operation, as the Figma's Activity tab draws it: a ringed mark (green in, ink out, the
- * brand blue for a swap), the title over who it was with — that address copies — and the
+ * One operation, as the Figma's Activity tab draws it: a ringed mark (green in, red out, the
+ * brand blue for a swap, ink for a commission), the title over who it was with — that address copies — and the
  * amount over the time. The row opens the operation on the explorer: the title is the link,
  * stretched over the row, so the copy button beside it is not a button inside a link.
  */
@@ -43,8 +43,10 @@ export function HistoryRow({ item, store, index = 0, dense = false }: { item: Hi
       : who
         ? t(inbound ? 'history.from' : 'history.to', { who: shortAddr(who, 6, 4) })
         : '';
-  const tone = item.failed ? 'is-failed' : item.kind === 'swap' ? 'is-swap' : inbound ? 'is-in' : 'is-out';
-  const Mark = item.kind === 'swap' ? ExchangeIcon : inbound ? ReceiveIcon : outbound ? SentIcon : DotsIcon;
+  // A send is red; a commission keeps the ink, with its own mark, so the two never read alike.
+  const isFee = item.kind === 'fee';
+  const tone = item.failed ? 'is-failed' : item.kind === 'swap' ? 'is-swap' : inbound ? 'is-in' : isFee ? 'is-fee' : 'is-out';
+  const Mark = item.kind === 'swap' ? ExchangeIcon : inbound ? ReceiveIcon : isFee ? FeeIcon : outbound ? SentIcon : DotsIcon;
 
   return (
     <div className={cx('activity-row', staggerClass(index, dense))}>
@@ -78,7 +80,7 @@ export function HistoryRow({ item, store, index = 0, dense = false }: { item: Hi
       </div>
       <div className="activity-end">
         {amountText && (
-          <span className={cx('activity-amount', item.failed ? 'is-failed' : sign === '+' ? 'is-up' : sign === '−' && 'is-down')}>
+          <span className={cx('activity-amount', item.failed ? 'is-failed' : sign === '+' ? 'is-up' : sign === '−' && !isFee && 'is-down')}>
             {amountText}
           </span>
         )}

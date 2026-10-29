@@ -31,11 +31,7 @@
 
 .home-who:focus-visible,
 .home-icon-btn:focus-visible,
-.home-net-pill:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 3px;
-  border-radius: 999px;
-}
+
 
 .home-avatar {
   flex-shrink: 0;
@@ -79,8 +75,10 @@
   display: flex;
   align-items: center;
   gap: 2px;
+  min-width: 0;
   font-size: 15px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .home-name-chev {
@@ -114,19 +112,7 @@
   border-color: var(--text);
 }
 
-/* the ledger, when it is not the real one: a line pill naming it */
-.home-net-pill {
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
+/* The network pill and the bell beside the settings: src/styles/features/wallet/home-header.css. */
 
 /* ---- the balance ---- */
 .home-balance {
@@ -295,41 +281,61 @@
 }
 
 /* the holdings' network filter: line pills, the chosen one in ink */
-.home-filters {
+/* No asset matches the search. */
+.home-asset-none {
+  margin: 0;
+  padding: 18px 2px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* A network with nothing on it: its mark, what is the case, and the way to put something there. */
+.home-net-empty {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 16px 12px;
+  text-align: center;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+.home-net-empty-text {
+  margin: 0;
+  max-width: 340px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.home-net-empty-btn {
+  display: inline-flex;
+  align-items: center;
   gap: 8px;
-  margin: 12px 0 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.home-filters::-webkit-scrollbar {
-  display: none;
-}
-
-.home-filter {
-  flex-shrink: 0;
-  min-height: 34px;
-  padding: 0 14px;
-  border: 1.5px solid var(--line-strong);
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--text);
   border-radius: 999px;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 12.5px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out),
-    border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
-.home-filter.is-on {
-  border-color: var(--text);
+.home-net-empty-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.home-net-empty-btn:hover {
   background: var(--text);
   color: var(--bg);
 }
 
-.home-filter:focus-visible {
+.home-net-empty-btn:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
@@ -549,4 +555,171 @@
   outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-radius: 12px;
+}
+
+/* ---- the two columns ----
+   On a phone the wrappers are not boxes at all: Home is the Figma's one column. */
+.home-summary,
+.home-main {
+  display: contents;
+}
+
+/* the table's heading: a PC window only (below) */
+.home-asset-head {
+  display: none;
+}
+
+/* On a PC window (`.is-wide`, from the screen table: src/lib/screens.ts) Home is a dashboard:
+   who you are across the top; the balance, the actions and anything asking for attention in
+   a column on the left that stays in view; the tabs and their lists on the right, where the
+   width goes. The 1024px is --desk-min (see theme.css: a media query cannot read the token). */
+@media (min-width: 1024px) {
+  .has-desktop-mode .is-wide .home {
+    display: grid;
+    grid-template-columns: clamp(280px, 22vw, 380px) minmax(0, 1fr);
+    column-gap: clamp(40px, 4vw, 80px);
+    align-content: start;
+    align-items: start;
+  }
+
+  .has-desktop-mode .is-wide .home-head {
+    grid-column: 1 / -1;
+    margin-bottom: 32px;
+  }
+
+  .has-desktop-mode .is-wide .home-summary {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .has-desktop-mode .is-wide .home-main {
+    display: block;
+    min-width: 0;
+  }
+
+  .has-desktop-mode .is-wide .home-total {
+    font-size: 44px;
+    letter-spacing: -1.2px;
+  }
+
+  .has-desktop-mode .is-wide .home-cents {
+    font-size: 28px;
+  }
+
+  .has-desktop-mode .is-wide .home-balance {
+    margin-bottom: 32px;
+  }
+
+  .has-desktop-mode .is-wide .home-actions {
+    margin-bottom: 32px;
+  }
+
+  .has-desktop-mode .is-wide .home-card {
+    margin-bottom: 16px;
+  }
+
+  /* The tools above the table: the search across, up to the network selector. */
+  .has-desktop-mode .is-wide .asset-toolbar {
+    margin: 28px 0 20px;
+  }
+
+  /* The assets as a table — asset, price, 24 h, balance, value — so the width carries
+     columns instead of one stretched row. The heading and the rows share --asset-cols; every
+     cell is placed on row 1 by number, so a cell a row lacks leaves its column empty rather
+     than shifting the rest. */
+  .has-desktop-mode .is-wide .home-panel {
+    --asset-cols: 44px minmax(0, 1.7fr) minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+
+  .has-desktop-mode .is-wide .home-asset-head {
+    display: grid;
+    grid-template-columns: var(--asset-cols);
+    column-gap: 16px;
+    padding: 0 0 12px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    text-align: right;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-head-asset {
+    grid-column: 1 / 3;
+    text-align: left;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row {
+    display: grid;
+    grid-template-columns: var(--asset-cols);
+    column-gap: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* a figure is one line: cut with an ellipsis before it wraps under itself */
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col,
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-amount,
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-value {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row > *,
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-end > * {
+    grid-row: 1;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-logo {
+    grid-column: 1;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-main {
+    grid-column: 2;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-sub-price,
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-sub .asset-row-chg {
+    display: none;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col {
+    display: block;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col.is-price {
+    grid-column: 3;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col.is-change {
+    grid-column: 4;
+    color: var(--muted);
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col.is-change.is-up {
+    color: var(--up);
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col.is-change.is-down {
+    color: var(--down);
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-end {
+    display: contents;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-amount {
+    grid-column: 5;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-value {
+    grid-column: 6;
+    text-align: right;
+  }
 }

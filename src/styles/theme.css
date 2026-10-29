@@ -150,10 +150,10 @@
    It takes the WHOLE window: edge to edge, corner to corner, no card and no cap — a
    vertical nav rail down the left edge and the screen column in what is left.
 
-   Nothing about the screens themselves changes — they still render into a column of
-   roughly phone width, because that is what all forty of them were designed for, and
+   A screen built for the narrow column still renders into a column of roughly phone width:
    stretching a payment form to 1900px is how a layout pass silently restyles work nobody
-   re-checked. What changes is the chrome around that column.
+   re-checked. A screen redesigned for a PC window (`wide` in src/lib/screens.ts) gets
+   --desk-wide-w and lays itself out in columns; that happens one screen at a time.
 
    The rules live in src/styles/app/shell.css and src/styles/app/desktop-nav.css, and they
    are gated on BOTH a width and a class (`.has-desktop-mode`, set by src/app/Shell.tsx).
@@ -170,6 +170,10 @@
   /* The reading column inside the content area. Capped rather than fluid for the reason
      above; centred, so the rail does not drag everything to one side of a wide monitor. */
   --desk-content-w: 640px;
+  /* A screen redesigned for a PC window (`wide` in src/lib/screens.ts) lays itself out in
+     columns over the whole width beside the rail (the user: "casi la totalidad del ancho").
+     One screen at a time: a screen that only knows the narrow column must never get this. */
+  --desk-wide-w: 100%;
 }
 
 /* A little more column on a large monitor. Not proportional — a step, because past a
