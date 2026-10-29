@@ -40,6 +40,11 @@ async function mailbox(ctx: BrowserContext) {
     'Content-Type': 'application/json',
   };
   const send = (route: Route, data: unknown, status = 200) => route.fulfill({ status, headers: cors, body: JSON.stringify(data) });
+  // A server without the sign-in routes: the profile's email code is never sent anywhere (a
+  // built app would otherwise ask the real gateway to email the test address).
+  await ctx.route('**/v1/wallet/auth/**', (route) =>
+    route.request().method() === 'OPTIONS' ? route.fulfill({ status: 204, headers: cors }) : send(route, {}, 404),
+  );
   await ctx.route('**/v1/wallet/easy-recovery/**', async (route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
@@ -104,6 +109,9 @@ async function finishImport(page: Page, name: string) {
   await page.getByRole('button', { name: 'Continuar' }).click();
   await page.getByPlaceholder('tu@correo.com').fill('test@cosmos.com');
   await page.getByRole('button', { name: 'Continuar' }).click();
+  // No sign-in server here (its routes answer 404), so the code cannot be sent: the step says
+  // so and the person goes on to the next question, the account left for Home.
+  await page.getByRole('button', { name: 'Seguir sin cuenta por ahora' }).click();
   await page.locator('input[type="date"]').fill('1990-05-15');
   await page.getByRole('button', { name: 'Masculino' }).click();
   await page.getByRole('button', { name: 'Continuar' }).click();
@@ -134,6 +142,9 @@ async function finishImport(page: Page, name: string) {
   await finishImport(oldPage, 'Ada');
   await oldPage.getByRole('button', { name: 'Ver mi wallet' }).click();
   ok(true, 'old device holds the wallet');
+  // The account was left for later, so Home offers it (wallet.e2e.ts checks the other side).
+  await oldPage.getByText('Conecta Cosmos Pay').waitFor({ timeout: 10000 });
+  ok(true, 'a wallet made without its account is offered one on Home');
 
   // NEW device: "I already have one" → from another Cosmos Wallet → the QR.
   const newPage = await open(ctxNew);

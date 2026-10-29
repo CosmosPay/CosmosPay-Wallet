@@ -194,9 +194,19 @@ done — sealed under the session's key with the person's own profile, no accoun
 password screen (`prepareNewWallet` / `prepareImportedWallet` → `addWalletToDevice`). Send and
 Receive take one tab per network. **One question per step** (the user's
 call: a screen with every field was too much at once): `profile-setup` walks
-`PROFILE_STEPS` (`constants/onboarding.ts`) — the name, the email, the age and gender, the two
-optional consents — as `goStep` stops, under a line per step and "Paso n de 4"; Enter in a
+`PROFILE_STEPS` (`constants/onboarding.ts`) — the name, the email, its code, the age and gender,
+the two optional consents — as `goStep` stops, under a line per step and "Paso n de 5"; Enter in a
 step's field goes on. A new step goes in that list, not as another field on an existing one.
+**Using the wallet creates its Cosmos Wallet account** (the user's call): the email step sends a
+code (`sendProfileEmailCode`, the sign-in's `email/start`), the code step proves the inbox
+(`verifyProfileEmailCode`), and `finishOnboarding` ends with the same `finishSignIn` a sign-in
+does — signed by the key just sealed, with no backup, since the twelve words are this wallet's
+backup — and seals the account's keys with the wallet. Best-effort: the session token lives in
+memory only, a failed `finish` never refuses the wallet, and Home's card offers the account again.
+A server that does not answer the code (no route, offline) lets the person go on without the
+account ("Seguir sin cuenta por ahora"); a refusal with a reason (a cooldown, a bad address) is
+said on the step. A wallet added to a device that already has one (`addingWallet`) skips the code
+and is created without an account; Home offers it.
 
 **Welcome has no logo and no headline on a phone**: its hero is a provisional video
 (`features/onboarding/WelcomeHero.tsx`, files in `public/brand/welcome/`, rendered by the

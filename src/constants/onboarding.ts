@@ -20,8 +20,9 @@ export const EMAIL_MAX_LEN = 80;
 export const PWD_MIN_LEN = 8;
 
 /**
- * The profile's steps, in order (`features/onboarding/ProfileSetup.tsx`): one question each,
- * then the two optional consents. Each is a stop on the way back (`goStep`).
+ * The profile's steps, in order (`features/onboarding/ProfileSetup.tsx`): one question each —
+ * the email's code proves it for the Cosmos Wallet account that comes with the wallet — then
+ * the two optional consents. Each is a stop on the way back (`goStep`).
  */
-export const PROFILE_STEPS = ['name', 'email', 'about', 'optional'] as const;
+export const PROFILE_STEPS = ['name', 'email', 'code', 'about', 'optional'] as const;
 export type ProfileStep = (typeof PROFILE_STEPS)[number];

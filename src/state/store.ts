@@ -97,6 +97,7 @@ import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
 import { usePasskey } from '@/state/usePasskey';
 import { finishSignIn, replaceBackup as storeBackupBox } from '@/lib/signIn';
+import { ApiRequestError } from '@/lib/apiError';
 import {
   BackupPasskeyError,
   backupDoors,
@@ -723,6 +724,15 @@ export function useWalletStore() {
   const [draftMnemonic, setDraftMnemonic] = useState<string>('');
   const [draftAccount, setDraftAccount] = useState<DerivedAccount | null>(null);
   const [draftHasMnemonic, setDraftHasMnemonic] = useState(true);
+  /**
+   * The profile's email, proven once in onboarding so the wallet's Cosmos Wallet account is
+   * created with it (the user's call: an account comes with using the wallet). The code sent,
+   * then the sign-in session it yields — memory only, spent by `finishOnboarding`.
+   */
+  const [profileEmailCode, setProfileEmailCode] = useState<{ email: string; claimToken: string } | null>(null);
+  const [profileEmailProof, setProfileEmailProof] = useState<{ email: string; sessionToken: string; expiresAt: number } | null>(
+    null,
+  );
   const [importText, setImportText] = useState('');
   const [draftName, setDraftName] = useState('');
   const [draftBirthdate, setDraftBirthdate] = useState('');
@@ -1510,6 +1520,30 @@ export function useWalletStore() {
         setWallets(await listWallets());
         setSession({ publicKey: draftAccount.publicKey, walletId: entry.id, vaultKey: vk });
         setCosmosPay(null); // fresh wallet — receiving not enabled yet
+        // Its Cosmos Wallet account, when onboarding proved the profile's email: the same
+        // `finish` a sign-in ends with, signed by the key just sealed, and no backup — the
+        // twelve words are this wallet's backup. Best-effort: a wallet is never refused for it,
+        // and Home's card offers the account again if this did not land.
+        const proof = profileEmailProof;
+        if (!addingWallet && proof && proof.expiresAt > Date.now() && proof.email === draftEmail.trim().toLowerCase()) {
+          try {
+            const done = await finishSignIn({
+              sessionToken: proof.sessionToken,
+              email: proof.email,
+              secret: draftAccount.secret,
+              accessKey: await warmPublicKey(networkEnv(network)),
+            });
+            if (done.status === 'ready') {
+              const account: CosmosPayAccount = { keys: done.keys, organizationId: done.organizationId };
+              setWallets(await saveCosmosPay(entry.id, account, vk));
+              setCosmosPay(account);
+            }
+          } catch (e) {
+            reportError(EVENT.signInFailed, e, { purpose: 'onboarding', step: 'account' });
+          }
+        }
+        setProfileEmailProof(null);
+        setProfileEmailCode(null);
           setSuccessInfo({
           title: t(addingWallet ? 'success.added' : 'success.welcome', { name: entry.name }),
           msg: t('success.protected'),
@@ -1548,7 +1582,7 @@ export function useWalletStore() {
         setBusy(false);
       }
     },
-    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, draftEmail, draftGender, draftMetricsOptIn, draftPromoOptIn, addingWallet, session, deviceAuthPublic, signInDraft, createFromSignIn, t, flash],
+    [draftAccount, draftMnemonic, draftHasMnemonic, draftName, draftBirthdate, draftEmail, draftGender, draftMetricsOptIn, draftPromoOptIn, addingWallet, session, deviceAuthPublic, signInDraft, createFromSignIn, profileEmailProof, network, t, flash],
   );
 
   /* ----------------------------- unlock --------------------------- */
@@ -1925,6 +1959,64 @@ export function useWalletStore() {
       }
     },
     [session, meta, wallets, t, flash, errLine, activateWallet],
+  );
+
+  /* ------------------- the account that comes with the wallet ------------------- */
+  /**
+   * Send the profile's email a code (onboarding's account step). `failed`: the server refused
+   * it and said why (a cooldown, a bad address); `unavailable`: no answer at all — the person
+   * may go on without the account and create it later from Home.
+   */
+  const sendProfileEmailCode = useCallback(
+    async (email: string): Promise<'sent' | 'failed' | 'unavailable'> => {
+      const clean = email.trim().toLowerCase();
+      try {
+        const res = await signInEmailStart(clean, await warmPublicKey(networkEnv(network)));
+        setProfileEmailCode({ email: clean, claimToken: res.claimToken });
+        setProfileEmailProof(null);
+        return 'sent';
+      } catch (e) {
+        const status = e instanceof ApiRequestError ? e.status : 0;
+        // A refusal with a reason (a bad address, a cooldown) is said; a missing route is a
+        // server without accounts, which the person cannot fix — they go on without one.
+        if (status >= 400 && status < 500 && status !== 404) {
+          flash((e as Error).message || t('cosmospay.error'), 'err');
+          return 'failed';
+        }
+        return 'unavailable';
+      }
+    },
+    [network, flash, t],
+  );
+
+  /** The emailed code: a right one proves the profile's email for the account. */
+  const verifyProfileEmailCode = useCallback(
+    async (code: string): Promise<boolean> => {
+      const sent = profileEmailCode;
+      if (!sent) return false;
+      try {
+        const res = await signInEmailVerify({ claimToken: sent.claimToken, code }, await warmPublicKey(networkEnv(network)));
+        if (res.status === 'invalid') {
+          flash(t('cosmospay.linkInvalid', { n: res.attemptsLeft }), 'err');
+          return false;
+        }
+        if (res.status !== 'ready') {
+          setProfileEmailCode(null);
+          flash(t(res.status === 'locked' ? 'cosmospay.linkLocked' : 'cosmospay.linkExpired'), 'err');
+          return false;
+        }
+        setProfileEmailProof({
+          email: res.identity.email.trim().toLowerCase(),
+          sessionToken: res.sessionToken,
+          expiresAt: Date.now() + (res.expiresInSeconds || 0) * 1000,
+        });
+        return true;
+      } catch (e) {
+        flash((e as Error).message || t('cosmospay.error'), 'err');
+        return false;
+      }
+    },
+    [profileEmailCode, network, flash, t],
   );
 
   /* ------------------- another wallet, same password ------------------- */
@@ -6571,6 +6663,11 @@ export function useWalletStore() {
     switchWallet,
     prepareNewWallet,
     prepareImportedWallet,
+    sendProfileEmailCode,
+    verifyProfileEmailCode,
+    /** The address a code went to in onboarding, and whether that address is proven now. */
+    profileEmailSentTo: profileEmailCode?.email ?? null,
+    profileEmailProvenFor: profileEmailProof && profileEmailProof.expiresAt > Date.now() ? profileEmailProof.email : null,
     dropWalletDraft,
     addWalletToDevice,
     /** A wallet waits in the add flow (or onboarding) to be sealed. */

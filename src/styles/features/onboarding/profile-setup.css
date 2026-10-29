@@ -66,3 +66,25 @@
   background: var(--text);
   color: var(--bg);
 }
+
+/* the account step: the code, its resend link, and the notes (sent, proven, later) */
+.input.profile-setup-code {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-setup-resend {
+  align-self: flex-start;
+  margin-top: -4px;
+}
+
+.profile-setup-note {
+  margin-top: 4px;
+}
+
+.profile-setup-skip {
+  margin-top: 12px;
+}

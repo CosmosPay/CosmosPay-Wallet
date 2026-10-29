@@ -1,10 +1,12 @@
-import { useEffect, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Spinner } from '@/ui/Spinner';
 import { ageFromBirthdate } from '@/lib/greeting';
-import { EMAIL_RE } from '@/lib/validate';
+import { EMAIL_RE, isAccessCode, normalizeAccessCode } from '@/lib/validate';
+import { GhostButton } from '@/ui/Buttons';
+import { Notice } from '@/ui/Notice';
 import { GENDER_OPTIONS, MIN_AGE, NAME_MAX_LEN, EMAIL_MAX_LEN, PROFILE_STEPS, type ProfileStep } from '@/constants/onboarding';
 import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
 import { Field } from '@/ui/Field';
@@ -14,7 +16,8 @@ import '@/styles/features/onboarding/profile-setup.css';
 
 /**
  * About you, one question per step (the user's call: one screen with every field was too
- * much at once) — the name, the email, the age and gender, then the two optional consents.
+ * much at once) — the name, the email and the code that proves it (the wallet's Cosmos Wallet
+ * account), the age and gender, then the two optional consents.
  * The steps are stops on the navigation stack (`goStep`), so every back walks them, and what
  * was typed lives in the store's drafts, so nothing is lost on the way. A step is only shown
  * once the ones before it are answered: arriving further (forward, after leaving) lands on
@@ -33,7 +36,23 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
   const nameOk = name.trim().length >= 2;
   const aboutOk = !!store.draftBirthdate && !dobFuture && !tooYoung && !!store.draftGender;
 
-  const answered: Record<ProfileStep, boolean> = { name: nameOk, email: emailOk, about: aboutOk, optional: true };
+  // The account step (the user's call: the wallet comes with its Cosmos Wallet account). The
+  // email is proven by a code; a server that does not answer lets the person go on and create
+  // the account later from Home — a wallet never waits on the server.
+  const cleanEmail = email.trim().toLowerCase();
+  const proven = store.profileEmailProvenFor === cleanEmail;
+  const [skipAccount, setSkipAccount] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
+  const [code, setCode] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const answered: Record<ProfileStep, boolean> = {
+    name: nameOk,
+    email: emailOk,
+    code: proven || skipAccount || store.addingWallet,
+    about: aboutOk,
+    optional: true,
+  };
   const wanted = Math.max(0, PROFILE_STEPS.indexOf(store.navStep as ProfileStep));
   let at = 0;
   while (at < wanted && answered[PROFILE_STEPS[at]]) at++;
@@ -46,8 +65,38 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
   }, [at, wanted, replaceStep]);
 
   const last = at === PROFILE_STEPS.length - 1;
-  const next = () => {
-    if (!answered[step] || store.busy) return;
+  const sendCode = async () => {
+    setSending(true);
+    try {
+      const sent = await store.sendProfileEmailCode(cleanEmail);
+      setUnavailable(sent === 'unavailable');
+      if (sent === 'sent') {
+        setCode('');
+        store.goStep('code');
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+  const next = async () => {
+    if (store.busy || sending) return;
+    // The email step sends the code (or, already proven, goes past it).
+    if (step === 'email') {
+      if (!emailOk) return;
+      if (proven || store.addingWallet) return store.goStep('about');
+      return void sendCode();
+    }
+    if (step === 'code' && !answered.code) {
+      if (!isAccessCode(code)) return;
+      setSending(true);
+      try {
+        if (await store.verifyProfileEmailCode(code)) store.goStep('about');
+      } finally {
+        setSending(false);
+      }
+      return;
+    }
+    if (!answered[step]) return;
     if (!last) return store.goStep(PROFILE_STEPS[at + 1]);
     if (store.addingWallet) void store.finishOnboarding();
     else store.setScreen('password');
@@ -55,12 +104,13 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
   // Enter in the step's field goes on, like the button.
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    next();
+    void next();
   };
 
   const header = {
     name: { title: t('setup.title'), desc: t('setup.nameDesc') },
     email: { title: t('setup.emailTitle'), desc: t('setup.emailDesc') },
+    code: { title: t('setup.codeTitle'), desc: t('setup.codeDesc', { email: cleanEmail }) },
     about: { title: t('setup.about'), desc: t('setup.aboutDesc', { n: MIN_AGE }) },
     optional: { title: t('setup.optionalTitle'), desc: t('setup.optionalDesc') },
   }[step];
@@ -96,6 +146,47 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
             placeholder="tu@correo.com"
           />
           {email.length > 0 && !emailOk && <div className="err-line profile-setup-err">{t('setup.emailInvalid')}</div>}
+          {unavailable && (
+            <Notice className="profile-setup-note">
+              {t('setup.accountUnavailable')}
+              <GhostButton
+                onClick={() => {
+                  setSkipAccount(true);
+                  setUnavailable(false);
+                  store.goStep('about');
+                }}
+                className="profile-setup-skip"
+              >
+                {t('setup.skipAccount')}
+              </GhostButton>
+            </Notice>
+          )}
+        </>
+      )}
+
+      {step === 'code' && (
+        <>
+          {skipAccount && !proven ? (
+            <Notice className="profile-setup-note">{t('setup.accountLater')}</Notice>
+          ) : proven ? (
+            <Notice className="profile-setup-note">{t('setup.emailProven', { email: cleanEmail })}</Notice>
+          ) : (
+            <>
+              <label className="field">
+                <span className="field-label">{t('setup.codeLabel')}</span>
+                <input
+                  value={code}
+                  onChange={(e) => setCode(normalizeAccessCode((e.target as HTMLInputElement).value))}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  className="input profile-setup-code"
+                />
+              </label>
+              <button type="button" onClick={() => void sendCode()} disabled={sending} className="link-btn profile-setup-resend">
+                {t('setup.resend')}
+              </button>
+            </>
+          )}
         </>
       )}
 
@@ -137,8 +228,11 @@ export function ProfileSetup({ store }: { store: WalletStore }) {
 
       <div className="spacer" />
       <div className="kb-dock">
-        <PrimaryButton disabled={!answered[step] || store.busy} onClick={next}>
-          {last && store.addingWallet ? (store.busy ? <Spinner /> : t('setup.addWallet')) : t('common.continue')}
+        <PrimaryButton
+          disabled={store.busy || sending || (step === 'code' && !answered.code ? !isAccessCode(code) : !answered[step])}
+          onClick={() => void next()}
+        >
+          {sending || (last && store.busy) ? <Spinner /> : last && store.addingWallet ? t('setup.addWallet') : t('common.continue')}
         </PrimaryButton>
       </div>
     </form>
