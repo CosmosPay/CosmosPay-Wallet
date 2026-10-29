@@ -1997,16 +1997,21 @@ export function useWalletStore() {
   const sendProfileEmailCode = useCallback(
     async (email: string): Promise<'sent' | 'failed' | 'unavailable'> => {
       const clean = email.trim().toLowerCase();
+      // No key to call the gateway with (a build that ships none and a server that did not hand
+      // one out): the call could only be refused, so the person goes on without the account.
+      const accessKey = await warmPublicKey(networkEnv(network));
+      if (!accessKey) return 'unavailable';
       try {
-        const res = await signInEmailStart(clean, await warmPublicKey(networkEnv(network)));
+        const res = await signInEmailStart(clean, accessKey);
         setProfileEmailCode({ email: clean, claimToken: res.claimToken });
         setProfileEmailProof(null);
         return 'sent';
       } catch (e) {
         const status = e instanceof ApiRequestError ? e.status : 0;
-        // A refusal with a reason (a bad address, a cooldown) is said; a missing route is a
-        // server without accounts, which the person cannot fix — they go on without one.
-        if (status >= 400 && status < 500 && status !== 404) {
+        // Only a refusal the person can act on is said (an address the server will not take, a
+        // cooldown). Everything else — a key the gateway refused, a server down behind it, a
+        // missing route, no network — is the service's, so they go on without the account.
+        if (status === 400 || status === 422 || status === 429) {
           flash((e as Error).message || t('cosmospay.error'), 'err');
           return 'failed';
         }
@@ -2039,7 +2044,9 @@ export function useWalletStore() {
         });
         return true;
       } catch (e) {
-        flash((e as Error).message || t('cosmospay.error'), 'err');
+        // The server's words only for a refusal about the code; anything else is the service's.
+        const status = e instanceof ApiRequestError ? e.status : 0;
+        flash(status === 400 || status === 422 || status === 429 ? (e as Error).message || t('cosmospay.error') : t('setup.codeUnavailable'), 'err');
         return false;
       }
     },

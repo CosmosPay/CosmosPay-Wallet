@@ -36,6 +36,8 @@ const cors = {
   'Content-Type': 'application/json',
 };
 const reply = (route: Route, data: unknown, status = 200) => route.fulfill({ status, headers: cors, body: JSON.stringify(data) });
+// The gateway's shared public key: without one the account step does not even ask for a code.
+await page.route('**/v1/public-key*', (route: Route) => reply(route, { env: 'dev', apiKey: 'pk_e2e_public' }));
 await page.route('**/v1/wallet/auth/**', async (route: Route) => {
   const req = route.request();
   if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });

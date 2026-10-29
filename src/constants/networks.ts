@@ -479,12 +479,13 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
 };
 
 /**
- * What sending a network's coin leaves behind for fees, in its base units (`lib/networkSend.ts`).
- * An L1's fee is cents to a dollar, an L2's a fraction of a cent; a transfer that cannot pay for
- * itself is refused by the node with an error nobody reads, so "send all" stops short of these.
+ * What sending a network's coin leaves behind for fees, in its base units (`lib/networkSend.ts`),
+ * and the most one send may cost: the fees come from a public node, which is trusted for state
+ * and relaying only, so a transfer whose worst case (`maxFeePerGas × gasLimit`) is above this is
+ * refused rather than signed. An L1's fee is cents to a dollar, an L2's a fraction of a cent.
  */
 export const SEND_FEE_RESERVE: Partial<Record<NetworkId, bigint>> = {
-  eth: 2_000_000_000_000_000n, // 0.002 ETH
+  eth: 5_000_000_000_000_000n, // 0.005 ETH
   base: 200_000_000_000_000n, // 0.0002 ETH
   arb: 200_000_000_000_000n,
   op: 200_000_000_000_000n,
@@ -527,6 +528,16 @@ export const NETWORK_GROUPS: readonly { kind: 'stellar' | AddressKind; networks:
   { kind: 'starknet', networks: ['starknet'] },
   { kind: 'aleo', networks: ['aleo'] },
 ];
+
+/**
+ * The genesis hash of each SVM network (`getGenesisHash`, read 2026-10-28). Solana and Fogo share
+ * one key, so a Fogo transfer signed over a blockhash Solana accepts would be spendable on Solana
+ * too; `lib/networkSend.ts` checks the node is Fogo's and that Solana does not know the blockhash.
+ */
+export const SVM_GENESIS_HASH: Partial<Record<NetworkId, string>> = {
+  solana: '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d',
+  fogo: 'CDLtwKnaCoK157uaHQDj4fHu72AyD2519Cphmpiq6hvT',
+};
 
 /** How long a read balance is reused before the next one (the networks are many, the APIs public). */
 export const NETWORK_BALANCE_TTL_MS = 60_000;

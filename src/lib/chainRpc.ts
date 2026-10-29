@@ -124,6 +124,12 @@ export async function solanaSimulate(
   return { err: r.value.err, accounts: new Map(addresses.map((a, i) => [a, toState(accounts[i] ?? null)])) };
 }
 
+/** Whether Solana mainnet would accept `blockhash` as recent — i.e. a signature over it is spendable there. */
+export async function solanaBlockhashValid(blockhash: string): Promise<boolean> {
+  const r = await sol<{ value: boolean }>('isBlockhashValid', [blockhash, { commitment: 'processed' }]);
+  return r.value === true;
+}
+
 export async function solanaBlockhash(net: ChainNet = 'mainnet'): Promise<string> {
   const r = await sol<{ value: { blockhash: string } }>('getLatestBlockhash', [{ commitment: 'confirmed' }], net);
   return r.value.blockhash;
@@ -216,6 +222,10 @@ export async function evmSendAt(url: string, raw: string): Promise<string> {
 export async function svmLamportsAt(url: string, owner: string): Promise<bigint> {
   const r = await rpc<{ value: number }>(url, 'getBalance', [owner, { commitment: 'confirmed' }]);
   return BigInt(r.value);
+}
+
+export async function svmGenesisAt(url: string): Promise<string> {
+  return rpc<string>(url, 'getGenesisHash', []);
 }
 
 export async function svmBlockhashAt(url: string): Promise<string> {

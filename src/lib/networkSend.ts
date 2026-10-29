@@ -8,8 +8,10 @@
  * Solana and Monad keep `lib/chainSwap.ts`, which also covers their test networks.
  */
 import { SOLANA_RENT_EXEMPT_LAMPORTS, EVM_BASE_FEE_MULTIPLIER, EVM_GAS_HEADROOM_PCT } from '@/constants/chains';
-import { NETWORKS, type NetworkId } from '@/constants/networks';
+import { NETWORKS, SEND_FEE_RESERVE, SVM_GENESIS_HASH, type NetworkId } from '@/constants/networks';
 import {
+  solanaBlockhashValid,
+  svmGenesisAt,
   evmChainIdAt,
   evmEstimateGasAt,
   evmFeesAt,
@@ -59,13 +61,18 @@ export async function sendNetworkTransfer(p: NetworkTransfer): Promise<string> {
     const call =
       p.asset === 'native' ? { to: p.to, data: '0x', value: p.amount } : { to: p.asset, data: transferCalldata(p.to, p.amount), value: 0n };
     const [nonce, fees, gas] = await Promise.all([evmNonceAt(url, p.owner), evmFeesAt(url), evmEstimateGasAt(url, { from: p.owner, ...call })]);
+    const maxFeePerGas = fees.baseFee * EVM_BASE_FEE_MULTIPLIER + fees.tip;
+    const gasLimit = (gas * EVM_GAS_HEADROOM_PCT) / 100n;
+    // The fees and the gas are the node's word. Whatever it says, one send never costs more than
+    // the network's fee reserve: a node inflating either is refused, not paid.
+    if (maxFeePerGas * gasLimit > (SEND_FEE_RESERVE[p.network] ?? 0n)) throw new ChainSwapRefused('fee');
     const signed = signEip1559(
       {
         chainId: def.evmChainId,
         nonce,
         maxPriorityFeePerGas: fees.tip,
-        maxFeePerGas: fees.baseFee * EVM_BASE_FEE_MULTIPLIER + fees.tip,
-        gasLimit: (gas * EVM_GAS_HEADROOM_PCT) / 100n,
+        maxFeePerGas,
+        gasLimit,
         to: call.to,
         value: call.value,
         data: call.data,
@@ -79,9 +86,15 @@ export async function sendNetworkTransfer(p: NetworkTransfer): Promise<string> {
   if (def.balance.kind === 'svm') {
     if (p.asset !== 'native') throw new ChainSwapRefused('address');
     const url = def.balance.rpc;
+    // The SVM key is Solana's too, and a transfer is bound to its chain only by its blockhash. The
+    // node must be this network's, and the blockhash one Solana does not accept — asked of the
+    // Solana node, not this one — or the signature would also move SOL. Unknown is a refusal.
+    if ((await svmGenesisAt(url)) !== SVM_GENESIS_HASH[p.network]) throw new ChainSwapRefused('chain');
     // The same runtime as Solana: an account opened with less than rent exemption is refused.
     if (p.amount < SOLANA_RENT_EXEMPT_LAMPORTS && (await svmLamportsAt(url, p.to)) === 0n) throw new ChainSwapRefused('rent');
-    const wire = solTransferTx(p.owner, p.to, p.amount, await svmBlockhashAt(url));
+    const blockhash = await svmBlockhashAt(url);
+    if (await solanaBlockhashValid(blockhash)) throw new ChainSwapRefused('chain');
+    const wire = solTransferTx(p.owner, p.to, p.amount, blockhash);
     return svmSendAt(url, signSolanaTx(wire, p.secret, p.owner).signed);
   }
 

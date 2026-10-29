@@ -45,6 +45,9 @@ async function mailbox(ctx: BrowserContext) {
   await ctx.route('**/v1/wallet/auth/**', (route) =>
     route.request().method() === 'OPTIONS' ? route.fulfill({ status: 204, headers: cors }) : send(route, {}, 404),
   );
+  // And no public key either, the local stack with its server stopped: the account step must
+  // let the person go on, not show the gateway's "Missing API key".
+  await ctx.route('**/v1/public-key*', (route) => send(route, { message: 'Missing API key in request' }, 401));
   await ctx.route('**/v1/wallet/easy-recovery/**', async (route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
