@@ -18,6 +18,7 @@ import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { concatBytes } from '@noble/hashes/utils.js';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import { bytesToNumberLE } from '@noble/curves/utils.js';
+import { CARDANO_ADDRESS_HRP, CARDANO_NETWORK_ID } from '@/constants/cardanoSend';
 
 const HARDENED = 0x80000000;
 export const CARDANO_PAYMENT_PATH = [1852 + HARDENED, 1815 + HARDENED, HARDENED, 0, 0] as const;
@@ -95,4 +96,23 @@ export function cardanoBaseAddress(entropy: Uint8Array): string {
   } finally {
     root.fill(0);
   }
+}
+
+/**
+ * The same keys' address on the test networks (`addr_test1…`, header network id 0) for the
+ * wallet's mainnet address — what `lib/testnets.ts` shows in test mode. Null for anything that
+ * is not a mainnet Shelley address.
+ */
+export function cardanoTestnetAddress(address: string): string | null {
+  let decoded: { prefix: string; bytes: Uint8Array };
+  try {
+    decoded = bech32.decodeToBytes(address, false);
+  } catch {
+    return null;
+  }
+  const { prefix, bytes } = decoded;
+  if (prefix !== CARDANO_ADDRESS_HRP.mainnet || bytes.length === 0 || (bytes[0] & 0x0f) !== CARDANO_NETWORK_ID.mainnet) return null;
+  const test = Uint8Array.from(bytes);
+  test[0] = (test[0] & 0xf0) | CARDANO_NETWORK_ID.testnet;
+  return bech32.encode(CARDANO_ADDRESS_HRP.testnet, bech32.toWords(test), false);
 }

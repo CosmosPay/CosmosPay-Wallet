@@ -14,6 +14,7 @@ import {
   memoByteLength,
   memoKindFromSep7,
   memoProblem,
+  networkMemoProblem,
   normalizeMemo,
 } from '@/lib/memo';
 import { APP_VERSION, MEMO_SIGNATURE } from '@/constants/app';
@@ -124,4 +125,16 @@ test('a supplied memo is never replaced by the default', () => {
   // Only an empty field falls through to it.
   assert.equal(normalizeMemo('', 'text'), null);
   assert.equal(normalizeMemo('   ', 'text'), null);
+});
+
+test('another network memo: XRP tags are uint32 digits, TON comments byte-bounded', () => {
+  assert.equal(networkMemoProblem('xrp', ''), null);
+  assert.equal(networkMemoProblem('xrp', '4294967295'), null);
+  assert.equal(networkMemoProblem('xrp', ' 12345 '), null);
+  for (const bad of ['4294967296', '-1', '12a', '1.5', '99999999999']) assert.equal(networkMemoProblem('xrp', bad), 'tag', bad);
+  assert.equal(networkMemoProblem('ton', 'deposit 1234'), null);
+  assert.equal(networkMemoProblem('ton', 'ñ'.repeat(60)), null);
+  assert.equal(networkMemoProblem('ton', 'ñ'.repeat(61)), 'length');
+  // a network whose transfer carries no memo accepts none
+  assert.equal(networkMemoProblem('btc', 'anything'), 'length');
 });

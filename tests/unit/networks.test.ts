@@ -40,16 +40,18 @@ test('a network the wallet signs on has a node and, on EVM, the chain id a signa
     const n = NETWORKS[id];
     if (!n.send || id === 'stellar') continue;
     assert.ok(n.balance, `${id} signs with no node`);
-    if (n.address === 'evm') {
+    // Hyperliquid's account is the EVM key's, paid through its own API rather than a chain.
+    if (n.address === 'evm' && id !== 'hypercore') {
       assert.equal(n.balance?.kind, 'evm', id);
       assert.ok(Number.isInteger(n.evmChainId) && (n.evmChainId ?? 0) > 0, `${id} has no chain id`);
-      if (id !== 'monad') assert.ok((SEND_FEE_RESERVE[id] ?? 0n) > 0n, `${id} sends its coin with no fee reserve`);
     }
+    // Solana and Monad keep their own reserves (constants/chains.ts); every other network caps its fee here.
+    if (id !== 'solana' && id !== 'monad') assert.ok((SEND_FEE_RESERVE[id] ?? 0n) > 0n, `${id} sends with no fee reserve`);
   }
   // The chain ids checked against chainlist and each node's own eth_chainId (2026-10-28).
   assert.deepEqual(
     Object.fromEntries(NETWORK_IDS.filter((id) => NETWORKS[id].evmChainId !== undefined).map((id) => [id, NETWORKS[id].evmChainId])),
-    { monad: 143, eth: 1, base: 8453, arb: 42161, op: 10, bsc: 56, pol: 137, avax: 43114, gnosis: 100, bera: 80094, scroll: 534352, xlayer: 196, abs: 2741, plasma: 9745 },
+    { monad: 143, eth: 1, base: 8453, arb: 42161, op: 10, bsc: 56, pol: 137, avax: 43114, gnosis: 100, bera: 80094, scroll: 534352, xlayer: 196, abs: 2741, plasma: 9745, hood: 4663 },
   );
 });
 
@@ -115,4 +117,19 @@ test('other networks show what is held, priced only where the price is known or 
       ['base', 'USDC', 5, 5],
     ],
   );
+});
+
+test('an endpoint both the registry and a sender name is the same one', async () => {
+  const { STARKNET_RPC } = await import('@/constants/starknetSend');
+  const { BCH_BITCORE_API } = await import('@/constants/utxoSend');
+  const { CARDANO_ENDPOINTS } = await import('@/constants/cardanoSend');
+  const { TON_KEEP_ALIVE } = await import('@/constants/tonSend');
+  const { TESTNETS } = await import('@/constants/testnets');
+  const { ACCOUNT_KEEP } = await import('@/constants/networks');
+  assert.deepEqual(NETWORKS.starknet.balance, { kind: 'starknet', rpc: STARKNET_RPC.mainnet });
+  assert.deepEqual(TESTNETS.starknet?.balance, { kind: 'starknet', rpc: STARKNET_RPC.testnet });
+  assert.deepEqual(NETWORKS.bch.balance, { kind: 'bitcore', api: BCH_BITCORE_API });
+  assert.deepEqual(NETWORKS.cardano.balance, { kind: 'yoroi', api: CARDANO_ENDPOINTS.mainnet.yoroi });
+  assert.deepEqual(TESTNETS.cardano?.balance, { kind: 'yoroi', api: CARDANO_ENDPOINTS.testnet.yoroi });
+  assert.equal(ACCOUNT_KEEP.ton, TON_KEEP_ALIVE);
 });

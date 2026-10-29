@@ -64,7 +64,7 @@ const token = (network: NetworkId, symbol: string) => {
 
 test('a network with no source throws "unsupported" and asks nobody', async () => {
   const calls = stub(() => ({ body: {} }));
-  for (const id of ['stellar', 'starknet', 'cardano', 'aleo', 'hood'] as const) {
+  for (const id of ['stellar', 'aleo'] as const) {
     assert.equal(NETWORKS[id].balance, null, id);
     await fails(readNetworkBalances(id, EVM), 'unsupported');
   }
@@ -257,15 +257,16 @@ test('BlockCypher: final_balance, exact past 2^53; an unknown wallet (404) throw
 const blockchair = (key: string, balance: number) =>
   `{"data":{"${key}":{"address":{"type":"pubkeyhash","script_hex":"76a914","balance":${balance},"balance_usd":3.8,"received":${balance},"spent":0,"output_count":2,"unspent_output_count":2,"transaction_count":2},"transactions":["a1"],"utxo":[]}},"context":{"code":200,"source":"D","state":950000,"request_cost":1}}`;
 
+test('Bitcore (Bitcoin Cash): balance, asked without the cashaddr prefix', async () => {
+  const calls = stub(() => ({ body: '{"confirmed":1335588000,"unconfirmed":0,"balance":1335588000}' }));
+  assert.deepEqual(await readNetworkBalances('bch', `bitcoincash:${BCH}`), { native: 1335588000n });
+  assert.equal(calls[0].url, `https://api.bitcore.io/api/BCH/mainnet/address/${BCH}/balance`);
+});
+
 test('Blockchair: data[address].address.balance, under the address or its only key', async () => {
-  const calls = stub(() => ({ body: blockchair(BCH, 1335588000) }));
-  assert.deepEqual(await readNetworkBalances('bch', BCH), { native: 1335588000n });
-  assert.equal(calls[0].url, `https://api.blockchair.com/bitcoin-cash/dashboards/address/${BCH}`);
-  // Asked with the cashaddr prefix, keyed without it.
-  stub(() => ({ body: blockchair(BCH, 7) }));
-  assert.deepEqual(await readNetworkBalances('bch', `bitcoincash:${BCH}`), { native: 7n });
-  stub(() => ({ body: blockchair('t1Lwh5NsBLGtcBNA5yLiRp6R4LYc5ZUnwgK', 0) }));
+  const calls = stub(() => ({ body: blockchair('t1Lwh5NsBLGtcBNA5yLiRp6R4LYc5ZUnwgK', 0) }));
   assert.deepEqual(await readNetworkBalances('zec', 't1Lwh5NsBLGtcBNA5yLiRp6R4LYc5ZUnwgK'), { native: 0n });
+  assert.equal(calls[0].url, 'https://api.blockchair.com/zcash/dashboards/address/t1Lwh5NsBLGtcBNA5yLiRp6R4LYc5ZUnwgK');
 });
 
 test('Blockchair: its 430 block is a rate limit, and an empty `data` is not a zero', async () => {
@@ -273,7 +274,7 @@ test('Blockchair: its 430 block is a rate limit, and an empty `data` is not a ze
     status: 430,
     body: '{"data":null,"context":{"code":430,"error":"Your IP address is temporary blacklisted due to exceeding usage of API resources. Please apply for an API key by contacting us at info@blockchair.com","market_price_usd":284.56,"servers":"API4","request_cost":1}}',
   }));
-  await fails(readNetworkBalances('bch', BCH), 'rate-limited', BCH);
+  await fails(readNetworkBalances('zec', 't1Lwh5NsBLGtcBNA5yLiRp6R4LYc5ZUnwgK'), 'rate-limited', 't1Lwh5NsBLGtcBNA5yLiRp6R4LYc5ZUnwgK');
   stub(() => ({ body: '{"data":null,"context":{"code":200}}' }));
   await fails(readNetworkBalances('zec', BCH), 'shape');
   stub(() => ({ body: '{"data":{},"context":{"code":200}}' }));

@@ -67,7 +67,8 @@ test('the wallet pays from networks it signs on, and off the markets with the co
   assert.ok(canPayWith(find(cat, 'base', 'ETH'), signs));
   assert.ok(canPayWith(find(cat, 'base', 'USDC'), signs));
   assert.equal(canPayWith(find(cat, 'base', 'BRETT'), signs), false, 'not a registry token: never paid out');
-  assert.equal(canPayWith(find(cat, 'btc', 'BTC'), signs), false, 'the wallet does not sign on Bitcoin');
+  assert.ok(canPayWith(find(cat, 'btc', 'BTC'), signs), 'the wallet signs on Bitcoin: its coin pays a NEAR Intents deposit');
+  assert.equal(canPayWith(find(cat, 'btc', 'BTC'), (c) => c !== 'btc'), false, 'a network it does not sign on pays nothing');
   const recv = receivableFrom(find(cat, 'stellar', 'XLM'), cat, 'mainnet', (c) => c !== 'btc');
   assert.ok(!recv.some((t) => t.chain === 'btc'), 'no address there: not offered');
   assert.ok(recv.some((t) => t.chain === 'base' && t.symbol === 'BRETT'));

@@ -1,10 +1,13 @@
 /**
- * Paying from the networks beyond Stellar, Solana and Monad that the wallet signs on: every EVM
- * network of the registry (one key, one 0x address, a chain id per network) and Fogo (the SVM
- * key, Solana's transaction format). A plain transfer the wallet builds itself — the coin or one
- * of the registry's stablecoins — so there is no counterparty envelope to check beyond the
- * address, the chain id and the amount. In test mode (`env: 'testnet'`) the same transfer pays the
- * coin of the network's test network (`networkDefOn`: its own chain id, endpoint and genesis).
+ * Paying from every network beyond Stellar, Solana and Monad: the EVM networks of the registry
+ * (one key, one 0x address, a chain id per network) and Fogo (the SVM key, Solana's transaction
+ * format) here; every other family in its own sender under `lib/send/` — the UTXO chains, Zcash,
+ * the XRP Ledger, Tron, TON, NEAR, Sui, Aptos and Movement, Hyperliquid, Cardano, Starknet — all
+ * on the one contract of `lib/send/types.ts`. A plain transfer the wallet builds itself — the coin
+ * or one of the registry's stablecoins — so there is no counterparty envelope to check beyond the
+ * address, the network the node serves, the fee and the amount. In test mode (`env: 'testnet'`)
+ * the same transfer pays the coin of the network's test network (`networkDefOn`), where its
+ * sender can bind a signature to it.
  *
  * Solana and Monad keep `lib/chainSwap.ts`, which also covers their test networks.
  */
@@ -28,9 +31,44 @@ import { ChainSwapRefused } from '@/lib/chainSwap';
 import { isEvmAddress, signEip1559, transferCalldata } from '@/lib/evmTx';
 import { isSolanaAddress, signSolanaTx, solTransferTx } from '@/lib/solanaTx';
 import { networkDefOn, sendFeeReserveOn, svmGenesisOn } from '@/lib/testnets';
+import type { FamilyTransfer } from '@/lib/send/types';
+import { isUtxoAddress, sendUtxo } from '@/lib/send/utxo';
+import { isZcashAddress, sendZcash } from '@/lib/send/zcash';
+import { isXrplAddress, sendXrpl } from '@/lib/send/xrpl';
+import { isTronAddress, sendTron } from '@/lib/send/tron';
+import { isTonAddress, sendTon } from '@/lib/send/ton';
+import { isNearAddress, sendNear } from '@/lib/send/near';
+import { isSuiAddress, sendSui } from '@/lib/send/sui';
+import { isAptosAddress, sendAptos } from '@/lib/send/aptos';
+import { isHypercoreAddress, sendHypercore } from '@/lib/send/hypercore';
+import { isCardanoAddress, sendCardano } from '@/lib/send/cardano';
+import { isStarknetAddress, sendStarknet } from '@/lib/send/starknet';
 
-/** Whether `address` is an account on `network` — the predicate the screen and the signer share. */
-export function isNetworkAddress(network: NetworkId, address: string): boolean {
+/** Each family's sender and recipient check, by the network's address family. */
+const FAMILIES: Partial<Record<string, { send: (p: FamilyTransfer) => Promise<string>; isAddress: (n: NetworkId, a: string, env: ChainNet) => boolean }>> = {
+  btc: { send: sendUtxo, isAddress: isUtxoAddress },
+  ltc: { send: sendUtxo, isAddress: isUtxoAddress },
+  doge: { send: sendUtxo, isAddress: isUtxoAddress },
+  dash: { send: sendUtxo, isAddress: isUtxoAddress },
+  bch: { send: sendUtxo, isAddress: isUtxoAddress },
+  zec: { send: sendZcash, isAddress: isZcashAddress },
+  xrp: { send: sendXrpl, isAddress: isXrplAddress },
+  tron: { send: sendTron, isAddress: isTronAddress },
+  ton: { send: sendTon, isAddress: isTonAddress },
+  near: { send: sendNear, isAddress: isNearAddress },
+  sui: { send: sendSui, isAddress: isSuiAddress },
+  aptos: { send: sendAptos, isAddress: isAptosAddress },
+  cardano: { send: sendCardano, isAddress: isCardanoAddress },
+  starknet: { send: sendStarknet, isAddress: isStarknetAddress },
+};
+/** Hyperliquid's account is the EVM key's, but it is paid through its own API, not a chain. */
+const HYPERCORE = { send: sendHypercore, isAddress: isHypercoreAddress };
+const familyOf = (network: NetworkId) => (network === 'hypercore' ? HYPERCORE : FAMILIES[NETWORKS[network].address]);
+
+/** Whether `address` is a recipient on `network` in `env` — the predicate the screen and the signer share. */
+export function isNetworkAddress(network: NetworkId, address: string, env: ChainNet = 'mainnet'): boolean {
+  const family = familyOf(network);
+  if (family) return family.isAddress(network, address, env);
   const kind = NETWORKS[network].address;
   return kind === 'evm' ? isEvmAddress(address) : kind === 'svm' ? isSolanaAddress(address) : false;
 }
@@ -45,6 +83,8 @@ export interface NetworkTransfer {
   amount: bigint;
   /** The wallet's mode; a test network pays its coin only. Mainnet when absent. */
   env?: ChainNet;
+  /** XRP's destination tag or TON's comment (`FamilyTransfer.memo`). */
+  memo?: string;
 }
 
 /**
@@ -56,10 +96,16 @@ export async function sendNetworkTransfer(p: NetworkTransfer, settleMs: number =
   const env = p.env ?? 'mainnet';
   const def = networkDefOn(p.network, env);
   if (!def || !def.send || !def.balance) throw new ChainSwapRefused('chain');
-  if (!isNetworkAddress(p.network, p.to)) throw new ChainSwapRefused('address');
+  if (!isNetworkAddress(p.network, p.to, env)) throw new ChainSwapRefused('address');
   // Only the coin and the registry's own contracts: a token the screen never listed is not one
   // this function pays out, whatever a caller passes.
   if (p.asset !== 'native' && !def.tokens.some((tk) => tk.asset === p.asset)) throw new ChainSwapRefused('address');
+
+  const family = familyOf(p.network);
+  if (family) {
+    const { network, secret, owner, asset, to, amount, memo } = p;
+    return family.send({ network, env, def, secret, owner, asset, to, amount, memo, maxFee: sendFeeReserveOn(network, env) });
+  }
 
   if (def.balance.kind === 'evm' && def.evmChainId !== undefined) {
     const url = def.balance.rpc;

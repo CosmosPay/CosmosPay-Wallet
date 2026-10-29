@@ -5,9 +5,10 @@
  * one: whatever has no test network here is absent in test mode.
  */
 import { bech32 } from '@scure/base';
+import { cardanoTestnetAddress } from '@/lib/addresses/cardano';
 import type { ChainNet } from '@/constants/chains';
 import { NETWORKS, SEND_FEE_RESERVE, SVM_GENESIS_HASH, type NetworkDef, type NetworkId } from '@/constants/networks';
-import { LEGACY_TEST_NETWORKS, TESTNETS, TEST_SEND_FEE_RESERVE, TEST_SVM_GENESIS_HASH } from '@/constants/testnets';
+import { LEGACY_TEST_NETWORKS, TESTNETS, TEST_SENDS, TEST_SEND_FEE_RESERVE, TEST_SVM_GENESIS_HASH } from '@/constants/testnets';
 
 export function hasTestNetwork(id: NetworkId): boolean {
   return LEGACY_TEST_NETWORKS.includes(id) || Object.hasOwn(TESTNETS, id);
@@ -16,7 +17,8 @@ export function hasTestNetwork(id: NetworkId): boolean {
 /**
  * The network as it is in `env`: the main definition, or the test network's — coin only, and
  * sending where the wallet can bind a signature to it (an EVM test network's chain id, Fogo
- * testnet's checked genesis). Null when the network has no test network the wallet can read.
+ * testnet's checked genesis, `TEST_SENDS`). Null when the network has no test network the wallet
+ * can read.
  */
 export function networkDefOn(id: NetworkId, env: ChainNet): NetworkDef | null {
   if (env === 'mainnet') return NETWORKS[id];
@@ -30,7 +32,12 @@ export function networkDefOn(id: NetworkId, env: ChainNet): NetworkDef | null {
     tokens: [],
     explorerAddress: test.explorerAddress,
     explorerTx: test.explorerTx,
-    send: test.balance.kind === 'evm' ? test.evmChainId !== undefined : test.balance.kind === 'svm' && !!TEST_SVM_GENESIS_HASH[id],
+    send:
+      test.balance.kind === 'evm'
+        ? test.evmChainId !== undefined
+        : test.balance.kind === 'svm'
+          ? !!TEST_SVM_GENESIS_HASH[id]
+          : TEST_SENDS.includes(id),
   };
 }
 
@@ -68,6 +75,8 @@ const TEST_HRP: Partial<Record<NetworkId, { main: string; test: string }>> = {
  */
 export function testnetAddress(id: NetworkId, address: string): string | null {
   if (!hasTestNetwork(id)) return null;
+  // Cardano's network id sits in the address header, under its own prefix.
+  if (id === 'cardano') return cardanoTestnetAddress(address);
   const hrp = TEST_HRP[id];
   if (!hrp) return address;
   try {

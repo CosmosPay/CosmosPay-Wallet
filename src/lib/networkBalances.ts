@@ -35,6 +35,7 @@ import { networkDefOn } from '@/lib/testnets';
 import { ApiShapeError, arrayOf, bool, object, parseShape, str, type Check } from '@/lib/apiShape';
 import { balanceOfCalldata } from '@/lib/evmTx';
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, decodeTokenAccount } from '@/lib/solanaTx';
+import { STARKNET_BALANCE_OF_SELECTOR, STRK_TOKEN } from '@/constants/starknetSend';
 
 /** Why a balance could not be read. Each one means "unknown" to the caller — none is a zero. */
 export type NetworkBalanceFailure =
@@ -328,6 +329,16 @@ async function readBlockchair(io: Io, coin: string, def: NetworkDef, address: st
 }
 
 /**
+ * Bitcore (Bitcoin Cash): `/address/{a}/balance` — `balance` is confirmed plus unconfirmed, in
+ * satoshis. Bitcore wants the cashaddr without its `bitcoincash:` prefix.
+ */
+async function readBitcore(io: Io, api: string, def: NetworkDef, address: string): Promise<Record<string, bigint>> {
+  const bare = address.replace(/^bitcoincash:/i, '');
+  const body = parseShape(io.label, object({ balance: uint }), await io.get(`${api}/address/${enc(bare)}/balance`));
+  return balances(BigInt(body.balance), def, () => 0n);
+}
+
+/**
  * XRP Ledger: `account_info` on the last validated ledger, `Balance` in drops (the reserve
  * included, as explorers show it). `actNotFound` is a known zero: an XRPL account exists only
  * once a payment has funded it, so an address nobody paid yet holds nothing.
@@ -464,6 +475,40 @@ async function readHypercore(io: Io, api: string, def: NetworkDef, address: stri
   return balances(held(def.coin, def.decimals), def, (asset, decimals) => held(asset, decimals));
 }
 
+const feltWord: Check<string> = (v, path, label) => {
+  if (typeof v !== 'string' || !/^0x[0-9a-fA-F]{1,64}$/.test(v)) throw new ApiShapeError(label, path, 'a felt', v);
+  return v;
+};
+
+/**
+ * Starknet: each token's balance_of(owner) by starknet_call, STRK (the coin) included; a u256 is
+ * two felts, low then high. An account not deployed yet holds tokens too — the balance lives in
+ * the token contract, not in the account.
+ */
+async function readStarknet(io: Io, rpc: string, def: NetworkDef, address: string): Promise<Record<string, bigint>> {
+  const read = async (token: string) => {
+    const env = await jsonRpc(io, rpc, 'starknet_call', {
+      request: { contract_address: token, entry_point_selector: `0x${STARKNET_BALANCE_OF_SELECTOR.toString(16)}`, calldata: [address] },
+      block_id: 'latest',
+    });
+    if (env.error !== undefined && env.error !== null) refused(io, 'balance_of', env.error);
+    const words = parseShape(io.label, arrayOf(feltWord), env.result).map((w) => BigInt(w));
+    if (words.length !== 2 || words.some((w) => w >= 2n ** 128n)) io.fail('shape', 'balance_of');
+    return words[0] + (words[1] << 128n);
+  };
+  const [coin, ...tokens] = await Promise.all([read(`0x${STRK_TOKEN.toString(16)}`), ...def.tokens.map((t) => read(t.asset))]);
+  return balances(coin, def, (_a, _d, i) => tokens[i]);
+}
+
+/**
+ * Cardano (EMURGO's Yoroi backend): the lovelace sum of the address's UTxOs. It counts ADA that
+ * sits beside native tokens too, which the sender does not spend (`lib/send/cardano.ts`).
+ */
+async function readYoroi(io: Io, api: string, def: NetworkDef, address: string): Promise<Record<string, bigint>> {
+  const { sum } = parseShape(io.label, object({ sum: uint }), await io.post(`${api}/txs/utxoSumForAddresses`, { addresses: [address] }));
+  return balances(BigInt(sum), def, () => 0n);
+}
+
 function readSource(io: Io, source: BalanceSource, def: NetworkDef, address: string): Promise<Record<string, bigint>> {
   switch (source.kind) {
     case 'evm':
@@ -476,6 +521,8 @@ function readSource(io: Io, source: BalanceSource, def: NetworkDef, address: str
       return readBlockcypher(io, source.coin, def, address);
     case 'blockchair':
       return readBlockchair(io, source.coin, def, address);
+    case 'bitcore':
+      return readBitcore(io, source.api, def, address);
     case 'xrpl':
       return readXrpl(io, source.rpc, def, address);
     case 'trongrid':
@@ -490,6 +537,10 @@ function readSource(io: Io, source: BalanceSource, def: NetworkDef, address: str
       return readToncenter(io, source.api, def, address);
     case 'hypercore':
       return readHypercore(io, source.api, def, address);
+    case 'starknet':
+      return readStarknet(io, source.rpc, def, address);
+    case 'yoroi':
+      return readYoroi(io, source.api, def, address);
   }
 }
 

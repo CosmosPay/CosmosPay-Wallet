@@ -108,6 +108,50 @@ const suiAddress = (publicKey: Uint8Array) =>
 
 const aptosAddress = (publicKey: Uint8Array) => `0x${hex(sha3_256(concatBytes(publicKey, new Uint8Array([0x00]))))}`;
 
+/** The families whose key is a secp256k1 point at their path, and the ones whose key is an ed25519 one. */
+export const SECP_KINDS = ['evm', 'btc', 'ltc', 'doge', 'bch', 'dash', 'zec', 'xrp', 'tron'] as const;
+export const ED_KINDS = ['svm', 'ton', 'near', 'sui', 'aptos'] as const;
+export type SecpKind = (typeof SECP_KINDS)[number];
+export type EdKind = (typeof ED_KINDS)[number];
+
+/**
+ * The address a family's public key spells — a compressed secp256k1 point for `SECP_KINDS`, a
+ * 32-byte ed25519 key for `ED_KINDS`. The one encoder both sides use: the addresses shown
+ * (below) and the signing keys checked against them (`lib/chainKeys.ts`).
+ */
+export function addressOfKey(kind: SecpKind | EdKind, publicKey: Uint8Array): string {
+  switch (kind) {
+    case 'evm':
+      return evmAddress(publicKey);
+    case 'btc':
+      return segwitAddress('bc', publicKey);
+    case 'ltc':
+      return segwitAddress('ltc', publicKey);
+    case 'doge':
+      return p2pkhAddress(DOGE_P2PKH_VERSION, publicKey);
+    case 'bch':
+      return cashAddress(publicKey);
+    case 'dash':
+      return p2pkhAddress(DASH_P2PKH_VERSION, publicKey);
+    case 'zec':
+      return p2pkhAddress(ZEC_P2PKH_VERSION, publicKey);
+    case 'xrp':
+      return xrpAddress(publicKey);
+    case 'tron':
+      return tronAddress(publicKey);
+    case 'svm':
+      return base58.encode(publicKey);
+    case 'ton':
+      return tonWalletAddress(publicKey);
+    case 'near':
+      return hex(publicKey);
+    case 'sui':
+      return suiAddress(publicKey);
+    case 'aptos':
+      return aptosAddress(publicKey);
+  }
+}
+
 /** The compressed secp256k1 public key at `path`; the private half is wiped before returning. */
 function secpPublicKey(root: HDKey, path: string): Uint8Array {
   const node = root.derive(path);
@@ -157,20 +201,8 @@ export async function networkAddressesFromMnemonic(phrase: string): Promise<Netw
   const ed = (kind: keyof typeof NETWORK_PATHS) => edPublicKey(seedHex, NETWORK_PATHS[kind]);
 
   const derive: Partial<Record<AddressKind, () => string | Promise<string>>> = {
-    evm: () => evmAddress(secp('evm')),
-    svm: () => base58.encode(ed('svm')),
-    btc: () => segwitAddress('bc', secp('btc')),
-    ltc: () => segwitAddress('ltc', secp('ltc')),
-    doge: () => p2pkhAddress(DOGE_P2PKH_VERSION, secp('doge')),
-    bch: () => cashAddress(secp('bch')),
-    dash: () => p2pkhAddress(DASH_P2PKH_VERSION, secp('dash')),
-    zec: () => p2pkhAddress(ZEC_P2PKH_VERSION, secp('zec')),
-    xrp: () => xrpAddress(secp('xrp')),
-    tron: () => tronAddress(secp('tron')),
-    ton: () => tonWalletAddress(ed('ton')),
-    near: () => hex(ed('near')),
-    sui: () => suiAddress(ed('sui')),
-    aptos: () => aptosAddress(ed('aptos')),
+    ...Object.fromEntries(SECP_KINDS.map((kind) => [kind, () => addressOfKey(kind, secp(kind))])),
+    ...Object.fromEntries(ED_KINDS.map((kind) => [kind, () => addressOfKey(kind, ed(kind))])),
     cardano: () => {
       const entropy = hexToBytes(mnemonicToEntropy(mnemonic));
       try {

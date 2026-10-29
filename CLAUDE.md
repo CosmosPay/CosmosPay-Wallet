@@ -1114,25 +1114,42 @@ balance, the canonical stablecoin contracts read there and its explorers. Five r
   the secret alone — backup, transfer, export — always brings them back; nothing new is stored or
   backed up. Export shows that phrase so another wallet can hold those addresses. Never change its
   derivation: every address it ever gave would stop being this wallet's.
-- **Signing stays narrow.** The wallet sends natively on Stellar, Solana, Monad, the EVM networks
-  with a verified chain id and Fogo (`send` in the registry; `lib/networkSend.ts`); the others
-  receive and are swap destinations. An EVM transfer asserts the node serves the chain id it is
-  signed for, and only the coin or a registry contract is ever paid out. One key per family: every
-  EVM network signs with the phrase's EVM key, checked against the address on screen.
+- **The wallet sends on every network it holds an address on** (the user's call, 2026-10-29:
+  "enviar en todas las redes"). Stellar, Solana and Monad keep their own paths; `lib/networkSend.ts`
+  pays from the EVM networks and Fogo itself and hands every other family to its sender under
+  `lib/send/` (UTXO chains, Zcash, XRP Ledger, Tron, TON, NEAR, Sui, Aptos/Movement, Hyperliquid,
+  Cardano, Starknet), all on one contract, `lib/send/types.ts`: the node's identity (genesis, chain
+  id, network id) is checked against a constant BEFORE signing and the signature bound to it where
+  the format allows; one send never costs more than `SEND_FEE_RESERVE`; only the coin or a registry
+  token is paid, whatever a caller passes; refusals are `ChainSwapRefused` codes the screen renders.
+  The key is derived at the moment of signing by `networkSecret` (`lib/chainKeys.ts`) in the shape
+  its sender takes, and refused unless it spells the address on screen (`addressOfKey`, the one
+  encoder the shown addresses use too). XRP's destination tag and TON's comment ride as the
+  transfer's memo (`MEMO_NETWORKS`); a swap deposit that names a memo on any other network is
+  refused rather than paid without it. `ACCOUNT_KEEP` is what an account can never spend (XRP's
+  reserve, a TON wallet's storage rent), held back by the form with the fee (`COIN_SEND_HOLDBACK`
+  where a coin send needs far less than the cap: TRX). Where the signature does not commit an
+  input's value (Dogecoin, Dash: legacy sighash) the sender takes each value from the previous
+  transaction's own bytes, hash-checked, never from the API. Verified end to end with real
+  test-network sends on XRPL (also through the Send screen), NEAR and Movement; every other family
+  against published vectors and its nodes' simulate / decode / dry-run endpoints, never a mainnet
+  broadcast. Aleo has no address here, so no send.
 - **Balances are unknown before they are zero.** `lib/networkBalances.ts` reads each network from
   its public API; a read that fails is `null` (no rows), never 0, and only what is held is listed.
   **A mode shows its own networks, never the other's** (the user, 2026-10-29: "no tiene sentido si
   está en testnet que se muestren saldos de mainnet"). The Testnet/Mainnet pill moves EVERY network:
   Solana and Monad to devnet/testnet (`constants/chains.ts`), the rest to the test networks in
-  `constants/testnets.ts` (27 in all, each endpoint probed: keyless, CORS, EVM chain ids checked).
+  `constants/testnets.ts` (29 in all, each endpoint probed: keyless, CORS, EVM chain ids checked).
   `lib/testnets.ts` gives a network as it is in a mode (`networkDefOn`: its own endpoint, name and
   chain id, coin only, never a main definition), its test name, and the same key's address there
-  (`tb1…`/`tltc1…` re-encoded; the same string elsewhere). `store.addressOn` answers in the mode, so
-  a network with no test network here (Scroll, Dogecoin, Bitcoin Cash, Dash, Zcash, Cardano,
-  Starknet) has no address, row or balance in test mode. `store.networkName` names every network
-  in the mode. Sending in test mode (`sendsOn`): Stellar's, Solana devnet, Monad testnet, every EVM
-  test network (bound by its own chain id) and Fogo testnet (its own genesis, and a blockhash neither
-  Solana nor Fogo mainnet knows — the same key holds both) — each its coin only.
+  (`tb1…`/`tltc1…`/`addr_test1…` re-encoded; the same string elsewhere). `store.addressOn` answers
+  in the mode, so a network with no test network here (Scroll, Dogecoin, Bitcoin Cash, Dash, Zcash)
+  has no address, row or balance in test mode. `store.networkName` names every network in the mode.
+  Sending in test mode (`sendsOn`): Stellar's, Solana devnet, Monad testnet, every EVM test network
+  (bound by its own chain id), Fogo testnet (its own genesis, and a blockhash neither Solana nor Fogo
+  mainnet knows — the same key holds both) and `TEST_SENDS` (each sender binds its signature to the
+  test network) — each its coin only. Never TON's: a v4R2 transfer signed for the testnet replays on
+  mainnet (same address, same subwallet id, seqno can coincide).
 - **A swap's output is checked as the server spells it.** NEAR Intents can deliver to any network;
   the wallet still refuses a swap whose recipient or refund is not its own, comparing with
   `sameNetworkAddress` (hex and bech32 in one case, cashaddr with or without its prefix, base58

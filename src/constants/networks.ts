@@ -15,6 +15,10 @@
  * Names and tickers are proper nouns, the same in every language — data, like a token symbol.
  * Endpoints are public, keyless and answer CORS; each was probed on 2026-10-28. A network
  * whose `balance` is null shows its address and receives, and reads no balance yet.
+ *
+ * No imports: `scripts/build-extension.ts` loads this file without the `@/` alias. An endpoint a
+ * sender also names (its `src/constants/` file) is written here as a literal, and
+ * `tests/unit/networks.test.ts` keeps the two equal.
  */
 
 export const NETWORK_IDS = [
@@ -117,14 +121,17 @@ export type BalanceSource =
   | { kind: 'svm'; rpc: string }
   | { kind: 'esplora'; api: string }
   | { kind: 'blockcypher'; coin: 'doge' | 'dash' }
-  | { kind: 'blockchair'; coin: 'bitcoin-cash' | 'zcash' }
+  | { kind: 'blockchair'; coin: 'zcash' }
+  | { kind: 'bitcore'; api: string }
   | { kind: 'xrpl'; rpc: string }
   | { kind: 'trongrid'; api: string }
   | { kind: 'near'; rpc: string }
   | { kind: 'sui'; graphql: string }
   | { kind: 'aptos'; api: string }
   | { kind: 'toncenter'; api: string }
-  | { kind: 'hypercore'; api: string };
+  | { kind: 'hypercore'; api: string }
+  | { kind: 'starknet'; rpc: string }
+  | { kind: 'yoroi'; api: string };
 
 /** A token the wallet reads a balance of: `native`, or its contract / mint / coin type. */
 export interface NetworkToken {
@@ -258,8 +265,8 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
   plasma: evm('plasma', 'Plasma', 'XPL', 9745, 'https://rpc.plasma.to', 'https://plasmascan.to', [
     USDT0('0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb'),
   ]),
-  // No public chain id the server could verify, so no signing; the 0x account receives.
-  hood: evm('hood', 'Robinhood Chain', 'ETH', undefined, null, null),
+  // Chain id 4663, its public RPC (keyless, CORS, batches) probed 2026-10-29.
+  hood: evm('hood', 'Robinhood Chain', 'ETH', 4663, 'https://rpc.mainnet.chain.robinhood.com', 'https://robinhoodchain.blockscout.com'),
   hypercore: {
     id: 'hypercore',
     name: 'Hyperliquid',
@@ -270,7 +277,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [USDC('USDC', 8)],
     explorerAddress: 'https://app.hyperliquid.xyz/explorer/address/{address}',
     explorerTx: 'https://app.hyperliquid.xyz/explorer/tx/{tx}',
-    send: false,
+    send: true,
   },
   btc: {
     id: 'btc',
@@ -282,7 +289,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://mempool.space/address/{address}',
     explorerTx: 'https://mempool.space/tx/{tx}',
-    send: false,
+    send: true,
   },
   ltc: {
     id: 'ltc',
@@ -294,7 +301,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://litecoinspace.org/address/{address}',
     explorerTx: 'https://litecoinspace.org/tx/{tx}',
-    send: false,
+    send: true,
   },
   doge: {
     id: 'doge',
@@ -306,7 +313,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://blockchair.com/dogecoin/address/{address}',
     explorerTx: 'https://blockchair.com/dogecoin/transaction/{tx}',
-    send: false,
+    send: true,
   },
   bch: {
     id: 'bch',
@@ -314,11 +321,12 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     coin: 'BCH',
     decimals: 8,
     address: 'bch',
-    balance: { kind: 'blockchair', coin: 'bitcoin-cash' },
+    // Bitcore, not Blockchair: Blockchair blacklists a keyless IP after a few requests (HTTP 430).
+    balance: { kind: 'bitcore', api: 'https://api.bitcore.io/api/BCH/mainnet' },
     tokens: [],
     explorerAddress: 'https://blockchair.com/bitcoin-cash/address/{address}',
     explorerTx: 'https://blockchair.com/bitcoin-cash/transaction/{tx}',
-    send: false,
+    send: true,
   },
   dash: {
     id: 'dash',
@@ -330,7 +338,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://blockchair.com/dash/address/{address}',
     explorerTx: 'https://blockchair.com/dash/transaction/{tx}',
-    send: false,
+    send: true,
   },
   zec: {
     id: 'zec',
@@ -342,7 +350,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://blockchair.com/zcash/address/{address}',
     explorerTx: 'https://blockchair.com/zcash/transaction/{tx}',
-    send: false,
+    send: true,
   },
   xrp: {
     id: 'xrp',
@@ -354,7 +362,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://livenet.xrpl.org/accounts/{address}',
     explorerTx: 'https://livenet.xrpl.org/transactions/{tx}',
-    send: false,
+    send: true,
   },
   tron: {
     id: 'tron',
@@ -366,7 +374,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [USDT('TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t')],
     explorerAddress: 'https://tronscan.org/#/address/{address}',
     explorerTx: 'https://tronscan.org/#/transaction/{tx}',
-    send: false,
+    send: true,
   },
   ton: {
     id: 'ton',
@@ -378,7 +386,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://tonviewer.com/{address}',
     explorerTx: 'https://tonviewer.com/transaction/{tx}',
-    send: false,
+    send: true,
   },
   near: {
     id: 'near',
@@ -390,7 +398,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://nearblocks.io/address/{address}',
     explorerTx: 'https://nearblocks.io/txns/{tx}',
-    send: false,
+    send: true,
   },
   sui: {
     id: 'sui',
@@ -402,7 +410,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [USDC('0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC')],
     explorerAddress: 'https://suiscan.xyz/mainnet/account/{address}',
     explorerTx: 'https://suiscan.xyz/mainnet/tx/{tx}',
-    send: false,
+    send: true,
   },
   aptos: {
     id: 'aptos',
@@ -414,7 +422,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://explorer.aptoslabs.com/account/{address}?network=mainnet',
     explorerTx: 'https://explorer.aptoslabs.com/txn/{tx}?network=mainnet',
-    send: false,
+    send: true,
   },
   movement: {
     id: 'movement',
@@ -426,7 +434,7 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     tokens: [],
     explorerAddress: 'https://explorer.movementnetwork.xyz/account/{address}?network=mainnet',
     explorerTx: 'https://explorer.movementnetwork.xyz/txn/{tx}?network=mainnet',
-    send: false,
+    send: true,
   },
   starknet: {
     id: 'starknet',
@@ -434,11 +442,11 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     coin: 'STRK',
     decimals: 18,
     address: 'starknet',
-    balance: null,
+    balance: { kind: 'starknet', rpc: 'https://starknet-rpc.publicnode.com' },
     tokens: [],
     explorerAddress: 'https://voyager.online/contract/{address}',
     explorerTx: 'https://voyager.online/tx/{tx}',
-    send: false,
+    send: true,
   },
   cardano: {
     id: 'cardano',
@@ -446,11 +454,12 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     coin: 'ADA',
     decimals: 6,
     address: 'cardano',
-    balance: null,
+    // EMURGO's Yoroi backend: keyless and CORS-open (Koios' REST answers no CORS to a page).
+    balance: { kind: 'yoroi', api: 'https://api.yoroiwallet.com/api' },
     tokens: [],
     explorerAddress: 'https://cardanoscan.io/address/{address}',
     explorerTx: 'https://cardanoscan.io/transaction/{tx}',
-    send: false,
+    send: true,
   },
   aleo: {
     id: 'aleo',
@@ -498,7 +507,33 @@ export const SEND_FEE_RESERVE: Partial<Record<NetworkId, bigint>> = {
   bera: 10_000_000_000_000_000n, // 0.01 BERA
   xlayer: 1_000_000_000_000_000n, // 0.001 OKB
   plasma: 10_000_000_000_000_000n, // 0.01 XPL
+  hood: 200_000_000_000_000n, // 0.0002 ETH, an Arbitrum chain like Arbitrum's
   fogo: 10_000_000n, // 0.01 FOGO
+  ton: 10_000_000n, // 0.01 TON: ~25× a plain send, ~10× the first one (it deploys the wallet)
+  starknet: 500_000_000_000_000_000n, // 0.5 STRK: ~4× a first send's capped deploy + transfer
+  zec: 100_000n, // 0.001 ZEC: ZIP-317's fee for up to 20 inputs (a usual send is 10 000 zats)
+  xrp: 100_000n, // 0.1 XRP: ~20× an escalated open-ledger fee seen live (5 223 drops; the base is 10)
+  tron: 30_000_000n, // 30 TRX: ~2× a USDT transfer to a fresh recipient (130k energy at 100 sun, +20%)
+  aptos: 2_000_000n, // 0.02 APT: ~2× a first send from an account that only received (~0.0052 APT) to a new recipient (~0.0081)
+  movement: 1_000_000n, // 0.01 MOVE: the same worst case on Movement (~0.0011 + ~0.0018 MOVE)
+  hypercore: 5_000_000n, // 0.05 HYPE: values the 1 USDC fee of a first transfer to a new address while HYPE > $20
+  btc: 30_000n, // 0.0003 BTC: ~200 sat/vB for one input, ~70 for five
+  ltc: 100_000n, // 0.001 LTC: far above today's 1 lit/vB
+  doge: 500_000_000n, // 5 DOGE: ~10 kB at BlockCypher's ~0.48 DOGE/kB, some 65 inputs
+  dash: 100_000n, // 0.001 DASH: ~5 kB at its rate
+  bch: 10_000n, // 0.0001 BCH: 10 kB at 1 sat/B
+  near: 10_000_000_000_000_000_000_000n, // 0.01 NEAR: a transfer that creates an account, ~0.0076 up front (0.0084 at 10× gas)
+  sui: 10_000_000n, // 0.01 SUI: ~7× the budgets simulated on mainnet (0.0012–0.0015 SUI)
+  cardano: 1_200_000n, // 1.2 ADA: the largest transaction (0.876) and too-small change folded into the fee (~1.14)
+};
+
+/**
+ * Where a coin send needs far less than the network's cap, what the form holds back for it instead:
+ * a TRX transfer costs at most its bandwidth plus a new account's activation (1.1 TRX), while the
+ * 30 TRX cap is sized for USDT's energy.
+ */
+export const COIN_SEND_HOLDBACK: Partial<Record<NetworkId, bigint>> = {
+  tron: 1_500_000n,
 };
 
 /**
@@ -546,6 +581,29 @@ export const SVM_GENESIS_HASH: Partial<Record<NetworkId, string>> = {
  * usual lag behind its cluster — any real Solana blockhash is known. A Fogo blockhash stays valid
  * for well over a minute (measured 2026-10-28), so the wait costs a few seconds, not the send.
  */
+/**
+ * What an account must keep beyond the fee, in minor units of the coin: a balance the network does
+ * not let it spend: XRP's base reserve (1 XRP since 2024-12) and what a TON wallet keeps for its
+ * storage rent (`lib/send/ton.ts` refuses below it); the Send form holds it back with the fee.
+ * NEAR has none for the wallet's account: storage is only staked past 770 bytes (NEP-448) and an
+ * implicit account uses 182.
+ */
+export const ACCOUNT_KEEP: Partial<Record<NetworkId, bigint>> = {
+  xrp: 1_000_000n,
+  ton: 10_000_000n, // TON_KEEP_ALIVE (constants/tonSend.ts)
+};
+
+/**
+ * The networks whose transfer carries what an exchange or a deposit address uses to tell its
+ * payers apart: XRP's destination tag, TON's comment (`FamilyTransfer.memo`). Elsewhere a memo
+ * cannot be carried, so a deposit that names one is refused rather than paid without it.
+ */
+export const MEMO_NETWORKS: readonly NetworkId[] = ['xrp', 'ton'];
+
+/** XRP's destination tag is a uint32. */
+export const XRP_TAG_MAX = 4_294_967_295;
+
+
 export const SVM_REPLAY_SETTLE_MS = 4_000;
 
 /** How long a read balance is reused before the next one (the networks are many, the APIs public). */

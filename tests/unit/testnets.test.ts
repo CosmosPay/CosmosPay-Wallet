@@ -30,11 +30,11 @@ test('a test network sends only where the signature is bound to it', () => {
   assert.ok(svmGenesisOn('fogo', 'testnet'));
   assert.notEqual(svmGenesisOn('fogo', 'testnet'), SVM_GENESIS_HASH.fogo);
   assert.equal(svmGenesisOn('fogo', 'mainnet'), SVM_GENESIS_HASH.fogo);
-  // the families it cannot sign do not send, in either mode
-  for (const id of ['btc', 'tron', 'near', 'sui', 'hypercore'] as const) {
-    assert.equal(sendsOn(id, 'testnet'), false, id);
-    assert.equal(sendsOn(id, 'mainnet'), false, id);
-  }
+  // TON's v4R2 transfer would replay on mainnet: it sends there and never in test mode
+  assert.equal(sendsOn('ton', 'mainnet'), true);
+  assert.equal(sendsOn('ton', 'testnet'), false);
+  // a network with no test network here sends nothing in test mode
+  for (const id of ['doge', 'bch', 'dash', 'zec'] as const) assert.equal(sendsOn(id, 'testnet'), false, id);
   assert.ok(sendsOn('stellar', 'testnet') && sendsOn('solana', 'testnet') && sendsOn('monad', 'testnet'));
   // every test network that sends has a fee reserve, so no send is refused by a missing one
   for (const id of NETWORK_IDS) {
@@ -52,7 +52,7 @@ test('no test endpoint is a main one', () => {
 });
 
 test('a network with no test network here is absent in test mode', () => {
-  for (const id of ['doge', 'bch', 'dash', 'zec', 'cardano', 'scroll', 'starknet'] as const) {
+  for (const id of ['doge', 'bch', 'dash', 'zec', 'scroll'] as const) {
     assert.equal(hasTestNetwork(id), false, id);
     assert.equal(networkDefOn(id, 'testnet'), null, id);
     assert.equal(testnetAddress(id, 'anything'), null, id);

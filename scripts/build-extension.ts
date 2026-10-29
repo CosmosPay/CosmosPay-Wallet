@@ -27,7 +27,11 @@ import {
   DEFAULT_SOLANA_RPC_URL,
   DEFAULT_SOLANA_TESTNET_RPC_URL,
 } from '../src/constants/backends.ts';
-import { NETWORKS } from '../src/constants/networks.ts';
+import { NETWORKS, type BalanceSource } from '../src/constants/networks.ts';
+import { TESTNETS } from '../src/constants/testnets.ts';
+import { CARDANO_ENDPOINTS } from '../src/constants/cardanoSend.ts';
+import { HYPERCORE_API } from '../src/constants/hypercoreSend.ts';
+import { ZCASH_INSIGHT_API, ZCASH_NODE_RPC } from '../src/constants/zcashSend.ts';
 import { cosmosHostPermissions, hostPattern } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
@@ -277,6 +281,12 @@ const COSMOS_HOST_PERMISSIONS = cosmosHostPermissions([
   env.PUBLIC_COSMOS_RECOVERY_B_URL || DEFAULT_RECOVERY_B_URL,
 ]);
 
+function sourceHosts(b: BalanceSource): string[] {
+  if (b.kind === 'blockcypher') return ['https://api.blockcypher.com'];
+  if (b.kind === 'blockchair') return ['https://api.blockchair.com'];
+  return [b.kind === 'sui' ? b.graphql : 'rpc' in b ? b.rpc : b.api];
+}
+
 // The Solana and Monad nodes a swap paid from those chains reads and broadcasts through,
 // and their test networks, where Home reads test balances and asks devnet for an airdrop.
 // Not CORS-exempt otherwise, exactly like the backends above.
@@ -287,15 +297,18 @@ const CHAIN_RPC_HOST_PERMISSIONS = [
       env.PUBLIC_MONAD_RPC_URL || DEFAULT_MONAD_RPC_URL,
       env.PUBLIC_SOLANA_TESTNET_RPC_URL || DEFAULT_SOLANA_TESTNET_RPC_URL,
       env.PUBLIC_MONAD_TESTNET_RPC_URL || DEFAULT_MONAD_TESTNET_RPC_URL,
-      // Every other network's balance source and node (`src/constants/networks.ts`), and the
-      // two balance APIs named by coin rather than by URL there.
-      ...Object.values(NETWORKS).flatMap((n) => {
-        const b = n.balance;
-        if (!b) return [];
-        if (b.kind === 'blockcypher') return ['https://api.blockcypher.com'];
-        if (b.kind === 'blockchair') return ['https://api.blockchair.com'];
-        return [b.kind === 'sui' ? b.graphql : 'rpc' in b ? b.rpc : b.api];
-      }),
+      // Every other network's balance source and node (`src/constants/networks.ts`) and its test
+      // network's (`src/constants/testnets.ts`), and the two balance APIs named by coin rather
+      // than by URL there.
+      ...[...Object.values(NETWORKS), ...Object.values(TESTNETS)].flatMap((n) => (n?.balance ? sourceHosts(n.balance) : [])),
+      // What a sender (`src/lib/send/`) reaches beyond a balance source: Zcash's node and its
+      // second coin list, Cardano's Ogmios pass-through, Hyperliquid's exchange host.
+      ZCASH_NODE_RPC,
+      ZCASH_INSIGHT_API,
+      CARDANO_ENDPOINTS.mainnet.ogmios,
+      CARDANO_ENDPOINTS.testnet.ogmios,
+      HYPERCORE_API.mainnet,
+      HYPERCORE_API.testnet,
     ]
       .map(hostPattern)
       .filter((p): p is string => p !== null),

@@ -17,6 +17,8 @@
  */
 import { tNow } from '@/lib/i18n';
 import { APP_VERSION, MEMO_SIGNATURE } from '@/constants/app';
+import { XRP_TAG_MAX, type NetworkId } from '@/constants/networks';
+import { TON_COMMENT_MAX_BYTES } from '@/constants/tonSend';
 
 /** The memo kinds the wallet can attach to a payment it builds. */
 export type MemoKind = 'text' | 'id';
@@ -123,4 +125,17 @@ export function memoProblem(value: string, kind: MemoKind = 'text'): string | nu
   if (kind === 'id') return isValidMemoId(v) ? null : tNow('memo.idMustBeInteger');
   const over = memoByteLength(v) - MEMO_TEXT_MAX_BYTES;
   return over > 0 ? tNow('memo.overByteLimit', { max: MEMO_TEXT_MAX_BYTES, over }) : null;
+}
+
+/**
+ * What is wrong with the memo typed for another network's transfer, or null: XRP's destination
+ * tag is a uint32 in decimal, TON's comment a byte-bounded text. Empty is fine (it is optional).
+ * The sender re-checks it (`lib/send/*`), so a refusal here is a hint, not the enforcement.
+ */
+export function networkMemoProblem(network: NetworkId, value: string): 'tag' | 'length' | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (network === 'xrp') return /^\d{1,10}$/.test(v) && Number(v) <= XRP_TAG_MAX ? null : 'tag';
+  if (network === 'ton') return memoByteLength(v) <= TON_COMMENT_MAX_BYTES ? null : 'length';
+  return 'length';
 }

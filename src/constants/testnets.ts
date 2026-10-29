@@ -8,12 +8,12 @@
  *
  * A network missing here has no test network the wallet can read: in test mode it is not
  * offered at all (no address, no balance, no row) rather than shown with its real funds.
- * Scroll Sepolia had no keyless endpoint that answered; Dogecoin, Bitcoin Cash, Dash, Zcash and
- * Cardano have no keyless test API; Starknet and Aleo are not read on their main networks either.
+ * Scroll Sepolia had no keyless endpoint that answered; Dogecoin, Bitcoin Cash, Dash and Zcash
+ * have no keyless test API; Aleo is not read on its main network either. Cardano's is Preprod.
  *
  * Test networks carry their coin only: a registry token's contract is a main-network one, and
  * the tokens NEAR Intents lists are main-network tokens. The wallet sends that coin on each EVM
- * test network and on Fogo's (see `TEST_SVM_GENESIS_HASH` below).
+ * test network, on Fogo's (see `TEST_SVM_GENESIS_HASH` below) and on the ones in `TEST_SENDS`.
  */
 import type { BalanceSource, NetworkId } from '@/constants/networks';
 
@@ -111,6 +111,18 @@ export const TESTNETS: Partial<Record<NetworkId, TestnetDef>> = {
     explorerAddress: 'https://explorer.aptoslabs.com/account/{address}?network=testnet',
     explorerTx: 'https://explorer.aptoslabs.com/txn/{tx}?network=testnet',
   },
+  cardano: {
+    name: 'Cardano Preprod',
+    balance: { kind: 'yoroi', api: 'https://preprod-backend.yoroiwallet.com/api' },
+    explorerAddress: 'https://preprod.cardanoscan.io/address/{address}',
+    explorerTx: 'https://preprod.cardanoscan.io/transaction/{tx}',
+  },
+  starknet: {
+    name: 'Starknet Sepolia',
+    balance: { kind: 'starknet', rpc: 'https://starknet-sepolia-rpc.publicnode.com' },
+    explorerAddress: 'https://sepolia.voyager.online/contract/{address}',
+    explorerTx: 'https://sepolia.voyager.online/tx/{tx}',
+  },
   movement: {
     name: 'Movement Testnet',
     balance: { kind: 'aptos', api: 'https://testnet.movementnetwork.xyz/v1' },
@@ -131,6 +143,11 @@ export const TEST_SVM_GENESIS_HASH: Partial<Record<NetworkId, string>> = {
   fogo: '9GGSFo95raqzZxWqKM5tGYvJp5iv4Dm565S4r8h5PEu9',
 };
 
-export const TEST_SEND_FEE_RESERVE: Partial<Record<NetworkId, bigint>> = {
-  hood: 200_000_000_000_000n, // 0.0002 ETH, an Arbitrum chain like Arbitrum's
-};
+export const TEST_SEND_FEE_RESERVE: Partial<Record<NetworkId, bigint>> = {};
+
+/**
+ * The other families whose sender binds a signature to the test network (`lib/send/*`): its chain
+ * id or network id is inside what is signed, or its transactions name test-network state. TON's
+ * is left out on purpose: a v4R2 transfer signed for the testnet replays on mainnet.
+ */
+export const TEST_SENDS: readonly NetworkId[] = ['starknet', 'xrp', 'tron', 'aptos', 'movement', 'hypercore', 'btc', 'ltc', 'near', 'sui', 'cardano'];

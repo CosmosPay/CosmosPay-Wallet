@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 // touches it, so it is imported on demand instead of at module load. The type import
 // is erased at compile time and costs nothing.
 import {
+  MEMO_NETWORKS,
   NETWORKS,
   NETWORK_ADDRESSES_VERSION,
   NETWORK_BALANCE_TTL_MS,
@@ -3227,6 +3228,20 @@ export function useWalletStore() {
     [session, addressOnNetwork, t],
   );
 
+  /**
+   * The signing key of any network the wallet sends on (`lib/chainKeys.ts` `networkSecret`), in
+   * the shape its sender takes, checked against the address the wallet shows there in this mode.
+   */
+  const networkSigner = useCallback(
+    async (net: NetworkId): Promise<{ owner: string; secret: Uint8Array }> => {
+      const owner = addressOnNetwork(net);
+      if (!session || !owner) throw new Error(t('xswap.noAddress', { chain: networkNameOn(net, chainNet) }));
+      const phrase = networksPhraseOf(await openVault(session.walletId, session.vaultKey), await chainLib());
+      return { owner, secret: await (await chainKeysLib()).networkSecret(phrase, net, owner, chainNet) };
+    },
+    [session, addressOnNetwork, chainNet, t],
+  );
+
   /** A refusal from `lib/chainSwap.ts` as a sentence; anything else as it came. */
   const chainSwapMessage = useCallback(
     (e: unknown): string => {
@@ -3322,7 +3337,7 @@ export function useWalletStore() {
    * mode, on that network's test network (its coin). Solana and Monad go through `submitChainSend`.
    */
   const submitNetworkSend = useCallback(
-    async (net: NetworkId, token: NetworkToken, to: string, amount: string) => {
+    async (net: NetworkId, token: NetworkToken, to: string, amount: string, memo?: string) => {
       if (net === 'solana' || net === 'monad') return submitChainSend(net, token, to, amount);
       const def = networkDefOn(net, chainNet);
       const units = toMinorUnitsBig(amount, token.decimals);
@@ -3339,13 +3354,23 @@ export function useWalletStore() {
         setBusy(true);
         try {
           const lib = await networkSendLib();
-          if (!lib.isNetworkAddress(net, destination)) throw new (await chainSwapLib()).ChainSwapRefused('address');
-          // One key per family: every EVM network signs with the phrase's EVM key, Fogo with its SVM one.
-          const { owner, secret } = await chainSigner(def.address === 'svm' ? 'solana' : 'monad');
+          if (!lib.isNetworkAddress(net, destination, chainNet)) throw new (await chainSwapLib()).ChainSwapRefused('address');
+          // One key per family: every EVM network signs with the phrase's EVM key, Fogo with its
+          // SVM one, every other family with its own (`lib/chainKeys.ts`).
+          const { owner, secret } = await networkSigner(net);
           guardSession(epoch);
           let hash: string;
           try {
-            hash = await lib.sendNetworkTransfer({ network: net, secret, owner, asset: token.asset, to: destination, amount: units, env: chainNet });
+            hash = await lib.sendNetworkTransfer({
+              network: net,
+              secret,
+              owner,
+              asset: token.asset,
+              to: destination,
+              amount: units,
+              env: chainNet,
+              memo: memo?.trim() || undefined,
+            });
           } finally {
             secret.fill(0);
           }
@@ -3356,6 +3381,7 @@ export function useWalletStore() {
             rows: [
               { label: t('chainSend.amount'), val: `${amount} ${token.symbol}` },
               { label: t('chainSend.to'), val: short },
+              ...(memo?.trim() ? [{ label: t(net === 'xrp' ? 'chainSend.tag' : 'chainSend.comment'), val: memo.trim() }] : []),
             ],
             hash,
             ...(def.explorerTx ? { explorer: def.explorerTx.replace('{tx}', hash) } : {}),
@@ -3370,7 +3396,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, chainNet, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, submitChainSend, loadNetworkHoldings, t],
+    [session, chainNet, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, submitChainSend, loadNetworkHoldings, t],
   );
 
   const quoteChainSwap = useCallback(
@@ -3801,12 +3827,17 @@ export function useWalletStore() {
           ) {
             throw new Error(t('xswap.mismatch'));
           }
-          // One key per family: every EVM network signs with the phrase's EVM key, Fogo with its SVM one.
-          const { owner, secret } = await chainSigner(def.address === 'svm' ? 'solana' : 'monad');
+          // A deposit that names a memo is credited only with it: carried as XRP's destination tag
+          // or TON's comment, and refused on a network whose transfer has no such field — paid
+          // without it, the deposit would reach nobody.
+          const memo = swap.depositMemo?.trim() || undefined;
+          if (memo && !MEMO_NETWORKS.includes(origin)) throw new (await chainSwapLib()).ChainSwapRefused('memo');
+          // One key per family (`lib/chainKeys.ts`).
+          const { owner, secret } = await networkSigner(origin);
           guardSession(epoch);
           let hash: string;
           try {
-            hash = await lib.sendNetworkTransfer({ network: origin, secret, owner, asset: from.asset, to: swap.depositAddress, amount: units, env: 'mainnet' });
+            hash = await lib.sendNetworkTransfer({ network: origin, secret, owner, asset: from.asset, to: swap.depositAddress, amount: units, env: 'mainnet', memo });
           } finally {
             secret.fill(0);
           }
@@ -3840,7 +3871,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, chainNet, openAccessKey, crossChainFromNetworkInput, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, loadNetworkHoldings, refresh, t],
+    [session, chainNet, openAccessKey, crossChainFromNetworkInput, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, loadNetworkHoldings, refresh, t],
   );
   const cosmosApiKey = useCallback((): string | null => {
     const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
