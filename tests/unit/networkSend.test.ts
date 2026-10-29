@@ -106,16 +106,33 @@ const fogoNode = (genesis: string, solanaKnowsIt: boolean) => ({
 
 test('a Fogo send over a blockhash only Fogo knows is broadcast', async () => {
   const called = node(fogoNode(SVM_GENESIS_HASH.fogo!, false));
-  const id = await sendNetworkTransfer(fogoTransfer());
+  const id = await sendNetworkTransfer(fogoTransfer(), 0);
   assert.ok(id.length > 40);
   assert.ok(called.includes('sendTransaction'));
 });
 
 test('a node that is not Fogo, or a blockhash Solana accepts, is refused: the key moves SOL too', async () => {
   const wrongNode = node(fogoNode(SVM_GENESIS_HASH.solana!, false));
-  assert.equal(await refusal(sendNetworkTransfer(fogoTransfer())), 'chain');
+  assert.equal(await refusal(sendNetworkTransfer(fogoTransfer(), 0)), 'chain');
   assert.ok(!wrongNode.includes('sendTransaction'));
   const replayable = node(fogoNode(SVM_GENESIS_HASH.fogo!, true));
-  assert.equal(await refusal(sendNetworkTransfer(fogoTransfer())), 'chain');
+  assert.equal(await refusal(sendNetworkTransfer(fogoTransfer(), 0)), 'chain');
   assert.ok(!replayable.includes('sendTransaction'));
+});
+
+test('Solana is asked only after the settle wait, so a blockhash too fresh for it is seen by then', async () => {
+  // Solana's node "catches up" 30 ms after the blockhash was handed over: asked at once it would
+  // not know it; asked after the wait it does, and the send is refused.
+  let handedAt = 0;
+  const answers = fogoNode(SVM_GENESIS_HASH.fogo!, false);
+  const called = node({
+    ...answers,
+    getLatestBlockhash: () => {
+      handedAt = Date.now();
+      return answers.getLatestBlockhash();
+    },
+    isBlockhashValid: () => ({ context: { slot: 1 }, value: Date.now() - handedAt >= 30 }),
+  });
+  assert.equal(await refusal(sendNetworkTransfer(fogoTransfer(), 50)), 'chain');
+  assert.ok(!called.includes('sendTransaction'));
 });

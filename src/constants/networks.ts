@@ -539,6 +539,15 @@ export const SVM_GENESIS_HASH: Partial<Record<NetworkId, string>> = {
   fogo: 'CDLtwKnaCoK157uaHQDj4fHu72AyD2519Cphmpiq6hvT',
 };
 
+/**
+ * How long a Fogo transfer waits between taking its blockhash from Fogo's node and asking Solana's
+ * node whether Solana knows it. A node handing over a Solana blockhash so fresh that Solana's RPC
+ * has not seen it yet would pass a check made at once; after this wait — several times an RPC's
+ * usual lag behind its cluster — any real Solana blockhash is known. A Fogo blockhash stays valid
+ * for well over a minute (measured 2026-10-28), so the wait costs a few seconds, not the send.
+ */
+export const SVM_REPLAY_SETTLE_MS = 4_000;
+
 /** How long a read balance is reused before the next one (the networks are many, the APIs public). */
 export const NETWORK_BALANCE_TTL_MS = 60_000;
 /** One balance request, end to end. */

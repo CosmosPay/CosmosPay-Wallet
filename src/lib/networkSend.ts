@@ -8,7 +8,7 @@
  * Solana and Monad keep `lib/chainSwap.ts`, which also covers their test networks.
  */
 import { SOLANA_RENT_EXEMPT_LAMPORTS, EVM_BASE_FEE_MULTIPLIER, EVM_GAS_HEADROOM_PCT } from '@/constants/chains';
-import { NETWORKS, SEND_FEE_RESERVE, SVM_GENESIS_HASH, type NetworkId } from '@/constants/networks';
+import { NETWORKS, SEND_FEE_RESERVE, SVM_GENESIS_HASH, SVM_REPLAY_SETTLE_MS, type NetworkId } from '@/constants/networks';
 import {
   solanaBlockhashValid,
   svmGenesisAt,
@@ -43,9 +43,10 @@ export interface NetworkTransfer {
 
 /**
  * Pay `amount` of `asset` from our address on `network` to `to`. Answers the transaction id
- * once the node has accepted it.
+ * once the node has accepted it. `settleMs` is the Fogo replay wait (`SVM_REPLAY_SETTLE_MS`);
+ * only a test shortens it.
  */
-export async function sendNetworkTransfer(p: NetworkTransfer): Promise<string> {
+export async function sendNetworkTransfer(p: NetworkTransfer, settleMs: number = SVM_REPLAY_SETTLE_MS): Promise<string> {
   const def = NETWORKS[p.network];
   if (!def.send || !def.balance) throw new ChainSwapRefused('chain');
   if (!isNetworkAddress(p.network, p.to)) throw new ChainSwapRefused('address');
@@ -86,13 +87,16 @@ export async function sendNetworkTransfer(p: NetworkTransfer): Promise<string> {
   if (def.balance.kind === 'svm') {
     if (p.asset !== 'native') throw new ChainSwapRefused('address');
     const url = def.balance.rpc;
-    // The SVM key is Solana's too, and a transfer is bound to its chain only by its blockhash. The
-    // node must be this network's, and the blockhash one Solana does not accept — asked of the
-    // Solana node, not this one — or the signature would also move SOL. Unknown is a refusal.
+    // The SVM key is Solana's too, and a transfer is bound to its chain only by its blockhash: a
+    // node handing over a Solana blockhash would get a signature that also moves SOL. What
+    // decides it is Solana's own node, asked AFTER `settleMs`, so a blockhash too fresh for it to
+    // have seen yet is seen by then; unknown is a refusal. The genesis hash is only a first filter
+    // (a node can lie about it), against a node pointed at the wrong network by mistake.
     if ((await svmGenesisAt(url)) !== SVM_GENESIS_HASH[p.network]) throw new ChainSwapRefused('chain');
     // The same runtime as Solana: an account opened with less than rent exemption is refused.
     if (p.amount < SOLANA_RENT_EXEMPT_LAMPORTS && (await svmLamportsAt(url, p.to)) === 0n) throw new ChainSwapRefused('rent');
     const blockhash = await svmBlockhashAt(url);
+    if (settleMs > 0) await new Promise((r) => setTimeout(r, settleMs));
     if (await solanaBlockhashValid(blockhash)) throw new ChainSwapRefused('chain');
     const wire = solTransferTx(p.owner, p.to, p.amount, blockhash);
     return svmSendAt(url, signSolanaTx(wire, p.secret, p.owner).signed);
