@@ -126,10 +126,14 @@ screens, the brand manual and snap.cosmospay.lat. Four rules:
   canvas (`.outlined`), a text field is `--line-strong` (3:1 on `--bg`, WCAG 1.4.11), and a
   popup (sheet, dropdown, toast) is the canvas colour with a line. The old wallet is discarded
   (the user's call): `--glass-bg`/`--glass-soft-bg`/`--danger-soft`/`--nav-bg` are now the canvas
-  and `--glass-*-border` the lines, so a screen still dressed in `.glass`/`.glass-soft` draws the
-  new way, and `BackBar` renders `ScreenHeader`. Those names are kept for the screens not yet
-  rewritten; a rewritten screen uses the new pieces. `base.css` still pills every `<button>`
-  with `!important` — draw a row's divider with a pseudo-element, not a `border-bottom`.
+  and `--glass-*-border` the lines, so a class still named `.glass`/`.glass-soft` draws the new
+  way; `BackBar` is gone (every screen uses `ScreenHeader`), `.label-up` is the sentence-case
+  label, glyphs drawn as icons (✓ › ▼ ⇅ ✎ emoji) are `ui/Icons`, and a list is `ui/ListRow` rows
+  between lines. Write new code with the new pieces, never the old names. `base.css` still pills
+  every `<button>` with `!important` — draw a row's divider with a pseudo-element, not a
+  `border-bottom`, and give a card that is a button its own radius with `!important`.
+- **The voice is tú** (the user's call): the Spanish copy never uses voseo ("Prueba", "Ingresa",
+  "Puedes", never "Probá", "Ingresá", "Podés").
 - **Ink is primary, blue is tertiary.** Primary buttons are solid ink (black in light, white in
   dark); secondary buttons are the 1.5px outline alone. `--brand` is the Figma palette's one
   blue, `#4d66ff`, identical in both themes — never a derived shade. It is for focus rings, the
@@ -163,7 +167,9 @@ the entry chunk.
 
 | New | Replaces |
 | --- | --- |
-| `ui/ScreenHeader` — `h1` title, muted `desc`; its back arrow goes on the shell's fixed bar (`ui/ScreenBar`), top left | `BackBar` (back on the right) + `Desc` / `.desc` paragraphs |
+| `ui/ScreenHeader` — `h1` title, muted `desc`; its back arrow goes on the shell's fixed bar (`ui/ScreenBar`), top left | the deleted `BackBar` (back on the right) + `Desc` / `.desc` paragraphs |
+| `ui/Tabs` — a WAI-ARIA tablist on a line, the chosen tab on the brand blue (Home, Send, Receive, Markets) | pill strips of `<span onClick>` |
+| `ui/ListRow` — ringed line icon, name and line, chevron; rows between lines | glyph rows in a grey card (`OpRow`, deleted) |
 | `ui/ChoiceCard` — whole-card option with icon, title, line, chevron | ad-hoc option buttons |
 | `ui/Segmented` — one question, two or three equal answers, one always chosen; a radio group with a sliding thumb | tabs or card pairs for a choice whose answer needs explaining before it is taken (`BackupChoice`) |
 | `ui/Notice` (`info` / `danger`) — mark + text, may hold a checkbox or a button | `.glass-soft` note boxes, pink warning boxes |
@@ -202,8 +208,7 @@ column greets instead (`.welcome-head`, shown only in the split by `.auth-only`)
 alone — never the full lockup, the user's call — over a greeting that varies per visit and
 with the hour (`welcomeGreeting` in `lib/greeting.ts`, Unlock's pool minus the name and the
 "welcome back"). No pause control and no reduced-motion stop, both the user's
-call — WCAG 2.2.2 asks for one; revisit with the final hero. `BackBar` and the rest of the old
-atoms remain only in screens not yet redesigned; replace them part by part.
+call — WCAG 2.2.2 asks for one; revisit with the final hero.
 
 **Before a session the desktop window splits in two** (`AUTH_SCREENS` in `lib/screens.ts`):
 the flow on the left in a 480px column, the brand panel (`app/AuthAside.tsx`: the hero motion,
@@ -1379,7 +1384,7 @@ src/
   app/          the shells and their chrome: WalletApp, ApprovePopup, Shell,
                 BottomNav, DesktopNav, NavMenu, Toast, ConfirmSign, ErrorBoundary
   ui/           presentational primitives used by MORE THAN ONE feature —
-                Field, KVRow, BackBar, Spinner, Logo, TokenAvatar…
+                Field, KVRow, ListRow, Tabs, Spinner, Logo, TokenAvatar…
   features/     one folder per user-facing area; screens and the components only
                 that area uses live side by side
     onboarding/ wallet/ money/ liquidity/ fiat/ cosmospay/ settings/ extras/
@@ -1412,10 +1417,10 @@ Deciding where something goes:
 
 - Used by one feature → that feature's folder. **Start here.** Do not promote to
   `ui/` "because it might be reused"; move it when a second feature actually imports it.
-  This is enforced retroactively: `NetworkDropdown`, `SurfaceToggle`, `BackCircle` and
-  `StellarMark` were in `ui/` with one importing feature each and now live in
-  `features/wallet/`; `NumberPad` had none and was deleted. `Spinner` (28 importers),
-  `BackBar` (31) and `Field` (10) earned the place.
+  This is enforced retroactively: `SurfaceToggle` and `BackCircle` were in `ui/` with one
+  importing feature each and now live in `features/wallet/`; `NumberPad`, `NetworkDropdown`,
+  `StellarMark` and `BackBar` had none left and were deleted. `Spinner`, `Field`, `Tabs` and
+  `ListRow` earned the place.
   The count that matters is *importing features*, not importers: `EyeIcon`, `Sheet` and
   `FlagIcon` stay in `ui/` with zero feature importers because their consumers are `Field`,
   `QuickPrefs` and `LangFlag` — shared primitives. Moving a primitive's own helper

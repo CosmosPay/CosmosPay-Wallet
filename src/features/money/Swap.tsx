@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { EnableReceivingCard } from '@/features/cosmospay/EnableReceivingCard';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
+import { Notice } from '@/ui/Notice';
+import { ExchangeIcon } from '@/ui/Icons';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { trim } from '@/lib/format';
@@ -205,10 +207,10 @@ export function Swap({ store }: { store: WalletStore }) {
       : [];
 
   const originPicker = (
-    <div className="swap-target" role="group" aria-label={t('xswap.payFrom')}>
+    <div className="swap-target" role="radiogroup" aria-label={t('xswap.payFrom')}>
       <div className="swap-target-label">{t('xswap.payFrom')}</div>
       {ORIGINS.map((c) => (
-        <button key={c} className={cx('swap-target-btn', origin === c && 'is-on')} onClick={() => setOrigin(c)}>
+        <button key={c} type="button" role="radio" aria-checked={origin === c} className={cx('swap-target-btn', origin === c && 'is-on')} onClick={() => setOrigin(c)}>
           {t(`xswap.chain.${c}`)}
         </button>
       ))}
@@ -218,7 +220,7 @@ export function Swap({ store }: { store: WalletStore }) {
   if (origin !== 'stellar') {
     return (
       <div className="scr screen col pb-104">
-        <BackBar title={t('swap.title')} onBack={store.goBack} />
+        <ScreenHeader title={t('swap.title')} onBack={store.goBack} />
         <ChainSwap store={store} origin={origin} header={originPicker} />
       </div>
     );
@@ -226,21 +228,21 @@ export function Swap({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('swap.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('swap.title')} onBack={store.goBack} />
 
       {originPicker}
 
-      <div className="swap-target" role="group" aria-label={t('xswap.receiveOn')}>
+      <div className="swap-target" role="radiogroup" aria-label={t('xswap.receiveOn')}>
         <div className="swap-target-label">{t('xswap.receiveOn')}</div>
         {TARGETS.map((c) => (
-          <button key={c} className={cx('swap-target-btn', target === c && 'is-on')} onClick={() => setTarget(c)}>
+          <button key={c} type="button" role="radio" aria-checked={target === c} className={cx('swap-target-btn', target === c && 'is-on')} onClick={() => setTarget(c)}>
             {t(`xswap.chain.${c}`)}
           </button>
         ))}
       </div>
 
       <div className={cx('exchange-stack', openSel && 'is-open')}>
-        <div className={cx('glass exchange-card', openSel === 'from' && 'is-active')}>
+        <div className={cx('exchange-card', openSel === 'from' && 'is-active')}>
           <div className="exchange-label">{t('swap.pay')}</div>
           <div className="row between g10">
             <AssetSelect assets={assets} value={fromRef} onPick={(a) => setFromRef({ code: a.code, issuer: a.issuer })} open={openSel === 'from'} onToggle={(n) => setOpenSel(n ? 'from' : null)} />
@@ -254,15 +256,19 @@ export function Swap({ store }: { store: WalletStore }) {
             (from-card bottom + half the 10px gap) no matter how tall each card is —
             top:50% of the whole wrapper sat visibly too high. */}
         <div className="swap-seam">
-          {!crossChain && <button onClick={invert} aria-label="invert" className="swap-invert">⇅</button>}
+          {!crossChain && (
+            <button type="button" onClick={invert} aria-label={t('swap.invert')} className="swap-invert">
+              <ExchangeIcon />
+            </button>
+          )}
         </div>
-        <div className={cx('glass exchange-card exchange-card--to', openSel === 'to' && 'is-active')}>
+        <div className={cx('exchange-card exchange-card--to', openSel === 'to' && 'is-active')}>
           <div className="exchange-label">{t('swap.receiveEst')}{crossChain ? ` · ${t(`xswap.chain.${target}`)}` : ''}</div>
           <div className="row between g10">
             {crossChain ? (
-              <div className="swap-dest-chips">
+              <div className="swap-dest-chips" role="radiogroup">
                 {destOptions.map((a) => (
-                  <button key={a.assetId} className={cx('swap-target-btn', xDest?.assetId === a.assetId && 'is-on')} onClick={() => setXDestId(a.assetId)}>
+                  <button key={a.assetId} type="button" role="radio" aria-checked={xDest?.assetId === a.assetId} className={cx('swap-target-btn', xDest?.assetId === a.assetId && 'is-on')} onClick={() => setXDestId(a.assetId)}>
                     {a.symbol}
                   </button>
                 ))}
@@ -286,24 +292,24 @@ export function Swap({ store }: { store: WalletStore }) {
       </div>
 
       {/* Cross-chain guards: network, an address on the target, and a source NEAR lists. */}
-      {crossChain && !mainnet && <div className="exchange-guard">{t('xswap.mainnetOnly')}</div>}
+      {crossChain && !mainnet && <Notice className="exchange-notice">{t('xswap.mainnetOnly')}</Notice>}
       {crossChain && mainnet && !recipient && (
-        <div className="exchange-guard">{t('xswap.noAddress', { chain: t(`xswap.chain.${target}`) })}</div>
+        <Notice className="exchange-notice">{t('xswap.noAddress', { chain: t(`xswap.chain.${target}`) })}</Notice>
       )}
       {crossChain && mainnet && recipient && stellarListed.length > 0 && !fromListed && (
-        <div className="exchange-guard">{t('xswap.unsupportedFrom', { list: stellarListed.map((a) => a.symbol).join(', ') })}</div>
+        <Notice className="exchange-notice">{t('xswap.unsupportedFrom', { list: stellarListed.map((a) => a.symbol).join(', ') })}</Notice>
       )}
 
       {/* Same-asset guard. */}
       {enabled && !crossChain && sameAsset && (
-        <div className="exchange-guard">{t('swap.sameAsset')}</div>
+        <Notice className="exchange-notice">{t('swap.sameAsset')}</Notice>
       )}
 
       {/* Insufficient-balance guard (reserve-aware for XLM). */}
       {enabled && (crossChain || !sameAsset) && insufficient && (
-        <div className="exchange-guard exchange-guard--danger">
+        <Notice tone="danger" className="exchange-notice">
           {t('swap.insufficient', { avail: trim(availFrom, 4), code: fromRef.code })}
-        </div>
+        </Notice>
       )}
 
       {/* Quotes refresh automatically — show a subtle indicator while re-pricing. */}
@@ -315,7 +321,7 @@ export function Swap({ store }: { store: WalletStore }) {
 
       {/* Quote breakdown: commission RATE + amount + min, so the cost is transparent. */}
       {quoteRows.length > 0 && (
-        <div className="glass exchange-quote">
+        <div className="exchange-quote">
           {quoteRows.map(([label, val]) => (
             <div key={label} className="exchange-quote-row">
               <span className="exchange-quote-label">{label}</span>
@@ -327,18 +333,18 @@ export function Swap({ store }: { store: WalletStore }) {
 
       {/* When enabled, a short note; otherwise the CosmosPay card below explains the step. */}
       {enabled && (
-        <div className="glass exchange-note">
+        <Notice className="exchange-notice">
           {crossChain ? t('xswap.note', { chain: t(`xswap.chain.${target}`) }) : t('swap.note2')}
-        </div>
+        </Notice>
       )}
 
       {/* On the shared key: say what it costs and what an account would change.
           The percentage shown in the rows above is always the gateway's own
           number from the quote — this is the offer, not the price. */}
       {enabled && store.publicAccess && (
-        <div className="glass exchange-note">
+        <Notice className="exchange-notice">
           {t('swap.publicRate')}
-        </div>
+        </Notice>
       )}
 
       <div className="spacer" />

@@ -56,7 +56,7 @@ export function AssetSelect({
       </button>
       {open && (
         <>
-          <div onClick={() => setOpen(false)} className="asset-select-overlay" />
+          <div onClick={() => setOpen(false)} className="asset-select-overlay" aria-hidden="true" />
           <div role="listbox" className="asset-select-menu">
             {assets.map((a) => (
               <button

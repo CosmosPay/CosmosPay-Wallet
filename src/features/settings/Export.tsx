@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { RevealedBackup, WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Reveal } from '@/features/settings/Reveal';
@@ -46,7 +46,7 @@ export function Export({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-30">
-      <BackBar title={t('export.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('export.title')} onBack={store.goBack} />
 
       <div className="export-warning">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="export-warning-icon"><path d="M12 3l9 16H3l9-16z" stroke="#ff7a7a" strokeWidth="1.8" strokeLinejoin="round" /><path d="M12 10v4M12 17h.01" stroke="#ff7a7a" strokeWidth="1.8" strokeLinecap="round" /></svg>

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { WalletStore } from '@/state/store';
+import { PenIcon } from '@/ui/Icons';
 import { Spinner } from '@/ui/Spinner';
 import { DeviceAuthButton } from '@/ui/DeviceAuthButton';
 import { PasskeyButton } from '@/ui/PasskeyButton';
@@ -65,7 +66,9 @@ export function ConfirmSign({ store }: { store: WalletStore }) {
     <div className="confirm-sign-overlay">
       <div className="glass confirm-sign-card">
         <div className="confirm-sign-icon-row">
-          <div className="glass-soft center confirm-sign-icon">✎</div>
+          <div className="glass-soft center confirm-sign-icon" aria-hidden="true">
+            <PenIcon />
+          </div>
         </div>
         <div className="confirm-sign-title">{req.title}</div>
         {req.message && <div className="confirm-sign-msg">{req.message}</div>}

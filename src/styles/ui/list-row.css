@@ -1,0 +1,79 @@
+/* =====================================================================
+   src/ui/ListRow.tsx — a list row: ringed icon, name and line, chevron.
+   ===================================================================== */
+.list-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* the line between rows: a pseudo-element, since base.css pills every button */
+.list-row::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.list-row:last-child::after {
+  display: none;
+}
+
+.list-row:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.list-row-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+}
+
+.list-row-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.list-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.list-row-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.list-row-desc {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.list-row-chev {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}

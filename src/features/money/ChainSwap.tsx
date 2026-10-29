@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
+import { Notice } from '@/ui/Notice';
 import { Spinner } from '@/ui/Spinner';
 import { trim } from '@/lib/format';
 import { cx } from '@/lib/cx';
@@ -167,22 +168,22 @@ export function ChainSwap({ store, origin, header }: { store: WalletStore; origi
     <>
       {header}
 
-      <div className="swap-target" role="group" aria-label={t('xswap.receiveOn')}>
+      <div className="swap-target" role="radiogroup" aria-label={t('xswap.receiveOn')}>
         <div className="swap-target-label">{t('xswap.receiveOn')}</div>
         {TARGETS.map((c) => (
-          <button key={c} className={cx('swap-target-btn', target === c && 'is-on')} onClick={() => setTarget(c)}>
+          <button key={c} type="button" role="radio" aria-checked={target === c} className={cx('swap-target-btn', target === c && 'is-on')} onClick={() => setTarget(c)}>
             {chainName(c)}
           </button>
         ))}
       </div>
 
       <div className="exchange-stack">
-        <div className="glass exchange-card">
+        <div className="exchange-card">
           <div className="exchange-label">{t('swap.pay')} · {chainName(origin)}</div>
           <div className="row between g10">
-            <div className="swap-dest-chips">
+            <div className="swap-dest-chips" role="radiogroup">
               {tokens.map((tk) => (
-                <button key={tk.asset} className={cx('swap-target-btn', from.asset === tk.asset && 'is-on')} onClick={() => setFromAsset(tk.asset)}>
+                <button key={tk.asset} type="button" role="radio" aria-checked={from.asset === tk.asset} className={cx('swap-target-btn', from.asset === tk.asset && 'is-on')} onClick={() => setFromAsset(tk.asset)}>
                   {tk.symbol}
                 </button>
               ))}
@@ -203,18 +204,18 @@ export function ChainSwap({ store, origin, header }: { store: WalletStore; origi
           )}
         </div>
         <div className="swap-seam" />
-        <div className="glass exchange-card exchange-card--to">
+        <div className="exchange-card exchange-card--to">
           <div className="exchange-label">{t('swap.receiveEst')} · {chainName(target)}</div>
           <div className="row between g10">
-            <div className="swap-dest-chips">
+            <div className="swap-dest-chips" role="radiogroup">
               {crossChain
                 ? destOptions.map((a) => (
-                    <button key={a.assetId} className={cx('swap-target-btn', xDest?.assetId === a.assetId && 'is-on')} onClick={() => setXDestId(a.assetId)}>
+                    <button key={a.assetId} type="button" role="radio" aria-checked={xDest?.assetId === a.assetId} className={cx('swap-target-btn', xDest?.assetId === a.assetId && 'is-on')} onClick={() => setXDestId(a.assetId)}>
                       {a.symbol}
                     </button>
                   ))
                 : sameOptions.map((tk) => (
-                    <button key={tk.asset} className={cx('swap-target-btn', to?.asset === tk.asset && 'is-on')} onClick={() => setToAsset(tk.asset)}>
+                    <button key={tk.asset} type="button" role="radio" aria-checked={to?.asset === tk.asset} className={cx('swap-target-btn', to?.asset === tk.asset && 'is-on')} onClick={() => setToAsset(tk.asset)}>
                       {tk.symbol}
                     </button>
                   ))}
@@ -234,18 +235,18 @@ export function ChainSwap({ store, origin, header }: { store: WalletStore; origi
         </div>
       </div>
 
-      {!mainnet && <div className="exchange-guard">{t('xswap.mainnetOnly')}</div>}
-      {mainnet && !owner && <div className="exchange-guard">{t('xswap.noAddress', { chain: chainName(origin) })}</div>}
+      {!mainnet && <Notice className="exchange-notice">{t('xswap.mainnetOnly')}</Notice>}
+      {mainnet && !owner && <Notice className="exchange-notice">{t('xswap.noAddress', { chain: chainName(origin) })}</Notice>}
       {mainnet && owner && crossChain && !recipient && (
-        <div className="exchange-guard">{t('xswap.noAddress', { chain: chainName(target) })}</div>
+        <Notice className="exchange-notice">{t('xswap.noAddress', { chain: chainName(target) })}</Notice>
       )}
       {mainnet && owner && balances === null && (
-        <div className="exchange-guard">{t('xswap.balanceError', { chain: chainName(origin) })}</div>
+        <Notice className="exchange-notice">{t('xswap.balanceError', { chain: chainName(origin) })}</Notice>
       )}
       {insufficient && (
-        <div className="exchange-guard exchange-guard--danger">
+        <Notice tone="danger" className="exchange-notice">
           {t('swap.insufficient', { avail: human(avail), code: from.symbol })}
-        </div>
+        </Notice>
       )}
 
       {enabled && quoting && (
@@ -255,7 +256,7 @@ export function ChainSwap({ store, origin, header }: { store: WalletStore; origi
       )}
 
       {rows.length > 0 && (
-        <div className="glass exchange-quote">
+        <div className="exchange-quote">
           {rows.map(([label, val]) => (
             <div key={label} className="exchange-quote-row">
               <span className="exchange-quote-label">{label}</span>
@@ -265,8 +266,8 @@ export function ChainSwap({ store, origin, header }: { store: WalletStore; origi
         </div>
       )}
 
-      {enabled && <div className="glass exchange-note">{note}</div>}
-      {enabled && store.publicAccess && <div className="glass exchange-note">{t('swap.publicRate')}</div>}
+      {enabled && <Notice className="exchange-notice">{note}</Notice>}
+      {enabled && store.publicAccess && <Notice className="exchange-notice">{t('swap.publicRate')}</Notice>}
 
       <div className="spacer" />
       <div className="kb-dock">

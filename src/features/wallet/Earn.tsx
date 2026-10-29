@@ -5,7 +5,7 @@ import { buildKind } from '@/lib/platform';
 import { chainRows, computePortfolio } from '@/lib/portfolio';
 import { fmt } from '@/lib/format';
 import { BackCircle } from '@/features/wallet/BackCircle';
-import '@/styles/features/wallet/tab-header.css';
+import { ChevronRightIcon, SentIcon } from '@/ui/Icons';
 import '@/styles/features/wallet/earn.css';
 
 /* ------------------------------- EARN -------------------------------- */
@@ -40,21 +40,24 @@ export function Earn({ store }: { store: WalletStore }) {
   ] as const;
   return (
     <div className="scr screen pb-110">
-      <div className="main-head">
-        <span className="title-30">{t('earn.title')}</span>
-        <div className="row g10">
-          {buildKind() === 'ext' && <BackCircle store={store} />}
-          <NavMenu store={store} />
-        </div>
-      </div>
-      <div className="glass earn-card">
-        <div className="earn-label">{t('earn.totalAssets')}</div>
-        <div className="earn-total">${fmt(total, 2)}</div>
-        <div className="earn-net-label">{t('earn.network')}</div>
-        <div className="earn-net-value">{store.network.label}</div>
-      </div>
+      <header className="earn-head">
+        <h1 className="earn-title">{t('earn.title')}</h1>
+        {buildKind() === 'ext' && (
+          <div className="row g10">
+            <BackCircle store={store} />
+            <NavMenu store={store} />
+          </div>
+        )}
+      </header>
+      <section className="earn-card" aria-label={t('earn.totalAssets')}>
+        <p className="earn-label">{t('earn.totalAssets')}</p>
+        <p className="earn-total">${fmt(total, 2)}</p>
+        <p className="earn-net-label">
+          {t('earn.network')}: <span className="earn-net-value">{store.network.label}</span>
+        </p>
+      </section>
 
-      <div className="title-20 earn-generate">{t('earn.generate')}</div>
+      <h2 className="earn-generate">{t('earn.generate')}</h2>
       <button type="button" className="glass card earn-option earn-lp tap" onClick={() => store.go('liquidity')}>
         <div className="row g12 earn-lp-head">
           <TokenAvatar glyph="◇" tone="pool" size={36} />
@@ -62,12 +65,12 @@ export function Earn({ store }: { store: WalletStore }) {
             <div className="earn-lp-title">Liquidity Pools (AMM)</div>
             <div className="t-dim-12">{t('earn.lpSub')}</div>
           </div>
-          <span className="earn-option-arrow" aria-hidden="true">→</span>
+          <ChevronRightIcon className="earn-option-arrow" />
         </div>
         <div className="earn-lp-desc">
           {t('earn.lpDesc')}
         </div>
-        <div className="earn-lp-cta">{t('lp.open')} →</div>
+        <div className="earn-lp-cta">{t('lp.open')}</div>
       </button>
 
       <div className="earn-protocols" aria-label={t('earn.protocols')}>
@@ -87,7 +90,7 @@ export function Earn({ store }: { store: WalletStore }) {
                 </div>
                 <div className="earn-lp-desc">{protocol.description}</div>
               </div>
-              <span className="earn-option-arrow earn-option-arrow-external" aria-hidden="true">↗</span>
+              <SentIcon className="earn-option-arrow earn-option-arrow-external" />
             </div>
             <div className="earn-protocol-cta">{t('earn.openProtocol')}</div>
           </button>

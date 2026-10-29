@@ -83,7 +83,7 @@ async function signInWithEmail(page: Page) {
   ok(await page.getByPlaceholder('nombre@email.com').isVisible(), 'browser back and forward walk the sign-in steps');
   await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
   await page.getByRole('button', { name: 'Enviar código' }).click();
-  await page.getByText('Revisá tu correo').waitFor({ timeout: 10000 });
+  await page.getByText('Revisa tu correo').waitFor({ timeout: 10000 });
   const code = page.locator('input[autocomplete="one-time-code"]');
   await code.fill('000000');
   await page.getByRole('button', { name: 'Confirmar' }).click();

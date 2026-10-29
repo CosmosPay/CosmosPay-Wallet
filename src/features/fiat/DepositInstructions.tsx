@@ -1,5 +1,5 @@
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { copyText } from '@/lib/clipboard';
 import type { Payin } from '@/lib/cosmospay';
@@ -22,7 +22,7 @@ export function DepositInstructions({ store, payin, onDone }: { store: WalletSto
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('fiat.depositInstructions')} onBack={onDone} />
+      <ScreenHeader title={t('fiat.depositInstructions')} onBack={onDone} />
       <div className="desc deposit-desc">{t('fiat.depositInstructionsDesc')}</div>
       <div className="glass row between deposit-status-card">
         <span className="deposit-status-label">{t('fiat.status')}</span>

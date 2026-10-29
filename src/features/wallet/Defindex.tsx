@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { WalletStore } from "@/state/store";
-import { BackBar } from "@/ui/BackBar";
+import { ScreenHeader } from "@/ui/ScreenHeader";
 import { PrimaryButton } from "@/ui/Buttons";
 import { Spinner } from "@/ui/Spinner";
 import { networkEnv } from "@/lib/stellar";
@@ -139,7 +139,7 @@ export function Defindex({ store }: { store: WalletStore }) {
   if (!apiKey) {
     return (
       <div className="scr screen col pb-104">
-        <BackBar title="DeFindex" onBack={store.goBack} />
+        <ScreenHeader title="DeFindex" onBack={store.goBack} />
         <div className="glass card defindex-empty">
           <div className="title-20">{t("defindex.enableTitle")}</div>
           <div className="t-dim-12">{t("defindex.enableDesc")}</div>
@@ -153,7 +153,7 @@ export function Defindex({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title="DeFindex" onBack={store.goBack} />
+      <ScreenHeader title="DeFindex" onBack={store.goBack} />
       <div className="defindex-intro">{t("defindex.intro")}</div>
       {loading && !vaults.length ? (
         <Spinner />

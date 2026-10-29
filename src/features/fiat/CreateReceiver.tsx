@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Select } from '@/features/fiat/Select';
@@ -56,7 +56,7 @@ export function CreateReceiver({ store }: { store: WalletStore }) {
 
   return (
     <>
-      <BackBar title={`${t('fiat.kycTitle')} · ${step + 1}/4`} onBack={back1} />
+      <ScreenHeader title={`${t('fiat.kycTitle')} · ${step + 1}/4`} onBack={back1} />
       {/* progress dots */}
       <div className="flexr g6 fiat-progress">
         {[0, 1, 2, 3].map((i) => (

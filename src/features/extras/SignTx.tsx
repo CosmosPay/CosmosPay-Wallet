@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { copyText, readText } from '@/lib/clipboard';
@@ -71,7 +71,7 @@ export function SignTx({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('sign.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('sign.title')} onBack={store.goBack} />
       <div className="sign-tx-desc">{t('sign.desc')}</div>
 
       <textarea

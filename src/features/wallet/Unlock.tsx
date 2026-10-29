@@ -192,7 +192,7 @@ export function Unlock({ store }: { store: WalletStore }) {
               </button>
               {walletOpen && (
                 <>
-                  <div onClick={() => { setWalletOpen(false); setDeletingId(''); }} className="unlock-switch-overlay" />
+                  <div onClick={() => { setWalletOpen(false); setDeletingId(''); }} className="unlock-switch-overlay" aria-hidden="true" />
                   <div className="scr unlock-switch-menu">
                     {store.wallets.map((w) => {
                       const active = w.id === store.activeWalletId;
@@ -209,7 +209,12 @@ export function Unlock({ store }: { store: WalletStore }) {
                       }
                       return (
                         <div key={w.id} className={cx('unlock-wallet-row', active && 'is-active')}>
-                          <div onClick={() => { if (!active) store.selectWalletForUnlock(w.id); setWalletOpen(false); }} className="tap f1 row g10 min0 unlock-wallet-main">
+                          <button
+                            type="button"
+                            aria-current={active ? 'true' : undefined}
+                            onClick={() => { if (!active) store.selectWalletForUnlock(w.id); setWalletOpen(false); }}
+                            className="f1 row g10 min0 unlock-wallet-main"
+                          >
                             <div className="unlock-wallet-avatar">
                               {w.avatar ? <img src={w.avatar} alt="" className="unlock-wallet-avatar-img" /> : w.name.slice(0, 1).toUpperCase()}
                             </div>
@@ -217,11 +222,16 @@ export function Unlock({ store }: { store: WalletStore }) {
                               <div className="unlock-wallet-name">{w.name}</div>
                               <div className="unlock-wallet-addr">{shortAddr(addressOn(w, store.network.passphrase), 5, 5)}</div>
                             </div>
-                          </div>
+                          </button>
                           {active && <CheckIcon className="unlock-wallet-check" />}
-                          <div onClick={() => setDeletingId(w.id)} className="tap unlock-wallet-del" title={t('common.delete')}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setDeletingId(w.id)}
+                            className="unlock-wallet-del"
+                            aria-label={t('unlock.removeWallet', { name: w.name })}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          </button>
                         </div>
                       );
                     })}

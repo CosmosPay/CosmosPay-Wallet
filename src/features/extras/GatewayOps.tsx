@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import type { LiquidityOpRow, PayinRow, PayoutRow, SwapRow } from '@/lib/cosmospay';
 import type { OpsDomain } from '@/lib/dataKeys';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
+import { Tabs } from '@/ui/Tabs';
 import { Spinner } from '@/ui/Spinner';
 import { useQueryValue } from '@/hooks/useQuery';
 import { cx } from '@/lib/cx';
@@ -87,15 +88,15 @@ export function GatewayOps({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('ops.gatewayTitle')} onBack={store.goBack} />
+      <ScreenHeader title={t('ops.gatewayTitle')} onBack={store.goBack} />
 
-      <div className="row g8 gateway-ops-tabs">
-        {TABS.map((x) => (
-          <button key={x.id} className={cx('gateway-ops-tab', tab === x.id && 'is-on')} onClick={() => setTab(x.id)}>
-            {t(x.labelKey)}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        tabs={TABS.map((x) => ({ key: x.id, label: t(x.labelKey) }))}
+        value={tab}
+        onChange={setTab}
+        label={t('ops.gatewayTitle')}
+        className="gateway-ops-tabs"
+      />
 
       {loading && !rows && (
         <div className="row g8 gateway-ops-loading">
@@ -105,7 +106,7 @@ export function GatewayOps({ store }: { store: WalletStore }) {
 
       {empty && <div className="gateway-ops-empty">{t('ops.gatewayEmpty')}</div>}
 
-      <div className="glass col gateway-ops-card">
+      <div className={cx('col gateway-ops-card', empty && 'is-empty')}>
         {tab === 'swaps' &&
           (rows as SwapRow[] | undefined)?.map((r, i) => (
             <Row

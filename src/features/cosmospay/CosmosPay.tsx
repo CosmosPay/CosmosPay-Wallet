@@ -1,6 +1,6 @@
 import type { WalletStore } from '@/state/store';
 import { EnableReceivingCard } from '@/features/cosmospay/EnableReceivingCard';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton, GhostButton } from '@/ui/Buttons';
 import { CosmosPayRow } from '@/features/cosmospay/CosmosPayRow';
 import { CosmosPayEnvRow } from '@/features/cosmospay/CosmosPayEnvRow';
@@ -25,7 +25,7 @@ export function CosmosPay({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title="Cosmos Pay" onBack={store.goBack} />
+      <ScreenHeader title="Cosmos Pay" onBack={store.goBack} />
       <div className="desc cosmospay-margin">{t('cosmospay.integrationDesc')}</div>
 
       {/* API keys — per network */}

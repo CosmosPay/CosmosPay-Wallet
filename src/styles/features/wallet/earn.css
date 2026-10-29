@@ -1,16 +1,12 @@
-/* Earn screen (src/features/wallet/Earn.tsx). */
-.earn-card {
-  position: relative;
-  border-radius: 22px;
-  padding: 20px;
-  overflow: hidden;
-  margin-bottom: 26px;
-} /* on .glass */
-.earn-label { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
-.earn-total { font-size: 34px; font-weight: 800; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-.earn-net-label { margin-top: 14px; font-size: 13px; color: var(--muted); font-weight: 600; }
-.earn-net-value { font-size: 16px; color: var(--accent); font-weight: 800; margin-top: 2px; }
-.earn-generate { margin-bottom: 14px; } /* on .title-20 */
+/* Earn screen (src/features/wallet/Earn.tsx): the total on a line, then the protocols as cards. */
+.earn-head { display: flex; align-items: center; justify-content: space-between; min-height: 46px; padding-top: 6px; margin-bottom: 18px; }
+.earn-title { margin: 0; font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+.earn-card { padding: 4px 0 20px; margin-bottom: 22px; border-bottom: 1px solid var(--line); }
+.earn-label { margin: 0 0 6px; font-size: 13px; color: var(--muted); font-weight: 600; }
+.earn-total { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
+.earn-net-label { margin: 10px 0 0; font-size: 13px; color: var(--muted); }
+.earn-net-value { color: var(--text); font-weight: 700; }
+.earn-generate { margin: 0 0 14px; font-size: 18px; font-weight: 700; }
 /* .earn-lp is a tappable card (whole card opens the liquidity hub). */
 .earn-option {
   width: 100%;
@@ -28,10 +24,10 @@
 .earn-option-copy { flex: 1; min-width: 0; }
 .earn-option-arrow {
   align-self: center;
-  color: var(--accent);
-  font-size: 19px;
-  font-weight: 800;
-  line-height: 1;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--text);
 }
 .earn-lp-title { font-size: 16px; font-weight: 700; }
 .earn-lp-desc { font-size: 13px; color: var(--muted); font-weight: 600; line-height: 1.55; }

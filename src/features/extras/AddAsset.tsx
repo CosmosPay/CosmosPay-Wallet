@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
+import { CheckIcon, PlusIcon } from '@/ui/Icons';
 import { AssetLogo } from '@/ui/AssetLogo';
-import { BackBar } from '@/ui/BackBar';
-import { PrimaryButton } from '@/ui/Buttons';
+import { ScreenHeader } from '@/ui/ScreenHeader';
+import { GhostButton, PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Field } from '@/ui/Field';
 import { isValidPublicKey } from '@/lib/wallet';
@@ -131,7 +132,10 @@ export function AddAsset({ store }: { store: WalletStore }) {
               {a.restricted ? <div className="add-asset-flag">{t('addAsset.clawbackWarn')}</div> : null}
             </div>
             {isHeld ? (
-              <span className="add-asset-held">✓ {t('addAsset.held')}</span>
+              <span className="add-asset-held">
+                <CheckIcon className="add-asset-held-icon" />
+                {t('addAsset.held')}
+              </span>
             ) : (
               <button
                 onClick={() => addPreset(a.code, a.issuer)}
@@ -150,7 +154,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen pb-40">
-      <BackBar title={t('addAsset.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('addAsset.title')} onBack={store.goBack} />
       <div className="add-asset-desc">
         {t('addAsset.desc')}
       </div>
@@ -163,14 +167,14 @@ export function AddAsset({ store }: { store: WalletStore }) {
         <>
           {verified.length > 0 && (
             <>
-              <div className="label-up add-asset-label">{t('addAsset.verified')}</div>
+              <div className="field-label add-asset-label">{t('addAsset.verified')}</div>
               {list(verified)}
             </>
           )}
 
           {unverified.length > 0 && (
             <>
-              <div className="label-up add-asset-label">{t('addAsset.unverified')}</div>
+              <div className="field-label add-asset-label">{t('addAsset.unverified')}</div>
               <div className="glass add-asset-warn">{t('addAsset.unverifiedWarn')}</div>
               {list(unverified)}
             </>
@@ -183,19 +187,20 @@ export function AddAsset({ store }: { store: WalletStore }) {
       )}
 
       {!showCustom ? (
-        <button onClick={() => setShowCustom(true)} className="glass-soft center g8 add-asset-custom-btn">
-          ＋ {t('addAsset.custom')}
-        </button>
+        <GhostButton onClick={() => setShowCustom(true)}>
+          <PlusIcon />
+          {t('addAsset.custom')}
+        </GhostButton>
       ) : (
         <>
-          <div className="label-up add-asset-label">{t('addAsset.manual')}</div>
+          <div className="field-label add-asset-label">{t('addAsset.manual')}</div>
           <Field label={t('addAsset.code')} value={code} onChange={(v) => setCode(v.toUpperCase().slice(0, ASSET_CODE_MAX))} placeholder="USDC" />
           <label className="add-asset-issuer-field">
-            <div className="label-up add-asset-issuer-label">{t('addAsset.issuer')}</div>
+            <div className="field-label add-asset-issuer-label">{t('addAsset.issuer')}</div>
             <input value={issuer} onChange={(e) => setIssuer((e.target as HTMLInputElement).value.trim())} placeholder="G…" className="input add-asset-issuer-input" />
           </label>
           <div className={`add-asset-valid add-asset-valid--${!issuer ? 'none' : issuerOk ? 'ok' : 'bad'}`}>
-            {!issuer ? '·' : issuerOk ? '✓' : t('addAsset.invalidIssuer')}
+            {!issuer ? null : issuerOk ? <CheckIcon className="add-asset-valid-icon" /> : t('addAsset.invalidIssuer')}
           </div>
           <div className="kb-dock">
             <PrimaryButton disabled={!ok} onClick={addManual}>{store.busy && !adding ? <Spinner /> : t('addAsset.add')}</PrimaryButton>

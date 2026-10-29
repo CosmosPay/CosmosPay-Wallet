@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { CheckIcon, ChevronDownIcon } from '@/ui/Icons';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { buildKind } from '@/lib/platform';
 import { cameraFailure, cameraFailureKey, openCameraStream, type CameraFailure } from '@/lib/camera';
 import { canReadClipboardImage } from '@/lib/clipboard';
@@ -185,7 +186,7 @@ export function ScanQR({ store }: { store: WalletStore }) {
   return (
     <div className="scr screen col">
       {/* Back to wherever the scanner was opened from (send, home, operations, drawer…). */}
-      <BackBar title={t('scan.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('scan.title')} onBack={store.goBack} />
       <div className="scan-hint">{t('scan.point')}</div>
       <div className="glass center scan-viewport">
         {failure ? (
@@ -219,29 +220,32 @@ export function ScanQR({ store }: { store: WalletStore }) {
           its option list can't be themed), same pattern as the network dropdown. */}
       {devices.length > 1 && !failure && (
         <div className="shrink0 scan-device-wrap">
-          <button onClick={() => setDevOpen((o) => !o)} className="glass-soft row between g10 scan-device-btn">
+          <button type="button" aria-expanded={devOpen} aria-haspopup="listbox" onClick={() => setDevOpen((o) => !o)} className="glass-soft row between g10 scan-device-btn">
             <span className="scan-ellipsis">
               {deviceId
                 ? devices.find((d) => d.deviceId === deviceId)?.label || t('scan.device')
                 : `${t('scan.device')} · auto`}
             </span>
-            <span className={cx('shrink0 scan-caret', devOpen && 'is-open')}>▼</span>
+            <ChevronDownIcon className={cx('shrink0 scan-caret', devOpen && 'is-open')} />
           </button>
           {devOpen && (
             <>
-              <div onClick={() => setDevOpen(false)} className="scan-dd-backdrop" />
-              <div className="scan-dd">
+              <div onClick={() => setDevOpen(false)} className="scan-dd-backdrop" aria-hidden="true" />
+              <div className="scan-dd" role="listbox">
                 {[{ id: '', label: `${t('scan.device')} · auto` }, ...devices.map((d, i) => ({ id: d.deviceId, label: d.label || `${t('scan.device')} ${i + 1}` }))].map((opt) => {
                   const on = opt.id === deviceId;
                   return (
-                    <div
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={on}
                       key={opt.id || 'auto'}
                       onClick={() => { setDeviceId(opt.id); setDevOpen(false); }}
-                      className={cx('tap row g9 scan-opt', on && 'is-on')}
+                      className={cx('row g9 scan-opt', on && 'is-on')}
                     >
                       <span className="f1 scan-ellipsis scan-opt-label">{opt.label}</span>
-                      {on && <span className="shrink0 scan-check">✓</span>}
-                    </div>
+                      {on && <CheckIcon className="shrink0 scan-check" />}
+                    </button>
                   );
                 })}
               </div>

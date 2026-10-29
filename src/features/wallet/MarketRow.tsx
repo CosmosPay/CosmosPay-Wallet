@@ -6,28 +6,23 @@ import { staggerClass } from '@/lib/stagger';
 import { cx } from '@/lib/cx';
 import '@/styles/features/wallet/markets.css';
 
-/** One market list row: logo + name/code and animated price + 24h change.
- *  Every variant is a modifier class; `index` picks the entrance-delay rung. */
+/** One market: logo, name over code, and the animated price over its 24h change. A button. */
 export function MarketRow({ code, price, onClick, index = 0 }: { code: string; price?: PriceInfo; onClick: () => void; index?: number }) {
   const m = assetMeta(code);
   const chg = price?.change24h ?? 0;
   const shownPrice = useAnimatedNumber(price?.usd ?? 0);
   const shownChg = useAnimatedNumber(chg);
   return (
-    <div onClick={onClick} className={cx('tap row between market-row', staggerClass(index))}>
-      <div className="row g12">
-        <AssetLogo code={code} size={38} />
-        <div className="col g2">
-          <span className="market-name">{m.name}</span>
-          <span className="t-dim-12">{code}</span>
-        </div>
-      </div>
-      <div className="col g2 market-right">
-        <span className="market-price">
-          {price ? '$' + fmt(shownPrice, price.usd >= 1 ? 2 : 4) : '—'}
-        </span>
+    <button type="button" onClick={onClick} className={cx('market-row', staggerClass(index))}>
+      <AssetLogo code={code} size={38} />
+      <span className="market-main">
+        <span className="market-name">{m.name}</span>
+        <span className="market-code">{code}</span>
+      </span>
+      <span className="market-right">
+        <span className="market-price">{price ? '$' + fmt(shownPrice, price.usd >= 1 ? 2 : 4) : '—'}</span>
         <span className={cx('market-chg', chg >= 0 ? 'is-up' : 'is-down')}>{price ? pct(shownChg) : ''}</span>
-      </div>
-    </div>
+      </span>
+    </button>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo } from 'react';
 import type { WalletStore } from '@/state/store';
 import { NavMenu } from '@/app/NavMenu';
+import { SurfaceToggle } from '@/features/wallet/SurfaceToggle';
 import { EnableReceivingCard } from '@/features/cosmospay/EnableReceivingCard';
 import { Spinner } from '@/ui/Spinner';
 import { Tabs } from '@/ui/Tabs';
@@ -129,7 +130,11 @@ export function Home({ store }: { store: WalletStore }) {
             </button>
           )}
           {buildKind() === 'ext' ? (
-            <NavMenu store={store} />
+            <>
+              {/* popup ⇄ side panel, the extension's own choice of surface */}
+              <SurfaceToggle store={store} />
+              <NavMenu store={store} />
+            </>
           ) : (
             <button type="button" onClick={() => store.setScreen('settings')} className="home-icon-btn" aria-label={t('profile.settings')}>
               <GearIcon />

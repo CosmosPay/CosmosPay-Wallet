@@ -395,6 +395,16 @@ export function PowerIcon(p: IconProps) {
   );
 }
 
+/** A pen: sign something. */
+export function PenIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z" />
+      <path d="m13.5 6.5 4 4" />
+    </Svg>
+  );
+}
+
 export function GoogleLogo({ className }: IconProps) {
   return (
     <svg className={className} width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
