@@ -47,6 +47,7 @@ import type { AssetRef } from '@/lib/asset';
 import { shortIssuer } from '@/lib/asset';
 import { STELLAR_DECIMALS, toMinorUnitsBig } from '@/lib/amount';
 import { tNow } from '@/lib/i18n';
+import { memoForDisplay } from '@/lib/memo';
 import {
   ALLOWED_OPS,
   BOUND_TOLERANCE_BPS,
@@ -594,13 +595,8 @@ function memoOf(tx: Transaction): { memo: string; memoType: string } {
   if (!m || m.value == null) return { memo: '', memoType: 'none' };
   const type = String(m.type ?? 'text');
   try {
-    const v = m.value;
-    // MEMO_HASH / MEMO_RETURN carry raw bytes; show them as hex, not mojibake.
-    const memo =
-      v instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(v))
-        ? Buffer.from(v as Uint8Array).toString('hex')
-        : String(v);
-    return { memo, memoType: type };
+    // A text memo's words; MEMO_HASH / MEMO_RETURN's raw bytes as hex, not mojibake.
+    return { memo: memoForDisplay(m), memoType: type };
   } catch {
     return { memo: '', memoType: type };
   }

@@ -4,9 +4,10 @@ import type { SwapAsset, WalletStore } from '@/state/store';
 import type { LiquidityPool, LiquidityPosition } from '@/lib/cosmospay';
 import { EnableReceivingCard } from '@/features/cosmospay/EnableReceivingCard';
 import { AssetLogo } from '@/ui/AssetLogo';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
+import { Notice } from '@/ui/Notice';
 import { TokenAvatar } from '@/ui/TokenAvatar';
 import { trim } from '@/lib/format';
 import { cx } from '@/lib/cx';
@@ -48,7 +49,7 @@ function LpSection<T>({
       </div>
     );
   }
-  if (items.length === 0) return <div className="glass exchange-note lp-empty">{store.t(emptyKey)}</div>;
+  if (items.length === 0) return <Notice className="exchange-notice lp-empty">{store.t(emptyKey)}</Notice>;
   return <div className="col g10">{items.map(children)}</div>;
 }
 
@@ -72,7 +73,7 @@ function LpCard({
   onAction: () => void;
 }) {
   return (
-    <div className="glass card lp-item">
+    <div className="card lp-item">
       <div className="row between g10 lp-item-head">
         <div className="row g10">
           <TokenAvatar glyph="◇" tone="pool" size={34} />
@@ -143,9 +144,9 @@ export function Liquidity({ store }: { store: WalletStore }) {
   if (!enabled) {
     return (
       <div className="scr screen col pb-104">
-        <BackBar title={t('lp.title')} onBack={store.goBack} />
+        <ScreenHeader title={t('lp.title')} onBack={store.goBack} />
         <div className="lp-enable">
-          <div className="glass exchange-note">{t('lp.enableFirst')}</div>
+          <Notice className="exchange-notice">{t('lp.enableFirst')}</Notice>
           <EnableReceivingCard store={store} />
         </div>
       </div>
@@ -154,7 +155,7 @@ export function Liquidity({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('lp.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('lp.title')} onBack={store.goBack} />
 
       <div className="lp-tabs">
         {([['positions', t('lp.myPositions')], ['pools', t('lp.explore')]] as const).map(([key, text]) => (

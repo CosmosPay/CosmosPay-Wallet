@@ -118,9 +118,6 @@ export const MONAD_CHAIN_IDS: Record<ChainNet, number> = {
   testnet: MONAD_TESTNET_CHAIN_ID,
 };
 
-/** What one devnet airdrop asks for (1 SOL). Devnet refuses larger requests outright. */
-export const SOLANA_AIRDROP_LAMPORTS = 1_000_000_000n;
-
 /**
  * The least a Solana account with no data may hold (rent exemption). A SOL transfer that
  * would OPEN an account with less is refused by the runtime with an error about rent;

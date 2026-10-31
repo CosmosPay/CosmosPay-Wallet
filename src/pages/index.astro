@@ -27,8 +27,12 @@ import '@/styles/app.css';
       name="viewport"
       content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
     />
-    <meta name="theme-color" content="#080808" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark light" />
+    <!-- Sets data-theme (saved choice, else the device's) before the first paint. After
+         the theme-color meta, which it also updates; external because MV3 refuses inline
+         scripts. -->
+    <script is:inline src={`${import.meta.env.BASE_URL}theme-boot.js`}></script>
     <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
     <link rel="apple-touch-icon" href={`${import.meta.env.BASE_URL}favicon.svg`} />
     <meta

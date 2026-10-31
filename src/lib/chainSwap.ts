@@ -63,7 +63,12 @@ export type ChainSwapRefusalCode =
   | 'value' // a Monad swap sending more MON than confirmed
   | 'approval' // an approval that is not exactly (router, amount)
   | 'address' // a deposit address that is not an address on that chain
-  | 'timeout'; // the approval did not land in time
+  | 'fee' // a node's fees or gas would cost more than the network's fee reserve
+  | 'timeout' // the approval did not land in time
+  | 'funds' // the amount and the fee together are more than the account holds
+  | 'minimum' // below what the network accepts: dust, an account reserve, a new account's minimum
+  | 'memo' // a destination tag / comment the network would not carry
+  | 'unfunded'; // our own account does not exist on the network yet (nothing was ever received)
 
 export class ChainSwapRefused extends Error {
   readonly code: ChainSwapRefusalCode;

@@ -1,5 +1,5 @@
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Logo } from '@/ui/Logo';
 import { APP_VERSION } from '@/constants/app';
 import { buildKind, platformName } from '@/lib/platform';
@@ -29,7 +29,7 @@ export function About({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-30">
-      <BackBar title={t('about.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('about.title')} onBack={store.goBack} />
       <div className="about-hero">
         <Logo size={84} />
         <div className="about-title">Cosmos Pay</div>

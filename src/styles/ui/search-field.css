@@ -1,0 +1,91 @@
+/* =====================================================================
+   src/ui/SearchField.tsx — the app's one search box: a line pill, the glass inside its left
+   edge, the clear inside its right edge. The browser's own clear is hidden: one clear, drawn
+   like the rest.
+   ===================================================================== */
+.search-field {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.search-field-icon {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+  translate: 0 -50%;
+  pointer-events: none;
+}
+
+.search-field-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 44px 0 44px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.search-field.is-compact .search-field-input {
+  height: 40px;
+}
+
+.search-field-input::placeholder {
+  color: var(--muted);
+}
+
+.search-field-input::-webkit-search-cancel-button,
+.search-field-input::-webkit-search-decoration {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.search-field-input:hover {
+  border-color: var(--text);
+}
+
+.search-field-input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-color: var(--text);
+}
+
+.search-field-clear {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  translate: 0 -50%;
+  animation: fadeIn var(--dur-quick) var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out);
+}
+
+.search-field-clear:hover {
+  color: var(--text);
+}
+
+.search-field-clear:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.search-field-clear svg {
+  width: 16px;
+  height: 16px;
+}

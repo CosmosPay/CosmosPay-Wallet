@@ -31,7 +31,7 @@ function Card({
   busy: boolean;
 }) {
   return (
-    <div className="glass card enable-receiving-card">
+    <div className="enable-receiving-card">
       <div className="enable-receiving-title">{title}</div>
       <div className="enable-receiving-desc">{desc}</div>
       {note && <div className="enable-receiving-mismatch">{note}</div>}

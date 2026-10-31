@@ -14,7 +14,7 @@
  * screen that uses it, and no longer.
  */
 import { useCallback, useRef, useState } from 'react';
-import { reserveExternalTab } from '@/lib/openExternal';
+import { reserveExternalTab, type ExternalTab } from '@/lib/openExternal';
 import {
   SignInError,
   claimSignIn,
@@ -27,14 +27,17 @@ import {
   type SignInHandshake,
 } from '@/lib/signIn';
 import { signInEmailStart, signInEmailVerify, signInProviders, type SignInReady } from '@/lib/cosmospay';
+import { signInReturnUrl, waitForBinding } from '@/lib/signInBinding';
 import { report, reportError } from '@/lib/telemetry';
 import { EVENT } from '@/constants/telemetry';
 import {
+  SIGN_IN_BINDING_WAIT_MS,
   SIGN_IN_PROVIDERS,
   type SignInMethod,
   type SignInOffer,
   type SignInPhase,
   type SignInProvider,
+  SIGN_IN_SOURCE_ID,
 } from '@/constants/signIn';
 import type { TFn } from '@/lib/i18n';
 
@@ -65,6 +68,12 @@ export function useSignIn(
   const [pendingCode, setPendingCode] = useState<PendingCode | null>(null);
   const [methods, setMethods] = useState<SignInOffer | null>(null);
   const abort = useRef(false);
+  /** The provider's tab, while a sign-in started here is open in it: closed when it ends. */
+  const tabRef = useRef<ExternalTab | null>(null);
+  const closeTab = useCallback(() => {
+    tabRef.current?.close();
+    tabRef.current = null;
+  }, []);
 
   /**
    * Ask the server what it offers. On failure, offer nothing rather than a guess.
@@ -77,14 +86,19 @@ export function useSignIn(
     async (opts: { quiet?: boolean } = {}) => {
       try {
         const res = await signInProviders(await accessKey());
+        const providers = SIGN_IN_PROVIDERS.filter((p) => res.providers.includes(p));
         setMethods({
-          providers: SIGN_IN_PROVIDERS.filter((p) => res.providers.includes(p)),
+          providers,
+          // Only through Authentik, and only ids the server could have issued.
+          sources: providers.includes('authentik')
+            ? (res.sources ?? []).filter((s) => SIGN_IN_SOURCE_ID.test(s.id) && s.name.trim())
+            : [],
           email: res.email,
           mfaSettingsUrl: mfaSettingsLink(res.mfaSettingsUrl),
         });
       } catch (e) {
         if (opts.quiet) return;
-        setMethods({ providers: [], email: false, mfaSettingsUrl: null });
+        setMethods({ providers: [], sources: [], email: false, mfaSettingsUrl: null });
         flash((e as Error).message || t('signin.error.unavailable'), 'err');
       }
     },
@@ -120,9 +134,15 @@ export function useSignIn(
       try {
         setPhase('waiting');
         // The two `undefined`s keep the injectable sleep/poll seams at their defaults.
-        await waitForSignIn(hs, () => abort.current, undefined, undefined, await accessKey());
+        const { bound } = await waitForSignIn(hs, () => abort.current, undefined, undefined, await accessKey());
+        // After Authentik's emailed link the server sent this browser's return page a
+        // binding: with it, an existing account needs no second email. When it never comes
+        // (the link was opened in another browser) the claim goes on and the server emails
+        // its code.
+        const binding = bound ? await waitForBinding(hs.state, SIGN_IN_BINDING_WAIT_MS, () => abort.current) : null;
+        if (abort.current) throw new SignInError('cancelled');
         setPhase('claiming');
-        const claimed = await claimSignIn(hs, await accessKey());
+        const claimed = await claimSignIn(hs, await accessKey(), binding);
         await clearSignInHandshake();
         if (claimed.status === 'verify_email') {
           setPendingCode({ claimToken: claimed.claimToken, email: claimed.email, via: hs.provider });
@@ -139,9 +159,12 @@ export function useSignIn(
         return null;
       } finally {
         setUrl(null);
+        // Whatever the ending — signed in, refused, cancelled — the provider's tab has
+        // nothing left to show, and the person is back here.
+        closeTab();
       }
     },
-    [fail, flash, succeeded, t],
+    [fail, flash, succeeded, t, closeTab],
   );
 
   /**
@@ -151,17 +174,19 @@ export function useSignIn(
    * ends this process.
    */
   const startProvider = useCallback(
-    async (provider: SignInProvider): Promise<SignInReady | null> => {
+    async (provider: SignInProvider, source?: string): Promise<SignInReady | null> => {
       const tab = reserveExternalTab();
+      tabRef.current = tab;
       abort.current = false;
       setPendingCode(null);
       setPhase('opening');
       let opened: Awaited<ReturnType<typeof openSignIn>>;
       try {
-        opened = await openSignIn(provider, await accessKey());
+        opened = await openSignIn(provider, await accessKey(), source, signInReturnUrl());
         await saveSignInHandshake(opened.handshake);
       } catch (e) {
         tab.cancel();
+        tabRef.current = null;
         setPhase('idle');
         fail(e, provider);
         return null;
@@ -232,11 +257,12 @@ export function useSignIn(
   /** Stop waiting, or drop the code prompt. Nothing server-side needs undoing: both expire. */
   const cancel = useCallback(() => {
     abort.current = true;
+    closeTab();
     setPendingCode(null);
     setUrl(null);
     setPhase('idle');
     void clearSignInHandshake();
-  }, []);
+  }, [closeTab]);
 
   return {
     signInPhase: phase,

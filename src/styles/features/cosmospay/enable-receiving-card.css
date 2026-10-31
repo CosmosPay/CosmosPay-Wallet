@@ -1,25 +1,27 @@
-/* EnableReceivingCard — CosmosPay account card (Home + Swap). Composes the
-   .glass and .card utilities; only the extras live here. */
+/* src/features/cosmospay/EnableReceivingCard.tsx — the Cosmos Pay account card (Home +
+   Swap). The redesign's card: a line on the canvas, never a fill; the action in ink. */
 .enable-receiving-card {
   margin-bottom: 22px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
 }
 .enable-receiving-title {
-  font-size: 15px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 700;
   margin-bottom: 6px;
 }
 .enable-receiving-desc {
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--muted);
-  font-weight: 600;
   line-height: 1.5;
   margin-bottom: 14px;
 }
 .enable-receiving-cta {
   width: 100%;
   height: 54px;
-  background: var(--accent);
-  color: var(--on-accent);
+  background: var(--text);
+  color: var(--bg);
   border: none;
   border-radius: 999px;
   display: flex;
@@ -52,9 +54,9 @@
   letter-spacing: 0.3em;
   font-size: 20px;
   font-weight: 800;
-  background: var(--glass-soft-bg);
+  background: transparent;
   color: var(--text);
-  border: 1px solid var(--glass-border);
+  border: 1.5px solid var(--line-strong);
   outline: none;
   margin-bottom: 12px;
 }
@@ -80,9 +82,9 @@
   padding: 0 20px;
   font-size: 15px;
   font-weight: 600;
-  background: var(--glass-soft-bg);
+  background: transparent;
   color: var(--text);
-  border: 1px solid var(--glass-border);
+  border: 1.5px solid var(--line-strong);
   outline: none;
   margin-bottom: 6px;
 }

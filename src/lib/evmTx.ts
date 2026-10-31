@@ -16,7 +16,7 @@
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { bytesToHex as rawHex, concatBytes, hexToBytes as rawBytes } from '@noble/hashes/utils.js';
-import { toChecksumAddress } from '@/lib/chainAddresses';
+import { toChecksumAddress } from '@/lib/evmChecksum';
 
 /** `approve(address,uint256)` */
 export const ERC20_APPROVE_SELECTOR = '0x095ea7b3';

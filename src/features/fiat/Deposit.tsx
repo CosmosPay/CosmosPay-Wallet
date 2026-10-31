@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton, GhostButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { PAY_METHODS } from '@/constants/fiat';
@@ -68,7 +68,7 @@ export function Deposit({ store }: { store: WalletStore }) {
   if (!tokens.length) {
     return (
       <div className="scr screen col pb-104">
-        <BackBar title={t('fiat.depositTitle')} onBack={store.goBack} />
+        <ScreenHeader title={t('fiat.depositTitle')} onBack={store.goBack} />
         <div className="glass fiat-note-card fiat-note-card-gap">{t('fiat.noTrustedToken')}</div>
         {/* Was `add-asset`, which asks the user to pick an issuer by hand — and the
             issuer is the one field they cannot check by eye. A deposit is delivered by
@@ -85,7 +85,7 @@ export function Deposit({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('fiat.depositTitle')} onBack={store.goBack} />
+      <ScreenHeader title={t('fiat.depositTitle')} onBack={store.goBack} />
       <div className="desc deposit-desc">{t('fiat.depositDesc')}</div>
 
       <Select label={t('fiat.method')} value={method} onChange={changeMethod}>

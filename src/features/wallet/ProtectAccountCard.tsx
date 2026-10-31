@@ -5,7 +5,8 @@ import { useBusy } from '@/hooks/useBusy';
 import { recoveryShortfall } from '@/lib/balances';
 import { isAccessCode, normalizeAccessCode } from '@/lib/validate';
 import { RECOVERY_OFFER_DISMISSED_PREFIX } from '@/constants/recovery';
-import '@/styles/features/wallet/home.css';
+import { PrimaryButton } from '@/ui/Buttons';
+import { HomeCard } from '@/features/wallet/HomeCard';
 
 /** Read and write the per-account "not now". Browser storage can be absent or refuse. */
 function wasDismissed(address: string): boolean {
@@ -75,38 +76,33 @@ export function ProtectAccountCard({ store }: { store: WalletStore }) {
   };
 
   return (
-    <div className="glass card home-protect">
-      <div className="home-activate-title">{t('recoveryCard.title')}</div>
-      <div className="home-activate-desc">{t('recoveryCard.desc', { email })}</div>
+    <HomeCard title={t('recoveryCard.title')}>
+      <p className="home-card-desc">{t('recoveryCard.desc', { email })}</p>
 
       {affordable ? (
-        <button disabled={busy} onClick={() => run(() => store.enableRecovery())} className="home-activate-btn">
+        <PrimaryButton disabled={busy} onClick={() => void run(() => store.enableRecovery())}>
           {busy ? <Spinner /> : t('recoveryCard.cta')}
-        </button>
+        </PrimaryButton>
       ) : !sent ? (
         <>
-          <div className="home-activate-desc">{t('recovery.needXlm', { amount: missing })}</div>
-          <button
-            disabled={busy}
-            onClick={() => run(async () => setSent(await store.startRecoveryCode()))}
-            className="home-activate-btn"
-          >
+          <p className="home-card-desc">{t('recovery.needXlm', { amount: missing })}</p>
+          <PrimaryButton disabled={busy} onClick={() => void run(async () => setSent(await store.startRecoveryCode()))}>
             {busy ? <Spinner /> : t('recoveryCard.cta')}
-          </button>
+          </PrimaryButton>
           {/* The alternative to sponsorship: cover the shortfall and pay it yourself. */}
           {store.network.friendbot ? (
-            <button type="button" disabled={busy} onClick={() => run(() => store.topUpTestnet())} className="home-protect-later">
+            <button type="button" disabled={busy} onClick={() => void run(() => store.topUpTestnet())} className="link-btn home-card-link">
               {t('recovery.topUpTestnet')}
             </button>
           ) : (
-            <button type="button" onClick={() => store.go('receive')} className="home-protect-later">
+            <button type="button" onClick={() => store.go('receive')} className="link-btn home-card-link">
               {t('receive.title')}
             </button>
           )}
         </>
       ) : (
         <>
-          <div className="home-activate-desc">{t('signin.codeDesc', { email })}</div>
+          <p className="home-card-desc">{t('signin.codeDesc', { email })}</p>
           {/* The same input the sign-in screen uses, down to the one-time-code hint —
               it is the same six digits from the same kind of email. */}
           <input
@@ -114,21 +110,18 @@ export function ProtectAccountCard({ store }: { store: WalletStore }) {
             onChange={(e) => setCode(normalizeAccessCode((e.target as HTMLInputElement).value))}
             inputMode="numeric"
             autoComplete="one-time-code"
+            aria-label={t('cosmospay.codePlaceholder')}
             placeholder={t('cosmospay.codePlaceholder')}
-            className="input home-protect-code"
+            className="input home-card-code"
           />
-          <button
-            disabled={busy || !isAccessCode(code)}
-            onClick={() => run(() => store.enableRecovery({ code }))}
-            className="home-activate-btn"
-          >
+          <PrimaryButton disabled={busy || !isAccessCode(code)} onClick={() => void run(() => store.enableRecovery({ code }))}>
             {busy ? <Spinner /> : t('recovery.turnOn')}
-          </button>
+          </PrimaryButton>
         </>
       )}
-      <button type="button" onClick={dismiss} className="home-protect-later">
+      <button type="button" onClick={dismiss} className="link-btn home-card-link">
         {t('recoveryCard.later')}
       </button>
-    </div>
+    </HomeCard>
   );
 }

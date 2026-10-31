@@ -24,6 +24,28 @@ export function ageFromBirthdate(birthdate: string): number | null {
   return age;
 }
 
+/** The time-of-day key for an hour: night until 5, morning until 13, afternoon until 20. */
+function dayPart(hour: number): 'greet.morning' | 'greet.afternoon' | 'greet.evening' {
+  return hour < 5 ? 'greet.evening' : hour < 13 ? 'greet.morning' : hour < 20 ? 'greet.afternoon' : 'greet.evening';
+}
+
+/** Every line `welcomeGreeting` may pick at this hour. */
+export function welcomeGreetings(t: TFn, hour: number): string[] {
+  const key = dayPart(hour);
+  return [t(key), t(`${key}.2`), t(`${key}.3`), t('greet.first.1'), t('greet.first.2'), t('greet.first.3')];
+}
+
+/**
+ * The Welcome screen's greeting: someone with no wallet here yet, so no name and no
+ * "welcome back". Random like Unlock's, from the time-of-day lines plus the first-visit ones,
+ * so it varies from one visit to the next and always fits the hour. Callers memoize per
+ * mount, so it does not change under the person while they read it.
+ */
+export function welcomeGreeting(t: TFn, now: Date = new Date(), random: () => number = Math.random): string {
+  const pool = welcomeGreetings(t, now.getHours());
+  return pool[Math.floor(random() * pool.length)];
+}
+
 /** birthdate is ISO "YYYY-MM-DD" or ''. `gender` picks the right gendered copy
  *  (bienvenido/bienvenida/bienvenidx); missing (legacy wallets) falls back to 'x'. */
 export function getGreeting(name: string, birthdate: string, t: TFn, gender?: Gender): Greeting {
@@ -39,8 +61,7 @@ export function getGreeting(name: string, birthdate: string, t: TFn, gender?: Ge
     }
   }
 
-  const h = new Date().getHours();
-  const key = h < 5 ? 'greet.evening' : h < 13 ? 'greet.morning' : h < 20 ? 'greet.afternoon' : 'greet.evening';
+  const key = dayPart(new Date().getHours());
   // Random salutation, always coherent with the hour: the time-of-day variants plus
   // the generic "welcome back" lines. Callers memoize per mount so it doesn't
   // flicker between renders (a new one appears on each app open).

@@ -51,6 +51,7 @@ import {
   SIGN_IN_HANDSHAKE_KEY,
   SIGN_IN_POLL_INTERVAL_MS,
   SIGN_IN_POLL_TIMEOUT_MS,
+  SIGN_IN_RETURN_REFUSED,
   type SignInProvider,
 } from '@/constants/signIn';
 
@@ -99,6 +100,9 @@ export function mfaSettingsLink(url: string | null | undefined): string | null {
 
 /* ------------------------------- handshake ------------------------------- */
 
+/** Set once a server refused the return page: the rest of the session asks without it. */
+let returnRefused = false;
+
 /**
  * Open a provider sign-in: mint the PKCE pair, ask the server for the URL, and refuse a
  * URL that is not https before it gets anywhere near the OS opener — this is the boundary
@@ -107,12 +111,27 @@ export function mfaSettingsLink(url: string | null | undefined): string | null {
 export async function openSignIn(
   provider: SignInProvider,
   accessKey: string | null = null,
+  /** An Authentik source to start at (`SignInOffer.sources`); absent for the login page. */
+  source?: string,
+  /**
+   * The web build's return page (`signInReturnUrl`): the callback sends the browser there, and
+   * after Authentik's emailed link with the device binding. A server that does not list it
+   * refuses it, and the sign-in goes on without — its own page, and the code.
+   */
+  returnTo: string | null = null,
 ): Promise<{ authorizationUrl: string; handshake: SignInHandshake }> {
   const pkce = await newPkce();
-  const opened = await signInAuthorize(
-    { provider, codeChallenge: pkce.challenge, codeChallengeMethod: pkce.method },
-    accessKey,
-  );
+  // `source` only when there is one: an older server refuses the unknown field.
+  const body = { provider, ...(source ? { source } : {}), codeChallenge: pkce.challenge, codeChallengeMethod: pkce.method };
+  const to = returnTo && !returnRefused ? returnTo : null;
+  let opened: Awaited<ReturnType<typeof signInAuthorize>>;
+  try {
+    opened = await signInAuthorize(to ? { ...body, returnTo: to } : body, accessKey);
+  } catch (e) {
+    if (!to || !(e instanceof ApiRequestError) || e.code !== SIGN_IN_RETURN_REFUSED) throw e;
+    returnRefused = true;
+    opened = await signInAuthorize(body, accessKey);
+  }
   if (!isHttpsUrl(opened.authorizationUrl)) {
     throw new ApiRequestError(
       `${walletApiBase()}/auth/oauth/authorize`,
@@ -160,7 +179,8 @@ const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
  * Returns when the server says `authorized` — it never returns an identity, which only
  * the claim hands over. Every other status ends the wait with the reason; a 429 is the only
  * failure waited out, for as long as the server asked. Past the deadline the wallet stops
- * on its own rather than meeting the server's expiry.
+ * on its own rather than meeting the server's expiry. `bound`: the callback sent this
+ * browser's return page a device binding (`lib/signInBinding.ts`) for the claim.
  */
 export async function waitForSignIn(
   handshake: SignInHandshake,
@@ -169,15 +189,18 @@ export async function waitForSignIn(
   // `accessKey` is the SECOND argument rather than a closed-over one so the
   // injected poll in tests keeps its position. A stub that ignores it still
   // matches, which is what keeps this seam cheap.
-  poll: (state: string, accessKey?: string | null) => Promise<{ status: string; error?: string }> = signInPoll,
+  poll: (
+    state: string,
+    accessKey?: string | null,
+  ) => Promise<{ status: string; error?: string; bound?: boolean }> = signInPoll,
   accessKey: string | null = null,
-): Promise<void> {
+): Promise<{ bound: boolean }> {
   const deadline = handshake.startedAt + SIGN_IN_POLL_TIMEOUT_MS;
   for (;;) {
     if (shouldStop()) throw new SignInError('cancelled');
     if (Date.now() > deadline) throw new SignInError('timeout');
 
-    let res: { status: string; error?: string };
+    let res: { status: string; error?: string; bound?: boolean };
     try {
       res = await poll(handshake.state, accessKey);
     } catch (e) {
@@ -189,19 +212,26 @@ export async function waitForSignIn(
       throw e;
     }
 
-    if (res.status === 'authorized') return;
+    if (res.status === 'authorized') return { bound: res.bound === true };
     if (res.status === 'failed') throw new SignInError('failed', res.error ?? null);
     if (res.status !== 'pending') throw new SignInError('expired');
     await sleep(SIGN_IN_POLL_INTERVAL_MS);
   }
 }
 
-/** Redeem a handshake the server reported `authorized`. */
+/**
+ * Redeem a handshake the server reported `authorized`. `binding` only when the poll said
+ * `bound` and the return page left it: an older server refuses the unknown field.
+ */
 export async function claimSignIn(
   handshake: SignInHandshake,
   accessKey: string | null = null,
+  binding: string | null = null,
 ): Promise<Exclude<SignInClaim, { status: 'pending' | 'failed' | 'expired' }>> {
-  const res = await signInClaim({ state: handshake.state, codeVerifier: handshake.verifier }, accessKey);
+  const res = await signInClaim(
+    { state: handshake.state, codeVerifier: handshake.verifier, ...(binding ? { binding } : {}) },
+    accessKey,
+  );
   if (res.status === 'failed') throw new SignInError('failed', res.error);
   if (res.status === 'expired' || res.status === 'pending') throw new SignInError('expired');
   return res;

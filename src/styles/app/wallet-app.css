@@ -21,7 +21,28 @@
 /* key={screen} remount wrapper: fills the shell as a flex column.
    Compose with .col .f1 (there is no utility for the min-height unlock). */
 .wallet-app-screen {
+  position: relative;
   min-height: 0;
+}
+
+/* The top safe zone's edge (src/app/Shell.tsx sets .is-scrolled): a hairline where the
+   scrolled content goes under the strip above the screen. A line, never a shade. */
+.wallet-app-screen::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: var(--gutter);
+  right: var(--gutter);
+  z-index: 3;
+  height: 1px;
+  background: var(--line);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+
+.shell-content.is-scrolled .wallet-app-screen::before {
+  opacity: 1;
 }
 
 /* Full-screen intro overlay: background veil + logo above everything.

@@ -115,6 +115,144 @@ belong in CSS: `.glass` / `.glass-soft` / `.glass-bright` / `.input` /
 source of truth for colour. Do not reintroduce a TS module of style values — a
 constant holding a colour string can only ever be consumed inline.
 
+## The look: flat, matte, ink
+
+The redesign (branch `feat/design-migration`, Figma file "Cosmos Wallet") follows the Figma
+screens, the brand manual and snap.cosmospay.lat. Four rules:
+
+- **Flat and matte, drawn in lines.** No gradients, no translucent fills, no `backdrop-filter`,
+  no drop shadows, no glow blobs, no idle "breathing" animation — and, the user's rule, no grey
+  fills wherever a line will do: a card, a track, a divider, a selected row is `--line` on the
+  canvas (`.outlined`), a text field is `--line-strong` (3:1 on `--bg`, WCAG 1.4.11), and a
+  popup (sheet, dropdown, toast) is the canvas colour with a line. The old wallet is discarded
+  (the user's call): `--glass-bg`/`--glass-soft-bg`/`--danger-soft`/`--nav-bg` are now the canvas
+  and `--glass-*-border` the lines, so a class still named `.glass`/`.glass-soft` draws the new
+  way; `BackBar` is gone (every screen uses `ScreenHeader`), `.label-up` is the sentence-case
+  label, glyphs drawn as icons (✓ › ▼ ⇅ ✎ emoji) are `ui/Icons`, and a list is `ui/ListRow` rows
+  between lines. Write new code with the new pieces, never the old names. `base.css` still pills
+  every `<button>` with `!important` — draw a row's divider with a pseudo-element, not a
+  `border-bottom`, and give a card that is a button its own radius with `!important`.
+- **The voice is tú** (the user's call): the Spanish copy never uses voseo ("Prueba", "Ingresa",
+  "Puedes", never "Probá", "Ingresá", "Podés").
+- **Ink is primary, blue is tertiary.** Primary buttons are solid ink (black in light, white in
+  dark); secondary buttons are the 1.5px outline alone. `--brand` is the Figma palette's one
+  blue, `#4d66ff`, identical in both themes — never a derived shade. It is for focus rings, the
+  active indicator and the outlined button's hover fill, never a button's resting colour.
+- **Buttons ink on hover**, like snap's: `.ink` + `inkHandlers` from `src/lib/ink.ts` grow a
+  circle of `--ink` from where the pointer entered (`PrimaryButton`/`GhostButton` already do).
+  Solid buttons fill with the canvas, outlined ones with the brand blue. Touch has no hover.
+- **Every move eases** (the user's rule): transitions and animations use the motion tokens in
+  `theme.css` (`--ease-out` in, `--ease-in` out, `--ease-in-out` between, `--dur-quick/base/slow`)
+  — never a bare jump, never `linear` except a spinner's endless turn. A state change on a
+  control (colour, border, check) transitions too; a theme flip cross-fades through
+  `document.startViewTransition`. Setting `transition` on a button replaces the global press
+  transition, so keep `transform` in its list. Check motion from PAINTED frames (headed Chrome +
+  CDP screencast), not computed styles: a slide can compute fine and never reach the screen.
+- **Every text colour is AA on `--bg` and on `--glass-bg`.** `--dimmer` is 3:1 and only for
+  large figures and marks. Check new tokens with a contrast calculator before adding them.
+
+**Theme.** The preference is `system` (default: follows the device, live), `light` or `dark`
+(`usePreferences`: `themePref` / `setThemePref`; `theme` is what is painted). Welcome and Unlock
+carry the quick controls (`src/ui/QuickPrefs.tsx`: language sheet + one-tap theme flip);
+Settings offers all three. `public/theme-boot.js` paints the first frame before any module
+runs and holds its own copy of the storage key and colours — `tests/unit/themeBoot.test.ts`
+keeps them equal to `src/state/usePreferences.ts`.
+
+**Language selectors show the flag and the language's own name** (`ui/LangFlag`): Spanish →
+Argentina, English → USA, Portuguese → Brazil, German → Germany, French → France — the
+user's call, the same as snap.cosmospay.lat. The flag SVGs load lazily; keep them out of
+the entry chunk.
+
+**A redesigned screen uses only the new pieces — never mix old and new on one screen.**
+
+| New | Replaces |
+| --- | --- |
+| `ui/ScreenHeader` — `h1` title, muted `desc`; its back arrow goes on the shell's fixed bar (`ui/ScreenBar`), top left | the deleted `BackBar` (back on the right) + `Desc` / `.desc` paragraphs |
+| `ui/Tabs` — a WAI-ARIA tablist on a line, the chosen tab on the brand blue (Home, Send, Receive, Markets) | pill strips of `<span onClick>` |
+| `ui/ListRow` — ringed line icon, name and line, chevron; rows between lines | glyph rows in a grey card (`OpRow`, deleted) |
+| `ui/ChoiceCard` — whole-card option with icon, title, line, chevron | ad-hoc option buttons |
+| `ui/Segmented` — one question, two or three equal answers, one always chosen; a radio group with a sliding thumb | tabs or card pairs for a choice whose answer needs explaining before it is taken (`BackupChoice`) |
+| `ui/Notice` (`info` / `danger`) — mark + text, may hold a checkbox or a button | `.glass-soft` note boxes, pink warning boxes |
+| `.link-btn` — ink, bold, underlined, 44px target | coloured or grey `div onClick` links |
+| `PrimaryButton` / `GhostButton` (ink) | `.glass-soft` buttons, per-provider colours |
+| `CheckRow` (real checkbox in a label), `Field` (sentence-case muted label) | `div` checkboxes, `.label-up` uppercase labels |
+| `ui/Icons` (line icons + `CosmosMark`, `GoogleLogo`, `GitHubLogo`) | emoji and text glyphs as icons (`‹`, `▼`, `✓`, `👋`) |
+
+The onboarding (Welcome → `backup-choice` / `restore-choice` → words or account → lock),
+Unlock, the device-unlock offer and Success are done. **The wallet follows the Figma's Home**
+(node 1:2, plus its Activity variant 108:272): the bar is Home · Wallet · the QR scanner raised on
+the brand blue · Earn · More (`app/navModel.tsx`; the rail marks the active place with the same
+blue line). Investing (Earn, DeFindex, liquidity) is switched off for now (`EARN_ENABLED` in
+`src/constants/features.ts`): `isScreenOn` in `lib/screens.ts` drops its tab from every bar and
+keeps `/earn`, history (`canEnter`), a kept session and `store.go` out of its screens. Home is greeting, total balance with its 24h move, four ringed actions, and the tabs
+Activos (every network's holdings, a network filter, each token's network coin on its corner) ·
+Actividad (in days, `ActivityList`; a send is red, mark and amount, money received is green, a swap
+blue, and a commission keeps the ink with its own receipt mark, `FeeIcon` — never a send's arrow) · Análisis (the split by network and asset) · Favoritos.
+**The Wallet tab** (`features/wallet/Wallets.tsx`) is everything about the wallet itself, so using
+several networks is one place: the active wallet's addresses — one row per address, not per network
+(the sixteen EVM networks are one 0x account) — with copy and the QR on Receive, the Stellar ledger,
+recovery (account recovery, transfer to another device, the phrase) and the wallets on this device. **Adding a wallet is one short flow**
+(`features/onboarding/AddWallet.tsx`, the user's call): create (a phrase to keep) or import, a name,
+done — sealed under the session's key with the person's own profile, no account, no profile and no
+password screen (`prepareNewWallet` / `prepareImportedWallet` → `addWalletToDevice`). Send,
+Receive and Swap choose the network with `features/money/NetworkPicker.tsx` — a searchable list
+grouped by shared address, in a sheet on a phone and a dropdown on a desktop; thirty-odd networks
+do not fit a row of tabs. **One question per step** (the user's
+call: a screen with every field was too much at once): `profile-setup` walks
+`PROFILE_STEPS` (`constants/onboarding.ts`) — the name, the email, its code, the age and gender,
+the two optional consents — as `goStep` stops, under a line per step and "Paso n de 5"; Enter in a
+step's field goes on. A new step goes in that list, not as another field on an existing one.
+**Using the wallet creates its Cosmos Wallet account** (the user's call): the email step sends a
+code (`sendProfileEmailCode`, the sign-in's `email/start`), the code step proves the inbox
+(`verifyProfileEmailCode`), and `finishOnboarding` ends with the same `finishSignIn` a sign-in
+does — signed by the key just sealed, with no backup, since the twelve words are this wallet's
+backup — and seals the account's keys with the wallet. Best-effort: the session token lives in
+memory only, a failed `finish` never refuses the wallet, and Home's card offers the account again.
+A server that does not answer the code (no route, offline) lets the person go on without the
+account ("Seguir sin cuenta por ahora"); a refusal with a reason (a cooldown, a bad address) is
+said on the step. A wallet added to a device that already has one (`addingWallet`) skips the code
+and is created without an account; Home offers it.
+
+**Welcome has no logo and no headline on a phone**: its hero is a provisional video
+(`features/onboarding/WelcomeHero.tsx`, files in `public/brand/welcome/`, rendered by the
+Remotion project `cosmos-wallet-welcome-motion` outside this repo). An intro plays once per
+session, after the boot splash lifts (`lib/appReveal.ts`), and cuts to a seamless loop; one
+set per theme, WebM then MP4, the loop's poster as the fallback. To replace it, keep the
+file names and that contract. On a desktop window the hero is in the brand panel, so the
+column greets instead (`.welcome-head`, shown only in the split by `.auth-only`): the Cosmos C
+alone — never the full lockup, the user's call — over a greeting that varies per visit and
+with the hour (`welcomeGreeting` in `lib/greeting.ts`, Unlock's pool minus the name and the
+"welcome back"). No pause control and no reduced-motion stop, both the user's
+call — WCAG 2.2.2 asks for one; revisit with the final hero.
+
+**Before a session the desktop window splits in two** (`AUTH_SCREENS` in `lib/screens.ts`):
+the flow on the left in a 480px column, the brand panel (`app/AuthAside.tsx`: the hero motion,
+language and theme) on the right. Chrome like the rail: `Shell` renders the panel, CSS shows it
+(`shell.css`), and it persists across the steps so the motion never restarts. A screen marks what
+the panel replaces with `.auth-chrome` (hidden in the split) and asks to be centred with
+`.auth-center`. Every step (`.screen`) is one block centred in that column: the phone's
+`.spacer`, which puts the CTA at the bottom edge where a thumb is, becomes a fixed 32px gap
+there, so a monitor-tall window does not open half a screen between content and button. A
+step taller than the window starts at the top and scrolls (`safe center`). **Design every
+step for both** — the phone column and that desktop block — and check both before calling
+it done. Chrome that frames the flow (the way back, language, theme) sits in the corners of the
+WINDOW on a desktop, not of the 480px column: the column is for reading, the window is the frame.
+**And the window scrolls the column** (the user's call): `.screen` is the one scroller, so a
+wheel beside it or over the brand panel used to find nothing to move. `Shell` forwards those
+(`lib/scrollForward.ts`), and the scroll keys when no control has the focus; whatever scrolls by
+itself, a dialog or dropdown, and ctrl+wheel are left alone.
+**The split is measured for a desktop** (`src/styles/app/auth-split.css`): phone sizes read small
+on a monitor (the user's call) and `zoom` is ruled out, so the split sets one factor `--k` by
+window size (1.12 from 1024×720, 1.25 from 1440×860, 1.35 from 1800×900, 1.55 from 2400×1200) and
+re-measures the flow's pieces there as phone size × `--k` — column, type, buttons, fields, cards,
+icons, the corners. A new piece in a pre-session step gets its line in that sheet too. Popups follow the same rule by device: a `Dropdown` under its trigger on a
+desktop window, a `Sheet` from the bottom on a phone — chosen at the tap with `isDesktopLayout()`
+(`lib/layout.ts`), the one place JS reads the breakpoint.
+
+**Every screen change inside a flow goes through `navigate`** (the store's `setScreen`), store
+actions included: a raw `setScreen` leaves no entry on the back stack, and "back" then skips
+the screen's parent.
+
 ## Writing CSS here
 
 Ship both the prefixed and unprefixed form of a property when Safari still needs
@@ -138,10 +276,88 @@ test:responsive` guards the column across 320px → 1920px.
 
 Past `--desk-min` the app takes the WHOLE window: edge to edge, no card and no cap, a
 navigation rail down the left edge (`src/app/DesktopNav.tsx`) and the screen column
-centred in what is left. **No screen knows this happened**, and none should — all forty
-are built for a narrow column, and stretching a payment form to 1900px is how a layout
-pass silently restyles work nobody re-checked. The frame is what fills the screen; the
-reading column inside it stays capped at `--desk-content-w`.
+centred in what is left. A screen built for the narrow column does not know this happened,
+and must not — stretching a payment form to 1900px is how a layout pass silently restyles
+work nobody re-checked. The frame fills the screen; the reading column inside it stays
+capped at `--desk-content-w`.
+
+**Screen by screen, the inside becomes a PC layout too** (the user, 2026-10-29: inside, the
+wallet looked like a phone). A screen redesigned for a PC window says so with `wide: true`
+in the screen table (`src/lib/screens.ts`); the shell then gives it the whole width beside
+the rail (`--desk-wide-w: 100%`, gutters `clamp(32px, 3.2vw, 64px)`) via
+`.shell-content.is-wide`, and the screen's own sheet lays it out in columns under
+`@media (min-width: 1024px) { .has-desktop-mode .is-wide … }` — use the width for columns, never
+for one stretched row. Home is the first: who you are across the top, the balance, actions and
+cards in a left column that stays in view, and on the right the tabs with the assets as a table
+(asset, price, 24 h, balance, value; each cell placed by column number so a missing one leaves a
+gap, figures on one line). Mark a screen `wide` only in the change that gives it that layout, and
+check it at 1366 and 1920. The logo at the top of the rail (and of the extension's menu) is a
+button to Home, inside the session. Home's header ends with the Stellar network pill — always,
+mainnet too — that switches networks (`HomeNetworkButton`), the notifications bell from the Figma
+(`HomeNotifications`, `lib/notifications.ts`: payments, swaps and the account's creation from the
+loaded history, a blue dot for what came after the last open, kept per wallet and network), and
+the settings; each opens a panel under it on a PC window and a sheet on a phone.
+
+**Home's assets are what is held, and the tools are a search and a network selector** (the user:
+the old chips showed Stellar, Solana and Monad whatever was held, squashed). `lib/assetList.ts`:
+Stellar lists XLM and its trustlines; every other network — Solana and Monad included — only a
+balance above zero. `AssetToolbar` is a search (name, symbol or network; every word, accents
+aside; `ui/SearchField`, the app's one search box) and a network selector over every network
+with an address in the mode: the held ones first with their value and asset count, then the
+rest saying "no assets" or "balance unavailable" (a failed read is never shown as zero). A
+network with nothing shows so, with "Receive on …". No chips: thirty-odd networks do not fit a
+row. The search takes all the room the selector leaves; "all networks" wears the Cosmos Wallet
+mark (`ui/NetworkSelect`, shared with "add an asset").
+
+**Send is one structure on every network** (the user: it was "desestructurada"). What (an asset
+card opening every sendable asset of every network the wallet signs on, held first, with a
+search — choosing the asset chooses the network: `SendAssetPicker`), to whom (one field, paste and
+scan inside; pasting a SEP-7 link fills the draft), how much (one field, the code and "Max"
+inside; worth and available under it), Stellar's memo folded until asked for or set, then the
+button — docked over the keyboard on a phone, right after the form on a PC window. The pieces are
+`features/money/SendParts.tsx`; Stellar and `ChainSendForm` both use them. No network picker and
+no percentage chips.
+
+**Receive is laid out like Send**: the network card (`NetworkPicker variant="card"`, its line
+"same address on N networks" or the coin; the panel grouped by shared address), then the QR on
+the canvas with the network's mark over its centre — generated at error correction `H` for that
+(`qrDataUrl(text, 'H')`; verified decoding with jsQR) — the whole address, copy and share, and a
+plain note (not an error) that only this network's assets arrive. On a PC window the QR stands
+beside the address.
+
+**Swap works like the developer platform's swaps** (the user's call): one widget (`Swap.tsx`) —
+"you pay" / "you receive" panels with a token button naming its network, the flip on their seam,
+the quote following the inputs on its own (debounced, refreshed while it sits, quoted whatever
+the balance; an answer for stale inputs dropped), an estimate from NEAR Intents' prices before it,
+the rate (tap to invert) with the details folded under it, slippage in the header's gear (Auto,
+0.5, 1, 2%) threaded through every quote AND its swap, and one button that says what is missing;
+quote errors show under it, never as toasts. Routes are `lib/swapCatalog.ts` (the platform's
+catalogue, unit-tested): Stellar DEX / Jupiter / Kuru Flow within Stellar, Solana, Monad; NEAR
+Intents across networks or within any network without a market. The wallet PAYS only from networks
+it signs on (off the three markets, only the coin or a registry token — `sendNetworkTransfer`'s
+rule; EVM and Fogo origins fund the deposit through `submitCrossChainFromNetwork`) and RECEIVES only
+on its own addresses. A test network swaps on Stellar's market only. Not ported from the platform:
+USDT0's LayerZero route, a recipient other than the wallet, a token pasted by address.
+The token list is a sheet from the bottom on a phone and a dialog in the middle of a PC window
+(`Sheet placement="center"`), like the platform's modal — the user's call: never a bottom sheet on a PC.
+
+**"Add an asset" covers every network.** Stellar keeps its trustline flow (verified registry rows
+with their issuer first; the rest, the warning and the manual form only under the Stellar filter).
+Every other network lists its coin and registry tokens as "included" and each other token NEAR
+Intents lists (`lib/assetCatalog.ts`, from `store.intentsAssets`) as a switch: on, the token is
+tracked (`lib/trackedTokens.ts`, per wallet in storage, checked on the way in and out) and read
+with the registry's by `readNetworkBalances(network, address, tokens)` — EVM, SVM, Tron, NEAR
+(`ft_balance_of`), Sui, Aptos/Movement; not TON jettons or Starknet yet. A tracked token is listed
+even at zero, is priced ONLY by NEAR Intents for that contract (never by symbol or parity), and is
+never payable: `sendNetworkTransfer` still pays the coin and registry contracts only. In test
+mode the catalog is each test network's coin and tracked tokens are neither read nor listed —
+they are main-network contracts.
+
+**The top and bottom safe zones.** Inside a session a PC window keeps 32px above the screen
+(`.has-rail`), with the rail's logo on the header's line; a phone keeps 14px plus the status-bar
+inset, and the bottom bar grows by the gesture inset. Once a screen has scrolled, a hairline marks
+the top edge where content goes under that strip (`.is-scrolled`, set by `Shell.tsx`; drawn by
+`.wallet-app-screen::before`), so text is never just cut in half there.
 
 Everything the mode does lives in `src/styles/app/shell.css` and
 `src/styles/app/desktop-nav.css`, under the `--desk-*` tokens in `theme.css`.
@@ -398,7 +614,12 @@ the wallet's own native plugin. Eight rules, and most of them are holes it shipp
   (`foreignEnvelopeProblem`: no operation of another source, ours above all, which would spend
   from this account under a prompt naming the sub-account; no fee bump). The confirmation names
   the account in full (`confirmSig.signForeignMsg`); anything else is refused
-  (`sign.foreignSource`, `sign.foreignOps`). The two enrolment paths
+  (`sign.foreignSource`, `sign.foreignOps`). A pasted envelope names no network, and a signature
+  commits to one passphrase, so the screen asks which network it is for ("Red de la transacción",
+  the wallet's own by default) and `signRawXdr(xdr, networkId)` reviews, checks control and signs
+  for that one without moving the wallet's mode: Cosmos Pay's private accounts are on Testnet, and
+  a Mainnet wallet signing them by default was why the platform could not use its signatures
+  (2026-10-29). The two enrolment paths
   also check the epoch **on both sides of `enableDeviceUnlock`, and undo the enrolment if it
   moved.** Checking only before is what the code did and it guarded nothing: the OS sheet
   lives *inside* that call and the envelope commits *after* it, so the idle auto-lock fires
@@ -441,8 +662,55 @@ key-auth (the shared public key in `apikey`, awaited through `warmPublicKey` so 
 never sends none) proves a wallet is calling through the gateway, and the sign-in itself
 proves the person.
 
-**Cosmos Pay = Authentik.** The preferred door is the operator's OpenID Connect provider,
-shown as "Cosmos Pay" (`SIGN_IN_PROVIDERS[0]`). The community server runs it as a confidential
+**Once the inbox is proven, the old password is not asked for** (the user's call). A restore
+whose backup has the EMAIL door, on a sign-in carrying an ID token both recovery servers verify,
+opens through that door on its own (`tryEmailRestore` → `recoverBackup`) and the person only sets
+this device's lock — on a first run where passkeys work, one tap (`recoverBackupWithPasskey`: the
+passkey becomes the device's lock and, with the email door, the backup's doors; nothing typed),
+else a new password; "use my previous password" is a link. A passkey door this device can use
+stays first (one tap). A sign-in without an ID token (the in-app email code) cannot show the
+servers one, so each recovery server emails its own code and the screen asks for both
+(`tryEmailRestore` → `codes`, `submitRecoveryCodes`) — still no password. Locally the email door needs the recovery servers
+(`npm run dev:local -- all` on the community server; the wallet's `.env` points at :3002/:3003),
+and only a backup sealed while they answered has the door — an older one is given it the next
+time it is restored with its password. This lowers nothing: "forgot the password" already
+restored with the inbox alone, through the same two servers; it only stops being the long way.
+
+**The provider's tab closes itself when the sign-in ends.** The wallet keeps the handle of the
+tab it opened (`reserveExternalTab` → `ExternalTab.close`) and closes it when the poll ends or the
+person cancels; and the page the callback lands on closes its own tab too, for the case where the
+provider's cross-origin isolation took the tab out of the wallet's reach — the web build's return
+page (`src/pages/signed-in.astro`, sent as `returnTo` by `signInReturnUrl`), or, on the extension
+and the apps, the community server's own page (one script, `window.close()`, allowed by hash in its
+CSP). A tab the browser will not let a script close — one opened from a mail — stays on one line
+("Listo", in the wallet's look); the wallet's own tab carries on alone. A server that does not
+list the return page (`WALLET_AUTH_RETURN_URLS`) refuses it, and the wallet asks again without it
+(`SIGN_IN_RETURN_REFUSED`) for the rest of the session.
+
+**Cosmos Pay = Authentik.** The preferred door is the operator's OpenID Connect provider. When
+the deployment lists Authentik's sources (`sources` on `/auth/providers`, from the server's
+`WALLET_AUTH_OIDC_SOURCES`), the wallet shows one button per source — Google, GitHub… — that
+starts the Authentik sign-in at that source (`source` on `/oauth/authorize`; the server opens
+Authentik's `wallet-source-{slug}` flow with the authorization request as `next`), and no
+generic button. Without them it shows one Authentik button, "Cosmos Pay" (`SIGN_IN_PROVIDERS[0]`).
+`source` is only ever sent to a server that listed it: an older one refuses unknown fields.
+The source `email` (`EMAIL_SOURCE_ID`) is Authentik's email sign-in — a link it emails — and when
+listed it IS the email button (the in-app code is not offered beside it): its login proves the
+inbox and carries the ID token the recovery servers accept, so one email restores a backup with
+no password. Without it, the in-app code stays, and a restore asks each recovery server for its
+own code instead (`tryEmailRestore` → `codes`).
+**That one email counts only in the browser that opened the link** (the user's call: "bind it to
+the device"). The link proves whose inbox it is, not that the wallet holding the handshake is the
+one there — anyone can start a sign-in and send someone its URL. So the server's callback sends a
+one-time **device binding** in the fragment of its redirect to the web build's return page; that
+page (`app/SignInReturn.tsx`) wipes it off the address bar and leaves it in `localStorage` for the
+tab polling that `state` (`lib/signInBinding.ts`); the poll says `bound`, the tab waits up to
+`SIGN_IN_BINDING_WAIT_MS` for it and claims with it, and only then does an existing account skip
+the server's code. A wallet in another browser never has it and gets the code — an iPhone PWA
+whose mail opens Safari too, and the extension and the apps, which send no return page. Never
+send `binding` unless the poll said `bound` (an older server refuses the field), and never let
+the return page load anything that could read its URL first. `npm run test:e2e:signin-binding`
+moves the value between two tabs of one real browser. The community server runs it as a confidential
 client with its own PKCE and nonce and verifies the ID token against Authentik's published
 keys; Google and GitHub sit behind Authentik as sources. The direct Google/GitHub doors remain
 only for a deployment without Authentik, and `GET /v1/wallet/auth/providers` says which exist.
@@ -482,6 +750,55 @@ Eight rules:
 - **A finished sign-in lives in memory.** Its session token can create an account; the store
   keeps it in `signInDraft` for as long as the screen that uses it and exposes a summary to
   components, never the token or the box.
+
+### Easy recovery: a wallet crosses devices with a QR and a code
+
+`src/lib/easyRecovery.ts` (crypto, QR, code), `src/state/useEasyRecovery.ts` (the two halves),
+`features/onboarding/EasyRecoveryReceive.tsx` (new device: "Ya tengo una wallet → Desde otra
+Cosmos Wallet") and `features/settings/EasyRecoverySend.tsx` (old device: Ajustes → Transferir a otro
+dispositivo). The mailbox is the community server's `easy-recovery` module (its own repository):
+a session that expires in five minutes, holds one sealed payload, and is burned after five
+wrong codes.
+
+```
+NEW  X25519 key pair → opens a session → QR: session id + its PUBLIC key (no server URL)
+OLD  scans → confirms ("this device is mine") → unlocks → seals mnemonic|secret to that key
+     (ephemeral X25519 → HKDF-SHA256 → AES-256-GCM) → leaves it with a random 5-digit code
+     → SHOWS the code
+NEW  the person types the code → the server releases the payload only for it → opened here
+     → the ordinary import (profile, then this device's password or passkey)
+```
+
+Five rules, each a way this turns into a wallet thief:
+
+- **The code goes from the OLD device to the NEW one, never the reverse.** The abuse is a page
+  that shows its OWN QR ("scan to claim…"): whoever made it holds its private key and opens the
+  payload the moment they get it — and the server hands it over only for the code on the
+  victim's screen. That is why the code screen says never to dictate it, and why the
+  confirmation asks the person to state the other device is theirs and in front of them.
+- **The QR names no server.** Each device uses its own `walletApiBase()`. A QR that could point
+  the old device at a server of its choosing would also choose who checks the code.
+- **The receiver's private key lives in a ref** (`useEasyRecovery`), never in state, storage or
+  the URL, and is wiped when the session ends either way. One key, one session.
+- **`EASY_RECOVERY_HKDF_INFO` and the wire format never change** within `v1`: two devices may
+  run different releases. A new format is `v2` in the QR and in the payload's version byte.
+- **A re-keyed (SEP-30 recovered) wallet is refused**: its account is not its key's own address,
+  and the other device would import the wrong one.
+
+`tests/unit/easyRecovery.test.ts` pins the crypto and the QR parser; `npm run
+test:e2e:easy-recovery` moves a wallet between two real browsers against an in-memory mailbox and
+checks the server never sees the phrase.
+
+### Importing from another wallet
+
+No Stellar wallet hands a page its secret — Freighter, LOBSTR and the rest keep it that way on
+purpose — so "Desde otra wallet" (`features/onboarding/ImportWallet.tsx`) is a guide: the wallets
+by their logo (`IMPORT_WALLETS` in `constants/importWallet.ts`, icons in `public/brand/wallets/`),
+then that wallet's own steps to its phrase or secret key, and the paste goes through
+`importFromText`, the same import as the twelve words. The LOBSTR and Trust Wallet steps follow
+their official help centers; Freighter, xBull and Rabet publish none, so theirs name the menu
+loosely — check a wallet's UI before rewording its steps. A new wallet is a row there, its icon,
+and its two `importWallet.<id>.s1/.s2` keys.
 
 ### Passkeys: a password nobody types
 
@@ -785,6 +1102,79 @@ go last, as they went on.
 a way an envelope can look like a recovery setup and be a takeover) and the challenge
 refusals. Add a case there before changing anything in `assertRecoveryTemplate`.
 
+## The wallet is every network NEAR Intents settles, not a Stellar wallet with extras
+
+The user's call. `src/constants/networks.ts` is the registry: the 35 networks the community
+server's cross-chain swaps accept, under the server's own ids (`tests/unit/networks.test.ts` pins
+the list), each with its address family, coin, EVM chain id, a public keyless CORS endpoint for its
+balance, the canonical stablecoin contracts read there and its explorers. Five rules:
+
+- **One phrase, one address per family.** `lib/chainAddresses.ts` derives every family from the
+  recovery phrase at the paths the mainstream wallets use, so the same phrase shows the same
+  addresses elsewhere; the entry keeps them as `networkAddresses` (`v` = `NETWORK_ADDRESSES_VERSION`:
+  bump it when a family is added and every wallet derives again on its next unlock). A family the
+  build cannot derive is ABSENT, never guessed — the screens only offer networks with an address
+  (`store.addressOn`). The EVM networks share one 0x account, Solana and Fogo one SVM account, Aptos
+  and Movement one Move account; screens say so rather than listing one address thirty times.
+- **No wallet is Stellar-only.** A wallet imported from a bare Stellar secret gets its other networks
+  from the phrase that secret derives (`networksPhraseFromSecret`: HKDF of the seed → 12 words), so
+  the secret alone — backup, transfer, export — always brings them back; nothing new is stored or
+  backed up. Export shows that phrase so another wallet can hold those addresses. Never change its
+  derivation: every address it ever gave would stop being this wallet's.
+- **The wallet sends on every network it holds an address on** (the user's call, 2026-10-29:
+  "enviar en todas las redes"). Stellar, Solana and Monad keep their own paths; `lib/networkSend.ts`
+  pays from the EVM networks and Fogo itself and hands every other family to its sender under
+  `lib/send/` (UTXO chains, Zcash, XRP Ledger, Tron, TON, NEAR, Sui, Aptos/Movement, Hyperliquid,
+  Cardano, Starknet), all on one contract, `lib/send/types.ts`: the node's identity (genesis, chain
+  id, network id) is checked against a constant BEFORE signing and the signature bound to it where
+  the format allows; one send never costs more than `SEND_FEE_RESERVE`; only the coin or a registry
+  token is paid, whatever a caller passes; refusals are `ChainSwapRefused` codes the screen renders.
+  The key is derived at the moment of signing by `networkSecret` (`lib/chainKeys.ts`) in the shape
+  its sender takes, and refused unless it spells the address on screen (`addressOfKey`, the one
+  encoder the shown addresses use too). XRP's destination tag and TON's comment ride as the
+  transfer's memo (`MEMO_NETWORKS`); a swap deposit that names a memo on any other network is
+  refused rather than paid without it. `ACCOUNT_KEEP` is what an account can never spend (XRP's
+  reserve, a TON wallet's storage rent), held back by the form with the fee (`COIN_SEND_HOLDBACK`
+  where a coin send needs far less than the cap: TRX). Where the signature does not commit an
+  input's value (Dogecoin, Dash: legacy sighash) the sender takes each value from the previous
+  transaction's own bytes, hash-checked, never from the API. Verified end to end with real
+  test-network sends on XRPL (also through the Send screen), NEAR and Movement; every other family
+  against published vectors and its nodes' simulate / decode / dry-run endpoints, never a mainnet
+  broadcast. Aleo has no address here, so no send.
+- **Balances are unknown before they are zero.** `lib/networkBalances.ts` reads each network from
+  its public API; a read that fails is `null` (no rows), never 0, and only what is held is listed.
+  **A mode shows its own networks, never the other's** (the user, 2026-10-29: "no tiene sentido si
+  está en testnet que se muestren saldos de mainnet"). The Testnet/Mainnet pill moves EVERY network:
+  Solana and Monad to devnet/testnet (`constants/chains.ts`), the rest to the test networks in
+  `constants/testnets.ts` (29 in all, each endpoint probed: keyless, CORS, EVM chain ids checked).
+  `lib/testnets.ts` gives a network as it is in a mode (`networkDefOn`: its own endpoint, name and
+  chain id, coin only, never a main definition), its test name, and the same key's address there
+  (`tb1…`/`tltc1…`/`addr_test1…` re-encoded; the same string elsewhere). `store.addressOn` answers
+  in the mode, so a network with no test network here (Scroll, Dogecoin, Bitcoin Cash, Dash, Zcash)
+  has no address, row or balance in test mode. `store.networkName` names every network in the mode.
+  Sending in test mode (`sendsOn`): Stellar's, Solana devnet, Monad testnet, every EVM test network
+  (bound by its own chain id), Fogo testnet (its own genesis, and a blockhash neither Solana nor Fogo
+  mainnet knows — the same key holds both) and `TEST_SENDS` (each sender binds its signature to the
+  test network) — each its coin only. Never TON's: a v4R2 transfer signed for the testnet replays on
+  mainnet (same address, same subwallet id, seqno can coincide).
+- **A swap's output is checked as the server spells it.** NEAR Intents can deliver to any network;
+  the wallet still refuses a swap whose recipient or refund is not its own, comparing with
+  `sameNetworkAddress` (hex and bech32 in one case, cashaddr with or without its prefix, base58
+  exactly) — an exact compare would refuse every EVM swap, a case-folding one would weaken base58.
+
+The extension derives its `host_permissions` from the registry's endpoints
+(`scripts/build-extension.ts`), so a new endpoint is reachable from the popup without a second list.
+
+**Every network and asset has its own logo** (the user's call). `src/lib/logos.ts` maps symbols and
+network ids to the official artwork in `public/logos/` — copied as is from the developer platform,
+where its fetch-token-logos script generates it (sources and licences in each folder's
+`SOURCES.md`); refresh it there and copy it again, never draw or edit one by hand. `NETWORK_LOGOS` is
+typed `Record<NetworkId, string>`, so a network without its mark does not compile. Draw a network
+with `NetworkLogo` (Base is Base, not ETH) and an asset with `AssetLogo`; a row's asset wears its
+network's mark on the corner everywhere but a coin on its home network (`isHomeCoin`: ETH on
+Ethereum alone, ETH on Base with Base's). A code with no artwork shows its glyph ring;
+`tests/unit/logos.test.ts` lists the ones still missing (AQUA, USDB, yXLM), so a new gap fails.
+
 ## An asset is a (code, issuer) pair, and the registry says whose
 
 `src/lib/assetRegistry.ts` answers "which asset is this, and who issues it?" from three
@@ -921,6 +1311,17 @@ rule here can be checked by a test, prefer writing the test over writing the sen
 covered end-to-end). `tests/unit/crypto.test.ts` was called `vault.test.ts` and never
 imported `@/lib/vault`, which is why "the vault is covered" read as true.
 
+## The debug navigator (dev builds only)
+
+`npm run dev` shows a "Debug" tab on the window's right edge (`src/app/DebugNav.tsx`): every screen
+one tap away, a test session without onboarding, email or passkey, and "reopen on reload" to come
+back to the last screen after a full reload. A screen that needs a session opens one on the test
+wallet (`src/constants/debug.ts`: SEP-5's public test phrase, password `debug-wallet-pass`), created
+on a browser with no wallet; a browser that already holds a wallet under another password cannot be
+opened this way (one key seals every wallet on a device) — use a private window. WalletApp mounts it
+behind `import.meta.env.DEV` and the store exposes `devOpenSession` only there, so a production build
+has neither (check: no `Debug navigator` in `dist/`). Its copy is English: a developer tool, not UI.
+
 ## Navigation is a table, not four switches
 
 `src/lib/screens.ts` is the single source of truth: `SCREEN_IDS` derives the
@@ -941,6 +1342,37 @@ compile error. Neither map has a `default` any more; an unknown screen used to r
   signature prompt. Dropping only the session left "back" walking straight from the
   unlock screen into a loaded payment form with a live send button.
 - **The bottom nav is derived** (`nav: true`), not a second list to keep in sync.
+- **The flow is browser history too** (the wallet is a PWA). Each stack entry is a PLACE — a
+  screen, plus the step for a screen with steps of its own (`store.goStep` / `navStep`: the
+  sign-in's email and code, the password's offer → form → consents). The store mirrors the path
+  into `history` (`src/lib/navHistory.ts`): a new place pushes an entry, the app's own back
+  rewinds one (so forward keeps the step left), a lock or a finished flow rewinds to the first.
+  The browser's back/forward, the mouse's side buttons (the wallet makes the move itself when
+  a WebView does not) and a phone's system back are answered by adopting the path the entry
+  carries — only if `canEnter` (`lib/screens.ts`) says its screen still has what it shows;
+  otherwise the traversal is undone and the person stays put. A step with steps of its own
+  uses `goStep`, never local state, or the browser's back skips past it.
+- **Going back never costs what was typed.** A step's answers survive leaving it and coming
+  back (the user's call): the store's drafts (profile, consents, the import text) and, for
+  what a screen holds itself, `useKeptState` (`hooks/useKeptState.ts` over `lib/keptInputs.ts`,
+  keys in `constants/keptInputs.ts`) — the backup choice, the two backup boxes, the sign-in's
+  email, the account to recover, the restore's passkey box, and the phrase check's gaps and
+  placed words. Never a password, a recovery phrase, a secret key or a one-time code, nor an
+  acknowledgement that gives something up (replacing a backup, a changed phrase): those are
+  asked again. Memory only; a terminal screen or a lock forgets it, and a new phrase clears
+  "I saved it".
+- **The phrase check takes a drag as well as a tap** (`features/onboarding/useWordDrag.ts`):
+  pointer events, so finger, mouse and pen alike — phone wallets work this way and the person
+  learns it here. The tap stays (WCAG 2.5.7). The dragged word is a ghost portalled into the
+  shell, because the screen's entrance animates a transform and a fixed element inside one is
+  placed against it.
+- **An error never moves the person.** It is said on the step where it happened (a toast, or a
+  `Notice` with the way on, like `SignInConflict`); only the person's own tap changes the view.
+- **The way back stays put.** `ui/ScreenBar` draws it in the shell, above the screen: the
+  screen's entrance and scroll never move it, and consecutive steps keep the same button. On a
+  phone it is the column's top-left corner; on a desktop window it is the WINDOW's (fixed,
+  mirroring language and theme in the top-right one), never the reading column's. Screens ask
+  for it through `ScreenHeader`'s `onBack`.
 
 Screens are lazy by default. Only `welcome`, `unlock` and the four tab screens are
 statically imported — everything else is `lazy()`, because the MV3 popup parses its
@@ -978,6 +1410,22 @@ Both live in `lib/`, not in the store hook — the hook is unreachable from
   a gateway generates no input events. Every flow captures `sessionEpochRef` before
   its first await and calls `guardSession(epoch)` immediately before the key is used.
   `lock()` increments it and clears the exclusive runner.
+
+## The session is kept, and the auto-lock bounds it
+
+The user's call (2026-10-29): a session survives a reload, a closed popup and a browser
+restart, and comes back on the screen it was on. `src/lib/sessionKeep.ts` seals the vault key
+under a NON-EXTRACTABLE AES-GCM key generated in the browser, bound to the wallet id, and keeps
+both in IndexedDB with `lastActive`, the auto-lock and the place; the store keeps it when a
+session opens or changes key, drops it (record and wrapping key) when one ends, and restores
+it at boot only inside the auto-lock window, for the active wallet, and when the key still
+opens that wallet's box. Screens that need a flow's passing data, the camera or secrets
+(`confirm`, `success`, `export`, …) come back as their tab. Know what it is NOT: protection
+from whoever uses this browser profile, or from malware copying the profile off the disk —
+the idle auto-lock (Settings: 15 min, 1 h, 1 day by default, 7 days; `AUTO_LOCK_CHOICES_MS`)
+is what bounds it, and "confirm signatures" still asks before every signature. The dapp
+approval window does not use it: it unlocks on its own, as before. A test that needs the lock
+screen after a reload must lock first (or delete the `cosmos-session` database).
 
 ## The session is not a field
 
@@ -1134,7 +1582,7 @@ src/
   app/          the shells and their chrome: WalletApp, ApprovePopup, Shell,
                 BottomNav, DesktopNav, NavMenu, Toast, ConfirmSign, ErrorBoundary
   ui/           presentational primitives used by MORE THAN ONE feature —
-                Field, KVRow, BackBar, Spinner, Logo, TokenAvatar…
+                Field, KVRow, ListRow, Tabs, Spinner, Logo, TokenAvatar…
   features/     one folder per user-facing area; screens and the components only
                 that area uses live side by side
     onboarding/ wallet/ money/ liquidity/ fiat/ cosmospay/ settings/ extras/
@@ -1167,13 +1615,13 @@ Deciding where something goes:
 
 - Used by one feature → that feature's folder. **Start here.** Do not promote to
   `ui/` "because it might be reused"; move it when a second feature actually imports it.
-  This is enforced retroactively: `NetworkDropdown`, `SurfaceToggle`, `BackCircle` and
-  `StellarMark` were in `ui/` with one importing feature each and now live in
-  `features/wallet/`; `NumberPad` had none and was deleted. `Spinner` (28 importers),
-  `BackBar` (31) and `Field` (10) earned the place.
-  The count that matters is *importing features*, not importers: `EyeIcon` and
-  `FlagIcon` stay in `ui/` with one and zero feature importers because their consumers
-  are `Field` and `LangSelect` — shared primitives. Moving a primitive's own helper
+  This is enforced retroactively: `SurfaceToggle` and `BackCircle` were in `ui/` with one
+  importing feature each and now live in `features/wallet/`; `NumberPad`, `NetworkDropdown`,
+  `StellarMark` and `BackBar` had none left and were deleted. `Spinner`, `Field`, `Tabs` and
+  `ListRow` earned the place.
+  The count that matters is *importing features*, not importers: `EyeIcon`, `Sheet` and
+  `FlagIcon` stay in `ui/` with zero feature importers because their consumers are `Field`,
+  `QuickPrefs` and `LangFlag` — shared primitives. Moving a primitive's own helper
   into a feature would make `ui/` import from `features/`, which the layering forbids.
 - Used by several features and purely presentational → `ui/`.
 - Holds React state but no markup → `hooks/`. No React at all → `lib/`.

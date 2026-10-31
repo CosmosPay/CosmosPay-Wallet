@@ -1,67 +1,248 @@
-/* Profile screen (src/features/wallet/Profile.tsx) + EmailRow organism. */
-.profile-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 22px; }
+/* =====================================================================
+   src/features/wallet/Profile.tsx — the bar's "More": the person, then the
+   lists. Prefix: .more-   Rows between lines; ringed icons; no grey fills.
+   ===================================================================== */
+.more-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 46px;
+  padding-top: 6px;
+  margin-bottom: 18px;
+}
 
-/* identity block: avatar + name/address */
-.profile-id { margin-bottom: 26px; } /* on .row.g14 */
-.profile-avatar {
-  position: relative;
+.more-title {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.more-person {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.more-avatar {
   flex-shrink: 0;
-  width: 62px;
-  height: 62px;
-  border-radius: 50%;
-  background: var(--glass-soft-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: 800;
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  padding: 0;
+  overflow: hidden;
+  border: 1.5px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
   cursor: pointer;
-  overflow: visible;
+  transition: border-color var(--dur-quick) var(--ease-out);
 }
-.profile-avatar-img { width: 62px; height: 62px; border-radius: 50%; object-fit: cover; }
-.profile-avatar-cam {
+
+.more-avatar:hover {
+  border-color: var(--text);
+}
+
+.more-avatar:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
+.more-avatar-mark {
+  width: 32px;
+  height: 32px;
+}
+
+.more-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.more-person-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.more-name {
+  font-size: 19px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.more-email {
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.more-addr {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.more-copy {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+
+.more-copy svg {
+  width: 15px;
+  height: 15px;
+}
+
+.more-copy:hover,
+.more-copy.is-copied {
+  color: var(--text);
+}
+
+.more-copy:focus-visible {
+  outline: 2px solid var(--brand);
+}
+
+.more-section {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 24px;
+}
+
+.more-section-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.more-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* the line between rows: a pseudo-element, since base.css rounds every button into a pill */
+.more-row::after {
+  content: '';
   position: absolute;
-  right: -2px;
-  bottom: -2px;
-  width: 22px;
-  height: 22px;
+  left: 52px;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.more-row:last-child::after {
+  display: none;
+}
+
+.more-row:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.more-row-icon {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: 1.5px solid var(--line-strong);
   border-radius: 50%;
-  background: var(--accent);
-  color: var(--on-accent);
+}
+
+.more-row-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.more-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.more-row-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.more-row-desc {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.more-row-chev {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+/* lock now: an outlined pill across the column, ink on hover like the other outlined buttons */
+.more-lock {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--bg);
+  gap: 10px;
+  width: 100%;
+  min-height: 54px;
+  margin-top: 4px;
+  border: 1.5px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
 }
-.profile-idcol { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.profile-name { font-size: 18px; font-weight: 800; }
-.profile-addr { font-size: 13px; color: var(--dim); font-weight: 600; font-family: monospace; }
-.profile-copy { display: flex; color: var(--muted); cursor: pointer; }
-.profile-copy.is-copied { color: var(--accent); }
-.profile-meta { font-size: 11.5px; color: var(--accent); font-weight: 700; }
-.profile-email-line { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* wallets list */
-.profile-wallets-label { margin-bottom: 10px; } /* on .label-up */
-.profile-list { border-radius: 18px; overflow: hidden; margin-bottom: 20px; } /* on .glass */
-.profile-wallet-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--hairline); cursor: pointer; }
-.profile-wallet-row.is-active { cursor: default; }
-.profile-wallet-avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--glass-soft-bg); border: 1px solid var(--glass-soft-border); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
-.profile-wallet-name { font-size: 14.5px; font-weight: 700; }
-.profile-wallet-addr { font-size: 11.5px; color: var(--dim); font-weight: 600; font-family: monospace; }
-.profile-wallet-active { font-size: 11px; font-weight: 800; color: var(--on-accent); background: var(--accent); padding: 3px 10px; border-radius: 999px; }
-.profile-wallet-switch { color: var(--muted); font-size: 13px; font-weight: 700; }
-.profile-add-wallet { display: flex; align-items: center; gap: 12px; padding: 14px 16px; cursor: pointer; color: var(--accent); }
-.profile-add-icon { width: 34px; height: 34px; border-radius: 50%; border: 1px dashed var(--glass-border); display: flex; align-items: center; justify-content: center; font-size: 20px; }
-.profile-add-label { font-size: 14.5px; font-weight: 800; }
+.more-lock:hover {
+  border-color: var(--text);
+}
 
-/* action menu */
-.profile-menu { border-radius: 18px; overflow: hidden; margin-bottom: 20px; } /* on .glass */
-.profile-menu-row { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-bottom: 1px solid var(--hairline); cursor: pointer; }
-.profile-menu-row:last-child { border-bottom: none; }
-.profile-menu-icon { width: 34px; height: 34px; border-radius: 11px; background: var(--surface); display: flex; align-items: center; justify-content: center; color: var(--muted); }
-.profile-menu-label { flex: 1; font-size: 15px; font-weight: 700; }
-.profile-menu-chev { color: #4f5754; font-size: 18px; }
+.more-lock:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
 
-.profile-lock { text-align: center; color: var(--danger); font-size: 15px; font-weight: 700; padding: 14px; cursor: pointer; }
-.hidden-input { display: none; }
+.more-lock svg {
+  width: 19px;
+  height: 19px;
+}
+
+/* the photo picker behind the avatar button */
+.hidden-input {
+  display: none;
+}

@@ -4,11 +4,13 @@
  *   Terminal 1:  npm run build && npm run serve:dist
  *   Terminal 2:  npm run test:e2e
  *
- * Validates (with zero mocks): SEP-5 key derivation in the browser, AES-GCM/PBKDF2
- * vault sealing, persistence across reload, decrypt-on-unlock, and wrong-password
- * rejection. Uses the official SEP-5 test vector so the derived key is deterministic.
+ * Validates SEP-5 key derivation in the browser, AES-GCM/PBKDF2 vault sealing, persistence
+ * across reload, decrypt-on-unlock, and wrong-password rejection — none of it mocked. Uses the
+ * official SEP-5 test vector so the derived key is deterministic. The one thing mocked is the
+ * community server's sign-in routes: the profile's email code and the `finish` that creates the
+ * wallet's Cosmos Wallet account, so no email is ever sent.
  */
-import { chromium } from 'playwright';
+import { chromium, type Route } from 'playwright';
 
 const URL = process.env.E2E_URL || 'http://127.0.0.1:4321';
 const MNEMONIC = 'illness spike retreat truth genius clock brain pass fit cave bargain toe';
@@ -24,31 +26,109 @@ const page = await browser.newContext({ viewport: { width: 440, height: 880 }, l
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
 
+// The account that comes with the wallet: the email code and `finish`, as the community server
+// answers them (bare bodies, no `{ data }` envelope). '123456' is the right code.
+const finishes: { body: Record<string, unknown>; session: string | null }[] = [];
+const cors = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': '*',
+  'Access-Control-Allow-Methods': 'GET,POST,PUT,OPTIONS',
+  'Content-Type': 'application/json',
+};
+const reply = (route: Route, data: unknown, status = 200) => route.fulfill({ status, headers: cors, body: JSON.stringify(data) });
+// The gateway's shared public key: without one the account step does not even ask for a code.
+await page.route('**/v1/public-key*', (route: Route) => reply(route, { env: 'dev', apiKey: 'pk_e2e_public' }));
+await page.route('**/v1/wallet/auth/**', async (route: Route) => {
+  const req = route.request();
+  if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
+  const path = new globalThis.URL(req.url()).pathname;
+  if (path.endsWith('/email/start')) return reply(route, { status: 'sent', claimToken: 'c'.repeat(43), expiresInSeconds: 900 }, 201);
+  if (path.endsWith('/email/verify')) {
+    const { code } = JSON.parse(req.postData() || '{}') as { code?: string };
+    if (code !== '123456') return reply(route, { status: 'invalid', attemptsLeft: 4 });
+    return reply(route, {
+      status: 'ready',
+      identity: { email: 'test@cosmos.com', name: null, avatar: null, method: 'email' },
+      account: 'new',
+      backup: null,
+      sessionToken: 'tok-profile',
+      expiresInSeconds: 1800,
+    });
+  }
+  if (path.endsWith('/finish')) {
+    finishes.push({ body: JSON.parse(req.postData() || '{}'), session: req.headers()['x-wallet-session'] ?? null });
+    return reply(route, { status: 'ready', account: 'created', organizationId: 'org_1', keys: { dev: 'k_dev', prod: null } });
+  }
+  return reply(route, {}, 404);
+});
+
 try {
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
   await page.getByText('Crear una wallet nueva').waitFor({ timeout: 20000 });
   ok(true, 'Welcome renders');
 
-  // create flow generates a seed in-browser (bip39 + SEP-5)
+  // create flow generates a seed in-browser (bip39 + SEP-5): Welcome -> how to back it up
+  // -> the twelve words
   await page.getByText('Crear una wallet nueva').click();
+  ok((await page.getByRole('radio', { name: 'Mi cuenta' }).getAttribute('aria-checked')) === 'true', 'The account backup is chosen first');
+  await page.getByRole('radio', { name: '12 palabras' }).click();
+  await page.getByRole('button', { name: 'Continuar con 12 palabras' }).click();
   await page.getByText('Frase de recuperación', { exact: false }).first().waitFor();
   ok((await page.locator('text=/^[a-z]{3,}$/').count()) >= 12, 'Seed phrase generated in browser');
 
-  // import the deterministic test vector
-  await page.getByText('‹', { exact: true }).first().click(); // back to welcome
+  // The flow is browser history too (src/lib/navHistory.ts): back and forward walk it one step
+  // at a time, and a step comes back showing what it showed.
+  const words = await page.locator('.ob-word-text').allTextContents();
+  await page.goBack();
+  await page.getByRole('radio', { name: '12 palabras' }).waitFor();
+  ok(true, 'Browser back returns to the backup choice');
+  await page.goForward();
+  await page.getByText('Frase de recuperación', { exact: false }).first().waitFor();
+  ok((await page.locator('.ob-word-text').allTextContents()).join() === words.join(), 'Browser forward shows the same words');
+
+  // import the deterministic test vector: back twice (the words, the choice) to Welcome,
+  // then "I already have one" -> with my 12 words
+  await page.getByRole('button', { name: 'Volver' }).click();
+  await page.getByRole('button', { name: 'Volver' }).click();
   await page.getByText('Ya tengo una wallet').click();
+  await page.getByRole('button', { name: 'Con mis 12 palabras' }).click();
   await page.locator('textarea').fill(MNEMONIC);
   await page.getByRole('button', { name: 'Importar wallet' }).click();
 
-  // profile step: name + email + a valid 13+ birthdate + a gender pick are all
-  // required to enable "Continuar" (the two consent checkboxes are optional).
+  // profile, one question per step: the name, the email and its code (the Cosmos Wallet
+  // account), a valid 13+ birthdate and a gender pick, then the two optional consents. Each
+  // step is a stop in the history.
   await page.getByText('¿Cómo te llamas?').waitFor({ timeout: 8000 });
+  ok(await page.getByText('Paso 1 de 5').isVisible(), 'Profile: the steps say where the person is');
+  ok(await page.getByRole('button', { name: 'Continuar' }).isDisabled(), 'Profile: no name, no next step');
   await page.getByPlaceholder('p. ej. Alex').fill('Test User');
+  await page.getByPlaceholder('p. ej. Alex').press('Enter');
+  await page.getByPlaceholder('tu@correo.com').waitFor();
+  ok(true, 'Profile: Enter in the field goes on');
   await page.getByPlaceholder('tu@correo.com').fill('test@cosmos.com');
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  await page.getByRole('heading', { name: 'Revisa tu email' }).waitFor({ timeout: 8000 });
+  ok(true, 'Profile: the email step sends a code for the account');
+  const profileCode = page.locator('input[autocomplete="one-time-code"]');
+  await profileCode.fill('000000');
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  await page.getByText('Te quedan 4 intentos', { exact: false }).waitFor({ timeout: 5000 });
+  ok(await profileCode.isVisible(), 'Profile: a wrong code is said in place, the step stays');
+  await profileCode.fill('123456');
+  await page.getByRole('button', { name: 'Continuar' }).click();
   await page.locator('input[type="date"]').fill('1990-05-15');
   await page.getByRole('button', { name: 'Masculino' }).click();
+  await page.goBack();
+  ok(await page.getByText('test@cosmos.com está verificado', { exact: false }).isVisible(), 'Profile: back to the code step says the email is proven');
+  await page.goBack();
+  ok((await page.getByPlaceholder('tu@correo.com').inputValue()) === 'test@cosmos.com', 'Profile: back walks the steps and keeps what was typed');
+  await page.goForward();
+  await page.goForward();
+  ok((await page.locator('input[type="date"]').inputValue()) === '1990-05-15', 'Profile: forward returns to the step, still filled');
   await page.getByRole('button', { name: 'Continuar' }).click();
-  ok(true, 'Profile step (name/email/dob/gender) captured');
+  await page.getByRole('heading', { name: 'Opcionales' }).waitFor();
+  await page.getByRole('button', { name: 'Continuar' }).click();
+  ok(true, 'Profile steps (name, email, code, dob/gender, optional) captured');
 
   // seal vault. Where the browser can make a passkey the screen offers one first; this
   // suite is about the password vault, so it takes the password.
@@ -71,13 +151,37 @@ try {
   });
   ok(sealed, 'Encrypted vault persisted');
 
-  await page.getByRole('button', { name: 'Ver mi wallet' }).click();
-  await page.getByText('Valor del portafolio').waitFor({ timeout: 10000 });
-  ok(true, 'Home renders');
+  // A finished flow is not walked back into: forward from success stays on it.
+  await page.goForward();
+  await page.waitForTimeout(600);
+  ok((await page.getByRole('button', { name: 'Ver mi wallet' }).count()) === 1, 'Forward from success does not re-enter the flow');
 
-  // reload -> must require unlock (greets by name, no address/network), then decrypt
+  // The account came with the wallet: `finish` was signed by the key just sealed, and Home
+  // has nothing left to offer for it.
+  ok(finishes.length === 1, 'The Cosmos Wallet account is created once, with the wallet');
+  ok(finishes[0]?.session === 'tok-profile', 'It is created with the session the email code gave');
+  ok(finishes[0]?.body.stellarAddress === EXPECTED_PUB && typeof finishes[0]?.body.signature === 'string', 'It is signed by the new wallet');
+  ok(finishes[0]?.body.backup === undefined, 'It sends no backup: the twelve words are the backup');
+
+  await page.getByRole('button', { name: 'Ver mi wallet' }).click();
+  await page.getByText('Saldo total').waitFor({ timeout: 10000 });
+  ok(true, 'Home renders');
+  await page.waitForTimeout(800);
+  ok((await page.getByText('Conecta Cosmos Pay').count()) === 0, 'Home does not offer an account the wallet already has');
+
+  // reload -> the session is kept (src/lib/sessionKeep.ts): back on Home, nothing asked
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByText('Saldo total').waitFor({ timeout: 15000 });
+  ok((await page.getByRole('button', { name: 'Desbloquear' }).count()) === 0, 'Reload keeps the session: Home, no unlock');
+
+  // lock -> the lock screen (greets by name, no address/network), then decrypt; a reload
+  // after a lock stays locked, because the lock dropped what was kept
+  await page.locator('.bottom-nav').getByRole('button', { name: 'Más' }).click();
+  await page.locator('.more-lock').click();
+  await page.getByRole('button', { name: 'Desbloquear' }).waitFor({ timeout: 10000 });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'Desbloquear' }).waitFor({ timeout: 10000 });
+  ok(true, 'A lock survives a reload');
   ok((await page.getByText('Test User').count()) > 0, 'Unlock greets by name');
   ok((await page.getByText('Red', { exact: false }).count()) === 0, 'Unlock hides network');
   await page.getByPlaceholder('Contraseña').fill('wrong');
@@ -87,8 +191,10 @@ try {
 
   await page.getByPlaceholder('Contraseña').fill('Test-pass-123');
   await page.getByRole('button', { name: 'Desbloquear' }).click();
-  await page.getByText('Valor del portafolio').waitFor({ timeout: 10000 });
-  ok(true, 'Reload -> unlock (decrypt) -> home');
+  await page.getByText('Saldo total').waitFor({ timeout: 10000 });
+  ok(true, 'Lock -> unlock (decrypt) -> home');
+  await page.waitForTimeout(800);
+  ok((await page.getByText('Conecta Cosmos Pay').count()) === 0, 'The account is sealed with the wallet: still there after unlock');
 
   /* ------------------------- desktop navigation ------------------------- */
   /**

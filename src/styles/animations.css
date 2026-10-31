@@ -44,6 +44,15 @@
   }
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes blink {
   from {
     opacity: 1;
@@ -70,11 +79,12 @@
   }
 }
 
-/* extension toasts: bottom sheet slides up, then back down */
-@keyframes toastUp {
+/* the notification (src/app/Toast.tsx): slides a little into place from --toast-from
+   (above on a phone, below on a desktop window) and back out the same way */
+@keyframes toastIn {
   from {
     opacity: 0;
-    transform: translateY(130%);
+    transform: translateY(var(--toast-from, -14px)) scale(0.98);
   }
   to {
     opacity: 1;
@@ -82,27 +92,14 @@
   }
 }
 
-@keyframes toastDown {
+@keyframes toastOut {
   from {
     opacity: 1;
     transform: none;
   }
   to {
     opacity: 0;
-    transform: translateY(130%);
-  }
-}
-
-/* breathing glass: the frosted edge + frost density gently pulse */
-@keyframes glassBreath {
-  0%,
-  100% {
-    border-color: var(--gb-bd-a);
-    background-color: var(--gb-bg-a);
-  }
-  50% {
-    border-color: var(--gb-bd-b);
-    background-color: var(--gb-bg-b);
+    transform: translateY(var(--toast-from, -14px)) scale(0.98);
   }
 }
 
@@ -184,7 +181,7 @@ select,
 /* hover + tactile press feedback on buttons and tappable elements */
 button,
 .tap {
-  transition: transform 0.13s ease, filter 0.16s ease, box-shadow 0.2s ease;
+  transition: transform 0.13s var(--ease-out), filter var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
 }
 
 .tap {
@@ -206,6 +203,79 @@ button:active,
   transform: scale(0.96);
 }
 
+/* ---------------------------- ink fill ----------------------------
+   snap.cosmospay.lat's hover: a circle of --ink grows from where the pointer entered
+   until it paints the whole control, and shrinks back towards where it left.
+   src/lib/ink.ts writes the centre (--ink-x/y) and the radius that reaches the farthest
+   corner (--ink-size); without them (keyboard focus) it grows from the centre, and 150%
+   of the width covers any control wider than it is tall. The control sets --ink and
+   --ink-text; only the scale changes, so the centre never drifts. */
+.ink {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition: transform 0.13s var(--ease-out), color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out);
+}
+
+.ink::before {
+  content: '';
+  position: absolute;
+  left: var(--ink-x, 50%);
+  top: var(--ink-y, 50%);
+  z-index: -1;
+  width: var(--ink-size, 150%);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--ink, var(--text));
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.55s var(--ease-ink);
+  pointer-events: none;
+}
+
+/* Keyboard focus and an open menu keep the control painted. */
+.ink:focus-visible,
+.ink[aria-expanded='true'] {
+  color: var(--ink-text, var(--bg));
+}
+
+.ink:focus-visible::before,
+.ink[aria-expanded='true']::before {
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* An outlined button inking blue takes the blue outline too, or a black ring would
+   frame the blue fill. */
+.btn-ghost.ink:focus-visible {
+  border-color: var(--brand);
+}
+
+/* Touch has no hover: a tap would leave the control painted. The brightness bump the
+   other buttons get would fight the fill, so it is off here. */
+@media (hover: hover) and (pointer: fine) {
+  .ink:hover:not(:disabled) {
+    color: var(--ink-text, var(--bg));
+    filter: none;
+  }
+
+  .ink:hover:not(:disabled)::before {
+    transform: translate(-50%, -50%) scale(1);
+  }
+
+  .btn-ghost.ink:hover:not(:disabled) {
+    border-color: var(--brand);
+  }
+}
+
+/* A theme flip cross-fades (document.startViewTransition in src/state/usePreferences.ts)
+   instead of every colour snapping at once. The fallbacks cover an engine whose
+   view-transition pseudo-elements do not see :root's custom properties. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-base, 0.3s);
+  animation-timing-function: var(--ease-in-out, cubic-bezier(0.45, 0, 0.55, 1));
+}
+
 /* respect users who prefer less motion. MUST STAY LAST (see file header). */
 @media (prefers-reduced-motion: reduce) {
   button,
@@ -214,11 +284,7 @@ button:active,
   select,
   .tap,
   .splash-logo,
-  .glass,
-  .glass-soft,
-  .success-ring,
-  .toast-card,
-  .toast-ext-card {
+  .success-ring {
     animation: none !important;
   }
 
@@ -230,7 +296,7 @@ button:active,
   .bottom-nav,
   .kb-dock,
   .confirm-sign-overlay,
-  .toast-overlay {
+  .verify-ghost {
     transition: none !important;
   }
 }

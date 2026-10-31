@@ -37,6 +37,8 @@
     "test:e2e": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/wallet.e2e.ts",
     "test:e2e:signin": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/signin.e2e.ts",
     "test:e2e:passkey": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/passkey.e2e.ts",
+    "test:e2e:easy-recovery": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/easyRecovery.e2e.ts",
+    "test:e2e:signin-binding": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/signInBinding.e2e.ts",
     "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts"
   },
   "dependencies": {
@@ -45,6 +47,7 @@
     "@noble/hashes": "^2.4.0",
     "@scure/base": "^2.4.0",
     "@scure/bip32": "^2.4.0",
+    "@scure/starknet": "^2.4.0",
     "@stellar/stellar-sdk": "^17.3.0",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-clipboard-manager": "^2.5.0",

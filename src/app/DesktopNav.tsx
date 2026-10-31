@@ -1,7 +1,7 @@
 import type { WalletStore } from '@/state/store';
 import { navTabsDesktop, navActiveKey, navGo } from '@/app/navModel';
 import { APP_VERSION } from '@/constants/app';
-import { Logo } from '@/ui/Logo';
+import { CosmosMark } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
 import '@/styles/app/desktop-nav.css';
 
@@ -25,10 +25,12 @@ export function DesktopNav({ store }: { store: WalletStore }) {
 
   return (
     <nav className="shell-side">
-      <div className="desk-brand">
-        <Logo size={26} />
-        <span className="desk-brand-name">Cosmos Pay</span>
-      </div>
+      {/* The logo goes home — the wallet's Home, inside the session; never a page load,
+          which would leave the app (and, before the session was kept, end it). */}
+      <button type="button" className="desk-brand" onClick={() => navGo(store, 'home')} aria-label={store.t('error.goHome')}>
+        <CosmosMark className="desk-brand-mark" />
+        <span className="desk-brand-name">Cosmos Wallet</span>
+      </button>
 
       <div className="desk-nav-list">
         {tabs.map((tb) => (
@@ -39,9 +41,7 @@ export function DesktopNav({ store }: { store: WalletStore }) {
             className={cx('tap desk-nav-item', tb.key === activeKey && 'is-on')}
             aria-current={tb.key === activeKey ? 'page' : undefined}
           >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              {tb.icon}
-            </svg>
+            {tb.icon}
             <span className="desk-nav-label">{tb.label}</span>
           </button>
         ))}

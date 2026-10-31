@@ -16,7 +16,7 @@
  *  2. The lock screen opens with the passkey and shows no password field.
  *  3. A second device (this browser with its storage wiped — the passkey is the synced one)
  *     restores the SAME wallet from that backup with one tap, typing nothing.
- *  4. A wallet made the password way (a v2 box) is restored with its password, and the
+ *  4. A wallet made the password way (a v4 box, one password door) is restored with its password, and the
  *     checkbox that is on by default moves the device and the backup to the passkey.
  */
 import { chromium, type BrowserContext, type Page, type Route } from 'playwright';
@@ -40,6 +40,10 @@ async function mockServer(page: Page, ready: () => unknown, finishes: Captured[]
   };
   const env = (data: unknown, code = 200) => ({ status: code, headers: cors, body: JSON.stringify(data) });
   await page.unroute('**/v1/wallet/auth/**');
+  // No recovery servers, as in CI: a developer machine running them (`dev:local -- all` on the
+  // community server) would give every box an email door and change what this suite checks.
+  // Their discovery is refused, so the wallet sees none, whatever is running locally.
+  await page.route('**/.well-known/stellar.toml*', (route: Route) => route.abort());
   await page.route('**/v1/wallet/auth/**', async (route: Route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
@@ -57,11 +61,16 @@ async function mockServer(page: Page, ready: () => unknown, finishes: Captured[]
   });
 }
 
+/** Welcome -> create -> with my account -> email -> code. Restoring goes through the same
+ *  door on purpose: the account decides whether there is a backup to open, so a person who
+ *  taps "create" with an account that already has one still gets it back. */
 async function signInWithEmail(page: Page) {
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
-  await page.getByText('Entrar con Google, GitHub o email').click();
-  await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
+  await page.getByText('Crear una wallet nueva').click();
+  await page.getByRole('button', { name: 'Continuar con mi cuenta' }).click();
   await page.getByRole('button', { name: 'Continuar con email' }).click();
+  await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
+  await page.getByRole('button', { name: 'Enviar código' }).click();
   await page.locator('input[autocomplete="one-time-code"]').fill('123456');
   await page.getByRole('button', { name: 'Confirmar' }).click();
 }
@@ -82,6 +91,21 @@ async function addAuthenticator(context: BrowserContext, page: Page) {
       automaticPresenceSimulation: true,
     },
   });
+}
+
+/**
+ * A reload keeps the session now (src/lib/sessionKeep.ts), so reaching the lock screen means
+ * forgetting it first — what a lock, or an auto-lock running out, does — and then reloading.
+ */
+async function forgetKeptSessionAndReload(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise((resolve) => {
+        const req = indexedDB.deleteDatabase('cosmos-session');
+        req.onsuccess = req.onerror = req.onblocked = () => resolve(null);
+      }),
+  );
+  await page.reload({ waitUntil: 'domcontentloaded' });
 }
 
 const browser = await chromium.launch(process.env.E2E_CHANNEL ? { channel: process.env.E2E_CHANNEL } : {});
@@ -121,13 +145,14 @@ try {
 
   const rawBox = typeof finishesA[0]?.body.backup === 'string' ? (finishesA[0].body.backup as string) : '';
   const box = rawBox ? (JSON.parse(rawBox) as { v?: number; slots?: { kind: string }[] }) : null;
+  // `v: 4` is what every backup is sealed as (lib/cloudBackup.ts): a data key sealed once per door.
   ok(
-    box?.v === 3 && box.slots?.length === 1 && box.slots[0].kind === 'passkey',
-    'the backup is a v3 box whose only door is the passkey',
+    box?.v === 4 && box.slots?.length === 1 && box.slots[0].kind === 'passkey',
+    'the backup is a v4 box whose only door is the passkey',
   );
 
   /* --------------------------- 2. the lock screen opens with it --------------------------- */
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await forgetKeptSessionAndReload(page);
   const open = page.getByRole('button', { name: 'Abrir con passkey' });
   await open.waitFor({ timeout: 15000 });
   ok((await page.locator('input[type="password"]').count()) === 0, 'the lock screen shows no password field');
@@ -164,8 +189,8 @@ try {
   ok(!!(await page.evaluate(() => localStorage.getItem('cosmos.passkey'))), 'the new device opens with the passkey too');
 
   /* ------ 4. an existing password wallet moves to a passkey while restoring it ------ */
-  // What every wallet made before passkeys is: a v2 box behind a password. Made here the
-  // password way, on a fresh device, so the box is a real one.
+  // A wallet made the password way: a v4 box whose one door is the password (Argon2id). Made
+  // here on a fresh device, so the box is a real one.
   await page.evaluate(() => localStorage.clear());
   const PASSWORD = 'Test-pass-123';
   const finishesC: Captured[] = [];
@@ -191,7 +216,11 @@ try {
   await page.getByRole('button', { name: 'Ver mi wallet' }).waitFor({ timeout: 30000 });
   const boxC = typeof finishesC[0]?.body.backup === 'string' ? (finishesC[0].body.backup as string) : '';
   const addrC = JSON.parse((await page.evaluate(() => localStorage.getItem('cosmos.wallets'))) || '[]')[0]?.publicKey;
-  ok(JSON.parse(boxC || '{}').v === 2, 'a password wallet backs up the v2 box it always did');
+  const parsedC = JSON.parse(boxC || '{}') as { v?: number; slots?: { kind: string; kdf?: string }[] };
+  ok(
+    parsedC.v === 4 && parsedC.slots?.length === 1 && parsedC.slots[0].kind === 'password' && parsedC.slots[0].kdf === 'argon2id',
+    'a password wallet backs up a v4 box behind its password, under Argon2id',
+  );
   ok(!(await page.evaluate(() => localStorage.getItem('cosmos.passkey'))), 'and its device has no passkey door');
 
   // The next device: the password restores it, and the box that is on by default moves this
@@ -221,12 +250,12 @@ try {
   await page.getByRole('button', { name: 'Ver mi wallet' }).waitFor({ timeout: 30000 });
   const upgraded = typeof finishesD[0]?.body.backup === 'string' ? (JSON.parse(finishesD[0].body.backup as string) as { v?: number; slots?: { kind: string }[] }) : null;
   ok(
-    upgraded?.v === 3 && upgraded.slots?.map((s) => s.kind).sort().join(',') === 'passkey,password',
+    upgraded?.v === 4 && upgraded.slots?.map((s) => s.kind).sort().join(',') === 'passkey,password',
     'the backup now has both doors: the password it had, and the passkey',
   );
   ok(finishesD[0]?.body.stellarAddress === addrC, 'for the same account');
   ok(!!(await page.evaluate(() => localStorage.getItem('cosmos.passkey'))), 'and this device opens with the passkey');
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  await forgetKeptSessionAndReload(page);
   await page.getByRole('button', { name: 'Abrir con passkey' }).waitFor({ timeout: 15000 });
   await page.getByRole('button', { name: 'Abrir con passkey' }).click();
   await page.getByRole('button', { name: 'Abrir con passkey' }).waitFor({ state: 'detached', timeout: 30000 });

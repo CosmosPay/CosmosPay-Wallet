@@ -1,0 +1,33 @@
+/* =====================================================================
+   src/ui/Dropdown.tsx — a panel under its trigger, right-aligned, growing from
+   the trigger's corner. Flat: one surface a step above the canvas and a line,
+   no shadow. Each state carries the timing of the move INTO it.
+   ===================================================================== */
+.dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 40;
+  min-width: 220px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--bg);
+  color: var(--text);
+  transform-origin: top right;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.96);
+  will-change: transform, opacity;
+  transition: opacity var(--dur-quick) var(--ease-in), transform var(--dur-quick) var(--ease-in);
+}
+
+.dropdown.is-open {
+  opacity: 1;
+  transform: none;
+  transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+}
+
+/* It moves as one piece: no control inside runs the app-wide entrance pop on its own. */
+.dropdown button {
+  animation: none !important;
+}

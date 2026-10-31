@@ -1,31 +1,139 @@
 /* =====================================================================
-   Onboarding — Verify (seed check). Prefix: .verify-
-   Slot/chip states are driven by modifier classes (--fixed / --empty /
-   --filled for slots, .is-used for chips).
+   src/features/onboarding/Verify.tsx — fill the gaps, by tap or by drag
+   (src/features/onboarding/useWordDrag.ts). Prefix: .verify-
+   Slot looks are modifier classes on the WordCell (is-fixed / is-empty /
+   is-filled); a used chip is .is-used. While a word is dragged: the word
+   it came from is .is-lifted, the place under the pointer .is-over, and
+   .verify-ghost is the word under the finger.
    ===================================================================== */
-.verify-grid { margin-bottom: 22px; }
-.verify-word { min-height: 45px; }
-.verify-word--fixed { background: var(--surface); border: 1px solid var(--glass-border); cursor: default; }
-.verify-word--fixed .ob-word-text { color: var(--text-soft); }
-.verify-word--empty { background: transparent; border: 1px dashed rgba(255, 255, 255, 0.22); cursor: pointer; }
-.verify-word--empty .ob-word-text { color: var(--dim); }
-.verify-word--filled { background: var(--avatar-brand); border: 1px solid var(--accent); cursor: pointer; }
-.verify-word--filled .ob-word-text { color: var(--accent); }
-.verify-hint { margin-bottom: 12px; }
+.verify-grid {
+  margin-bottom: 20px;
+}
+
+/* a given word: the cell's line, its text muted — it is not the person's to change */
+.verify-word.is-fixed {
+  background: transparent;
+  border-color: var(--line);
+}
+
+.verify-word.is-fixed .ob-word-text {
+  color: var(--muted);
+}
+
+/* the gap: an outline waiting for a word */
+.verify-word.is-empty {
+  background: transparent;
+  border: 1.5px dashed var(--dimmer);
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+/* while a word is in the air, the gaps say where it can go */
+.verify-grid.is-dragging .verify-word.is-empty {
+  border-color: var(--text);
+}
+
+/* a word placed by a tap or a drop: ink, so it reads as the person's own answer; it
+   lands with a small settle */
+.verify-word.is-filled {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+  cursor: grab;
+  animation: popIn var(--dur-base) var(--ease-out);
+}
+
+/* the place under the pointer: the active indicator, brand blue (beats the rule above) */
+.verify-grid.is-dragging .verify-word.is-over {
+  border: 1.5px solid var(--brand);
+}
+
+/* a word that can be dragged: the browser neither scrolls nor selects under it */
+.verify-chip,
+.verify-word.is-filled {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* where the dragged word came from, while it is away */
+.verify-chip.is-lifted,
+.verify-word.is-filled.is-lifted {
+  opacity: 0.35;
+}
+
+.verify-word.is-filled .ob-word-num {
+  color: inherit;
+  opacity: 0.6;
+}
+
+.verify-hint {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .verify-bank {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   margin-bottom: 24px;
+  border-radius: 16px;
+  outline: 1.5px dashed transparent;
+  outline-offset: 6px;
+  transition: outline-color var(--dur-quick) var(--ease-out);
 }
-.verify-chip {
-  border: 1px solid var(--glass-soft-border);
-  border-radius: 12px;
-  padding: 11px 18px;
+
+/* a placed word dragged back over the bank */
+.verify-bank.is-over {
+  outline-color: var(--brand);
+}
+
+/* The word under the finger: a filled chip, slightly larger — lifted, with no shadow (the
+   flat look). Fixed at the pointer through --drag-x / --drag-y, which the drag writes;
+   .is-settling eases it into its gap, or back. */
+.verify-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  display: none;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--text);
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
   font-size: 15px;
-  font-weight: 700;
-  background: var(--glass-soft-bg);
-  color: var(--text);
-  cursor: pointer;
+  font-weight: 600;
+  pointer-events: none;
+  transform: translate(var(--drag-x, 0), var(--drag-y, 0)) translate(-50%, -50%) scale(1.06);
 }
-.verify-chip.is-used { background: var(--surface-2); color: var(--dim); cursor: default; }
+
+.verify-ghost.is-on {
+  display: flex;
+}
+
+.verify-ghost.is-settling {
+  transition: transform var(--dur-base) var(--ease-in-out);
+}
+
+.verify-chip {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: grab;
+  transition: transform 0.13s var(--ease-out), border-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out),
+    opacity var(--dur-quick) var(--ease-out);
+}
+
+.verify-chip.is-used {
+  border-color: var(--glass-border);
+  color: var(--dim);
+  cursor: default;
+}

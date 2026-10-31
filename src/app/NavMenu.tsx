@@ -2,20 +2,22 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
-import { Logo } from '@/ui/Logo';
+import { ChevronRightIcon, CloseIcon, CosmosMark, InfoCircleIcon, KeyIcon, LinkIcon, MenuIcon, QrIcon, GearIcon } from '@/ui/Icons';
 import { navTabs, navActiveKey, navGo } from '@/app/navModel';
 import { cx } from '@/lib/cx';
 import '@/styles/app/nav-menu.css';
 
-/** Both drawer sections share ONE row style (metrics, weight, trailing ›). The
- *  active tab is distinguished by its highlighted background only. */
+/** Both drawer sections share ONE row: a line icon, the name, a chevron. The place you are
+ *  on is marked like the bar marks it — ink and the brand blue's line. */
 function NavItem({ lead, label, on, onClick }: { lead: ReactNode; label: string; on?: boolean; onClick: () => void }) {
   return (
-    <div onClick={onClick} className={cx('tap nav-menu-item', on && 'is-on')}>
-      {lead}
+    <button type="button" onClick={onClick} aria-current={on ? 'page' : undefined} className={cx('nav-menu-item', on && 'is-on')}>
+      <span className="nav-menu-lead" aria-hidden="true">
+        {lead}
+      </span>
       <span className="f1 nav-menu-item-label">{label}</span>
-      <span className="nav-menu-chevron">›</span>
-    </div>
+      <ChevronRightIcon className="nav-menu-chevron" />
+    </button>
   );
 }
 
@@ -59,20 +61,17 @@ export function NavMenu({ store }: { store: WalletStore }) {
   const closeDrawer = () => store.setNavMenuOpen(false);
   // Quick access: the scanner + settings + the profile shortcuts, one tap away.
   const shortcuts = [
-    { key: 'scan', label: store.t('scan.scanQr'), glyph: '⛶' },
-    ...(store.meta?.email ? [{ key: 'cosmospay', label: store.t('cosmospay.manage'), glyph: '◇' }] : []),
-    { key: 'export', label: store.t('profile.exportKeys'), glyph: '⚷' },
-    { key: 'receive', label: store.t('profile.receiveAddr'), glyph: '⛁' },
-    { key: 'settings', label: store.t('profile.settings'), glyph: '⚙' },
-    { key: 'about', label: store.t('profile.about'), glyph: '?' },
+    ...(store.meta?.email ? [{ key: 'cosmospay', label: store.t('cosmospay.manage'), icon: <LinkIcon /> }] : []),
+    { key: 'export', label: store.t('profile.exportKeys'), icon: <KeyIcon /> },
+    { key: 'receive', label: store.t('profile.receiveAddr'), icon: <QrIcon /> },
+    { key: 'settings', label: store.t('profile.settings'), icon: <GearIcon /> },
+    { key: 'about', label: store.t('profile.about'), icon: <InfoCircleIcon /> },
   ];
 
   return (
     <>
-      <button onClick={openDrawer} aria-label={store.t('a11y.menu')} className="glass-soft circle-btn">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none">
-          <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
+      <button type="button" onClick={openDrawer} aria-label={store.t('a11y.menu')} className="glass-soft circle-btn">
+        <MenuIcon />
       </button>
 
       {/* Restored already-open -> .is-instant kills the transition so there is
@@ -80,13 +79,21 @@ export function NavMenu({ store }: { store: WalletStore }) {
       {mounted && (
         <div className={cx('nav-drawer nav-menu-drawer', shown && 'is-open', restoredRef.current && 'is-instant')}>
           <div className="row between nav-menu-header">
-            <div className="row g8 nav-menu-brand">
-              <Logo size={22} />Cosmos Pay
-            </div>
-            <button onClick={closeDrawer} aria-label={store.t('a11y.close')} className="glass-soft circle-btn">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-                <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
+            {/* The logo goes home, inside the session, like the desktop rail's. */}
+            <button
+              type="button"
+              className="row g8 nav-menu-brand"
+              aria-label={store.t('error.goHome')}
+              onClick={() => {
+                closeDrawer();
+                navGo(store, 'home');
+              }}
+            >
+              <CosmosMark className="nav-menu-mark" />
+              Cosmos Wallet
+            </button>
+            <button type="button" onClick={closeDrawer} aria-label={store.t('a11y.close')} className="glass-soft circle-btn">
+              <CloseIcon />
             </button>
           </div>
 
@@ -94,7 +101,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
             {tabs.map((tb) => (
               <NavItem
                 key={tb.key}
-                lead={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" className="shrink0">{tb.icon}</svg>}
+                lead={tb.icon}
                 label={tb.label}
                 on={tb.key === activeKey}
                 onClick={() => {
@@ -108,7 +115,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
             {shortcuts.map((it) => (
               <NavItem
                 key={it.key}
-                lead={<span className="nav-menu-glyph">{it.glyph}</span>}
+                lead={it.icon}
                 label={it.label}
                 // Deliberately NOT closing the drawer: its open-state persists in the
                 // store, so pressing "back" on the destination lands here with the

@@ -64,10 +64,10 @@
 
 /* The recorded recovery address no longer matches the wallet's own. Tinted because
    recovery is ON here — nothing on the screen looks wrong, and the one line that says
-   otherwise has to carry the weight by itself. --danger-soft rather than --danger: this
-   is a thing to fix, not a thing that failed. */
+   otherwise has to carry the weight by itself: a line of --danger around it, on the canvas
+   (the redesign draws with lines, never a tinted fill). */
 .recovery-note.recovery-note-warn {
-  background: var(--danger-soft);
+  background: transparent;
   border-color: var(--danger);
   color: var(--text);
   margin-bottom: 0;

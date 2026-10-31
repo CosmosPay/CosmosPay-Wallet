@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton, GhostButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { useCopied } from '@/hooks/useCopied';
@@ -48,7 +48,7 @@ export function PayLink({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('paylink.title')} onBack={() => (intent ? setIntent(null) : store.setScreen('receive'))} />
+      <ScreenHeader title={t('paylink.title')} onBack={() => (intent ? setIntent(null) : store.setScreen('receive'))} />
       {!intent ? (
         <>
           <div className="paylink-desc">{t('paylink.desc')}</div>

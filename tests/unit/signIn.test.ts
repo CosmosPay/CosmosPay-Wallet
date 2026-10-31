@@ -68,6 +68,13 @@ test('the wait returns once the platform says authorized, and not before', async
   assert.equal(polls, 3);
 });
 
+test('the wait says whether the callback sent this browser a device binding', async () => {
+  const bound = await waitForSignIn(hs(), () => false, noSleep, async () => ({ status: 'authorized', bound: true }));
+  assert.deepEqual(bound, { bound: true });
+  const plain = await waitForSignIn(hs(), () => false, noSleep, async () => ({ status: 'authorized' }));
+  assert.deepEqual(plain, { bound: false });
+});
+
 test('a failed sign-in stops the wait with the platform’s reason', async () => {
   await assert.rejects(
     waitForSignIn(hs(), () => false, noSleep, async () => ({ status: 'failed', error: 'email_unverified' })),
@@ -150,4 +157,16 @@ test('the providers contract takes the MFA settings link, null, or a server that
   assert.equal(parseShape(url, SignInProvidersShape, { ...base, mfaSettingsUrl: null }).mfaSettingsUrl, null);
   assert.equal(parseShape(url, SignInProvidersShape, base).mfaSettingsUrl, undefined);
   assert.throws(() => parseShape(url, SignInProvidersShape, { ...base, mfaSettingsUrl: 42 }));
+});
+
+test('the providers contract takes Authentik\u2019s sources, or a server that predates them', () => {
+  const url = '/v1/wallet/auth/providers';
+  const base = { providers: ['authentik'], email: true };
+  const sources = [
+    { id: 'google', name: 'Google' },
+    { id: 'github', name: 'GitHub' },
+  ];
+  assert.deepEqual(parseShape(url, SignInProvidersShape, { ...base, sources }).sources, sources);
+  assert.equal(parseShape(url, SignInProvidersShape, base).sources, undefined);
+  assert.throws(() => parseShape(url, SignInProvidersShape, { ...base, sources: [{ id: 'google' }] }));
 });

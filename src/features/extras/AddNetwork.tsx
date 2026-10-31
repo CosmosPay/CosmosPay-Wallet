@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Field } from '@/ui/Field';
@@ -32,7 +32,7 @@ export function AddNetwork({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('net.addTitle')} onBack={store.goBack} />
+      <ScreenHeader title={t('net.addTitle')} onBack={store.goBack} />
       <div className="add-network-desc">
         {t('settings.networkDesc')}
       </div>

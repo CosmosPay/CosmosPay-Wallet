@@ -37,6 +37,7 @@ import { dropPasskeyUnlock } from '@/lib/passkeyUnlock';
 import { storageGet, storageRemove, storageSet } from '@/lib/storage';
 import type { NetConfig } from '@/lib/stellar';
 import type { Rekey } from '@/lib/accountAddress';
+import type { NetworkAddresses } from '@/constants/networks';
 import { tNow } from '@/lib/i18n';
 
 const WALLETS_KEY = 'cosmos.wallets';
@@ -110,11 +111,17 @@ export interface WalletEntry {
    */
   recoveryEmail?: string;
   /**
-   * The Solana and Monad addresses this wallet's recovery phrase controls (`lib/chainAddresses.ts`).
-   * Public, derived once and kept here so showing them needs no password. Absent until first
-   * derived, and never present on a wallet imported from a bare secret key: it has no phrase.
+   * The Solana and Monad addresses of the first multi-network release. Read only as a fallback
+   * until `networkAddresses` is derived; nothing writes it any more.
    */
   chainAddresses?: { solana: string; monad: string };
+  /**
+   * This wallet's address on every network family (`lib/chainAddresses.ts`, registry in
+   * `constants/networks.ts`): public, derived once from the recovery phrase — or, for a wallet
+   * imported from a bare Stellar secret, from the phrase that secret derives — and kept here so
+   * showing them needs no password. `v` is the derivation's version: an older one is derived again.
+   */
+  networkAddresses?: { v: number; byKind: NetworkAddresses };
   /**
    * The email the two recovery servers will hand this wallet's backup key halves to
    * (`lib/backupRecovery.ts`). Like `recoveryEmail`, the only record of what was filed —
@@ -322,7 +329,7 @@ export async function addWallet(
     // where the lost device's entry still sits. What the old key implied goes with it: its
     // re-key record, and the Solana / Monad addresses its phrase derived (re-derived from
     // the new phrase the next time a screen asks).
-    const { chainAddresses: _stale, rekey: _old, ...kept } = dup;
+    const { chainAddresses: _stale, networkAddresses: _staleAll, rekey: _old, ...kept } = dup;
     const updated: WalletEntry = info.rekey ? { ...kept, rekey: info.rekey } : kept;
     await writeWallets(list.map((w) => (w.id === dup.id ? updated : w)));
     return updated;
@@ -351,7 +358,7 @@ export async function addWallet(
 /** Update non-sensitive metadata (name / avatar / email) for a wallet in the plaintext list. */
 export async function updateWalletMeta(
   id: string,
-  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail' | 'chainAddresses' | 'backupRecoveryEmail' | 'rekey'>>,
+  patch: Partial<Pick<WalletEntry, 'name' | 'avatar' | 'email' | 'gender' | 'cloudBackup' | 'recoveryEmail' | 'networkAddresses' | 'backupRecoveryEmail' | 'rekey'>>,
 ): Promise<WalletEntry[]> {
   const list = await listWallets();
   const next = list.map((w) => (w.id === id ? { ...w, ...patch } : w));

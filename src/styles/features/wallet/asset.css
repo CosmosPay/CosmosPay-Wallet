@@ -1,36 +1,123 @@
-/* Asset detail screen (src/features/wallet/Asset.tsx). */
-.asset-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 18px; }
-.asset-back { font-size: 22px; } /* on .glass-soft.circle-btn */
-.asset-head-pad { width: 38px; } /* balances the back button so the title stays centred */
-.asset-name { font-size: 16px; font-weight: 700; }
-.asset-code { color: var(--dim); font-size: 11px; }
-
-.asset-price-row { margin: 8px 0 6px; display: flex; align-items: baseline; gap: 10px; }
-.asset-price { font-size: 38px; font-weight: 800; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
-.asset-change { font-size: 14px; font-weight: 700; }
-.asset-change.is-up { color: var(--up); }
-.asset-change.is-down { color: var(--down); }
-.asset-sub { font-size: 14px; color: var(--muted); font-weight: 600; margin-bottom: 22px; }
-
-.asset-bal-card { margin-bottom: 20px; } /* on .glass.card */
-.asset-bal-label { font-size: 13px; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
-.asset-bal-value { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.asset-bal-fiat { font-size: 13px; color: var(--dim); font-weight: 600; margin-top: 4px; }
-
-.asset-actions { margin-bottom: 16px; } /* on .flexr.g10 */
-.asset-btn {
-  flex: 1;
-  height: 54px;
-  border: none;
-  border-radius: 999px;
+/* =====================================================================
+   src/features/wallet/Asset.tsx and ChainAsset.tsx — one holding: its
+   logo and price (or balance), what this wallet holds, the verbs.
+   Prefix: .asset-   Sections between lines; no cards with a fill.
+   ===================================================================== */
+.asset-hero {
   display: flex;
   align-items: center;
-  justify-content: center;
-  font-size: 15px;
-  font-weight: 800;
-  cursor: pointer;
+  gap: 16px;
+  margin-bottom: 22px;
 }
-.asset-btn--send { background: var(--primary-bg); color: var(--primary-text); }
-.asset-btn--ghost { color: var(--text); } /* surface from .glass-soft */
 
-.asset-explorer { display: block; text-align: center; color: var(--muted); font-size: 13px; font-weight: 700; padding: 12px; text-decoration: none; }
+.asset-hero-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.asset-price {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-change {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.asset-change svg {
+  width: 16px;
+  height: 16px;
+}
+
+.asset-change.is-up {
+  color: var(--up);
+}
+
+.asset-change.is-down {
+  color: var(--down);
+}
+
+.asset-balance {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 0;
+  margin-bottom: 20px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.asset-balance-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.asset-balance-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-balance-fiat {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.asset-notice {
+  margin-bottom: 16px;
+}
+
+.asset-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.asset-actions.is-three {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+.asset-note {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.asset-fund {
+  margin: 10px 0 18px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+.asset-fund-title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.asset-fund-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 18px;
+}
+
+.asset-explorer {
+  align-self: center;
+  margin-top: 8px;
+}

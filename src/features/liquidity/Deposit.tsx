@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { Notice } from '@/ui/Notice';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { trim } from '@/lib/format';
@@ -59,10 +60,10 @@ export function Deposit({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('lp.depositTitle')} onBack={store.goBack} />
+      <ScreenHeader title={t('lp.depositTitle')} onBack={store.goBack} />
 
       <div className={cx('exchange-stack', openSel && 'is-open')}>
-        <div className={cx('glass exchange-card', openSel === 'a' && 'is-active')}>
+        <div className={cx('exchange-card', openSel === 'a' && 'is-active')}>
           <div className="exchange-label">{t('lp.assetA')}</div>
           <div className="row between g10">
             <AssetSelect assets={assets} value={aRef} onPick={(x) => setARef({ code: x.code, issuer: x.issuer })} open={openSel === 'a'} onToggle={(n) => setOpenSel(n ? 'a' : null)} />
@@ -77,7 +78,7 @@ export function Deposit({ store }: { store: WalletStore }) {
           <span className="lp-plus">+</span>
         </div>
 
-        <div className={cx('glass exchange-card exchange-card--to', openSel === 'b' && 'is-active')}>
+        <div className={cx('exchange-card exchange-card--to', openSel === 'b' && 'is-active')}>
           <div className="exchange-label">{t('lp.assetB')}</div>
           <div className="row between g10">
             <AssetSelect assets={assets} value={bRef} onPick={(x) => setBRef({ code: x.code, issuer: x.issuer })} open={openSel === 'b'} onToggle={(n) => setOpenSel(n ? 'b' : null)} />
@@ -89,15 +90,15 @@ export function Deposit({ store }: { store: WalletStore }) {
         </div>
       </div>
 
-      {sameAsset && <div className="exchange-guard">{t('lp.sameAsset')}</div>}
+      {sameAsset && <Notice className="exchange-notice">{t('lp.sameAsset')}</Notice>}
       {!sameAsset && overA && (
-        <div className="exchange-guard exchange-guard--danger">{t('swap.insufficient', { avail: trim(availA, 4), code: aRef.code })}</div>
+        <Notice tone="danger" className="exchange-notice">{t('swap.insufficient', { avail: trim(availA, 4), code: aRef.code })}</Notice>
       )}
       {!sameAsset && !overA && overB && (
-        <div className="exchange-guard exchange-guard--danger">{t('swap.insufficient', { avail: trim(availB, 4), code: bRef.code })}</div>
+        <Notice tone="danger" className="exchange-notice">{t('swap.insufficient', { avail: trim(availB, 4), code: bRef.code })}</Notice>
       )}
 
-      <div className="glass exchange-note">{t('lp.depositNote')}</div>
+      <Notice className="exchange-notice">{t('lp.depositNote')}</Notice>
 
       <div className="spacer" />
       <div className="kb-dock">

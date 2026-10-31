@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
+import { Notice } from '@/ui/Notice';
 import { AssetLogo } from '@/ui/AssetLogo';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { TokenAvatar } from '@/ui/TokenAvatar';
@@ -30,8 +31,8 @@ export function Withdraw({ store }: { store: WalletStore }) {
   if (!position) {
     return (
       <div className="scr screen col pb-104">
-        <BackBar title={t('lp.withdrawTitle')} onBack={store.goBack} />
-        <div className="glass exchange-note lp-empty">{t('lp.noPositionSelected')}</div>
+        <ScreenHeader title={t('lp.withdrawTitle')} onBack={store.goBack} />
+        <Notice className="exchange-notice lp-empty">{t('lp.noPositionSelected')}</Notice>
       </div>
     );
   }
@@ -45,9 +46,9 @@ export function Withdraw({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('lp.withdrawTitle')} onBack={store.goBack} />
+      <ScreenHeader title={t('lp.withdrawTitle')} onBack={store.goBack} />
 
-      <div className="glass card lp-item">
+      <div className="card lp-item">
         <div className="row g10 lp-item-head">
           <TokenAvatar glyph="◇" tone="pool" size={34} />
           <div>
@@ -59,7 +60,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
         </div>
       </div>
 
-      <div className="glass exchange-card lp-withdraw-card">
+      <div className="exchange-card lp-withdraw-card">
         <div className="exchange-label">{t('lp.sharesToBurn')}</div>
         <div className="row between g10">
           <span className="lp-shares-glyph">◇</span>
@@ -77,9 +78,9 @@ export function Withdraw({ store }: { store: WalletStore }) {
         </div>
       </div>
 
-      {over && <div className="exchange-guard exchange-guard--danger">{t('lp.overShares', { held: trim(held, 4) })}</div>}
+      {over && <Notice tone="danger" className="exchange-notice">{t('lp.overShares', { held: trim(held, 4) })}</Notice>}
 
-      <div className="glass exchange-quote">
+      <div className="exchange-quote">
         <div className="lp-redeem-label">{t('lp.youReceiveApprox')}</div>
         {position.redeemable.map((r) => (
           <div key={label(r)} className="exchange-quote-row">
@@ -91,7 +92,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
         ))}
       </div>
 
-      <div className="glass exchange-note">{t('lp.withdrawNote')}</div>
+      <Notice className="exchange-notice">{t('lp.withdrawNote')}</Notice>
 
       <div className="spacer" />
       <div className="kb-dock">
