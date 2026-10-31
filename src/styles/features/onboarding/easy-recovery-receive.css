@@ -1,0 +1,53 @@
+/* =====================================================================
+   src/features/onboarding/EasyRecoveryReceive.tsx — the QR the other device
+   scans, its expiry, and the code step. Prefix: .easy-receive-
+   The QR keeps its white ground in both themes (a scanner needs the contrast)
+   and nothing around it.
+   ===================================================================== */
+/* No box around it (the user's call): the QR and its expiry under it, on the canvas. */
+.easy-receive-qr-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.easy-receive-qr {
+  display: grid;
+  place-items: center;
+  width: 232px;
+  height: 232px;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.easy-receive-qr.is-empty {
+  background: transparent;
+  border: 1px dashed var(--line);
+}
+
+.easy-receive-expiry {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.easy-receive-waiting {
+  margin-top: 16px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.easy-receive-notice {
+  margin-top: 16px;
+}
+
+/* the code: five digits, large and spaced, so it is typed the way it is read */
+.easy-receive-code {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.4em;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

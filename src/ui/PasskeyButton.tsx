@@ -1,4 +1,5 @@
 import { cx } from '@/lib/cx';
+import { inkHandlers } from '@/lib/ink';
 import { Spinner } from '@/ui/Spinner';
 import '@/styles/ui/passkey-button.css';
 
@@ -9,8 +10,8 @@ import '@/styles/ui/passkey-button.css';
  * revealing the phrase, choosing how a new wallet is protected, and restoring a backup.
  *
  * PRIMARY by default, unlike `DeviceAuthButton`: on a passkey device there is no password
- * to be the main path, so this IS the main path. `quiet` is for the screens where the
- * passkey is the shortcut beside something else.
+ * to be the main path, so this IS the main path. `quiet` (the outlined secondary) is for
+ * the screens where the passkey is the shortcut beside something else.
  *
  * Never raised on mount by any screen. A sheet that appears without a tap is how a person
  * learns to touch the sensor before reading — see the note on `Unlock.tsx`.
@@ -49,7 +50,8 @@ export function PasskeyButton({
       type="button"
       onClick={onClick}
       disabled={busy || disabled}
-      className={cx(quiet ? 'glass-soft passkey-btn--quiet' : 'btn-primary', 'row center g10 passkey-btn', className)}
+      className={cx(quiet ? 'btn-ghost' : 'btn-primary', 'ink passkey-btn', className)}
+      {...inkHandlers}
     >
       {busy ? <Spinner /> : <PasskeyIcon />}
       <span className="passkey-btn-label">{label}</span>

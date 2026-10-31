@@ -1,0 +1,26 @@
+/* =====================================================================
+   src/features/onboarding/WelcomeHero.tsx — the motion that fills Welcome's
+   free space. The square videos are contained in it, edge to edge across the
+   column (their canvas is --bg, so the bleed shows no box), the intro stacked
+   over the loop.
+   ===================================================================== */
+.welcome-hero {
+  position: relative;
+  flex: 1;
+  min-height: 180px;
+  margin: 8px calc(var(--gutter) * -1) 16px;
+}
+
+.welcome-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+/* The loop waits, unseen, under the intro until the cut. */
+.welcome-video.is-waiting {
+  visibility: hidden;
+}

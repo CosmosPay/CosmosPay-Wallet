@@ -132,6 +132,7 @@ const KEEP_IN_LOCAL_STORAGE = new Set([
   'cosmos.devMode',
   'cosmos.devEndpoints',
   'cosmos.surface',
+  'cosmos.autoLock',
 ]);
 
 /**

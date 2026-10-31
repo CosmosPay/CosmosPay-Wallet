@@ -1,0 +1,80 @@
+/* =====================================================================
+   src/features/settings/EasyRecoverySend.tsx — the camera on the other
+   device's QR, the confirmation, and the code to type there.
+   Prefix: .easy-send-  Lines on the canvas, like the rest of the redesign.
+   ===================================================================== */
+.easy-send-viewport {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+}
+
+.easy-send-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.easy-send-camera-off {
+  padding: 20px;
+  text-align: center;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.easy-send-notice {
+  margin-bottom: 14px;
+}
+
+.easy-send-ack {
+  margin-bottom: 8px;
+}
+
+/* the code: one outlined cell per digit, large, so it is read off the screen at a glance */
+.easy-send-code {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin: 8px 0 24px;
+}
+
+.easy-send-digit {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 66px;
+  border: 1.5px solid var(--text);
+  border-radius: 14px;
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.easy-send-waiting {
+  margin-top: 4px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.easy-send-done {
+  display: grid;
+  place-items: center;
+  width: 88px;
+  height: 88px;
+  margin: 16px auto;
+  border: 1.5px solid var(--text);
+  border-radius: 50%;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+.easy-send-done-mark {
+  width: 40px;
+  height: 40px;
+}

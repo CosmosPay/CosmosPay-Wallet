@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { RAILS } from '@/constants/fiat';
@@ -63,7 +63,7 @@ export function BankAccount({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('fiat.addAccount')} onBack={store.goBack} />
+      <ScreenHeader title={t('fiat.addAccount')} onBack={store.goBack} />
       <div className="desc bank-desc">{t('fiat.accountDesc')}</div>
       <Select label={t('fiat.currency')} value={rail.type} onChange={changeRail}>
         {rails.map((r) => <option key={r.type} value={r.type}>{t(r.labelKey)}</option>)}

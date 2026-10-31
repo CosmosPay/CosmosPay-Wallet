@@ -16,7 +16,7 @@ import {
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
 import { coingeckoBase } from '@/lib/endpoints';
-import { defaultMemo, normalizeMemo, type MemoKind } from '@/lib/memo';
+import { defaultMemo, memoForDisplay, normalizeMemo, type MemoKind } from '@/lib/memo';
 import { tNow } from '@/lib/i18n';
 
 // A network is identified by an id; built-ins are testnet/public, plus any
@@ -335,9 +335,9 @@ export function inspectXdr(cfg: NetConfig, xdr: string): TxSummary {
   const ops: any[] = Array.isArray(tx.operations) ? tx.operations : [];
   let memo = '';
   try {
-    if (tx.memo && tx.memo.value != null) memo = tx.memo.value.toString();
+    memo = memoForDisplay(tx.memo);
   } catch {
-    /* non-text memo */
+    /* an unreadable memo shows as none */
   }
   return {
     source: tx.source ?? '',

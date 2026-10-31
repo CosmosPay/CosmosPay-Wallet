@@ -5,10 +5,8 @@
    size means adding a class here AND widening TokenAvatarSize in the tsx. */
 .token-avatar {
   border-radius: 50%;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid var(--glass-border);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  /* The redesign: a ring on the canvas, no fill and no bevel. */
+  border: 1.5px solid var(--line-strong);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -19,11 +17,12 @@
 
 /* ------------------------------ tones ------------------------------ */
 .token-avatar--base {
-  background: var(--avatar-bg);
+  background: transparent;
 }
 
 .token-avatar--brand {
-  background: var(--avatar-brand);
+  background: transparent;
+  border-color: var(--text);
 }
 
 /* liquidity-pool badge: a literal tint, deliberately identical in both themes */
@@ -72,6 +71,12 @@
   width: 38px;
   height: 38px;
   font-size: 17px;
+}
+
+.token-avatar--44 {
+  width: 44px;
+  height: 44px;
+  font-size: 19px;
 }
 
 .token-avatar--64 {

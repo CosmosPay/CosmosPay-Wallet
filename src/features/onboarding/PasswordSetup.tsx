@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
 import { GhostButton, PrimaryButton } from '@/ui/Buttons';
+import { Notice } from '@/ui/Notice';
 import { PasskeyButton } from '@/ui/PasskeyButton';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Spinner } from '@/ui/Spinner';
 import { Criterion } from '@/features/onboarding/Criterion';
-import { Desc } from '@/features/onboarding/Desc';
 import { OptionalConsents } from '@/features/onboarding/OptionalConsents';
+import { SignInConflict } from '@/features/onboarding/SignInConflict';
 import { Field } from '@/ui/Field';
 import { APP_PWD_CRITERIA, MIN_APP_PWD_LEN, appPasswordOk } from '@/lib/validate';
 import '@/styles/features/onboarding/password-setup.css';
@@ -44,13 +45,7 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
    * plugin, and an iPhone before iOS 18 or an Android before 9 answers no.
    */
   const passkeyOffer = store.passkeyPossible && !store.hasSession && store.wallets.length === 0;
-  const [step, setStep] = useState<'choose' | 'password' | 'consents'>(passkeyOffer ? 'choose' : 'password');
   const [passkeyBusy, setPasskeyBusy] = useState(false);
-  // A browser that turns out not to support what the wallet needs (the store learns it
-  // from the first ceremony, or the browser says so up front) goes straight to the form.
-  useEffect(() => {
-    if (step === 'choose' && !store.passkeyPossible) setStep('password');
-  }, [step, store.passkeyPossible]);
 
   // Live criteria — each row below flips to green as it's satisfied. The rules come from
   // `lib/validate`, not from literals here: this screen and the change-password form used
@@ -64,18 +59,25 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
   const match = pwd === confirm && confirm.length > 0;
   const ok = appPasswordOk(pwd) && match && !store.busy;
 
-  // `goBack` and never `setScreen`: two flows arrive here now — the seed one from
+  /*
+   * The steps are stops on the navigation stack (`goStep`), so every back — the header's,
+   * the browser's, the mouse's — walks them: consents → password → the passkey offer. The
+   * first step is the offer where a passkey can be made, the form elsewhere; a browser that
+   * turns out unable to make one (the store learns it from the first ceremony) lands on the
+   * form. The consents need the password typed here: arriving on them without it (forward,
+   * after leaving the screen) shows the form.
+   */
+  const first = passkeyOffer ? 'choose' : 'password';
+  const step =
+    store.navStep === 'consents' && signIn && appPasswordOk(pwd) && match
+      ? 'consents'
+      : store.navStep === 'password' || store.navStep === 'consents'
+        ? 'password'
+        : first;
+  // `goBack` and never `setScreen`: two flows arrive here — the seed one from
   // `profile-setup`, and a first-run sign-in straight from `sign-in` — and only the
-  // navigation stack knows which. The screen table's
-  // fallback covers the case where there is no stack (see SCREENS.password).
-  // From the consent step, back is the password step: leaving the screen there would
-  // discard a password the user has already typed and confirmed.
-  const back =
-    step === 'consents'
-      ? () => setStep('password')
-      : step === 'password' && passkeyOffer
-        ? () => setStep('choose')
-        : store.goBack;
+  // navigation stack knows which (the screen table's fallback covers an empty one).
+  const back = store.goBack;
 
   if (step === 'choose') {
     const createWithPasskey = async () => {
@@ -88,9 +90,13 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
     };
     return (
       <div className="scr screen col">
-        <BackBar title={t('passkey.protectTitle')} onBack={back} />
-        <Desc className="pwd-setup-desc">{t(signIn ? 'passkey.protectDescSignIn' : 'passkey.protectDesc')}</Desc>
-        <div className="glass-soft pwd-setup-note">{t('passkey.protectNote')}</div>
+        <ScreenHeader
+          title={t('passkey.protectTitle')}
+          desc={t(signIn ? 'passkey.protectDescSignIn' : 'passkey.protectDesc')}
+          onBack={back}
+        />
+        <SignInConflict store={store} className="pwd-setup-note" />
+        <Notice className="pwd-setup-note">{t('passkey.protectNote')}</Notice>
 
         {/* The sign-in path asks its two consents where it collects the password; the
             passkey path collects none, so it asks here, before the wallet exists. The seed
@@ -100,7 +106,7 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
         <div className="spacer" />
         <div className="kb-dock col g10">
           <PasskeyButton label={t('passkey.create')} busy={passkeyBusy || store.busy} onClick={createWithPasskey} />
-          <GhostButton onClick={() => setStep('password')}>{t('passkey.usePasswordInstead')}</GhostButton>
+          <GhostButton onClick={() => store.goStep('password')}>{t('passkey.usePasswordInstead')}</GhostButton>
         </div>
       </div>
     );
@@ -109,9 +115,9 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
   if (step === 'consents') {
     return (
       <div className="scr screen col">
-        <BackBar title={t('setup.optionalTitle')} onBack={back} />
-        <Desc className="pwd-setup-desc">{t('setup.optionalDesc')}</Desc>
+        <ScreenHeader title={t('setup.optionalTitle')} desc={t('setup.optionalDesc')} onBack={back} />
 
+        <SignInConflict store={store} className="pwd-setup-note" />
         <OptionalConsents store={store} />
 
         <div className="spacer" />
@@ -126,10 +132,9 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('pwd.title')} onBack={back} />
       {/* On the sign-in path this password also seals the cloud backup, and it is the one
           the NEXT device will ask for — which the seed path's copy does not say, and has to. */}
-      <Desc className="pwd-setup-desc">{t(signIn ? 'signin.passwordDesc' : 'pwd.desc')}</Desc>
+      <ScreenHeader title={t('pwd.title')} desc={t(signIn ? 'signin.passwordDesc' : 'pwd.desc')} onBack={back} />
 
       <Field password label={t('pwd.label')} value={pwd} onChange={setPwd} placeholder={t('pwd.min', { n: MIN_APP_PWD_LEN })} />
       <Field password label={t('pwd.repeat')} value={confirm} onChange={setConfirm} placeholder={t('pwd.repeat')} />
@@ -148,7 +153,7 @@ export function PasswordSetup({ store }: { store: WalletStore }) {
       <div className="kb-dock">
         {/* On the sign-in path this only advances a step — the wallet is created by the
             button on the consent step, so the label must not promise otherwise. */}
-        <PrimaryButton disabled={!ok} onClick={() => (signIn ? setStep('consents') : store.finishOnboarding(pwd))}>
+        <PrimaryButton disabled={!ok} onClick={() => (signIn ? store.goStep('consents') : store.finishOnboarding(pwd))}>
           {store.busy ? <Spinner /> : t(signIn ? 'common.continue' : 'pwd.create')}
         </PrimaryButton>
       </div>

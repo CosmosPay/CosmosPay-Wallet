@@ -1,0 +1,62 @@
+/* =====================================================================
+   src/ui/ScreenHeader.tsx — the Figma header: back on the left, then a bold
+   left-aligned title over one muted line.
+   ===================================================================== */
+.screen-header {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 24px;
+}
+
+.screen-header-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  margin-bottom: 12px;
+}
+
+/* 44px target whose arrow sits on the gutter line: the negative margin gives back the
+   space around the 24px glyph. */
+.screen-header-back {
+  --ink: var(--text);
+  --ink-text: var(--bg);
+  width: 44px;
+  height: 44px;
+  margin-left: -10px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* the title and its line change with the step (sign-in): they fade in, never snap */
+.screen-header-title,
+.screen-header-desc {
+  animation: fadeUp var(--dur-base) var(--ease-out);
+}
+
+.screen-header-back-icon {
+  width: 24px;
+  height: 24px;
+}
+
+.screen-header-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  text-wrap: balance;
+}
+
+.screen-header-desc {
+  margin: 8px 0 0;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--muted);
+}

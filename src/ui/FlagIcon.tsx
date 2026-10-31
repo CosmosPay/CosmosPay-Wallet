@@ -3,9 +3,9 @@
  *
  * Split out of the old shared flags module because these five imports pull ~112 KB of
  * country-flag-icons, and they were reaching the entry chunk through Welcome and
- * Unlock — the two screens that must paint first. `LangSelect` now lazy-loads this
- * module, so the language picker's markup is there immediately and its artwork
- * arrives a tick later.
+ * Unlock — the two screens that must paint first. `LangFlag` lazy-loads this module,
+ * so the language picker's markup is there immediately and its artwork arrives a tick
+ * later.
  */
 import AR from 'country-flag-icons/react/3x2/AR';
 import US from 'country-flag-icons/react/3x2/US';

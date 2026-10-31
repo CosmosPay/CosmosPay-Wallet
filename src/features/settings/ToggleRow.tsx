@@ -1,18 +1,23 @@
-import { cx } from '@/lib/cx';
+import { useId } from 'react';
+import { Switch } from '@/ui/Switch';
 import '@/styles/features/settings/settings.css';
 
-/** Glass card with a label (+ optional description) and a pill switch on the right.
- *  The switch on/off look is driven by the `.is-on` modifier class. */
+/** A setting that is on or off: its name (and why), and a switch — a real `role="switch"`. */
 export function ToggleRow({ label, desc, on, onChange }: { label: string; desc?: string; on: boolean; onChange: (v: boolean) => void }) {
+  const id = useId();
   return (
-    <div className="glass row g12 settings-item">
-      <div className="f1 min0">
-        <div className="settings-item-label">{label}</div>
-        {desc && <div className="settings-item-desc">{desc}</div>}
+    <div className="settings-item is-static">
+      <div className="settings-item-text">
+        <span id={`${id}-label`} className="settings-item-label">
+          {label}
+        </span>
+        {desc && (
+          <span id={`${id}-desc`} className="settings-item-desc">
+            {desc}
+          </span>
+        )}
       </div>
-      <div onClick={() => onChange(!on)} className={cx('tap settings-switch', on && 'is-on')}>
-        <div className="settings-switch-knob" />
-      </div>
+      <Switch on={on} onChange={onChange} labelledBy={`${id}-label`} describedBy={desc ? `${id}-desc` : undefined} />
     </div>
   );
 }

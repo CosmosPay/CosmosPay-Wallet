@@ -1,0 +1,53 @@
+/* =====================================================================
+   src/ui/Tabs.tsx — tabs on a line; the chosen one on the brand blue.
+   ===================================================================== */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+}
+
+.tabs-tab {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+
+.tabs-tab.is-on {
+  color: var(--text);
+}
+
+/* the stretch of line under the chosen tab */
+.tabs-tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--brand);
+  transform: scaleX(0);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.tabs-tab.is-on::after {
+  transform: scaleX(1);
+}
+
+.tabs-tab:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+  border-radius: 8px;
+}

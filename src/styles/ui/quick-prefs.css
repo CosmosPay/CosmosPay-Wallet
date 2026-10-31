@@ -1,0 +1,133 @@
+/* =====================================================================
+   src/ui/QuickPrefs.tsx — the language and theme controls of Welcome and Unlock, and
+   the language list in their sheet (the sheet itself is src/styles/ui/sheet.css).
+   Both controls are 44px targets and ink with the text colour on hover, like the
+   header controls of snap.cosmospay.lat.
+   ===================================================================== */
+.quick-prefs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* the language button and, on a desktop window, the dropdown it opens under itself */
+.quick-prefs-lang-wrap {
+  position: relative;
+}
+
+/* in the dropdown the rows are a little tighter than in the sheet */
+.dropdown .quick-prefs-opt {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 15px;
+}
+
+/* borderless pill: the flag, the language's own name, a chevron */
+.quick-prefs-lang {
+  --ink: var(--text);
+  --ink-text: var(--bg);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 44px;
+  padding: 0 12px 0 11px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* the narrowest column (see the matching rule in welcome.css) */
+@media (max-width: 359px) {
+  .quick-prefs {
+    gap: 2px;
+  }
+
+  .quick-prefs-lang {
+    gap: 5px;
+    padding: 0 8px;
+  }
+}
+
+/* A round button in the buttons' style, inverted from the primary (the user's call): the
+   canvas with a 1.5px ink outline and an ink icon; on hover the ink fills it and the icon
+   turns to the canvas colour. */
+.quick-prefs-theme {
+  --ink: var(--text);
+  --ink-text: var(--bg);
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1.5px solid var(--text);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.quick-prefs-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.quick-prefs-chevron {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: transform var(--dur-base) var(--ease-in-out);
+}
+
+.quick-prefs-lang[aria-expanded='true'] .quick-prefs-chevron {
+  transform: rotate(180deg);
+}
+
+/* ---- the language list inside the sheet ---- */
+.quick-prefs-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quick-prefs-opt {
+  width: 100%;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.13s var(--ease-out), border-color var(--dur-quick) var(--ease-out);
+}
+
+/* The chosen language: its check and weight, and an ink line — no fill. */
+.quick-prefs-opt.is-on {
+  border-color: var(--text);
+  font-weight: 700;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .quick-prefs-opt:not(.is-on):hover {
+    border-color: var(--line);
+    filter: none;
+  }
+}
+
+.quick-prefs-check {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}

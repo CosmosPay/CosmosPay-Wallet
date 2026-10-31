@@ -1,32 +1,425 @@
-/* Send screen (src/features/money/Send.tsx).
-   The asset dropdown is the shared AssetSelect — see styles/features/money/asset-select.css. */
+/* =====================================================================
+   src/features/money/Send.tsx, ChainSend.tsx, SendParts.tsx, SendAssetPicker.tsx — send on any
+   network, one structure: the asset (with its network), the recipient, the amount, the optional
+   memo, the button. Prefix: .send-   Fields are lines on the canvas; no grey fills. Spacing on
+   the 4/8 grid: 24px between sections, 8px between a label, its field and its note.
+   ===================================================================== */
 
-/* destination + amount + shortcuts */
-.send-to-label { margin: 8px 0 6px; } /* on .label-up */
-.send-addr-input { flex: 1; width: auto; min-width: 0; font-size: 14px; font-family: monospace; } /* on .input */
-.send-scan-btn { flex-shrink: 0; width: 54px; height: 54px; border: none; border-radius: 999px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text); } /* on .glass-soft */
-.send-paste-btn { margin-top: 8px; } /* on .glass-soft.pill-btn */
-/* address validity — green/red like the password criteria, with a filled ✓/✕ badge */
-.send-addr-note { display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 12px; font-weight: 700; margin: 6px 2px 0; }
-.send-addr-note.is-valid { color: var(--up); }
-.send-addr-note.is-invalid { color: var(--danger); }
-.send-addr-dot { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 50%; font-size: 10px; font-weight: 900; color: #fff; flex-shrink: 0; }
-.send-addr-note.is-valid .send-addr-dot { background: var(--up); }
-.send-addr-note.is-invalid .send-addr-dot { background: var(--danger); }
-.send-amount { text-align: center; padding: 10px 0 4px; }
-/* Fixed width (was content-sized in `ch` from an inline style). The field is
-   centre-aligned, so the digits still sit where they always did. */
-.send-amount-input { width: 230px; background: transparent; border: none; outline: none; color: var(--text); font-size: 44px; font-weight: 800; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; text-align: center; padding: 0; }
-.send-avail { margin-top: 10px; font-size: 13px; color: var(--dim); font-weight: 600; }
-.send-pct { margin: 10px 0 12px; } /* on .flexr.g8 */
-.send-pct-btn { flex: 1; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); padding: 11px; border-radius: 999px; cursor: pointer; } /* on .tap.glass-soft */
-.send-memo { margin-bottom: 12px; } /* on .input */
+/* The form's pieces are the screen's own children (`display: contents`): the button's dock is
+   sticky over the keyboard, and sticky only travels within its direct flex parent (app.css). */
+.send-form {
+  display: contents;
+}
 
-/* Memo rejected (over the 28-byte limit, or a non-numeric MEMO_ID). */
-.send-memo-err {
+.send-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 24px;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+.send-section:first-of-type {
+  margin-top: 8px;
+}
+
+.send-label {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* ---- a field with its controls inside its end ---- */
+.send-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 18px;
+  background: transparent;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.send-box:hover {
+  border-color: var(--text);
+}
+
+.send-box:focus-within {
+  border-color: var(--text);
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.send-box.is-invalid {
+  border-color: var(--danger);
+}
+
+.send-box-input {
+  flex: 1;
+  min-width: 0;
+  height: 54px;
+  padding: 0 16px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.send-box-input::placeholder {
+  color: var(--muted);
+}
+
+.send-box-input.is-address {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 14px;
+}
+
+.send-box-input.is-address:placeholder-shown {
+  font-family: inherit;
+}
+
+.send-box-input.is-amount {
+  height: 64px;
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.4px;
+}
+
+.send-box-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+}
+
+.send-box-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+
+.send-box-btn:hover {
+  color: var(--text);
+}
+
+.send-box-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 0;
+}
+
+.send-box-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.send-box-code {
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.send-max {
+  height: 32px;
+  padding: 0 12px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
   font-size: 12.5px;
   font-weight: 700;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.send-max:hover:not(:disabled) {
+  border-color: var(--text);
+}
+
+.send-max:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.send-max:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* under the amount: its worth on the left, what can be sent on the right */
+.send-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* what a field says about itself */
+.send-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1.4;
+  animation: fadeIn var(--dur-quick) var(--ease-out);
+}
+
+.send-note svg {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+}
+
+.send-note.is-ok {
+  color: var(--up);
+}
+
+.send-note.is-bad {
   color: var(--danger);
-  line-height: 1.45;
-  margin: 6px 2px 0;
+}
+
+.send-note.is-plain {
+  color: var(--muted);
+}
+
+.send-add-memo {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 20px;
+}
+
+.send-add-memo svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* the button: at the bottom of a phone's screen, docked over the keyboard (app.css .kb-dock) */
+.send-foot {
+  margin-top: auto;
+  padding-top: 28px;
+}
+
+/* ---- what to send: the card, and the panel it opens ---- */
+.send-asset {
+  position: relative;
+}
+
+.send-asset-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 72px;
+  padding: 0 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 18px !important;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.send-asset-card:hover {
+  border-color: var(--text);
+}
+
+.send-asset-card:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.send-asset-mark {
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+}
+
+.send-asset-mark.is-card {
+  width: 44px;
+  height: 44px;
+}
+
+.send-asset-mark.is-row {
+  width: 36px;
+  height: 36px;
+}
+
+/* the network's mark on the asset's corner, cut out by a ring of the canvas */
+.send-asset-net {
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: grid;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--bg);
+}
+
+.send-asset-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.send-asset-code {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.send-asset-code.is-card {
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.send-asset-sub {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
+
+.send-asset-caret {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  color: var(--muted);
+  transition: transform var(--dur-base) var(--ease-in-out);
+}
+
+.send-asset-caret.is-open {
+  transform: rotate(180deg);
+}
+
+.dropdown.send-asset-panel {
+  left: 0;
+  right: 0;
+  width: auto;
+  padding: 12px;
+  transform-origin: top center;
+}
+
+.send-asset-title {
+  margin: 0 4px 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.send-asset-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.send-asset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dropdown .send-asset-list {
+  max-height: min(calc(100dvh - 380px), 420px);
+  min-height: 160px;
+}
+
+.send-asset-head {
+  padding: 14px 12px 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.send-asset-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 14px !important;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.send-asset-item.is-on {
+  border-color: var(--text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .send-asset-item:not(.is-on):hover {
+    border-color: var(--line);
+  }
+}
+
+.send-asset-bal {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.send-asset-check {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 18px;
+}
+
+.send-asset-check svg {
+  width: 18px;
+  height: 18px;
+}
+
+.send-asset-none {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* A PC window: the form reads top to bottom and the button follows it, not the window's edge
+   with a hole between them. The 1024px is --desk-min (theme.css). */
+@media (min-width: 1024px) {
+  .has-desktop-mode .send-foot {
+    margin-top: 0;
+    padding-top: 32px;
+  }
 }

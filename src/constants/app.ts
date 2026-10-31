@@ -39,9 +39,16 @@ export const APP_PRODUCER = 'Un producto de Cosmos';
  */
 export const MEMO_SIGNATURE = 'Cosmos Wallet';
 
-/** Terms & Conditions of use — linked from the backup consent checkbox. Served by
- *  the Developer Platform (a separate repo, EN/ES). */
-export const TERMS_URL = 'https://dev.cosmospay.lat/tos';
+/**
+ * The wallet's own legal pages, on its own domain: the Terms & Conditions of use and the
+ * privacy policy. Linked from the foot of Welcome (both) and the backup consent checkbox
+ * (Terms). Required on every first run, so they are linked even before the pages are
+ * published — the user's call (2026-10-28); the pages go up at these exact addresses.
+ * Not snap.cosmospay.lat/privacy: that one is the Stellar Snap's and says it keeps no user
+ * accounts, which is untrue of the wallet (sign-in, email, the encrypted backup, metrics).
+ */
+export const TERMS_URL = 'https://wallet.cosmospay.lat/tos';
+export const PRIVACY_URL = 'https://wallet.cosmospay.lat/privacy';
 
 /** Splash intro timing: the app starts fading in at REVEAL and the splash
  *  overlay unmounts at DONE. DONE - REVEAL = 800ms, paired with the 0.8s ease
@@ -51,14 +58,18 @@ export const SPLASH_REVEAL_MS = 1300;
 export const SPLASH_DONE_MS = 2100;
 
 /**
- * Idle auto-lock. While unlocked, the store holds the decrypted Stellar secret AND
- * the app password in memory, so an unattended session is a spendable session — the
- * MV3 popup dies on close, but the side panel, the web build and the native app all
- * stay alive indefinitely. AUTO_LOCK_MS of no interaction drops the session; the
- * check runs on an interval rather than re-arming a timeout per input event.
+ * Idle auto-lock. An open session holds the vault key, so an unattended session is a
+ * spendable one. The session outlives a closed popup, a reload and a browser restart
+ * (`lib/sessionKeep.ts`, the user's call on 2026-10-29), so inactivity is what ends it:
+ * the person picks how long in Settings, from these, and a day is the default. The check
+ * runs on an interval rather than re-arming a timeout per input event.
  */
-export const AUTO_LOCK_MS = 5 * 60_000;
+export const AUTO_LOCK_CHOICES_MS = [15 * 60_000, 60 * 60_000, 24 * 60 * 60_000, 7 * 24 * 60 * 60_000] as const;
+export type AutoLockMs = (typeof AUTO_LOCK_CHOICES_MS)[number];
+export const DEFAULT_AUTO_LOCK_MS: AutoLockMs = 24 * 60 * 60_000;
 export const AUTO_LOCK_CHECK_MS = 15_000;
+/** localStorage key of the chosen auto-lock (read synchronously, like the other preferences). */
+export const AUTO_LOCK_KEY = 'cosmos.autoLock';
 
 /* The dapp surface's data — the mirror key, the approval window's title and operation
    labels, and the web transport's wire constants — moved to src/constants/dapp.ts. It

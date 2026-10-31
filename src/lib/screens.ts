@@ -17,16 +17,21 @@
  * FALLBACK: the store keeps a real navigation stack and pops it first, so a screen
  * reachable from several places returns to where the user actually came from.
  */
+import { EARN_ENABLED } from '@/constants/features';
 
-export type Tab = 'home' | 'earn' | 'markets' | 'profile';
+export type Tab = 'home' | 'wallet' | 'earn' | 'markets' | 'profile';
 
 /** Every screen id. Adding one here forces a row in SCREENS below. */
 export const SCREEN_IDS = [
   'boot',
   'welcome',
+  'backup-choice',
+  'restore-choice',
   'backup',
   'verify',
   'import',
+  'easy-recovery-receive',
+  'import-wallet',
   'profile-setup',
   'password',
   'device-auth',
@@ -50,6 +55,7 @@ export const SCREEN_IDS = [
   'confirm',
   'success',
   'export',
+  'easy-recovery-send',
   'settings',
   'about',
   'operations',
@@ -68,6 +74,8 @@ export const SCREEN_IDS = [
   'scan',
   'chain-send',
   'chain-asset',
+  'wallets',
+  'add-wallet',
 ] as const;
 
 export type Screen = (typeof SCREEN_IDS)[number];
@@ -84,6 +92,10 @@ export interface BackContext {
    *  sealed under — the password screen was then reached from `sign-in`, and there is no
    *  seed draft and no `profile-setup` behind it to go back to. */
   hasSignInDraft: boolean;
+  /** True while onboarding holds the account it is about to create or import. */
+  hasDraftAccount: boolean;
+  /** True when the device holds at least one wallet (so `unlock` has something to open). */
+  hasWallets: boolean;
 }
 
 /** `'exit'` leaves the app on native; on the other shells it simply does nothing. */
@@ -99,25 +111,46 @@ export interface ScreenDef {
   /** Terminal screen: arriving here clears the stack, so back cannot re-enter the
    *  flow that produced it (e.g. back from `success` must not return to `confirm`). */
   terminal?: boolean;
+  /** Has its own desktop layout: past `--desk-min` it gets `--desk-wide-w` instead of the
+   *  reading column (src/app/Shell.tsx). Set screen by screen, as each one is redesigned
+   *  for a PC window — never on a screen built only for the narrow column. */
+  wide?: boolean;
 }
 
 const profileOrHome = (c: BackContext): Screen => (c.hasSession ? 'profile' : 'home');
+
+/** The screen each tab opens — the Wallet tab's is `wallets`. */
+export const TAB_SCREEN: Record<Tab, Screen> = {
+  home: 'home',
+  wallet: 'wallets',
+  earn: 'earn',
+  markets: 'markets',
+  profile: 'profile',
+};
 
 export const SCREENS: Record<Screen, ScreenDef> = {
   boot: { back: 'exit' },
 
   // onboarding
   welcome: { back: (c) => (c.addingWallet ? 'profile' : 'exit') },
-  backup: { back: 'welcome' },
+  // Welcome's two doors: "create" asks how to back the new wallet up, "I already have one"
+  // asks which backup it has. Each leads to the words path or the account path.
+  'backup-choice': { back: 'welcome' },
+  'restore-choice': { back: 'welcome' },
+  backup: { back: 'backup-choice' },
   verify: { back: 'backup' },
   // Terminal: it is offered once, after onboarding's success screen, and "back" from
   // it must not walk into the flow that created the wallet.
   'device-auth': { back: 'home', terminal: true },
-  import: { back: 'welcome' },
+  import: { back: 'restore-choice' },
+  // Easy recovery's new device (the QR, then the code) and the guided import from another
+  // Stellar wallet: two more answers to "I already have a wallet".
+  'easy-recovery-receive': { back: 'restore-choice' },
+  'import-wallet': { back: 'restore-choice' },
   'profile-setup': { back: (c) => (c.hasDraftMnemonic ? 'verify' : 'import') },
-  // Reached from 'welcome' — on a first run, and on the add-wallet path, which starts there
-  // too. Back goes wherever the stack says; 'profile' is only the fallback, and on a first
-  // run the stack is what answers.
+  // Reached from either choice screen — on a first run, and on the add-wallet path, which
+  // starts at 'welcome' too. Back goes wherever the stack says; these are only the
+  // fallbacks, and on a first run the stack is what answers.
   'sign-in': { back: (c) => (c.hasSession ? 'profile' : 'welcome') },
   // The password a finished sign-in still needs: the backup's to restore it, or this
   // device's to seal a new one. Only ever reached from 'sign-in'.
@@ -132,16 +165,22 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   unlock: { back: 'exit' },
 
   // tabs
-  home: { back: 'exit', tab: 'home', nav: true },
+  home: { back: 'exit', tab: 'home', nav: true, wide: true },
   earn: { back: 'home', tab: 'earn', nav: true },
   defindex: { back: 'earn' },
-  markets: { back: 'home', tab: 'markets', nav: true },
+  // A tab of Home (its Watchlist) rather than a place in the bar.
+  markets: { back: 'home', tab: 'home', nav: true },
+  // The Wallet tab: the wallets on this device, their address on each network, the ledger.
+  wallets: { back: 'home', tab: 'wallet', nav: true },
+  // Another wallet under the same password: no account, no profile, no password screen.
+  'add-wallet': { back: 'wallets', tab: 'wallet' },
   profile: { back: 'home', tab: 'profile', nav: true },
 
   // money
   receive: { back: 'home' },
   send: { back: 'home' },
-  swap: { back: 'home', nav: true },
+  // A form with its button docked at the bottom, like Send: no tab bar under it.
+  swap: { back: 'home' },
   select: { back: 'send' },
   confirm: { back: 'send' },
   success: { back: (c) => (c.hasSession ? 'home' : 'unlock'), terminal: true },
@@ -150,7 +189,7 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // A Solana / Monad holding listed on Home, and the send it opens.
   'chain-asset': { back: 'home' },
   'chain-send': { back: 'chain-asset' },
-  asset: { back: (c) => c.tab },
+  asset: { back: (c) => TAB_SCREEN[c.tab] },
 
   // liquidity
   liquidity: { back: 'earn' },
@@ -167,6 +206,8 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   // settings
   settings: { back: profileOrHome },
   export: { back: profileOrHome },
+  // Easy recovery's old device: scan the new one's QR, confirm, show the code.
+  'easy-recovery-send': { back: 'settings' },
   about: { back: profileOrHome },
   'edit-profile': { back: 'profile' },
 
@@ -185,11 +226,79 @@ export function backTarget(screen: Screen, ctx: BackContext): Screen | 'exit' {
   return typeof def === 'function' ? def(ctx) : def;
 }
 
+/**
+ * Whether the browser's history may lead back (or forward) to this screen
+ * (src/lib/navHistory.ts). A step shows what an earlier one produced — the words, a finished
+ * sign-in, the account being created — and that may be gone: a lock dropped it, a finished
+ * flow wiped it. Such a step is refused, and the person stays where they are; a screen with
+ * nothing in it is never shown.
+ */
+export function canEnter(screen: Screen, c: BackContext): boolean {
+  // Arriving at a terminal screen means something just finished; history cannot repeat it.
+  if (screen === 'boot' || SCREENS[screen].terminal || !isScreenOn(screen)) return false;
+  switch (screen) {
+    case 'backup':
+    case 'verify':
+      return c.hasDraftMnemonic;
+    case 'profile-setup':
+      return c.hasDraftAccount;
+    case 'password':
+      return c.hasSignInDraft || c.hasDraftAccount;
+    case 'sign-in-password':
+    case 'recover':
+      return c.hasSignInDraft;
+    case 'unlock':
+      return !c.hasSession && c.hasWallets;
+    // The account door: a first run, or a session adding a wallet through it.
+    case 'sign-in':
+      return true;
+    default:
+      return AUTH_SCREENS.includes(screen) ? !c.hasSession || c.addingWallet : c.hasSession;
+  }
+}
+
+/**
+ * The screens before a session: starting, creating or restoring a wallet, and unlocking.
+ * On a desktop window they split in two — the flow on the left and the brand panel
+ * (motion, language, theme) on the right; see src/app/AuthAside.tsx.
+ */
+export const AUTH_SCREENS: readonly Screen[] = [
+  'welcome',
+  'backup-choice',
+  'restore-choice',
+  'backup',
+  'verify',
+  'import',
+  'easy-recovery-receive',
+  'import-wallet',
+  'profile-setup',
+  'password',
+  'sign-in',
+  'sign-in-password',
+  'recover',
+  'unlock',
+];
+
+/** The investing screens: the Earn tab and everything reached only through it. */
+export const EARN_SCREENS: readonly Screen[] = ['earn', 'defindex', 'liquidity', 'lp-deposit', 'lp-withdraw'];
+
+/** Whether a screen can be reached at all: a switched-off section (constants/features.ts) cannot. */
+export function isScreenOn(screen: Screen): boolean {
+  return EARN_ENABLED || !EARN_SCREENS.includes(screen);
+}
+
 /** Screens that show the bottom navigation bar (with an open session). */
 export const NAV_SCREENS: Screen[] = SCREEN_IDS.filter((s) => SCREENS[s].nav);
 
-// There was an `isScreen()` guard here, documented as protecting against a screen id
-// arriving from storage or a URL. Nothing in `src/` ever called it, and no such input
-// exists: every navigation goes through `navigate(s: Screen)`. It has been removed
-// rather than left as a promise the code does not keep — if a deeplink ever does
-// carry a screen id, the guard comes back with the caller that needs it.
+/**
+ * Is this string one of ours? A screen id now does arrive from storage: the kept session
+ * remembers where the person was (`lib/sessionKeep.ts`), and what storage hands back is
+ * not a `Screen` until this says so.
+ */
+export function isScreen(value: unknown): value is Screen {
+  return typeof value === 'string' && (SCREEN_IDS as readonly string[]).includes(value);
+}
+
+export function isTab(value: unknown): value is Tab {
+  return typeof value === 'string' && Object.hasOwn(TAB_SCREEN, value);
+}

@@ -18,20 +18,42 @@
     width: var(--desk-side-w);
     flex-shrink: 0;
     padding: 26px 16px 20px;
-    border-right: 1px solid var(--hairline);
-    background: var(--surface-2);
+    /* A line, not a grey panel: the brand draws surfaces with lines. */
+    border-right: 1px solid var(--line);
+    background: var(--bg);
     /* The vertical device insets are on .shell-content, which the rail is not inside, so
        it clears the status bar itself. Only relevant on a tablet in landscape, which is
        the one non-desktop device that reaches this breakpoint. */
-    padding-top: calc(26px + var(--safe-t));
+    /* The logo's line is the screen header's: .shell-content's 32px plus the header's own
+       inset (shell.css, home.css). */
+    padding-top: calc(44px + var(--safe-t));
     padding-bottom: calc(20px + var(--safe-b));
   }
 
+  /* the logo is a button home: no box of its own, the focus ring when the keyboard reaches it */
   .desk-brand {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 0 10px 22px;
+    margin: 0 0 14px;
+    padding: 4px 10px 8px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .desk-brand:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+
+  .desk-brand-mark {
+    width: 26px;
+    height: 26px;
+    color: var(--text);
   }
 
   .desk-brand-name {
@@ -53,6 +75,7 @@
   }
 
   .desk-nav-item {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
@@ -66,29 +89,53 @@
     border-radius: 12px !important;
     border: none;
     background: transparent;
-    color: var(--dim);
+    color: var(--muted);
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
     text-align: left;
-    transition: background-color 0.18s ease, color 0.18s ease;
+    transition: color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out),
+      transform 0.13s var(--ease-out);
+  }
+
+  .desk-nav-item svg {
+    flex-shrink: 0;
   }
 
   .desk-nav-item:hover {
-    background: var(--glass-soft-bg);
-    color: var(--text-soft);
+    box-shadow: inset 0 0 0 1px var(--line);
+    color: var(--text);
   }
 
-  /* The active item is a filled slab, the way the bottom bar's active tab is a filled dot:
-     same idea, the shape the layout can afford. */
+  /* The active item, as the bar marks it (Figma): ink, and a line of the brand blue — here on
+     its left edge, the side the rail is read from. Lines, never a filled slab. */
   .desk-nav-item.is-on {
-    background: var(--accent);
-    color: var(--on-accent);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--line);
   }
 
-  .desk-nav-item.is-on:hover {
-    background: var(--accent);
-    color: var(--on-accent);
+  .desk-nav-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--brand);
+    opacity: 0;
+    transform: scaleY(0.4);
+    transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+  }
+
+  .desk-nav-item.is-on::before {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+
+  .desk-nav-item:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
   }
 
   .desk-nav-label {
@@ -103,6 +150,6 @@
     border-top: 1px solid var(--hairline);
     font-size: 11.5px;
     font-weight: 700;
-    color: var(--dimmer);
+    color: var(--dim);
   }
 }

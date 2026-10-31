@@ -1,16 +1,99 @@
-/* Markets screen (src/features/wallet/Markets.tsx). */
-/* filter tabs */
-.market-tabs { margin-bottom: 18px; font-size: 13px; font-weight: 700; } /* on .flexr.g8 */
-.market-tab { padding: 8px 14px; border-radius: 11px; background: var(--glass-soft-bg); color: var(--muted); cursor: pointer; }
-.market-tab.is-on { background: var(--accent); color: var(--on-accent); }
+/* =====================================================================
+   src/features/wallet/Markets.tsx and MarketRow.tsx — every priced market,
+   from Home's watchlist. Prefix: .market-   Rows between lines.
+   ===================================================================== */
+.market-tabs {
+  margin-bottom: 6px;
+}
 
-/* one market row — the per-index entrance delay is a .stagger-* class */
-.market-row { padding: 12px 2px; cursor: pointer; animation: fadeUp 0.45s ease backwards; } /* on .tap.row.between */
-.market-name { font-size: 15px; font-weight: 700; }
-.market-right { text-align: right; } /* on .col.g2 */
-.market-price { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.market-chg { font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.market-chg.is-up { color: var(--up); }
-.market-chg.is-down { color: var(--down); }
+.market-list {
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
 
-.market-empty { text-align: center; color: var(--dim); font-size: 13px; font-weight: 600; padding: 24px; }
+.market-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* the line between rows: a pseudo-element, since base.css pills every button */
+.market-row::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.market-row:last-of-type::after {
+  display: none;
+}
+
+.market-row:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.market-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.market-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.market-code {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.market-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.market-price {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.market-chg {
+  font-size: 12.5px;
+}
+
+.market-chg.is-up {
+  color: var(--up);
+}
+
+.market-chg.is-down {
+  color: var(--down);
+}
+
+.market-empty {
+  margin: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+}

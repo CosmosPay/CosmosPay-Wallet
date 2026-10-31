@@ -2,8 +2,9 @@ import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { SettingsSection } from '@/features/settings/SettingsSection';
 import { ENDPOINT_FIELDS, devModeEnabled, setDevMode, getOverrides, setOverride, resetOverrides, type EndpointOverrides } from '@/lib/endpoints';
+import { ToggleRow } from '@/features/settings/ToggleRow';
+import { GhostButton } from '@/ui/Buttons';
 import '@/styles/features/settings/settings.css';
-import { cx } from '@/lib/cx';
 
 /** Developer mode: live-overridable endpoints (prices API, Developer Platform,
  *  payments gateway). Persisted in localStorage; getters in lib/endpoints resolve
@@ -32,19 +33,14 @@ export function DevModeSection({ store }: { store: WalletStore }) {
 
   return (
     <SettingsSection title={t('settings.devMode')}>
-      <div onClick={toggle} className="tap glass row between settings-tile">
-        <span className="settings-devmode-label">{t('settings.devMode')}</span>
-        <div className={cx('settings-switch settings-switch-sm', on && 'is-on')}>
-          <div className="settings-switch-knob" />
-        </div>
-      </div>
+      <ToggleRow label={t('settings.devMode')} on={on} onChange={toggle} />
 
       {on && (
         <div className="settings-subform">
           <div className="settings-dev-desc">{t('settings.devModeDesc')}</div>
           {ENDPOINT_FIELDS.map((f) => (
             <label key={f.key} className="settings-dev-field">
-              <div className="label-up settings-dev-field-label">{t(f.labelKey)}</div>
+              <span className="field-label">{t(f.labelKey)}</span>
               <input
                 value={vals[f.key] ?? ''}
                 placeholder={f.getDefault() || '(same-origin)'}
@@ -54,9 +50,7 @@ export function DevModeSection({ store }: { store: WalletStore }) {
               />
             </label>
           ))}
-          <button onClick={reset} className="settings-dev-reset">
-            {t('settings.devReset')}
-          </button>
+          <GhostButton onClick={reset}>{t('settings.devReset')}</GhostButton>
         </div>
       )}
     </SettingsSection>

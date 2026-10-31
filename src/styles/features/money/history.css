@@ -1,2 +1,6 @@
-/* History screen (src/features/money/History.tsx). */
-.history-list { margin-top: 6px; }
+/* src/features/money/History.tsx — the list is ActivityList's (rows.css). */
+.history-wait {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+}

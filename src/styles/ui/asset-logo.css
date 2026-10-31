@@ -1,6 +1,11 @@
-/* AssetLogo — official monochrome asset logo (size prop drives the svg attrs). */
+/* AssetLogo / NetworkLogo — the official artwork as a disc (size comes from the img attrs). A
+   hairline drawn inside its edge keeps a dark disc (Stellar's black, Aleo's) apart from the dark
+   canvas: a line, not a shadow. */
 .asset-logo {
   display: block;
   flex-shrink: 0;
-  color: var(--text);
+  border-radius: 50%;
+  object-fit: cover;
+  outline: 1px solid var(--line);
+  outline-offset: -1px;
 }

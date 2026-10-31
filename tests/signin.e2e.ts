@@ -40,6 +40,10 @@ async function mockServer(page: Page, ready: (email: string) => unknown, finishe
     headers: cors,
     body: JSON.stringify(data),
   });
+  // No recovery servers, as in CI: a developer machine running them (`dev:local -- all` on the
+  // community server) would give every box an email door and change what this suite checks.
+  // Their discovery is refused, so the wallet sees none, whatever is running locally.
+  await page.route('**/.well-known/stellar.toml*', (route: Route) => route.abort());
   await page.route('**/v1/wallet/auth/**', async (route: Route) => {
     const req = route.request();
     if (req.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: cors });
@@ -63,15 +67,23 @@ async function mockServer(page: Page, ready: (email: string) => unknown, finishe
   });
 }
 
-/** Welcome → sign-in → email → a wrong code, then the right one. */
+/** Welcome → create → with my account → email → a wrong code, then the right one. */
 async function signInWithEmail(page: Page) {
   await page.goto(URL, { waitUntil: 'domcontentloaded' });
-  await page.getByText('Entrar con Google, GitHub o email').click();
+  await page.getByText('Crear una wallet nueva').click();
+  await page.getByRole('button', { name: 'Continuar con mi cuenta' }).click();
   await page.getByRole('button', { name: 'Continuar con Google' }).waitFor({ timeout: 10000 });
   ok(await page.getByRole('button', { name: 'Continuar con GitHub' }).isVisible(), 'the providers the server offers are shown');
-  await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
   await page.getByRole('button', { name: 'Continuar con email' }).click();
-  await page.getByText('Revisá tu correo').waitFor({ timeout: 10000 });
+  // Each step of the screen is a stop in the browser's history (src/lib/navHistory.ts).
+  await page.getByPlaceholder('nombre@email.com').waitFor();
+  await page.goBack();
+  await page.getByRole('button', { name: 'Continuar con email' }).waitFor();
+  await page.goForward();
+  ok(await page.getByPlaceholder('nombre@email.com').isVisible(), 'browser back and forward walk the sign-in steps');
+  await page.getByPlaceholder('nombre@email.com').fill('ada@example.com');
+  await page.getByRole('button', { name: 'Enviar código' }).click();
+  await page.getByText('Revisa tu correo').waitFor({ timeout: 10000 });
   const code = page.locator('input[autocomplete="one-time-code"]');
   await code.fill('000000');
   await page.getByRole('button', { name: 'Confirmar' }).click();

@@ -1,0 +1,16 @@
+/* =====================================================================
+   src/features/wallet/AssetToolbar.tsx — Home's asset tools: the search (src/ui/SearchField.tsx)
+   and the network selector (src/ui/NetworkSelect.tsx) on one row. The search takes everything
+   the selector leaves, on a phone and on a PC window alike.
+   ===================================================================== */
+.asset-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  /* air on both sides: under the tabs, above the list — the tools are their own row */
+  margin: 24px 0 16px;
+}
+
+.asset-search {
+  flex: 1;
+}

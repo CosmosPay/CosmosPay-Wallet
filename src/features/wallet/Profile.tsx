@@ -1,12 +1,24 @@
-import { useMemo, useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import type { WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
 import { shortAddr } from '@/lib/format';
-import { addressOn } from '@/lib/accountAddress';
-import { getGreeting } from '@/lib/greeting';
 import { useCopied } from '@/hooks/useCopied';
 import { cx } from '@/lib/cx';
 import { BackCircle } from '@/features/wallet/BackCircle';
+import {
+  AccountIcon,
+  ActivityIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  CopyIcon,
+  CosmosMark,
+  GearIcon,
+  InfoCircleIcon,
+  LinkIcon,
+  PowerIcon,
+  ShieldIcon,
+  WalletIcon,
+} from '@/ui/Icons';
 import '@/styles/features/wallet/profile.css';
 
 /** Center-crop + downscale an image file to a small JPEG data URL for the avatar. */
@@ -29,27 +41,32 @@ function resizeToDataUrl(file: File, size = 160): Promise<string> {
   });
 }
 
-/* ------------------------------ PROFILE ------------------------------ */
+/** One row of a list: a ringed icon, its name (and a line under it), a chevron. */
+function MoreRow({ icon, title, desc, onClick }: { icon: ReactNode; title: string; desc?: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="more-row">
+      <span className="more-row-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <span className="more-row-text">
+        <span className="more-row-title">{title}</span>
+        {desc && <span className="more-row-desc">{desc}</span>}
+      </span>
+      <ChevronRightIcon className="more-row-chev" />
+    </button>
+  );
+}
+
+/* ------------------------------- MORE -------------------------------- */
+/**
+ * The bar's "More" (Figma): the person — photo, name, email, the active wallet's address —
+ * then everything that is not a daily action, in short lists between lines.
+ */
 export function Profile({ store }: { store: WalletStore }) {
   const t = store.t;
-  // Cosmos Pay is an integration (swaps + BlindPay payments) — tap to manage keys/receiver.
-  const cosmosPayRow = { icon: '◇', label: t('cosmospay.manage'), onClick: () => store.setScreen('cosmospay') };
-  const rows = [
-    { icon: '✎', label: t('profile.editProfile'), onClick: () => store.setScreen('edit-profile') },
-    ...(store.meta?.email ? [cosmosPayRow] : []),
-    { icon: '⚷', label: t('profile.exportKeys'), onClick: () => store.setScreen('export') },
-    { icon: '⛁', label: t('profile.receiveAddr'), onClick: () => store.setScreen('receive') },
-    { icon: '⚙', label: t('profile.settings'), onClick: () => store.setScreen('settings') },
-    { icon: '?', label: t('profile.about'), onClick: () => store.setScreen('about') },
-  ];
-  const pub = store.meta?.publicKey ?? '';
-  const name = store.meta?.name || 'Mi wallet';
+  const pub = store.publicKey ?? '';
+  const name = store.meta?.name || t('addWallet.defaultName', { n: 1 });
   const avatar = store.meta?.avatar;
-  // Memoized: the salutation is random — keep it stable across re-renders.
-  const g = useMemo(
-    () => getGreeting(store.meta?.name ?? '', store.meta?.birthdate ?? '', t, store.meta?.gender),
-    [store.meta?.name, store.meta?.birthdate, t, store.meta?.gender],
-  );
   const fileRef = useRef<HTMLInputElement>(null);
   const [copied, copy] = useCopied();
 
@@ -59,86 +76,83 @@ export function Profile({ store }: { store: WalletStore }) {
       try {
         await store.setWalletAvatar(await resizeToDataUrl(f));
       } catch {
-        /* ignore bad image */
+        /* not an image the browser can read: nothing changes */
       }
     }
     e.target.value = '';
   };
 
   return (
-    <div className="scr screen pb-110">
-      <div className="profile-head">
-        <span className="title-30">{t('tab.profile')}</span>
-        {/* Profile is itself a menu destination, so a hamburger here is pointless —
-            in the extension (no bottom bar) the top-right button goes back. */}
+    <div className="scr screen pb-110 more">
+      <header className="more-head">
+        <h1 className="more-title">{t('tab.more')}</h1>
+        {/* In the extension there is no bar: the corner button goes back. */}
         {buildKind() === 'ext' && <BackCircle store={store} />}
-      </div>
-      <div className="row g14 profile-id">
-        <div onClick={() => fileRef.current?.click()} className="tap profile-avatar" title={t('profile.changePhoto')}>
-          {avatar ? (
-            <img src={avatar} alt="" className="profile-avatar-img" />
-          ) : (
-            name.slice(0, 1).toUpperCase()
-          )}
-          <div className="profile-avatar-cam">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none"><path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><circle cx="12" cy="13" r="3" stroke="currentColor" strokeWidth="2" /></svg>
-          </div>
-        </div>
+      </header>
+
+      <section className="more-person" aria-label={t('profile.accountDetails')}>
+        <button type="button" onClick={() => fileRef.current?.click()} className="more-avatar" aria-label={t('profile.changePhoto')}>
+          {avatar ? <img src={avatar} alt="" className="more-avatar-img" /> : <CosmosMark className="more-avatar-mark" />}
+        </button>
         <input ref={fileRef} type="file" accept="image/*" onChange={onFile} className="hidden-input" />
-        <div className="profile-idcol">
-          <span className="profile-name">{name}</span>
-          <div className="row g7">
-            <span className="profile-addr">{shortAddr(pub, 8, 8)}</span>
-            <span onClick={() => copy(pub)} className={cx('tap profile-copy', copied && 'is-copied')} title={t('profile.copyAddress')}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="9" y="9" width="11" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.9" /><path d="M5 15V5a2 2 0 0 1 2-2h10" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>
-            </span>
-          </div>
-          <span className="profile-meta">
-            {store.network.label}{g.age !== null ? ` · ${g.age} ${t('profile.years')}` : ''}
+        <div className="more-person-text">
+          <span className="more-name">{name}</span>
+          {store.meta?.email && <span className="more-email">{store.meta.email}</span>}
+          <span className="more-addr">
+            {shortAddr(pub, 6, 6)}
+            <button
+              type="button"
+              onClick={() => void copy(pub)}
+              className={cx('more-copy', copied && 'is-copied')}
+              aria-label={copied ? t('common.copied') : t('profile.copyAddress')}
+            >
+              {copied ? <CheckIcon /> : <CopyIcon />}
+            </button>
           </span>
-          {store.meta?.email && <span className="profile-email-line" title={store.meta.email}>{store.meta.email}</span>}
         </div>
-      </div>
+      </section>
 
-      <div className="label-up profile-wallets-label">
-        {t('profile.myWallets')} ({store.wallets.length})
-      </div>
-      <div className="glass profile-list">
-        {store.wallets.map((w) => {
-          // The identity, not the raw active entry: on testnet a social wallet is standing
-          // on its hidden seeded half, and the row to highlight is still the account.
-          const active = w.id === store.activeWalletId;
-          return (
-            <div key={w.id} onClick={() => !active && store.switchWallet(w.id)} className={cx('tap profile-wallet-row', active && 'is-active')}>
-              <div className="profile-wallet-avatar">{w.name.slice(0, 1).toUpperCase()}</div>
-              <div className="f1 min0">
-                <div className="profile-wallet-name">{w.name}</div>
-                <div className="profile-wallet-addr">{shortAddr(addressOn(w, store.network.passphrase), 6, 6)}</div>
-              </div>
-              {active ? (
-                <span className="profile-wallet-active">{t('profile.active')}</span>
-              ) : (
-                <span className="profile-wallet-switch">{t('profile.switch')}</span>
-              )}
-            </div>
-          );
-        })}
-        <div onClick={() => store.startAddWallet()} className="tap profile-add-wallet">
-          <div className="profile-add-icon">+</div>
-          <span className="profile-add-label">{t('profile.addWallet')}</span>
-        </div>
-      </div>
+      <section className="more-section" aria-labelledby="more-account">
+        <h2 id="more-account" className="more-section-title">
+          {t('more.account')}
+        </h2>
+        <MoreRow icon={<AccountIcon />} title={t('profile.editProfile')} onClick={() => store.setScreen('edit-profile')} />
+        <MoreRow
+          icon={<WalletIcon />}
+          title={t('profile.myWallets')}
+          desc={t('wallets.onDevice', { n: store.wallets.length })}
+          onClick={() => store.go('wallets', 'wallet')}
+        />
+        {!!store.meta?.email && (
+          <MoreRow icon={<LinkIcon />} title={t('cosmospay.manage')} onClick={() => store.setScreen('cosmospay')} />
+        )}
+      </section>
 
-      <div className="glass profile-menu">
-        {rows.map((r, i) => (
-          <div key={i} onClick={r.onClick} className="tap profile-menu-row">
-            <div className="profile-menu-icon">{r.icon}</div>
-            <span className="profile-menu-label">{r.label}</span>
-            <span className="profile-menu-chev">›</span>
-          </div>
-        ))}
-      </div>
-      <div onClick={() => store.lock()} className="tap profile-lock">{t('profile.lock')}</div>
+      <section className="more-section" aria-labelledby="more-security">
+        <h2 id="more-security" className="more-section-title">
+          {t('more.security')}
+        </h2>
+        <MoreRow
+          icon={<ShieldIcon />}
+          title={t('more.securityRow')}
+          desc={t('more.securityDesc')}
+          onClick={() => store.setScreen('settings')}
+        />
+      </section>
+
+      <section className="more-section" aria-labelledby="more-app">
+        <h2 id="more-app" className="more-section-title">
+          {t('more.app')}
+        </h2>
+        <MoreRow icon={<GearIcon />} title={t('profile.settings')} desc={t('more.settingsDesc')} onClick={() => store.setScreen('settings')} />
+        <MoreRow icon={<ActivityIcon />} title={t('history.title')} onClick={() => store.setScreen('history')} />
+        <MoreRow icon={<InfoCircleIcon />} title={t('profile.about')} onClick={() => store.setScreen('about')} />
+      </section>
+
+      <button type="button" onClick={() => store.lock()} className="more-lock">
+        <PowerIcon />
+        {t('profile.lock')}
+      </button>
     </div>
   );
 }

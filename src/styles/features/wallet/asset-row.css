@@ -1,0 +1,120 @@
+/* =====================================================================
+   src/features/wallet/AssetListRow.tsx — one holding (Figma Home, Assets).
+   Prefix: .asset-row-
+   ===================================================================== */
+.asset-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 68px;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The line between rows is drawn by a pseudo-element: base.css rounds every button into a
+   pill (with !important), which would curl a border-bottom up at both ends. */
+.asset-row::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.asset-row:last-child::after {
+  display: none;
+}
+
+.asset-row:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+.asset-row-logo {
+  position: relative;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+}
+
+/* the network's coin on the token's corner, cut out of it by a ring of the canvas */
+.asset-row-net {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--bg);
+}
+
+.asset-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.asset-row-name {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asset-row-sub {
+  display: flex;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.asset-row-chg.is-up {
+  color: var(--up);
+}
+
+.asset-row-chg.is-down {
+  color: var(--down);
+}
+
+.asset-row-end {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.asset-row-value {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.asset-row-amount {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* The price and the day's move as columns of their own: only Home's table on a PC window
+   draws them (home.css); everywhere else the line under the name says the same. */
+.asset-row-col {
+  display: none;
+}

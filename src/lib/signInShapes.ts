@@ -11,6 +11,9 @@ import { account, arrayOf, bool, id, nullable, num, object, optional, str, varia
 
 export const SignInProvidersShape = object({
   providers: arrayOf(str),
+  // Authentik's own sources (Google, GitHub…), each a button of its own. Absent on a
+  // server older than the field, which the wallet answers with one Authentik button.
+  sources: optional(arrayOf(object({ id: str, name: str }))),
   email: bool,
   // Absent on a server older than the field; null on a deployment with no Authentik.
   // Checked as https before it reaches the OS opener — see `mfaSettingsLink`.
@@ -26,7 +29,9 @@ export const SignInAuthorizationShape = object({
 
 export const SignInPollShape = variant('status', {
   pending: object({}),
-  authorized: object({}),
+  // `bound`: the callback sent this browser's return page a device binding to claim with.
+  // Absent on a server older than the field, and on every sign-in but Authentik's email link.
+  authorized: object({ bound: optional(bool) }),
   redeemed: object({}),
   expired: object({}),
   failed: object({ error: str }),

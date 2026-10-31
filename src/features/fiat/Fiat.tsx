@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { CreateReceiver } from '@/features/fiat/CreateReceiver';
 import { ReceiverHub } from '@/features/fiat/ReceiverHub';
 import { ageFromBirthdate } from '@/lib/greeting';
@@ -22,7 +22,7 @@ export function Fiat({ store }: { store: WalletStore }) {
   if (!adult) {
     return (
       <div className="scr screen col pb-104">
-        <BackBar title={store.t('fiat.tab')} onBack={store.goBack} />
+        <ScreenHeader title={store.t('fiat.tab')} onBack={store.goBack} />
         <div className="f1 col center g12 fiat-adult-gate">
           <div className="fiat-adult-emoji">🔞</div>
           <div className="fiat-adult-text">{store.t('fiat.adultOnly')}</div>

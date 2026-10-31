@@ -1,82 +1,725 @@
-/* Home screen (src/features/wallet/Home.tsx) + Action / ActivateCard / AssetListRow. */
+/* =====================================================================
+   src/features/wallet/Home.tsx (with HomeAction.tsx and HomeCard.tsx) —
+   the Figma's Home ("Cosmos Wallet", 1:2). Prefix: .home-
+   Flat and drawn in lines: rings around the icon buttons, a line around a
+   card, never a grey fill. The brand blue only marks what is active.
+   ===================================================================== */
 
-/* header: avatar + greeting on the left, controls on the right */
-.home-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 0 16px; }
-.home-head-left { display: flex; align-items: center; gap: 11px; min-width: 0; }
-.home-avatar {
-  width: 42px; height: 42px; border-radius: 50%; overflow: hidden;
-  background: var(--glass-soft-bg); border: 1px solid var(--glass-soft-border);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 15px; font-weight: 700; color: var(--text); cursor: pointer; flex-shrink: 0;
+/* ---- who you are ---- */
+.home-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 6px;
+  margin-bottom: 26px;
 }
-.home-avatar-img { width: 100%; height: 100%; object-fit: cover; }
-.home-greet-col { display: flex; flex-direction: column; justify-content: center; min-width: 0; height: 42px; gap: 2px; }
-.home-salutation { font-size: 11.5px; color: var(--muted); font-weight: 700; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.home-firstname { font-size: 17px; font-weight: 800; letter-spacing: -0.4px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* portfolio total + 24h change */
-.home-portfolio { text-align: center; padding: 8px 0 6px; }
-.home-portfolio-label { color: var(--muted); font-size: 13px; font-weight: 600; margin-bottom: 8px; }
-.home-total { font-size: 46px; font-weight: 800; letter-spacing: -1.5px; font-variant-numeric: tabular-nums; }
-.home-cents { color: var(--dimmer); }
-.home-change { margin-top: 8px; display: inline-flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.home-change.is-up { color: var(--up); }
-.home-change.is-down { color: var(--down); }
-.home-change-delta { font-weight: 600; opacity: 0.85; }
+.home-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 
-/* quick actions row (Action) */
-.home-actions { display: flex; justify-content: space-between; gap: 8px; margin: 22px 0 26px; }
-.home-action { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 9px; cursor: pointer; }
-.home-action-icon { width: 58px; height: 58px; border-radius: 50%; display: flex; align-items: center; justify-content: center; } /* on .glass-soft */
-.home-action-label { font-size: 11.5px; color: var(--muted); font-weight: 600; text-align: center; line-height: 1.25; }
+.home-who:focus-visible,
+.home-icon-btn:focus-visible,
 
-/* fiat entry card */
-.home-ramp { position: relative; overflow: hidden; margin-bottom: 14px; padding: 17px; border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--glass-border)); border-radius: 20px; background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--surface)), var(--glass-soft-bg)); }
-.home-ramp::after { content: ''; position: absolute; width: 140px; height: 140px; top: -95px; right: -40px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 30%, transparent); filter: blur(9px); }
-.home-ramp-head, .home-ramp-actions { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.home-ramp-kicker { color: var(--accent); font-size: 9.5px; font-weight: 900; letter-spacing: .1em; }
-.home-ramp-title { margin-top: 3px; font-size: 18px; font-weight: 850; letter-spacing: -.03em; }
-.home-ramp-network { padding: 5px 8px; border: 1px solid var(--hairline); border-radius: 999px; color: var(--muted); font-size: 9px; font-weight: 900; letter-spacing: .08em; }
-.home-ramp-desc { position: relative; z-index: 1; margin: 7px 0 14px; color: var(--muted); font-size: 12px; font-weight: 650; }
-.home-ramp-actions { justify-content: stretch; }
-.home-ramp-actions button { flex: 1; min-height: 42px; border: 0; border-radius: 12px; cursor: pointer; font-size: 12px; font-weight: 850; }
-.home-ramp-actions span { margin-right: 7px; font-size: 16px; }
-.home-ramp-buy { color: var(--bg); background: var(--accent); }
-.home-ramp-sell { color: var(--text); background: var(--glass-soft-bg); border: 1px solid var(--glass-border) !important; }
-.home-ramp-manage { position: relative; z-index: 1; display: flex; width: 100%; align-items: center; justify-content: space-between; margin-top: 8px; padding: 5px 1px 0; border: 0; background: transparent; color: var(--accent); cursor: pointer; font-size: 11px; font-weight: 850; }
-.home-ramp-manage span { font-size: 17px; line-height: 10px; }
-.home-ramp-note { position: relative; z-index: 1; margin-top: 11px; color: var(--dim); font-size: 10.5px; line-height: 1.4; font-weight: 650; }
 
-/* assets + history section heads */
-.home-assets { margin-bottom: 8px; }
-.home-assets-head { margin: 6px 2px 12px; } /* on .row.between */
-.home-history-head { margin: 18px 0 6px; } /* on .row.between */
-.home-assets-title { font-size: 15px; font-weight: 800; letter-spacing: -0.3px; }
-.home-viewall { font-size: 13px; color: var(--muted); font-weight: 700; cursor: pointer; }
-.home-add-asset { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; cursor: pointer; color: var(--accent); margin-top: 2px; }
-.home-add-icon { width: 34px; height: 34px; border-radius: 50%; border: 1px dashed var(--glass-border); display: flex; align-items: center; justify-content: center; font-size: 20px; }
-.home-add-label { font-size: 14.5px; font-weight: 800; }
-.home-history-loading { padding: 18px; text-align: center; }
+.home-avatar {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--text);
+}
 
-/* one asset row (AssetListRow) — the per-index entrance delay is a
-   .stagger-* class from animations.css */
-.home-asset-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 13px 12px; border-radius: 16px; cursor: pointer; margin-bottom: 2px; animation: fadeUp 0.45s ease backwards; }
-.home-asset-name { font-size: 15px; font-weight: 700; }
-.home-asset-net { color: var(--muted); font-weight: 700; } /* a Solana / Monad row names its chain */
-.home-asset-values { text-align: right; } /* on .col.g2 */
-.home-asset-value { font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.home-asset-chg { font-size: 11.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.home-asset-chg.is-up { color: var(--up); }
-.home-asset-chg.is-down { color: var(--down); }
-.home-asset-fav { width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; font-size: 23px; line-height: 1; cursor: pointer; flex-shrink: 0; margin-right: -6px; color: var(--dimmer); }
-.home-asset-fav.is-fav { color: #f7c948; }
+.home-avatar-mark {
+  width: 24px;
+  height: 24px;
+}
 
-/* activation card (ActivateCard) */
-.home-activate { margin-bottom: 22px; } /* on .glass.card */
-.home-activate-title { font-size: 15px; font-weight: 800; margin-bottom: 6px; }
-.home-activate-desc { font-size: 13px; color: var(--muted); font-weight: 600; line-height: 1.5; margin-bottom: 14px; }
-.home-activate-btn { width: 100%; height: 54px; background: var(--accent); color: var(--on-accent); border: none; border-radius: 999px; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 800; cursor: pointer; }
-/* ProtectAccountCard — the SEP-30 offer. Same card as .home-activate; its own spacing. */
-.home-protect { margin-bottom: 22px; } /* on .glass.card */
-.home-protect-code { margin-bottom: 12px; letter-spacing: 0.25em; text-align: center; }
-.home-protect-later { display: block; width: 100%; margin-top: 10px; background: none; border: 0; color: var(--muted); font-size: 13px; font-weight: 700; cursor: pointer; }
+.home-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.home-who-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.home-salutation {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-name {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.home-name-chev {
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.home-head-end {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.home-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
+}
+
+.home-icon-btn:hover {
+  border-color: var(--text);
+}
+
+/* The network pill and the bell beside the settings: src/styles/features/wallet/home-header.css. */
+
+/* ---- the balance ---- */
+.home-balance {
+  margin-bottom: 26px;
+}
+
+.home-balance-label {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.home-total {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.8px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-cents {
+  font-size: 22px;
+  color: var(--muted);
+}
+
+.home-change {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-change-icon {
+  width: 17px;
+  height: 17px;
+}
+
+.home-change.is-up .home-change-icon,
+.home-change.is-up .home-change-pct {
+  color: var(--up);
+}
+
+.home-change.is-down .home-change-icon,
+.home-change.is-down .home-change-pct {
+  color: var(--down);
+}
+
+.home-change-pct {
+  font-weight: 700;
+}
+
+.home-change-delta {
+  color: var(--muted);
+}
+
+/* ---- the four actions ---- */
+.home-actions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 26px;
+}
+
+.home-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.home-action-ring {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  transition: border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
+}
+
+.home-action-ring svg {
+  width: 22px;
+  height: 22px;
+}
+
+.home-action:hover .home-action-ring {
+  border-color: var(--text);
+}
+
+.home-action:focus-visible {
+  outline: none;
+}
+
+.home-action:focus-visible .home-action-ring {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
+.home-action-label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* ---- cards that ask for something (HomeCard) ---- */
+.home-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 22px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+.home-card-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.home-card-desc {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.home-card-link {
+  align-self: center;
+}
+
+.home-card-code {
+  text-align: center;
+  letter-spacing: 4px;
+}
+
+/* ---- tabs and their panel ---- */
+.home-tabs {
+  margin-bottom: 6px;
+}
+
+.home-panel {
+  display: flex;
+  flex-direction: column;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+.home-panel-wait {
+  display: grid;
+  place-items: center;
+  min-height: 120px;
+}
+
+.home-more-link {
+  align-self: center;
+  margin-top: 12px;
+}
+
+/* the holdings' network filter: line pills, the chosen one in ink */
+/* No asset matches the search. */
+.home-asset-none {
+  margin: 0;
+  padding: 18px 2px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* A network with nothing on it: its mark, what is the case, and the way to put something there. */
+.home-net-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px 16px 12px;
+  text-align: center;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+.home-net-empty-text {
+  margin: 0;
+  max-width: 340px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.home-net-empty-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1.5px solid var(--text);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
+}
+
+.home-net-empty-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.home-net-empty-btn:hover {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.home-net-empty-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.home-asset-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* "add an asset": a dashed ring and its name, like an empty gap */
+.home-add {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-add-ring {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1.5px dashed var(--line-strong);
+  border-radius: 50%;
+}
+
+.home-add-ring svg {
+  width: 20px;
+  height: 20px;
+}
+
+.home-add:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+/* ---- performance ---- */
+.home-perf {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-perf-title {
+  margin: 18px 0 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.home-perf-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+}
+
+.home-perf-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home-perf-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.home-perf-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-perf-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.home-perf-pct {
+  width: 64px;
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.home-perf-pct.is-up {
+  color: var(--up);
+}
+
+.home-perf-pct.is-down {
+  color: var(--down);
+}
+
+.home-share-line {
+  display: block;
+  width: 100%;
+  height: 2px;
+}
+
+.home-share-track {
+  fill: var(--line);
+}
+
+.home-share-fill {
+  fill: var(--text);
+}
+
+/* ---- watchlist ---- */
+.home-watch {
+  display: flex;
+  flex-direction: column;
+}
+
+.home-watch-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid var(--line);
+}
+
+.home-watch-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 64px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.home-watch-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.home-watch-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.home-watch-code {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.home-watch-end {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.home-watch-price {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.home-watch-chg {
+  font-size: 12.5px;
+}
+
+.home-watch-chg.is-up {
+  color: var(--up);
+}
+
+.home-watch-chg.is-down {
+  color: var(--down);
+}
+
+.home-watch-star {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
+}
+
+.home-watch-star.is-on {
+  color: var(--text);
+}
+
+.home-watch-open:focus-visible,
+.home-watch-star:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+
+/* ---- the two columns ----
+   On a phone the wrappers are not boxes at all: Home is the Figma's one column. */
+.home-summary,
+.home-main {
+  display: contents;
+}
+
+/* the table's heading: a PC window only (below) */
+.home-asset-head {
+  display: none;
+}
+
+/* On a PC window (`.is-wide`, from the screen table: src/lib/screens.ts) Home is a dashboard:
+   who you are across the top; the balance, the actions and anything asking for attention in
+   a column on the left that stays in view; the tabs and their lists on the right, where the
+   width goes. The 1024px is --desk-min (see theme.css: a media query cannot read the token). */
+@media (min-width: 1024px) {
+  .has-desktop-mode .is-wide .home {
+    display: grid;
+    grid-template-columns: clamp(280px, 22vw, 380px) minmax(0, 1fr);
+    column-gap: clamp(40px, 4vw, 80px);
+    align-content: start;
+    align-items: start;
+  }
+
+  .has-desktop-mode .is-wide .home-head {
+    grid-column: 1 / -1;
+    margin-bottom: 32px;
+  }
+
+  .has-desktop-mode .is-wide .home-summary {
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .has-desktop-mode .is-wide .home-main {
+    display: block;
+    min-width: 0;
+  }
+
+  .has-desktop-mode .is-wide .home-total {
+    font-size: 44px;
+    letter-spacing: -1.2px;
+  }
+
+  .has-desktop-mode .is-wide .home-cents {
+    font-size: 28px;
+  }
+
+  .has-desktop-mode .is-wide .home-balance {
+    margin-bottom: 32px;
+  }
+
+  .has-desktop-mode .is-wide .home-actions {
+    margin-bottom: 32px;
+  }
+
+  .has-desktop-mode .is-wide .home-card {
+    margin-bottom: 16px;
+  }
+
+  /* The tools above the table: the search across, up to the network selector. */
+  .has-desktop-mode .is-wide .asset-toolbar {
+    margin: 28px 0 20px;
+  }
+
+  /* The assets as a table — asset, price, 24 h, balance, value — so the width carries
+     columns instead of one stretched row. The heading and the rows share --asset-cols; every
+     cell is placed on row 1 by number, so a cell a row lacks leaves its column empty rather
+     than shifting the rest. */
+  .has-desktop-mode .is-wide .home-panel {
+    --asset-cols: 44px minmax(0, 1.7fr) minmax(0, 0.9fr) minmax(0, 0.7fr) minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+
+  .has-desktop-mode .is-wide .home-asset-head {
+    display: grid;
+    grid-template-columns: var(--asset-cols);
+    column-gap: 16px;
+    padding: 0 0 12px;
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 500;
+    text-align: right;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-head-asset {
+    grid-column: 1 / 3;
+    text-align: left;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row {
+    display: grid;
+    grid-template-columns: var(--asset-cols);
+    column-gap: 16px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* a figure is one line: cut with an ellipsis before it wraps under itself */
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col,
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-amount,
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-value {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row > *,
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-end > * {
+    grid-row: 1;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-logo {
+    grid-column: 1;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-main {
+    grid-column: 2;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-sub-price,
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-sub .asset-row-chg {
+    display: none;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col {
+    display: block;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col.is-price {
+    grid-column: 3;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col.is-change {
+    grid-column: 4;
+    color: var(--muted);
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col.is-change.is-up {
+    color: var(--up);
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-col.is-change.is-down {
+    color: var(--down);
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-end {
+    display: contents;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-amount {
+    grid-column: 5;
+    font-size: 14px;
+    text-align: right;
+  }
+
+  .has-desktop-mode .is-wide .home-asset-list .asset-row-value {
+    grid-column: 6;
+    text-align: right;
+  }
+}

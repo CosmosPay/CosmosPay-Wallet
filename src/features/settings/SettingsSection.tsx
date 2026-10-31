@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import '@/styles/features/settings/settings.css';
 
-/** Labelled settings block: uppercase title + content. */
+/** A titled part of Settings: its name, then its rows between lines. */
 export function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="settings-section">
-      <div className="label-up settings-section-title">{title}</div>
-      {children}
-    </div>
+    <section className="settings-section" aria-label={title}>
+      <h2 className="settings-section-title">{title}</h2>
+      <div className="settings-list">{children}</div>
+    </section>
   );
 }

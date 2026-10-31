@@ -1,0 +1,28 @@
+/* =====================================================================
+   src/app/AuthAside.tsx — the brand half of the desktop split. Hidden
+   everywhere; src/styles/app/shell.css shows it in desktop mode on the
+   pre-session screens. Same canvas as the flow (the motion's background is
+   exactly --bg), split from it by one hairline.
+   ===================================================================== */
+.auth-aside {
+  display: none;
+  position: relative;
+  flex: 1 1 50%;
+  min-width: 0;
+  flex-direction: column;
+  border-left: 1px solid var(--hairline);
+  background: var(--bg);
+}
+
+/* language and theme, in the panel's top-right corner */
+.auth-aside-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: calc(18px + var(--safe-t)) 28px 0;
+}
+
+/* the motion takes the rest of the panel, its square centred and as large as it fits */
+.welcome-hero.auth-aside-hero {
+  flex: 1;
+  margin: 24px 40px 48px;
+}

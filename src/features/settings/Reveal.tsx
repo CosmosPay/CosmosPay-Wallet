@@ -6,7 +6,7 @@ import '@/styles/features/settings/export.css';
 export function Reveal({ title, value, mono, copied, onCopy, grid, copyLabel, copiedLabel }: { title: string; value: string; mono: boolean; copied: boolean; onCopy: () => void; grid?: boolean; copyLabel: string; copiedLabel: string }) {
   return (
     <div className="export-reveal">
-      <div className="label-up export-reveal-title">{title}</div>
+      <div className="field-label export-reveal-title">{title}</div>
       {grid ? (
         <div className="export-word-grid">
           {value.split(' ').map((w, i) => (

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import type { Gender } from '@/lib/vault';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Field } from '@/ui/Field';
@@ -34,12 +34,12 @@ export function EditProfile({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('editProfile.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('editProfile.title')} onBack={store.goBack} />
       <Field label={t('setup.nameLabel')} value={name} onChange={(v) => setName(v.slice(0, NAME_MAX_LEN))} placeholder="p. ej. Alex" />
       <Field label={t('setup.emailLabel')} value={email} type="email" onChange={(v) => setEmail(v.trim().slice(0, EMAIL_MAX_LEN))} placeholder="tu@correo.com" />
       {email.length > 0 && !emailOk && <div className="edit-profile-err">{t('setup.emailInvalid')}</div>}
 
-      <div className="label-up edit-profile-label">{t('setup.genderLabel')}</div>
+      <div className="field-label edit-profile-label">{t('setup.genderLabel')}</div>
       <div className="row g8 edit-profile-genders">
         {GENDER_OPTIONS.map((o) => (
           <button
@@ -53,7 +53,7 @@ export function EditProfile({ store }: { store: WalletStore }) {
       </div>
 
       {/* Birthdate: read-only. */}
-      <div className="label-up edit-profile-label">{t('setup.dobLabel')}</div>
+      <div className="field-label edit-profile-label">{t('setup.dobLabel')}</div>
       <div className="glass edit-profile-dob">{birthdate || '—'}{age !== null ? ` · ${age} ${t('profile.years')}` : ''}</div>
       <div className="edit-profile-dob-note">{t('editProfile.dobLocked')}</div>
 

@@ -1,0 +1,162 @@
+/* =====================================================================
+   src/app/DebugNav.tsx — the dev build's screen navigator: a tab on the window's right edge,
+   and the sheet it opens (src/styles/ui/sheet.css) with the session controls and every screen.
+   Ink on the canvas like the rest; never in a production build.
+   ===================================================================== */
+/* On a phone: a thin sideways tab on the right edge, over the rows' margin rather than their
+   figures. On a PC window: the rail's foot, where it covers nothing. */
+.debug-nav-trigger {
+  position: fixed;
+  top: 40%;
+  right: 0;
+  z-index: 900;
+  width: 18px;
+  min-height: 64px;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 8px 0 0 8px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  writing-mode: vertical-rl;
+  cursor: pointer;
+  opacity: 0.45;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+
+@media (min-width: 1024px) {
+  .debug-nav-trigger {
+    top: auto;
+    right: auto;
+    bottom: 56px;
+    left: 16px;
+    width: auto;
+    min-height: 40px;
+    padding: 0 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    writing-mode: horizontal-tb;
+  }
+}
+
+.debug-nav-trigger:hover,
+.debug-nav-trigger:focus-visible {
+  opacity: 1;
+}
+
+.debug-nav-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.debug-nav-session {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.debug-nav-state {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.debug-nav-hint {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.debug-nav-action {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1.5px solid var(--text);
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--dur-quick) var(--ease-out);
+}
+
+.debug-nav-action:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.debug-nav-note {
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid var(--danger, var(--line-strong));
+  border-radius: 14px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.debug-nav-search {
+  width: 100%;
+}
+
+.debug-nav-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: max(160px, calc(100dvh - 440px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.debug-nav-group-head {
+  padding: 0 2px 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.debug-nav-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+}
+
+.debug-nav-item {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.debug-nav-item.is-on {
+  border-color: var(--text);
+  font-weight: 700;
+}
+
+.debug-nav-item:disabled {
+  cursor: progress;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .debug-nav-item:not(.is-on):hover {
+    border-color: var(--line-strong);
+  }
+}
