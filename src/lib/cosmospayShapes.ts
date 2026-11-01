@@ -62,7 +62,7 @@ export const SubmitResultShape = object({
 /* -------------------------- cross-chain swaps --------------------------- */
 
 export const CrossChainAssetListShape = object({
-  data: arrayOf(object({ chain: str, symbol: str, assetId: str, decimals: num, contract: nullable(str) })),
+  data: arrayOf(object({ chain: str, symbol: str, assetId: str, decimals: num, contract: nullable(str), priceUsd: optional(nullable(num)) })),
 });
 
 export const CrossChainQuoteShape = object({

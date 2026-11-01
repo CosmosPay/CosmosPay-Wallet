@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { PrimaryButton } from '@/ui/Buttons';
+import { GhostButton, PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import '@/styles/features/onboarding/device-auth-setup.css';
 
@@ -28,9 +28,9 @@ export function DeviceAuthSetup({ store }: { store: WalletStore }) {
   };
 
   return (
-    <div className="scr screen col device-auth-setup">
+    <div className="scr screen col">
       <div className="f1 col center device-auth-setup-hero">
-        <div className="glass center device-auth-setup-icon">
+        <div className="center device-auth-setup-icon">
           <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M12 3a7 7 0 0 0-7 7v2a9 9 0 0 1-.5 3" />
             <path d="M12 3a7 7 0 0 1 7 7v2c0 1.4-.2 2.7-.6 4" />
@@ -38,20 +38,20 @@ export function DeviceAuthSetup({ store }: { store: WalletStore }) {
             <path d="M12 10v2.5c0 2.2-.4 4.4-1.2 6.4" />
           </svg>
         </div>
-        <div className="device-auth-setup-title">{t('devAuth.offerTitle', { method })}</div>
-        <div className="desc device-auth-setup-desc">{t('devAuth.offerBody', { method })}</div>
+        <h1 className="device-auth-setup-title">{t('devAuth.offerTitle', { method })}</h1>
+        <p className="device-auth-setup-desc">{t('devAuth.offerBody', { method })}</p>
         {/* Said plainly here rather than buried in Settings: someone deciding this in
             the first minute has no reason to know the password still opens the wallet. */}
-        <div className="device-auth-setup-note">{t('devAuth.offerNote')}</div>
+        <p className="device-auth-setup-note">{t('devAuth.offerNote')}</p>
       </div>
 
       <div className="col g12">
         <PrimaryButton disabled={busy} onClick={accept}>
           {busy ? <Spinner /> : t('devAuth.offerActivate', { method })}
         </PrimaryButton>
-        <button type="button" disabled={busy} onClick={store.dismissDeviceAuthOffer} className="glass-soft device-auth-setup-later">
+        <GhostButton disabled={busy} onClick={store.dismissDeviceAuthOffer}>
           {t('devAuth.offerLater')}
-        </button>
+        </GhostButton>
       </div>
     </div>
   );

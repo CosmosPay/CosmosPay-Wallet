@@ -44,15 +44,11 @@
   border-radius: 22px;
   padding: 22px;
 }
-/* SOLID, elevated card — NOT translucent glass, so it stands out from the scrim even
-   without a working backdrop-filter. The gradient composites the glass tint OVER the
-   opaque --bg to get an opaque surface a shade lighter than the background. The compound
-   selector also beats `.glass`'s glassBreath animation regardless of stylesheet order. */
+/* Solid card a step above the scrim. The compound selector beats `.glass`'s own fill
+   regardless of stylesheet order. */
 .glass.confirm-sign-card {
   animation: pop 0.26s ease;
-  background: linear-gradient(var(--glass-soft-bg), var(--glass-soft-bg)), var(--bg);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: var(--glass-soft-bg);
   border: 1px solid var(--glass-border);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
 }

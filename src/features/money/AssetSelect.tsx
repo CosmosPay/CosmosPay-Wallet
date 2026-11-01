@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AssetLogo } from '@/ui/AssetLogo';
 import { trim } from '@/lib/format';
 import { cx } from '@/lib/cx';
+import { CheckIcon, ChevronDownIcon } from '@/ui/Icons';
 import { assetKey, codeIsAmbiguous, isSameAsset, shortIssuer, type AssetRef } from '@/lib/asset';
 import '@/styles/features/money/asset-select.css';
 
@@ -48,23 +49,26 @@ export function AssetSelect({
 
   return (
     <div className={cx('asset-select', send && 'is-send')}>
-      <button onClick={() => setOpen(!open)} className="glass-soft asset-select-btn">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} aria-haspopup="listbox" className="asset-select-btn">
         <AssetLogo code={value.code} size={send ? 26 : 28} />
         {value.code}
-        <span className={cx('asset-select-caret', open && 'is-open')}>▼</span>
+        <ChevronDownIcon className={cx('asset-select-caret', open && 'is-open')} />
       </button>
       {open && (
         <>
-          <div onClick={() => setOpen(false)} className="asset-select-overlay" />
-          <div className={cx('asset-select-menu', send ? 'glass' : 'is-solid')}>
+          <div onClick={() => setOpen(false)} className="asset-select-overlay" aria-hidden="true" />
+          <div role="listbox" className="asset-select-menu">
             {assets.map((a) => (
-              <div
+              <button
+                type="button"
+                role="option"
+                aria-selected={isSameAsset(a, value)}
                 key={assetKey(a)}
                 onClick={() => {
                   onPick(a);
                   setOpen(false);
                 }}
-                className={cx('tap asset-select-item', isSameAsset(a, value) && 'is-on')}
+                className={cx('asset-select-item', isSameAsset(a, value) && 'is-on')}
               >
                 <AssetLogo code={a.code} size={26} />
                 <span className="asset-select-code">
@@ -75,8 +79,9 @@ export function AssetSelect({
                     <span className="asset-select-issuer">{shortIssuer(a.issuer)}</span>
                   )}
                 </span>
-                <span className="t-dim-12">{trim(parseFloat(a.balance) || 0, 4)}</span>
-              </div>
+                <span className="asset-select-bal">{trim(parseFloat(a.balance) || 0, 4)}</span>
+                {isSameAsset(a, value) && <CheckIcon className="asset-select-check" />}
+              </button>
             ))}
           </div>
         </>

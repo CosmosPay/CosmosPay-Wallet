@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { OpCard } from '@/features/fiat/OpCard';
 import { railLabel } from '@/lib/fiatRails';
 import { RampProviderCard } from '@/features/fiat/RampProviderCard';
@@ -36,7 +36,7 @@ export function ReceiverHub({ store, receiverId }: { store: WalletStore; receive
 
   return (
     <>
-      <BackBar title={t('fiat.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('fiat.title')} onBack={store.goBack} />
       <RampProviderCard store={store} />
       <div className="glass card fiat-account-card">
         <div className="fiat-account-label">{t('fiat.account')}</div>

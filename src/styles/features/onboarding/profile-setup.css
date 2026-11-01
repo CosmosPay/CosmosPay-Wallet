@@ -1,47 +1,90 @@
 /* =====================================================================
-   Onboarding — ProfileSetup. Prefix: .profile-setup-
+   src/features/onboarding/ProfileSetup.tsx — about you, one question per
+   step. Prefix: .profile-setup-
+   The header is ui/ScreenHeader, the fields ui/Field; here are where the
+   steps stand (lines, not a filled bar), the error lines and the gender pills.
    ===================================================================== */
-.profile-setup-emoji {
+.profile-setup-progress {
   display: flex;
-  justify-content: center;
-  margin: 14px 0 6px;
-  font-size: 50px;
-  line-height: 1;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
 }
-.profile-setup-title {
-  font-size: 22px;
-  font-weight: 800;
-  text-align: center;
-  letter-spacing: -0.5px;
+
+.profile-setup-bars {
+  display: flex;
+  gap: 6px;
+}
+
+/* one line per step: the line colour until it is reached, ink from then on */
+.profile-setup-bar {
+  flex: 1;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  transition: background-color var(--dur-base) var(--ease-out);
+}
+
+.profile-setup-bar.is-done {
+  background: var(--text);
+}
+
+.profile-setup-count {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* inline validation error, tucked under the field it is about */
+.profile-setup-err {
+  margin: -6px 4px 14px;
+}
+
+.profile-setup-genders {
   margin-bottom: 8px;
 }
-.profile-setup-sub {
-  font-size: 13.5px;
-  color: var(--muted);
-  font-weight: 600;
-  line-height: 1.5;
-  text-align: center;
-  margin: 0 6px 22px;
-}
-/* inline validation error — the negative top margin tucks it under the field */
-.profile-setup-err {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--danger);
-  margin: -8px 2px 12px;
-}
-.profile-setup-genders { margin-bottom: 14px; }
+
+/* outlined pills; the chosen one is solid ink */
 .profile-setup-gender {
   flex: 1;
+  min-width: 0;
   height: 44px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 800;
+  padding: 0 8px;
+  border: 1.5px solid var(--glass-border);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
+  transition: transform 0.13s var(--ease-out), background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out);
 }
-.profile-setup-gender-on {
-  background: var(--primary-bg);
-  color: var(--primary-text);
-  border: 1px solid var(--primary-border);
+
+.profile-setup-gender.is-on {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--bg);
 }
-.profile-setup-gender-off { color: var(--text); } /* surface comes from .glass-soft */
+
+/* the account step: the code, its resend link, and the notes (sent, proven, later) */
+.input.profile-setup-code {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-setup-resend {
+  align-self: flex-start;
+  margin-top: -4px;
+}
+
+.profile-setup-note {
+  margin-top: 4px;
+}
+
+.profile-setup-skip {
+  margin-top: 12px;
+}

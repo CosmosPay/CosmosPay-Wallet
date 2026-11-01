@@ -1,0 +1,417 @@
+/* =====================================================================
+   src/app/Shell.tsx — the desktop split, measured for a desktop.
+   Every step is built for a phone, where a 26px title and a 54px button are
+   right. In a window as large as a monitor the same pixels read small for its
+   proportions (the user's call), and scaling the subtree with `zoom` is ruled
+   out (it crashes Chrome's compositor; see shell.css). So the split sets one
+   factor, --k, and the pieces the flow is made of are re-measured here as
+   their phone size × --k. Outside the split nothing sets --k (every use falls
+   back to 1): the phone, the extension and the session screens are untouched.
+
+   Tiers follow the WINDOW, height included, never the device: a laptop's
+   768px of height cannot take what a 1080p monitor can, and a step taller
+   than the window scrolls (`safe center` in shell.css) rather than overflows.
+   ===================================================================== */
+@media (min-width: 1024px) and (min-height: 720px) {
+  .shell-root.has-desktop-mode.has-auth-split {
+    --k: 1.12;
+  }
+}
+
+@media (min-width: 1440px) and (min-height: 860px) {
+  .shell-root.has-desktop-mode.has-auth-split {
+    --k: 1.25;
+  }
+}
+
+@media (min-width: 1800px) and (min-height: 900px) {
+  .shell-root.has-desktop-mode.has-auth-split {
+    --k: 1.35;
+  }
+}
+
+@media (min-width: 2400px) and (min-height: 1200px) {
+  .shell-root.has-desktop-mode.has-auth-split {
+    --k: 1.55;
+  }
+}
+
+@media (min-width: 1024px) {
+  /* ---- the column and its rhythm ---- */
+  .shell-root.has-desktop-mode.has-auth-split .shell-content {
+    --gutter: calc(26px * var(--k, 1));
+  }
+
+  /* A step taller than the window starts below the corners' controls, which grew too. */
+  .shell-root.has-desktop-mode.has-auth-split .screen {
+    padding-top: calc(72px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .screen > .spacer {
+    min-height: calc(32px * var(--k, 1));
+  }
+
+  /* ---- the corners: the way back, and language + theme opposite ---- */
+  .shell-root.has-desktop-mode.has-auth-split .screen-bar.is-shown {
+    top: calc(18px * var(--k, 1) + var(--safe-t));
+    left: calc(28px * var(--k, 1) + var(--safe-l));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .auth-aside-bar {
+    padding: calc(18px * var(--k, 1) + var(--safe-t)) calc(28px * var(--k, 1)) 0;
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .screen-bar-back,
+  .shell-root.has-desktop-mode.has-auth-split .quick-prefs-theme {
+    width: calc(44px * var(--k, 1));
+    height: calc(44px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .screen-bar-back-icon {
+    width: calc(24px * var(--k, 1));
+    height: calc(24px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .quick-prefs {
+    gap: calc(6px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .quick-prefs-lang {
+    height: calc(44px * var(--k, 1));
+    gap: calc(7px * var(--k, 1));
+    padding: 0 calc(12px * var(--k, 1)) 0 calc(11px * var(--k, 1));
+    font-size: calc(13.5px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .quick-prefs-lang .lang-flag {
+    width: calc(21px * var(--k, 1));
+    height: calc(14px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .quick-prefs-icon {
+    width: calc(20px * var(--k, 1));
+    height: calc(20px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .quick-prefs-chevron {
+    width: calc(14px * var(--k, 1));
+    height: calc(14px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .dropdown .quick-prefs-opt {
+    min-height: calc(44px * var(--k, 1));
+    padding: 0 calc(14px * var(--k, 1));
+    font-size: calc(15px * var(--k, 1));
+  }
+
+  /* ---- the header ---- */
+  .shell-root.has-desktop-mode.has-auth-split .screen-header {
+    margin-bottom: calc(24px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .screen-header-title {
+    font-size: calc(26px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .screen-header-desc {
+    margin-top: calc(8px * var(--k, 1));
+    font-size: calc(14px * var(--k, 1));
+  }
+
+  /* ---- controls: the pill buttons, the fields, the links ---- */
+  .shell-root.has-desktop-mode.has-auth-split .btn-primary,
+  .shell-root.has-desktop-mode.has-auth-split .btn-ghost {
+    height: calc(54px * var(--k, 1));
+    padding: 0 calc(20px * var(--k, 1));
+    font-size: calc(16px * var(--k, 1));
+  }
+
+  /* Height and type only: the padding of a field is per field (the eye, the unlock
+     field's centred text) and stays theirs. */
+  .shell-root.has-desktop-mode.has-auth-split .input {
+    height: calc(54px * var(--k, 1));
+    font-size: calc(15px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .link-btn {
+    min-height: calc(44px * var(--k, 1));
+    font-size: calc(14px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .field {
+    margin-bottom: calc(14px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .field-label {
+    margin-bottom: calc(8px * var(--k, 1));
+    font-size: calc(13px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .field-eye {
+    width: calc(40px * var(--k, 1));
+    height: calc(40px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .sign-in-mark {
+    width: calc(20px * var(--k, 1));
+    height: calc(20px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .sign-in-phase {
+    font-size: calc(13.5px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .sign-in-code-input {
+    font-size: calc(20px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .import-textarea {
+    min-height: calc(132px * var(--k, 1));
+    padding: calc(16px * var(--k, 1)) calc(18px * var(--k, 1));
+    font-size: calc(15px * var(--k, 1));
+  }
+
+  /* ---- choices: the cards, the segmented control, the backup card ---- */
+  .shell-root.has-desktop-mode.has-auth-split .choice-card {
+    min-height: calc(84px * var(--k, 1));
+    gap: calc(14px * var(--k, 1));
+    padding: calc(16px * var(--k, 1)) calc(18px * var(--k, 1)) calc(16px * var(--k, 1)) calc(16px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .choice-card-icon {
+    width: calc(44px * var(--k, 1));
+    height: calc(44px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .choice-card-icon svg {
+    width: calc(22px * var(--k, 1));
+    height: calc(22px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .choice-card-title {
+    font-size: calc(16px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .choice-card-desc {
+    font-size: calc(13px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .choice-card-chev {
+    width: calc(20px * var(--k, 1));
+    height: calc(20px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .segmented-option {
+    min-height: calc(44px * var(--k, 1));
+    font-size: calc(14px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-card {
+    margin-top: calc(16px * var(--k, 1));
+    padding: calc(20px * var(--k, 1)) calc(18px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-panel {
+    gap: calc(16px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-icon {
+    width: calc(52px * var(--k, 1));
+    height: calc(52px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-icon svg {
+    width: calc(26px * var(--k, 1));
+    height: calc(26px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-title {
+    font-size: calc(18px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-desc,
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-point {
+    font-size: calc(13.5px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-points {
+    gap: calc(10px * var(--k, 1));
+    padding-top: calc(16px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-mark {
+    width: calc(18px * var(--k, 1));
+    height: calc(18px * var(--k, 1));
+  }
+
+  /* ---- Welcome's own greeting (shown only here) ---- */
+  /* Room between the pieces, so the column does not read as one block (the user's call):
+     the mark, the greeting and its line, the two doors, the Terms. */
+  .shell-root.has-desktop-mode.has-auth-split .welcome-head {
+    margin-bottom: calc(56px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .welcome-mark {
+    width: calc(64px * var(--k, 1));
+    height: calc(64px * var(--k, 1));
+    margin-bottom: calc(40px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .welcome-doors {
+    gap: calc(16px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .welcome-legal {
+    margin-top: calc(28px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .welcome-title {
+    font-size: calc(32px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .welcome-lead {
+    margin-top: calc(14px * var(--k, 1));
+    font-size: calc(15px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .backup-choice-note,
+  .shell-root.has-desktop-mode.has-auth-split .welcome-legal {
+    font-size: calc(12.5px * var(--k, 1));
+  }
+
+  /* ---- notices, checks, criteria ---- */
+  .shell-root.has-desktop-mode.has-auth-split .notice {
+    gap: calc(12px * var(--k, 1));
+    padding: calc(14px * var(--k, 1)) calc(16px * var(--k, 1));
+    border-radius: calc(18px * var(--k, 1));
+    font-size: calc(13.5px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .notice-icon {
+    width: calc(20px * var(--k, 1));
+    height: calc(20px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .ob-check {
+    min-height: calc(44px * var(--k, 1));
+    gap: calc(12px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .ob-check-box {
+    width: calc(22px * var(--k, 1));
+    height: calc(22px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .ob-check-text {
+    font-size: calc(14px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .ob-crit {
+    gap: calc(10px * var(--k, 1));
+    font-size: calc(13px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .ob-crit-dot {
+    width: calc(18px * var(--k, 1));
+    height: calc(18px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .profile-setup-progress {
+    gap: calc(10px * var(--k, 1));
+    margin-bottom: calc(20px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .profile-setup-bar {
+    height: calc(2px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .profile-setup-count {
+    font-size: calc(12.5px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .profile-setup-gender {
+    height: calc(44px * var(--k, 1));
+    font-size: calc(13.5px * var(--k, 1));
+  }
+
+  /* ---- the twelve words and their check ---- */
+  .shell-root.has-desktop-mode.has-auth-split .ob-word-grid,
+  .shell-root.has-desktop-mode.has-auth-split .verify-bank {
+    gap: calc(8px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .ob-word-cell {
+    min-height: calc(46px * var(--k, 1));
+    gap: calc(10px * var(--k, 1));
+    padding: 0 calc(16px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .ob-word-num {
+    width: calc(18px * var(--k, 1));
+    font-size: calc(12px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .ob-word-text,
+  .shell-root.has-desktop-mode.has-auth-split .verify-chip {
+    font-size: calc(15px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .verify-chip,
+  .shell-root.has-desktop-mode.has-auth-split .verify-ghost {
+    min-height: calc(44px * var(--k, 1));
+    padding: 0 calc(18px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .verify-ghost {
+    font-size: calc(15px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .verify-hint {
+    font-size: calc(13px * var(--k, 1));
+  }
+
+  /* ---- easy recovery's QR and code, the import from another wallet ---- */
+  .shell-root.has-desktop-mode.has-auth-split .easy-receive-qr {
+    width: calc(232px * var(--k, 1));
+    height: calc(232px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .easy-receive-expiry,
+  .shell-root.has-desktop-mode.has-auth-split .easy-receive-waiting,
+  .shell-root.has-desktop-mode.has-auth-split .import-wallet-step {
+    font-size: calc(13.5px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .easy-receive-code {
+    font-size: calc(26px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .import-wallet-badge {
+    width: calc(56px * var(--k, 1));
+    height: calc(56px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .import-wallet-step-n {
+    width: calc(24px * var(--k, 1));
+    height: calc(24px * var(--k, 1));
+    font-size: calc(12px * var(--k, 1));
+  }
+
+  /* ---- unlock ---- */
+  .shell-root.has-desktop-mode.has-auth-split .unlock-logo .logo-img {
+    width: calc(92px * var(--k, 1));
+    height: calc(92px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .unlock-line {
+    font-size: calc(28px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .unlock-subtitle {
+    font-size: calc(14px * var(--k, 1));
+  }
+
+  .shell-root.has-desktop-mode.has-auth-split .unlock-pwd-input {
+    font-size: calc(16px * var(--k, 1));
+  }
+}

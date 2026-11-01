@@ -72,6 +72,14 @@ body {
   scrollbar-width: none;
 }
 
+/* One focus ring for everything the keyboard reaches: the brand blue, drawn outside the
+   control so it follows a pill's own radius. Pointer and touch never show it. `.input`
+   (app.css) turns its own border blue instead. */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
 /* all buttons are fully rounded (pill) */
 button {
   border-radius: 999px !important;

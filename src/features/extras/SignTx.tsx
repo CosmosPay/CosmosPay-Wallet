@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { copyText, readText } from '@/lib/clipboard';
-import { inspectXdr, submitXdr, type TxSummary } from '@/lib/stellar';
+import { BUILTIN_NETWORKS, inspectXdr, submitXdr, type TxSummary } from '@/lib/stellar';
+import { Segmented } from '@/ui/Segmented';
 import '@/styles/features/extras/sign-tx.css';
 import { cx } from '@/lib/cx';
 
@@ -16,6 +17,17 @@ export function SignTx({ store }: { store: WalletStore }) {
   const [signed, setSigned] = useState('');
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  // The network the signature is for (store.signRawXdr): the wallet's own by default, or the one
+  // the transaction was built for — a pasted XDR does not say which, and a signature made for
+  // another network's passphrase is worthless there. Choosing it here moves nothing else.
+  const [netId, setNetId] = useState(store.network.id);
+  const netChoices = store.network.custom ? [...BUILTIN_NETWORKS, store.network] : BUILTIN_NETWORKS;
+  const signNet = netChoices.find((n) => n.id === netId) ?? store.network;
+  const pickNet = (id: string) => {
+    setNetId(id);
+    setSigned('');
+    setErr('');
+  };
 
   const onXdr = (v: string) => {
     setXdr(v);
@@ -27,7 +39,7 @@ export function SignTx({ store }: { store: WalletStore }) {
       return;
     }
     try {
-      setSummary(inspectXdr(store.network, trimmed));
+      setSummary(inspectXdr(signNet, trimmed));
     } catch {
       setSummary(null);
     }
@@ -41,7 +53,7 @@ export function SignTx({ store }: { store: WalletStore }) {
     try {
       // The store owns the key: this screen asks for a signature and gets a result,
       // it is never handed the secret. Password gating + the source check live there.
-      const result = await store.signRawXdr(xdr);
+      const result = await store.signRawXdr(xdr, signNet.id);
       if (result) setSigned(result);
     } catch (e) {
       setErr((e as Error).message || t('sign.invalid'));
@@ -54,7 +66,7 @@ export function SignTx({ store }: { store: WalletStore }) {
     setBusy(true);
     setErr('');
     try {
-      const { hash } = await submitXdr(store.network, (signed || xdr).trim());
+      const { hash } = await submitXdr(signNet, (signed || xdr).trim());
       store.setSuccessInfo({ kind: 'ok', title: t('sign.submitted'), msg: '', rows: [], hash });
       store.setScreen('success');
     } catch (e) {
@@ -71,7 +83,7 @@ export function SignTx({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      <BackBar title={t('sign.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('sign.title')} onBack={store.goBack} />
       <div className="sign-tx-desc">{t('sign.desc')}</div>
 
       <textarea
@@ -79,11 +91,18 @@ export function SignTx({ store }: { store: WalletStore }) {
         onChange={(e) => onXdr((e.target as HTMLTextAreaElement).value)}
         placeholder="AAAAAgAAAAB…"
         rows={4}
+        spellCheck={false}
         className="glass sign-tx-xdr"
       />
       <button onClick={paste} className="glass-soft sign-tx-paste">
         {t('sign.paste')}
       </button>
+
+      <div className="sign-tx-net">
+        <div className="sign-tx-net-label">{t('sign.network')}</div>
+        <Segmented label={t('sign.network')} options={netChoices.map((n) => ({ value: n.id, label: n.label }))} value={signNet.id} onChange={pickNet} />
+        <p className="sign-tx-net-hint">{t('sign.networkHint')}</p>
+      </div>
 
       {summary && (
         <div className="glass sign-tx-summary">

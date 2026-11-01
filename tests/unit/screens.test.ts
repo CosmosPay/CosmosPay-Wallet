@@ -4,7 +4,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { NAV_SCREENS, SCREENS, SCREEN_IDS, backTarget, type BackContext } from '@/lib/screens';
+import { EARN_ENABLED } from '@/constants/features';
+import { EARN_SCREENS, NAV_SCREENS, SCREENS, SCREEN_IDS, TAB_SCREEN, backTarget, canEnter, isScreenOn, type BackContext } from '@/lib/screens';
 
 const ctx = (over: Partial<BackContext> = {}): BackContext => ({
   hasSession: true,
@@ -12,6 +13,8 @@ const ctx = (over: Partial<BackContext> = {}): BackContext => ({
   addingWallet: false,
   hasDraftMnemonic: false,
   hasSignInDraft: false,
+  hasDraftAccount: false,
+  hasWallets: true,
   ...over,
 });
 
@@ -60,7 +63,11 @@ test('following back repeatedly always terminates at exit', () => {
 });
 
 test('the onboarding chain matches the flow the user walked', () => {
-  assert.equal(backTarget('backup', ctx()), 'welcome');
+  // Welcome -> how to back it up -> the words; Welcome -> which backup -> the import.
+  assert.equal(backTarget('backup-choice', ctx()), 'welcome');
+  assert.equal(backTarget('restore-choice', ctx()), 'welcome');
+  assert.equal(backTarget('backup', ctx()), 'backup-choice');
+  assert.equal(backTarget('import', ctx()), 'restore-choice');
   assert.equal(backTarget('verify', ctx()), 'backup');
   assert.equal(backTarget('password', ctx()), 'profile-setup');
   // profile-setup came from `verify` when a phrase was generated, `import` otherwise.
@@ -101,8 +108,25 @@ test('only the true roots exit the app', () => {
 });
 
 test('the nav bar is derived from the table, not a second list', () => {
-  assert.deepEqual([...NAV_SCREENS].sort(), ['earn', 'home', 'markets', 'profile', 'swap'].sort());
+  assert.deepEqual([...NAV_SCREENS].sort(), ['earn', 'home', 'markets', 'profile', 'wallets'].sort());
   for (const s of NAV_SCREENS) assert.equal(SCREENS[s].nav, true);
+});
+
+test('a switched-off section has no way in: history cannot reach any of its screens', () => {
+  for (const s of EARN_SCREENS) {
+    assert.equal(isScreenOn(s), EARN_ENABLED, s);
+    if (!EARN_ENABLED) assert.equal(canEnter(s, ctx()), false, s);
+  }
+  // only the section itself: every other screen stays reachable
+  for (const s of SCREEN_IDS.filter((id) => !EARN_SCREENS.includes(id))) assert.equal(isScreenOn(s), true, s);
+});
+
+test('every tab opens a screen that activates it', () => {
+  for (const [tab, screen] of Object.entries(TAB_SCREEN)) {
+    if (tab === 'markets') continue; // a tab of Home now (its watchlist), not of the bar
+    assert.equal(SCREENS[screen].tab, tab, screen);
+  }
+  assert.equal(TAB_SCREEN.wallet, 'wallets');
 });
 
 test('success is terminal so back cannot re-enter the flow that produced it', () => {
@@ -122,3 +146,36 @@ test('device-auth is terminal and returns home, not into onboarding', () => {
   assert.equal(SCREENS['device-auth'].back, 'home');
 });
 
+
+/**
+ * The browser's back and forward buttons lead to screens by history, not by the flow. A step
+ * whose input is gone must refuse, or it renders empty: the words after a lock, the backup's
+ * password after the sign-in was dropped.
+ */
+test('history only re-enters a step whose input still exists', () => {
+  const first = ctx({ hasSession: false });
+  assert.equal(canEnter('backup', first), false);
+  assert.equal(canEnter('backup', ctx({ hasSession: false, hasDraftMnemonic: true })), true);
+  assert.equal(canEnter('verify', first), false);
+  assert.equal(canEnter('profile-setup', first), false);
+  assert.equal(canEnter('profile-setup', ctx({ hasSession: false, hasDraftAccount: true })), true);
+  assert.equal(canEnter('password', first), false);
+  assert.equal(canEnter('password', ctx({ hasSession: false, hasSignInDraft: true })), true);
+  assert.equal(canEnter('sign-in-password', first), false);
+  assert.equal(canEnter('sign-in-password', ctx({ hasSession: false, hasSignInDraft: true })), true);
+  assert.equal(canEnter('welcome', first), true);
+  assert.equal(canEnter('backup-choice', first), true);
+});
+
+test('history never re-enters a finished flow or crosses the lock', () => {
+  for (const s of SCREEN_IDS) if (SCREENS[s].terminal) assert.equal(canEnter(s, ctx()), false, s);
+  assert.equal(canEnter('boot', ctx()), false);
+  // Locked: the wallet's screens are behind the password.
+  assert.equal(canEnter('home', ctx({ hasSession: false })), false);
+  assert.equal(canEnter('send', ctx({ hasSession: false })), false);
+  // Unlocked: the onboarding is not walked back into, except to add a wallet.
+  assert.equal(canEnter('backup-choice', ctx()), false);
+  assert.equal(canEnter('backup-choice', ctx({ addingWallet: true })), true);
+  assert.equal(canEnter('unlock', ctx()), false);
+  assert.equal(canEnter('unlock', ctx({ hasSession: false, hasWallets: false })), false);
+});

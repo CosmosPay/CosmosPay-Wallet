@@ -1,37 +1,188 @@
 /* =====================================================================
-   Money shared molecules: HistoryRow / GenesisRow. Both are the same
-   list row (38px round icon + text + trailing column), so the shape is
-   declared once and each only adds what makes it different.
-   State/direction is expressed with modifier classes.
-   The token dropdown they used to share lives in styles/features/money/asset-select.css.
+   The activity list — src/features/money/ActivityList.tsx, HistoryRow.tsx
+   and GenesisRow.tsx (Figma Home, Activity tab). Prefix: .activity-
+   Each row: a ringed mark, the title over who, the amount over the time.
+   The mark is a line, coloured by direction — no fills.
    ===================================================================== */
+.activity-list {
+  display: flex;
+  flex-direction: column;
+}
 
-/* the row shell — the per-index entrance delay is a
-   .stagger-* / .stagger-dense-* class from animations.css */
-.money-hist-row,
-.money-genesis-row { display: flex; align-items: center; gap: 12px; padding: 13px 12px; border-radius: 16px; animation: fadeUp 0.45s ease backwards; }
-/* HistoryRow renders as an <a> when the op has an explorer link */
-.money-hist-row { text-decoration: none; color: inherit; }
+.activity-day {
+  display: flex;
+  flex-direction: column;
+}
 
-/* the round leading icon (on .glass-soft) */
-.money-hist-icon,
-.money-genesis-icon { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.money-hist-icon { font-size: 17px; color: var(--text); }
-/* color-mix() needs Safari 16.2+; the plain-token declarations come first so
-   older engines drop only the tinted lines and still get a filled, bordered dot */
-.money-hist-icon--in { color: var(--up); background: var(--surface); border: 1px solid var(--glass-border); background: color-mix(in srgb, var(--up) 14%, transparent); border-color: color-mix(in srgb, var(--up) 30%, transparent); }
-.money-hist-icon--out { color: var(--down); background: var(--surface); border: 1px solid var(--glass-border); background: color-mix(in srgb, var(--down) 14%, transparent); border-color: color-mix(in srgb, var(--down) 30%, transparent); }
-.money-hist-icon.is-failed { opacity: 0.6; }
-.money-hist-title,
-.money-genesis-title { font-size: 14.5px; font-weight: 800; }
-.money-hist-failed-tag { color: var(--danger); font-weight: 700; }
-.money-hist-sub { font-size: 12px; color: var(--dim); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.money-hist-amount { font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); }
-.money-hist-amount--up { color: var(--up); }
-.money-hist-amount--danger { color: var(--danger); }
-.money-hist-amount.is-failed { text-decoration: line-through; }
-.money-hist-date,
-.money-genesis-date { font-size: 11px; color: var(--dim); font-weight: 600; }
+.activity-day-label {
+  margin: 18px 0 4px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
 
-/* genesis marker (GenesisRow) — a heart takes the amount's place */
-.money-genesis-heart { font-size: 15px; line-height: 1.2; }
+.activity-day:first-child .activity-day-label {
+  margin-top: 6px;
+}
+
+.activity-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 68px;
+  padding: 10px 0;
+}
+
+.activity-mark {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--text);
+}
+
+.activity-mark svg {
+  width: 20px;
+  height: 20px;
+}
+
+.activity-mark.is-in {
+  border-color: var(--up);
+  color: var(--up);
+}
+
+/* money out: a send is red, mark and amount; a commission (.is-fee) keeps the ink */
+.activity-mark.is-out {
+  border-color: var(--down);
+  color: var(--down);
+}
+
+.activity-mark.is-swap {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+
+.activity-mark.is-failed {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.activity-genesis-mark {
+  width: 22px;
+  height: 22px;
+}
+
+.activity-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.activity-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* the title is the row's link, stretched over the whole row */
+.activity-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+}
+
+.activity-link:focus-visible {
+  outline: none;
+}
+
+.activity-link:focus-visible::after {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.activity-failed {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.activity-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* above the stretched link, so it copies instead of opening the explorer */
+.activity-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin: -6px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+
+.activity-copy svg {
+  width: 15px;
+  height: 15px;
+}
+
+.activity-copy:hover,
+.activity-copy.is-copied {
+  color: var(--text);
+}
+
+.activity-copy:focus-visible {
+  outline: 2px solid var(--brand);
+}
+
+.activity-end {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-amount {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.activity-amount.is-up {
+  color: var(--up);
+}
+
+.activity-amount.is-down {
+  color: var(--down);
+}
+
+.activity-amount.is-failed {
+  color: var(--danger);
+  text-decoration: line-through;
+}
+
+.activity-time {
+  font-size: 12.5px;
+  color: var(--muted);
+}

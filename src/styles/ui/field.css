@@ -1,13 +1,8 @@
 /* =====================================================================
    Field — the labelled pill input (src/ui/Field.tsx).
-
-   Replaces .ob-field / .fiat-field / .pwd-setup-* , which were three copies of
-   the same control. Both surfaces are kept as variants so the merge is
-   pixel-identical to what each screen rendered before:
-     default (.field)          -> onboarding/settings: 14px gap, uppercase label
-     .field.is-soft            -> fiat forms:          12px gap, sentence-case label
+   One label style for both surfaces: sentence case, muted, over the pill (the
+   uppercase label was the old design). `.is-soft` only changes the fill.
    ===================================================================== */
-
 .field {
   display: block;
   margin-bottom: 14px;
@@ -17,22 +12,16 @@
 }
 
 .field-label {
-  margin-bottom: 7px;
-}
-/* the fiat look: sentence case, tighter, nudged in to line up with the pill */
-.field.is-soft .field-label {
-  font-size: 12px;
+  margin: 0 4px 8px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--muted);
-  font-weight: 700;
-  margin: 0 2px 6px;
 }
 
-/* The soft surface: same 54px pill from app.css, without the blur and the inset
-   highlight. This is exactly what `.fiat-input` re-declared by hand. */
+/* The soft surface: same 54px pill from app.css on the lighter fill. This is exactly
+   what `.fiat-input` re-declared by hand. */
 .input.is-soft {
   background: var(--glass-soft-bg);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
   box-shadow: none;
 }
 

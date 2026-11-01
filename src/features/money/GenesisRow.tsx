@@ -1,28 +1,25 @@
 import type { WalletStore } from '@/state/store';
-import { Logo } from '@/ui/Logo';
+import { CosmosMark } from '@/ui/Icons';
 import { staggerClass } from '@/lib/stagger';
 import { cx } from '@/lib/cx';
 import '@/styles/features/money/rows.css';
 
-/** Visual-only history marker: when this wallet started using Cosmos Pay. Shown
- *  instead of an empty-history box and as the closing row of the full history. */
+/** The list's last row: the day this wallet started, under the Cosmos C. */
 export function GenesisRow({ store, index = 0, dense = false }: { store: WalletStore; index?: number; dense?: boolean }) {
   const date = store.meta?.createdAt
     ? new Date(store.meta.createdAt).toLocaleDateString(store.locale, { day: 'numeric', month: 'short', year: 'numeric' })
     : '';
   return (
-    <div className={cx('money-genesis-row', staggerClass(index, dense))}>
-      <div className="glass-soft money-genesis-icon">
-        <Logo size={19} />
+    <div className={cx('activity-row is-genesis', staggerClass(index, dense))}>
+      <span className="activity-mark" aria-hidden="true">
+        <CosmosMark className="activity-genesis-mark" />
+      </span>
+      <div className="activity-main">
+        <span className="activity-title">{store.t('history.genesis')}</span>
+        <span className="activity-sub">Cosmos Wallet</span>
       </div>
-      <div className="f1 min0">
-        <div className="money-genesis-title">{store.t('history.genesis')}</div>
-        <div className="t-dim-12">Cosmos Pay</div>
-      </div>
-      {/* no amount here — a heart takes its place */}
-      <div className="t-right shrink0">
-        <div className="money-genesis-heart">❤️</div>
-        <div className="money-genesis-date">{date}</div>
+      <div className="activity-end">
+        <span className="activity-time">{date}</span>
       </div>
     </div>
   );

@@ -1,0 +1,41 @@
+/* =====================================================================
+   src/ui/Notice.tsx — a line on the canvas, a mark and the text; no fill.
+   The danger tone draws its line and mark in --danger, AA in both themes.
+   ===================================================================== */
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.notice.is-danger {
+  border-color: var(--danger);
+}
+
+.notice-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--muted);
+}
+
+.notice.is-danger .notice-icon {
+  color: var(--danger);
+}
+
+.notice-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

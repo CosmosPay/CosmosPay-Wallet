@@ -1,5 +1,5 @@
 import type { WalletStore } from '@/state/store';
-import { CheckRow } from '@/features/onboarding/CheckRow';
+import { CheckRow } from '@/ui/CheckRow';
 import '@/styles/features/onboarding/atoms.css';
 
 /**
@@ -19,21 +19,13 @@ import '@/styles/features/onboarding/atoms.css';
 export function OptionalConsents({ store }: { store: WalletStore }) {
   const t = store.t;
   return (
-    <>
-      <CheckRow
-        on={store.draftMetricsOptIn}
-        onToggle={() => store.setDraftMetricsOptIn(!store.draftMetricsOptIn)}
-        className="ob-consent-metrics"
-      >
+    <div className="ob-consents">
+      <CheckRow on={store.draftMetricsOptIn} onToggle={() => store.setDraftMetricsOptIn(!store.draftMetricsOptIn)}>
         {t('setup.metricsOptIn')}
       </CheckRow>
-      <CheckRow
-        on={store.draftPromoOptIn}
-        onToggle={() => store.setDraftPromoOptIn(!store.draftPromoOptIn)}
-        className="ob-consent-promo"
-      >
+      <CheckRow on={store.draftPromoOptIn} onToggle={() => store.setDraftPromoOptIn(!store.draftPromoOptIn)}>
         {t('setup.promoOptIn')}
       </CheckRow>
-    </>
+    </div>
   );
 }

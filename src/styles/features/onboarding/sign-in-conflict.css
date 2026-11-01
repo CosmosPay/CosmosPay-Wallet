@@ -1,0 +1,6 @@
+/* src/features/onboarding/SignInConflict.tsx — the refusal and the way back to the sign-in,
+   inside a danger Notice. */
+.sign-in-conflict-again {
+  align-self: flex-start;
+  margin-top: 4px;
+}

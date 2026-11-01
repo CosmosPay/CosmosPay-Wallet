@@ -1,0 +1,179 @@
+/* =====================================================================
+   src/features/wallet/HomeNetworkButton.tsx and HomeNotifications.tsx — the network pill and
+   the bell beside the settings in Home's header, and the panels they open: under the control
+   on a PC window (src/styles/ui/dropdown.css), a sheet on a phone (src/styles/ui/sheet.css).
+   Lines on the canvas; the brand blue only for what is new.
+   ===================================================================== */
+.home-menu {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* the network: a line pill as tall as the round buttons beside it */
+.home-net-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 46px;
+  padding: 0 10px 0 16px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.home-net-pill:hover {
+  border-color: var(--text);
+}
+
+.home-net-pill:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
+}
+
+.home-net-caret {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  transition: transform var(--dur-base) var(--ease-in-out);
+}
+
+.home-net-caret.is-open {
+  transform: rotate(180deg);
+}
+
+/* the bell: the round button, and a dot of the brand blue while something is new */
+.home-bell {
+  position: relative;
+}
+
+.home-bell-dot {
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--brand);
+  box-sizing: content-box;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+/* ---- the panels ---- */
+.dropdown.home-menu-panel {
+  width: 300px;
+  padding: 12px;
+}
+
+.dropdown.home-notif-panel {
+  width: min(400px, calc(100vw - 48px));
+}
+
+.home-menu-title {
+  margin: 0 4px 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.home-menu-body,
+.home-notif-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.home-menu-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.home-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 14px !important;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.home-menu-item.is-on {
+  border-color: var(--text);
+  font-weight: 700;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-menu-item:not(.is-on):hover {
+    border-color: var(--line);
+  }
+}
+
+.home-menu-check {
+  width: 18px;
+  height: 18px;
+}
+
+.home-menu-link {
+  align-self: flex-start;
+  margin: 4px 12px 6px;
+}
+
+/* the notifications: the activity rows, the new ones with a blue dot at their edge */
+.home-notif-list {
+  display: flex;
+  flex-direction: column;
+  max-height: min(60vh, 460px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 10px;
+}
+
+.home-notif {
+  position: relative;
+}
+
+.home-notif.is-new::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand);
+  translate: 0 -50%;
+}
+
+.home-notif-none {
+  margin: 0;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* A narrow column — a 360px phone, the extension's 400px popup with two buttons where the
+   settings were — keeps the greeting room: a tighter pill. */
+@media (max-width: 420px) {
+  .home-net-pill {
+    padding: 0 6px 0 12px;
+    font-size: 12.5px;
+  }
+}

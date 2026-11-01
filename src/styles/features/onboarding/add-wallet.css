@@ -1,0 +1,83 @@
+/* =====================================================================
+   src/features/onboarding/AddWallet.tsx — another wallet under the same
+   password: choose, the new phrase or the paste, a name. Prefix: .add-wallet-
+   The word grid is the onboarding's (.ob-word-grid, atoms.css).
+   ===================================================================== */
+.add-wallet-words {
+  margin-bottom: 14px;
+}
+
+.add-wallet-copy {
+  margin-bottom: 16px;
+}
+
+.add-wallet-note {
+  margin-bottom: 14px;
+}
+
+.add-wallet-guide-title {
+  margin: 26px 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.add-wallet-guides {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* one wallet: its logo and name in a line pill; open, the pill is ink-lined */
+.add-wallet-guide {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 10px 0 6px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.add-wallet-guide.is-open {
+  border-color: var(--text);
+}
+
+.add-wallet-guide:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.add-wallet-guide-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+}
+
+.add-wallet-guide-chev {
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  transition: transform var(--dur-base) var(--ease-out);
+}
+
+.add-wallet-guide.is-open .add-wallet-guide-chev {
+  transform: rotate(180deg);
+}
+
+.add-wallet-steps {
+  margin: 14px 0 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 14px;
+  line-height: 1.5;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}

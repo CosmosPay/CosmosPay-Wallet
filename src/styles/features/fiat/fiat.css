@@ -55,9 +55,8 @@
   padding: 16px;
   border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--glass-border));
   border-radius: 20px;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--surface)) 0%, var(--glass-soft-bg) 72%);
+  background: var(--glass-bg);
 }
-.ramp-provider-card::after { content: ''; position: absolute; width: 130px; height: 130px; top: -88px; right: -44px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 28%, transparent); filter: blur(8px); }
 .ramp-provider-top { display: flex; position: relative; z-index: 1; align-items: center; gap: 10px; }
 .ramp-provider-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 12px; color: var(--bg); background: var(--accent); font-size: 21px; font-weight: 900; }
 .ramp-provider-eyebrow { color: var(--muted); font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }

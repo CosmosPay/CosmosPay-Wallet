@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton, GhostButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { railLabel, railCurrency } from '@/lib/fiatRails';
@@ -47,7 +47,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
   if (!accounts.length) {
     return (
       <div className="scr screen col pb-104">
-        <BackBar title={t('fiat.withdrawTitle')} onBack={store.goBack} />
+        <ScreenHeader title={t('fiat.withdrawTitle')} onBack={store.goBack} />
         <div className="glass fiat-note-card fiat-note-card-gap">{t('fiat.needBankAccount')}</div>
         <PrimaryButton onClick={() => store.setScreen('bankaccount')}>{t('fiat.addAccount')}</PrimaryButton>
       </div>
@@ -56,7 +56,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
   if (!tokens.length) {
     return (
       <div className="scr screen col pb-104">
-        <BackBar title={t('fiat.withdrawTitle')} onBack={store.goBack} />
+        <ScreenHeader title={t('fiat.withdrawTitle')} onBack={store.goBack} />
         <div className="glass fiat-note-card">{t('fiat.noTokenBalance')}</div>
       </div>
     );
@@ -64,7 +64,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-104">
-      <BackBar title={t('fiat.withdrawTitle')} onBack={store.goBack} />
+      <ScreenHeader title={t('fiat.withdrawTitle')} onBack={store.goBack} />
       <div className="desc withdraw-desc">{t('fiat.withdrawDesc')}</div>
 
       <Select label={t('fiat.bankAccount')} value={bankId} onChange={(v) => { setBankId(v); setQuote(null); }}>

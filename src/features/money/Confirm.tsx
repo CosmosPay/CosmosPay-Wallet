@@ -1,6 +1,6 @@
 import type { WalletStore } from '@/state/store';
 import { AssetLogo } from '@/ui/AssetLogo';
-import { BackBar } from '@/ui/BackBar';
+import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { fmt, shortAddr } from '@/lib/format';
@@ -39,7 +39,7 @@ export function Confirm({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col pb-24">
-      <BackBar title={t('confirm.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('confirm.title')} onBack={store.goBack} />
       <div className="center confirm-logo">
         <AssetLogo code={code} size={64} />
       </div>

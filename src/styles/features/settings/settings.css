@@ -1,171 +1,269 @@
-/* Settings screen (src/features/settings/Settings.tsx).
-   State-driven values (on/off colours, knob position, copied colour) are all
-   .is-on / .is-copied modifier classes. */
+/* =====================================================================
+   src/features/settings/Settings.tsx and its parts (SettingsSection,
+   SettingsRow, ToggleRow, DevModeSection, ChangePassword, PasskeySwitch).
+   Prefix: .settings-   A part is a title over rows between lines; choices
+   are line pills, the chosen one in ink; a switch is a real role="switch".
+   ===================================================================== */
+.settings-section {
+  margin-top: 26px;
+}
 
-/* section block: uppercase label + content */
-.settings-section { margin-top: 22px; }
-.settings-section-title { margin-bottom: 10px; } /* composes .label-up */
+.settings-section-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
 
-/* theme picker (dark / light) — active look via .is-on */
-.settings-theme-btn {
-  flex: 1;
+.settings-list {
   display: flex;
+  flex-direction: column;
+}
+
+/* ---- rows ---- */
+.settings-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-item.is-static {
+  cursor: default;
+}
+
+/* the line between rows: a pseudo-element, since base.css pills every button */
+.settings-item::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--line);
+}
+
+.settings-list > .settings-item:last-child::after,
+.settings-item-last::after {
+  display: none;
+}
+
+.settings-item:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.settings-item-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settings-item-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.settings-item-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.settings-row-chev {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+/* ---- the switch: src/ui/Switch.tsx (src/styles/ui/switch.css) ---- */
+
+/* ---- choices (theme, language) ---- */
+.settings-choices {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0 4px;
+}
+
+.settings-choices.is-wrap {
+  flex-wrap: wrap;
+}
+
+.settings-theme-btn,
+.settings-lang-btn {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: none;
-  border-radius: 14px;
-  padding: 14px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1.5px solid var(--line-strong);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
   font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-  background: var(--glass-soft-bg);
-  color: var(--text);
-}
-.settings-theme-btn.is-on { background: var(--accent); color: var(--on-accent); }
-
-/* language chips — active look via .is-on; composes .flexr .g8 / .row .g8 */
-.settings-lang-wrap { flex-wrap: wrap; }
-.settings-lang-btn {
-  border: none;
-  border-radius: 999px;
-  padding: 9px 16px 9px 11px;
-  font-size: 13.5px;
-  font-weight: 800;
-  cursor: pointer;
-  background: var(--glass-soft-bg);
-  color: var(--text);
-}
-.settings-lang-btn.is-on { background: var(--accent); color: var(--on-accent); }
-
-/* tappable glass tile (my-address row, dev-mode toggle row); composes .glass .row .between */
-.settings-tile {
-  border-radius: 14px;
-  padding: 14px 16px;
-  cursor: pointer;
-}
-.settings-addr-text { font-size: 13px; font-weight: 600; font-family: monospace; }
-.settings-addr-copy { font-size: 12px; font-weight: 800; color: var(--muted); } /* → accent via .is-copied */
-.settings-addr-copy.is-copied { color: var(--accent); }
-
-/* list items (Row / ToggleRow) share the same glass-card metrics */
-.settings-item {
-  border-radius: 14px;
-  padding: 15px 16px;
-  margin-bottom: 10px;
-}
-.settings-item-last { margin-bottom: 0; }
-.settings-item-label { font-size: 15px; font-weight: 700; }
-.settings-item-desc {
-  font-size: 12px;
-  color: var(--dim);
   font-weight: 600;
-  line-height: 1.4;
-  margin-top: 2px;
-}
-.settings-row-chev { color: #4f5754; font-size: 18px; }
-
-/* pill switch (ToggleRow + dev-mode tile); track/knob colour + knob position
-   follow the .is-on modifier. The compound .tap selector keeps the background
-   transition winning over .tap's transform/filter transition. */
-.settings-switch,
-.tap.settings-switch {
-  position: relative;
-  width: 46px;
-  height: 28px;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border);
-  flex-shrink: 0;
   cursor: pointer;
-  transition: background 0.2s ease;
-  background: var(--surface);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
 }
-.settings-switch.is-on { background: var(--accent); }
-.settings-switch-knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
+
+.settings-theme-btn {
+  flex: 1;
+}
+
+.settings-theme-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.settings-theme-btn:hover,
+.settings-lang-btn:hover {
+  border-color: var(--text);
+}
+
+.settings-theme-btn.is-on,
+.settings-lang-btn.is-on {
+  border-color: var(--text);
   background: var(--text);
-  transition: left 0.2s ease;
+  color: var(--bg);
 }
-.settings-switch.is-on .settings-switch-knob { left: 20px; background: var(--on-accent); }
-.settings-switch-sm { width: 44px; height: 26px; }
-.settings-switch-sm .settings-switch-knob { width: 20px; height: 20px; opacity: 0.5; }
-.settings-switch-sm.is-on .settings-switch-knob { opacity: 1; }
-.settings-devmode-label { font-size: 14px; font-weight: 800; }
 
-/* expandable sub-forms (change password, dev-mode endpoint fields) */
-.settings-subform { margin-top: 12px; }
-/* What switching how the device opens gives and costs, above the PasskeySwitch form. */
-.settings-subform-desc { margin: 0 2px 12px; }
-.settings-dev-desc {
-  font-size: 12.5px;
-  color: var(--muted);
-  font-weight: 600;
-  line-height: 1.5;
-  margin: 0 2px 12px;
+.settings-theme-btn:focus-visible,
+.settings-lang-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
-.settings-dev-field { display: block; margin-bottom: 12px; }
-.settings-dev-field-label { margin-bottom: 6px; } /* composes .label-up */
-/* compact mono variant of the shared .input pill (compound selector so it
-   always overrides .input regardless of stylesheet order) */
+
+/* ---- my address ---- */
+.settings-addr-text {
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 13px;
+}
+
+.settings-addr-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  transition: color var(--dur-quick) var(--ease-out);
+}
+
+.settings-addr-copy svg {
+  width: 16px;
+  height: 16px;
+}
+
+.settings-addr-copy.is-copied {
+  color: var(--up);
+}
+
+/* ---- sub-forms that open under a row (change password, passkey, dev mode) ---- */
+.settings-subform {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 0 8px;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+.settings-subform-desc {
+  margin: 4px 0 8px;
+}
+
+/* the auto-lock section's one line on what it does, above its choices */
+.settings-autolock-desc {
+  margin: 0;
+  padding-top: 4px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.settings-dev-desc {
+  margin: 0 0 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.settings-dev-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
 .input.settings-dev-input {
   height: 46px;
   font-size: 13px;
   font-family: ui-monospace, Menlo, monospace;
-  font-weight: 600;
-}
-.settings-dev-reset {
-  width: 100%;
-  background: var(--glass-soft-bg);
-  color: var(--text);
-  border: 1px solid var(--glass-border);
-  border-radius: 999px;
-  padding: 13px;
-  font-size: 13.5px;
-  font-weight: 800;
-  cursor: pointer;
 }
 
-/* danger zone */
+/* ---- danger zone: a line of --danger, never a tinted fill ---- */
 .settings-danger-btn {
   width: 100%;
-  background: rgba(255, 93, 93, 0.1);
+  min-height: 54px;
+  border: 1.5px solid var(--danger);
+  background: transparent;
   color: var(--danger);
-  border: 1px solid rgba(255, 93, 93, 0.24);
-  border-radius: 14px;
-  padding: 15px;
+  font: inherit;
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
   cursor: pointer;
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out),
+    transform 0.13s var(--ease-out);
 }
-.settings-danger-box {
-  background: rgba(255, 93, 93, 0.08);
-  border: 1px solid rgba(255, 93, 93, 0.24);
-  border-radius: 16px;
-  padding: 16px;
-}
-.settings-danger-text {
-  font-size: 13px;
-  color: #ffb3b3;
-  font-weight: 600;
-  line-height: 1.5;
-  margin-bottom: 12px;
-}
-.settings-confirm-btn,
-.glass-soft.settings-confirm-btn { /* compound: border none must beat .glass-soft's border */
-  flex: 1;
-  color: var(--text);
-  border: none;
-  border-radius: 12px;
-  padding: 13px;
-  font-weight: 800;
-  cursor: pointer;
-}
-.settings-confirm-danger {
+
+/* The canvas colour on the red reads AA in both themes (white on the dark theme's light red
+   would not). */
+.settings-danger-btn.is-solid,
+.settings-danger-btn:hover {
   background: var(--danger);
-  color: #fff;
+  color: var(--bg);
+}
+
+.settings-danger-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.settings-danger-box {
+  margin-top: 8px;
+  padding: 16px;
+  border: 1.5px solid var(--danger);
+  border-radius: 18px;
+}
+
+.settings-danger-text {
+  margin: 0 0 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.settings-danger-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* the recovery part, which the Wallet tab opens Settings at: clear of the fixed way back */
+.settings-anchor {
+  scroll-margin-top: 72px;
 }

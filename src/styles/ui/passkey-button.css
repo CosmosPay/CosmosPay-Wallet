@@ -1,19 +1,15 @@
-/* PasskeyButton — raises the browser's passkey sheet (src/ui/PasskeyButton.tsx). */
+/* PasskeyButton — raises the browser's passkey sheet (src/ui/PasskeyButton.tsx).
+   The pill, the ink and both looks come from .btn-primary / .btn-ghost (app.css); only
+   the icon-and-label row is here. */
 .passkey-btn {
   width: 100%;
+  gap: 10px;
 }
+
 .passkey-btn:disabled {
   opacity: 0.6;
 }
-/* The shortcut form, one step quieter than .btn-primary — the same weight as
-   .device-auth-btn, for the screens where a password is still the main path. */
-.passkey-btn--quiet {
-  height: 50px;
-  border-radius: 999px;
-  color: var(--text-soft);
-  font-size: 15px;
-  font-weight: 600;
-}
+
 .passkey-btn-label {
   overflow: hidden;
   text-overflow: ellipsis;

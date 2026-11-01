@@ -1,7 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { SECTION_SCROLL_DELAY_MS } from '@/constants/ui';
 import type { WalletStore } from '@/state/store';
-import { BackBar } from '@/ui/BackBar';
-import { LangFlag } from '@/ui/LangSelect';
+import { ScreenHeader } from '@/ui/ScreenHeader';
+import { GhostButton } from '@/ui/Buttons';
+import { CheckIcon, CopyIcon, ThemeIcon } from '@/ui/Icons';
+import { LangFlag } from '@/ui/LangFlag';
 import { SettingsSection } from '@/features/settings/SettingsSection';
 import { SettingsRow } from '@/features/settings/SettingsRow';
 import { ToggleRow } from '@/features/settings/ToggleRow';
@@ -17,7 +20,7 @@ import { cx } from '@/lib/cx';
 import { openExternal } from '@/lib/openExternal';
 import { LANGUAGES } from '@/lib/i18n';
 import { deviceAuthFailureKey } from '@/lib/deviceAuth';
-import { THEME_OPTIONS } from '@/constants/settings';
+import { AUTO_LOCK_OPTIONS, THEME_OPTIONS } from '@/constants/settings';
 import '@/styles/features/settings/settings.css';
 
 export function Settings({ store }: { store: WalletStore }) {
@@ -35,34 +38,82 @@ export function Settings({ store }: { store: WalletStore }) {
   }, [signInMethods, loadSignInMethods]);
   const mfaUrl = signInMethods?.mfaSettingsUrl ?? null;
 
+  // Opened as "recover the account" (the Wallet tab): the recovery part, not the top of a long
+  // screen. A step of this screen, so the browser's back leaves Settings as it came.
+  const recoveryRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (store.navStep !== 'recovery') return;
+    const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const timer = setTimeout(
+      () => recoveryRef.current?.scrollIntoView({ block: 'start', behavior: reduced ? 'auto' : 'smooth' }),
+      SECTION_SCROLL_DELAY_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [store.navStep]);
+
   return (
     <div className="scr screen pb-40">
-      <BackBar title={t('settings.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('settings.title')} onBack={store.goBack} />
 
       <SettingsSection title={t('settings.appearance')}>
-        <div className="flexr g8">
+        <div className="settings-choices">
           {THEME_OPTIONS.map((o) => (
-            <button key={o.id} onClick={() => store.setTheme(o.id)} className={cx('settings-theme-btn', store.theme === o.id && 'is-on')}>
-              <span>{o.icon}</span>{t(o.labelKey)}
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={store.themePref === o.id}
+              onClick={() => store.setThemePref(o.id)}
+              className={cx('settings-theme-btn', store.themePref === o.id && 'is-on')}
+            >
+              <ThemeIcon kind={o.icon} />
+              {t(o.labelKey)}
             </button>
           ))}
         </div>
       </SettingsSection>
 
       <SettingsSection title={t('settings.language')}>
-        <div className="flexr g8 settings-lang-wrap">
+        <div className="settings-choices is-wrap">
           {LANGUAGES.map((l) => (
-            <button key={l.code} onClick={() => store.setLang(l.code)} className={cx('row g8 settings-lang-btn', store.lang === l.code && 'is-on')}>
-              <LangFlag code={l.code} />{l.name}
+            <button
+              key={l.code}
+              type="button"
+              lang={l.code}
+              aria-pressed={store.lang === l.code}
+              onClick={() => store.setLang(l.code)}
+              className={cx('settings-lang-btn', store.lang === l.code && 'is-on')}
+            >
+              <LangFlag code={l.code} />
+              {l.name}
             </button>
           ))}
         </div>
       </SettingsSection>
 
       <SettingsSection title={t('settings.myAddress')}>
-        <div onClick={() => copy(pub)} className="tap glass row between settings-tile">
+        <button type="button" onClick={() => void copy(pub)} className="settings-item">
           <span className="settings-addr-text">{shortAddr(pub, 10, 10)}</span>
-          <span className={cx('settings-addr-copy', copied && 'is-copied')}>{copied ? t('common.copied') : t('common.copy')}</span>
+          <span className={cx('settings-addr-copy', copied && 'is-copied')}>
+            {copied ? <CheckIcon /> : <CopyIcon />}
+            {copied ? t('common.copied') : t('common.copy')}
+          </span>
+        </button>
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.autoLock')}>
+        <p className="settings-autolock-desc">{t('settings.autoLockDesc')}</p>
+        <div className="settings-choices is-wrap" role="group" aria-label={t('settings.autoLock')}>
+          {AUTO_LOCK_OPTIONS.map((o) => (
+            <button
+              key={o.ms}
+              type="button"
+              aria-pressed={store.autoLockMs === o.ms}
+              onClick={() => store.setAutoLock(o.ms)}
+              className={cx('settings-lang-btn', store.autoLockMs === o.ms && 'is-on')}
+            >
+              {t(o.labelKey)}
+            </button>
+          ))}
         </div>
       </SettingsSection>
 
@@ -85,6 +136,7 @@ export function Settings({ store }: { store: WalletStore }) {
           />
         )}
         <SettingsRow label={t('settings.exportPhrase')} onClick={() => store.setScreen('export')} />
+        <SettingsRow label={t('settings.easyRecovery')} onClick={() => store.setScreen('easy-recovery-send')} />
         {/* The Cosmos Pay ACCOUNT's second factors, in Authentik — not the device passkey
             below, which opens this wallet. Optional: the sign-in only offers one, so this row
             is where anyone who said "not now" adds a key, an authenticator app or recovery
@@ -132,8 +184,10 @@ export function Settings({ store }: { store: WalletStore }) {
         />
       </SettingsSection>
 
-      <BackupRecoverySection store={store} />
-      <RecoverySection store={store} />
+      <div ref={recoveryRef} className="settings-anchor">
+        <BackupRecoverySection store={store} />
+        <RecoverySection store={store} />
+      </div>
 
       <ConnectedSites store={store} />
 
@@ -141,7 +195,7 @@ export function Settings({ store }: { store: WalletStore }) {
 
       <SettingsSection title={t('settings.danger')}>
         {!confirmDelete ? (
-          <button onClick={() => setConfirmDelete(true)} className="settings-danger-btn">
+          <button type="button" onClick={() => setConfirmDelete(true)} className="settings-danger-btn">
             {t('settings.deleteThis')}
           </button>
         ) : (
@@ -149,9 +203,11 @@ export function Settings({ store }: { store: WalletStore }) {
             <div className="settings-danger-text">
               {t('settings.deleteConfirm', { name: store.meta?.name ?? '' })}
             </div>
-            <div className="flexr g10">
-              <button onClick={() => setConfirmDelete(false)} className="glass-soft settings-confirm-btn">{t('common.cancel')}</button>
-              <button onClick={() => store.removeActiveWallet()} className="settings-confirm-btn settings-confirm-danger">{t('common.delete')}</button>
+            <div className="settings-danger-actions">
+              <GhostButton onClick={() => setConfirmDelete(false)}>{t('common.cancel')}</GhostButton>
+              <button type="button" onClick={() => void store.removeActiveWallet()} className="settings-danger-btn is-solid">
+                {t('common.delete')}
+              </button>
             </div>
           </div>
         )}

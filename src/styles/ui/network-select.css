@@ -1,0 +1,210 @@
+/* =====================================================================
+   src/ui/NetworkSelect.tsx — the network selector: a line pill naming the choice, and the
+   panel it opens (src/styles/ui/dropdown.css on a PC window, sheet.css on a phone). Lines on
+   the canvas, the rows as the network picker draws them.
+   ===================================================================== */
+.net-select {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.net-select-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 240px;
+  height: 44px;
+  padding: 0 10px 0 10px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.net-select-btn:hover {
+  border-color: var(--text);
+}
+
+.net-select-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.net-select-btn-label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.net-select-caret {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+  transition: transform var(--dur-base) var(--ease-in-out);
+}
+
+.net-select-caret.is-open {
+  transform: rotate(180deg);
+}
+
+/* "all networks": the Cosmos Wallet mark in a ring, the size of a network's mark beside it */
+.net-all-mark {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--text);
+}
+
+.net-all-mark.is-button {
+  width: 22px;
+  height: 22px;
+}
+
+.net-all-mark.is-row {
+  width: 28px;
+  height: 28px;
+}
+
+.net-all-mark svg {
+  width: 60%;
+  height: 60%;
+}
+
+/* ---- the panel ---- */
+.dropdown.net-select-panel {
+  width: 380px;
+  padding: 12px;
+}
+
+.net-select-title {
+  margin: 0 4px 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.net-select-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.net-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: min(60vh, 480px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* under its button the panel must end inside the window: the list gives way, not the panel */
+.dropdown .net-select-list {
+  max-height: min(calc(100dvh - 384px), 440px);
+  min-height: 160px;
+}
+
+.net-select-head {
+  padding: 16px 12px 6px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.net-select-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 14px !important;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--dur-quick) var(--ease-out);
+}
+
+.net-select-item.is-on {
+  border-color: var(--text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .net-select-item:not(.is-on):hover {
+    border-color: var(--line);
+  }
+}
+
+.net-select-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.net-select-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.net-select-item.is-quiet .net-select-name {
+  font-weight: 500;
+}
+
+.net-select-sub {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.net-select-value {
+  flex-shrink: 0;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.net-select-check {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 18px;
+}
+
+.net-select-check svg {
+  width: 18px;
+  height: 18px;
+}
+
+.net-select-none {
+  margin: 0;
+  padding: 12px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* A phone (and the extension's popup) gives the search beside it the room: the button shows the
+   mark and its caret; its name stays in its accessible label. */
+@media (max-width: 480px) {
+  .net-select-btn-label {
+    display: none;
+  }
+
+  .net-select-btn {
+    padding: 0 8px 0 10px;
+  }
+}

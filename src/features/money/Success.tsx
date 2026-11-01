@@ -27,11 +27,11 @@ export function Success({ store }: { store: WalletStore }) {
             )}
           </div>
         </div>
-        <div className="success-title">{si?.title ?? 'Listo'}</div>
-        <div className="success-msg">{si?.msg ?? ''}</div>
+        <h1 className="success-title">{si?.title ?? t('common.done')}</h1>
+        <p className="success-msg">{si?.msg ?? ''}</p>
       </div>
       {si?.rows?.length ? (
-        <div className="glass kv-card success-rows">
+        <div className="outlined kv-card success-rows">
           {si.rows.map((r, i) => (
             <KVRow key={i} label={r.label} value={r.val} />
           ))}

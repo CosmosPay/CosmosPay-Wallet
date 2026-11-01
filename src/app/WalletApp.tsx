@@ -1,7 +1,8 @@
 import '@/styles/app/wallet-app.css';
 import { Suspense, lazy, useEffect, useRef, useState, type ComponentType, type LazyExoticComponent } from 'react';
 import { SPLASH_REVEAL_MS, SPLASH_DONE_MS } from '@/constants/app';
-import { NAV_SCREENS, type Screen } from '@/lib/screens';
+import { markAppRevealed } from '@/lib/appReveal';
+import { NAV_SCREENS, isScreenOn, type Screen } from '@/lib/screens';
 import { useWalletStore, type WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
 import { Shell } from '@/app/Shell';
@@ -23,6 +24,10 @@ import { EVENT } from '@/constants/telemetry';
 
 type ScreenComponent = ComponentType<{ store: WalletStore }> | LazyExoticComponent<ComponentType<{ store: WalletStore }>>;
 
+/** The screen navigator for development (app/DebugNav.tsx). `import.meta.env.DEV` is false in a
+ *  production build, so the bundler drops the import and the module never ships. */
+const DebugNav = import.meta.env.DEV ? lazy(() => import('@/app/DebugNav').then((m) => ({ default: m.DebugNav }))) : null;
+
 /**
  * Screen -> component.
  *
@@ -43,9 +48,15 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
 
   // lazy — the rest of onboarding. Reached only after a tap, and `import` pulls in
   // BIP-39 + SLIP-0010 (~240 KB) that a returning user never needs.
+  'backup-choice': lazy(() => import('@/features/onboarding/BackupChoice').then((m) => ({ default: m.BackupChoice }))),
+  'restore-choice': lazy(() => import('@/features/onboarding/RestoreChoice').then((m) => ({ default: m.RestoreChoice }))),
   backup: lazy(() => import('@/features/onboarding/Backup').then((m) => ({ default: m.Backup }))),
   verify: lazy(() => import('@/features/onboarding/Verify').then((m) => ({ default: m.Verify }))),
   import: lazy(() => import('@/features/onboarding/Import').then((m) => ({ default: m.Import }))),
+  'easy-recovery-receive': lazy(() =>
+    import('@/features/onboarding/EasyRecoveryReceive').then((m) => ({ default: m.EasyRecoveryReceive })),
+  ),
+  'import-wallet': lazy(() => import('@/features/onboarding/ImportWallet').then((m) => ({ default: m.ImportWallet }))),
   'profile-setup': lazy(() => import('@/features/onboarding/ProfileSetup').then((m) => ({ default: m.ProfileSetup }))),
   password: lazy(() => import('@/features/onboarding/PasswordSetup').then((m) => ({ default: m.PasswordSetup }))),
   'device-auth': lazy(() => import('@/features/onboarding/DeviceAuthSetup').then((m) => ({ default: m.DeviceAuthSetup }))),
@@ -61,7 +72,8 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   // lazy — money
   receive: lazy(() => import('@/features/money/Receive').then((m) => ({ default: m.Receive }))),
   send: lazy(() => import('@/features/money/Send').then((m) => ({ default: m.Send }))),
-  'chain-send': lazy(() => import('@/features/money/ChainSend').then((m) => ({ default: m.ChainSend }))),
+  // The Solana / Monad tabs of Send, opened on the holding's network.
+  'chain-send': lazy(() => import('@/features/money/Send').then((m) => ({ default: m.Send }))),
   'chain-asset': lazy(() => import('@/features/wallet/ChainAsset').then((m) => ({ default: m.ChainAsset }))),
   swap: lazy(() => import('@/features/money/Swap').then((m) => ({ default: m.Swap }))),
   select: lazy(() => import('@/features/money/Send').then((m) => ({ default: m.Send }))),
@@ -87,6 +99,7 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   // lazy — settings
   settings: lazy(() => import('@/features/settings/Settings').then((m) => ({ default: m.Settings }))),
   export: lazy(() => import('@/features/settings/Export').then((m) => ({ default: m.Export }))),
+  'easy-recovery-send': lazy(() => import('@/features/settings/EasyRecoverySend').then((m) => ({ default: m.EasyRecoverySend }))),
   about: lazy(() => import('@/features/settings/About').then((m) => ({ default: m.About }))),
 
   // lazy — extras
@@ -96,6 +109,8 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   'add-network': lazy(() => import('@/features/extras/AddNetwork').then((m) => ({ default: m.AddNetwork }))),
   'add-asset': lazy(() => import('@/features/extras/AddAsset').then((m) => ({ default: m.AddAsset }))),
   scan: lazy(() => import('@/features/extras/ScanQR').then((m) => ({ default: m.ScanQR }))),
+  wallets: lazy(() => import('@/features/wallet/Wallets').then((m) => ({ default: m.Wallets }))),
+  'add-wallet': lazy(() => import('@/features/onboarding/AddWallet').then((m) => ({ default: m.AddWallet }))),
 };
 
 /**
@@ -129,7 +144,7 @@ function WalletAppShell() {
   useEffect(() => {
     if (!store.hasSession || typeof window === 'undefined') return;
     const path = window.location.pathname.replace(/\/+$/, '');
-    if (path.endsWith('/earn') && store.screen !== 'earn') store.go('earn', 'earn');
+    if (path.endsWith('/earn') && store.screen !== 'earn' && isScreenOn('earn')) store.go('earn', 'earn');
   }, [store, store.hasSession, store.screen]);
 
   // Publishes --kb-h / .kb-open for the whole document, so every screen's footer can
@@ -147,8 +162,14 @@ function WalletAppShell() {
   const isExt = buildKind() === 'ext';
   const [intro, setIntro] = useState<'show' | 'reveal' | 'done'>(isExt ? 'done' : 'show');
   useEffect(() => {
-    if (isExt) return;
-    const t1 = setTimeout(() => setIntro('reveal'), SPLASH_REVEAL_MS);
+    if (isExt) {
+      markAppRevealed();
+      return;
+    }
+    const t1 = setTimeout(() => {
+      setIntro('reveal');
+      markAppRevealed();
+    }, SPLASH_REVEAL_MS);
     const t2 = setTimeout(() => setIntro('done'), SPLASH_DONE_MS);
     return () => {
       clearTimeout(t1);
@@ -210,6 +231,12 @@ function WalletAppShell() {
       </div>
 
       {intro !== 'done' && <Splash fading={intro !== 'show'} />}
+
+      {DebugNav && (
+        <Suspense fallback={null}>
+          <DebugNav store={store} />
+        </Suspense>
+      )}
     </>
   );
 }
