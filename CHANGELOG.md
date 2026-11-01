@@ -2,6 +2,30 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.15.0] - 2026-11-01
+
+### Features
+- Flat matte design system and redesigned onboarding (WIP) (8193db7)
+- Step navigation, easy recovery, wallet import and email restore (ebce36f)
+- Figma navigation, Home, Wallet tab, More and a one-step add wallet (6bda132)
+- Send and receive per network, asset details, and the old look retired (3ca2d04)
+- Every screen on the new pieces, and the copy in tú (b064e6e)
+- Create the Cosmos Wallet account with the wallet (e0b6817)
+- Every network NEAR Intents settles, not Stellar with extras (a16446f)
+- PC layout, kept session, every network in Home, Send, Receive and Swap (75d8ca0)
+- Send on every network the wallet holds an address on (1512868)
+- Switch investing off for now (76acc18)
+
+### Bug Fixes
+- Recovery one tap from the Wallet tab, Earn cards drawn as cards (efae70d)
+- Drop the dead devnet airdrop, and the passkey e2e reads v4 backups (a6fd969)
+- No gateway key never blocks onboarding; bound sends to their chain (c964629)
+- Ask Solana about a Fogo blockhash only after it could know it (70164fc)
+- Sign a pasted transaction for the network it was made for (159aff4)
+
+### Dependencies
+- Bump astro to 7.4.3 and @astrojs/react to 7.1.2; declare esbuild (3250f73)
+
 ## [1.14.0] - 2026-10-28
 
 ### Features
