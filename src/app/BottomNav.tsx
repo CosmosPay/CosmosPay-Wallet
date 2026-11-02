@@ -1,5 +1,6 @@
 import type { WalletStore } from '@/state/store';
 import { navTabs, navActiveKey, navGo } from '@/app/navModel';
+import { ActivityIcon } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
 import '@/styles/app/bottom-nav.css';
 
@@ -9,13 +10,17 @@ import '@/styles/app/bottom-nav.css';
  * over the place you are on.
  */
 export function BottomNav({ store }: { store: WalletStore }) {
-  const tabs = navTabs(store.t);
+  const tabs = navTabs(store.t).flatMap((tab) =>
+    tab.key === 'scan'
+      ? [tab, { key: 'history' as const, label: store.t('history.title'), icon: <ActivityIcon /> }]
+      : [tab],
+  );
   const activeKey = navActiveKey(store);
 
   return (
     <nav className="bottom-nav" aria-label={store.t('nav.label')}>
       {tabs.map((tb) => {
-        const on = tb.key === activeKey;
+        const on = store.screen === 'history' ? tb.key === 'history' : tb.key === activeKey;
         if (tb.key === 'scan') {
           return (
             <button key={tb.key} type="button" onClick={() => navGo(store, tb.key)} className="bottom-nav-scan">
@@ -28,7 +33,7 @@ export function BottomNav({ store }: { store: WalletStore }) {
           <button
             key={tb.key}
             type="button"
-            onClick={() => navGo(store, tb.key)}
+            onClick={() => tb.key === 'history' ? store.setScreen('history') : navGo(store, tb.key)}
             aria-current={on ? 'page' : undefined}
             className={cx('bottom-nav-tab', on && 'is-on')}
           >
