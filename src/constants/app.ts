@@ -50,6 +50,13 @@ export const MEMO_SIGNATURE = 'Cosmos Wallet';
 export const TERMS_URL = 'https://wallet.cosmospay.lat/tos';
 export const PRIVACY_URL = 'https://wallet.cosmospay.lat/privacy';
 
+/**
+ * Where the web wallet lives (deploy/update-wallet-web.sh publishes it there). Every entry
+ * page names it as its canonical address and as the `og:url` of a shared link, whichever host
+ * served the copy — GitHub Pages, a local preview — so a preview always points at the real one.
+ */
+export const WALLET_WEB_URL = 'https://cosmospay.lat/wallet/';
+
 /** Splash intro timing: the app starts fading in at REVEAL and the splash
  *  overlay unmounts at DONE. DONE - REVEAL = 800ms, paired with the 0.8s ease
  *  opacity/transform transition on `.wallet-app-intro` (and the 0.75s fade on

@@ -40,7 +40,7 @@
    Element-level baseline: document chrome, form-control resets and the
    cross-engine fixes that have to apply before any component style.
    No component or utility rules here — those live in app.css and the
-   per-component sheets. Loaded by src/pages/index.astro after theme.css.
+   per-component sheets. Loaded by src/app/WalletDocument.astro after theme.css.
    ===================================================================== */
 
 * {

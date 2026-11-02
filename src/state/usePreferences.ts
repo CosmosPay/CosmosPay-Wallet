@@ -13,7 +13,7 @@
  * still sent the last few minutes.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { LANGUAGES, localeOf, makeT, persistLang, savedLang, type Lang } from '@/lib/i18n';
+import { LANGUAGES, adoptUrlLang, localeOf, makeT, persistLang, savedLang, setDocumentLang, type Lang } from '@/lib/i18n';
 import { setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
 import { AUTO_LOCK_CHOICES_MS, AUTO_LOCK_KEY, DEFAULT_AUTO_LOCK_MS, type AutoLockMs } from '@/constants/app';
 
@@ -91,6 +91,21 @@ export function applySavedThemeEarly(): void {
   if (typeof document !== 'undefined') paintTheme(resolveTheme(savedThemePref()));
 }
 
+/**
+ * Settle the language as soon as the store module loads, before the first render: a language
+ * the URL carries (`?lang=xx`, `/wallet/xx/`) is adopted — stored as the choice and taken off
+ * the address bar — and `<html lang>` names the result.
+ *
+ * No boot script does this ahead of the bundle, unlike the theme's: the page body is empty
+ * until the app renders (`client:only`), so there is nothing a language could flash on before
+ * this runs, and the entry pages already carry their language in the markup.
+ */
+export function applyLangEarly(): void {
+  if (typeof window === 'undefined') return;
+  adoptUrlLang(window.location, window.history, import.meta.env?.BASE_URL ?? '/');
+  setDocumentLang(savedLang());
+}
+
 export function usePreferences(onLangChange: (message: string) => void) {
   const [themePref, setThemePrefState] = useState<ThemePref>(savedThemePref);
   const [deviceTheme, setDeviceTheme] = useState<Theme>(systemTheme);
@@ -165,15 +180,13 @@ export function usePreferences(onLangChange: (message: string) => void) {
     }
   }, []);
 
+  // `<html lang>` follows the language on screen, from the first render to every switch.
+  useEffect(() => setDocumentLang(lang), [lang]);
+
   const setLang = useCallback(
     (l: Lang) => {
       setLangState(l);
       persistLang(l);
-      try {
-        document.documentElement.setAttribute('lang', l);
-      } catch {
-        /* ignore */
-      }
       const name = LANGUAGES.find((x) => x.code === l)?.name ?? l;
       // Announced through the caller's toast so this slice owns no UI of its own.
       onLangChange(makeT(l)('toast.langChanged', { lang: name }));
