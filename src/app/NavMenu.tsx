@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
-import { ChevronRightIcon, CloseIcon, CosmosMark, InfoCircleIcon, KeyIcon, LinkIcon, MenuIcon, QrIcon, GearIcon } from '@/ui/Icons';
-import { navTabs, navActiveKey, navGo } from '@/app/navModel';
+import { ChevronRightIcon, CloseIcon, CosmosMark, MenuIcon } from '@/ui/Icons';
+import { navTabs, navActiveKey, navGo, navShortcuts, navOpenShortcut } from '@/app/navModel';
 import { cx } from '@/lib/cx';
 import '@/styles/app/nav-menu.css';
 
@@ -60,13 +60,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
   const openDrawer = () => store.setNavMenuOpen(true);
   const closeDrawer = () => store.setNavMenuOpen(false);
   // Quick access: the scanner + settings + the profile shortcuts, one tap away.
-  const shortcuts = [
-    ...(store.meta?.email ? [{ key: 'cosmospay', label: store.t('cosmospay.manage'), icon: <LinkIcon /> }] : []),
-    { key: 'export', label: store.t('profile.exportKeys'), icon: <KeyIcon /> },
-    { key: 'receive', label: store.t('profile.receiveAddr'), icon: <QrIcon /> },
-    { key: 'settings', label: store.t('profile.settings'), icon: <GearIcon /> },
-    { key: 'about', label: store.t('profile.about'), icon: <InfoCircleIcon /> },
-  ];
+  const shortcuts = navShortcuts(store);
 
   return (
     <>
@@ -120,7 +114,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
                 // Deliberately NOT closing the drawer: its open-state persists in the
                 // store, so pressing "back" on the destination lands here with the
                 // menu already open — no need to reopen it.
-                onClick={() => store.setScreen(it.key as Parameters<WalletStore['setScreen']>[0])}
+                onClick={() => navOpenShortcut(store, it.key)}
               />
             ))}
           </div>
