@@ -2,6 +2,20 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.16.0] - 2026-11-02
+
+### Features
+- Open in English by default and take the language from the link (3755b4c)
+
+### Miscellaneous
+- Sync the community server contract (8feacb1)
+
+### Documentation
+- Say the wallet opens in English, not in the device's language (0102f22)
+
+### Testing
+- Open the wallet with ?lang=es instead of relying on the locale (66de9a2)
+
 ## [1.15.0] - 2026-11-01
 
 ### Features
