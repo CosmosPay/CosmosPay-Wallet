@@ -23,7 +23,7 @@ import { reviewTx, type TxReview } from '@/lib/txGuard';
 import { signMessagePayload, SIGN_MESSAGE_DOMAIN } from '@/lib/signMessage';
 import { memoKindFromSep7 } from '@/lib/memo';
 import { cx } from '@/lib/cx';
-import { makeT, savedLang, type TFn } from '@/lib/i18n';
+import { makeT, savedLang, setDocumentLang, type TFn } from '@/lib/i18n';
 
 // Extension API — no @types/chrome in this project; the popup only runs as an
 // extension page where `chrome` exists (guarded by hasChrome()).
@@ -156,6 +156,8 @@ export default function ApprovePopup() {
   const [netMismatch, setNetMismatch] = useState('');
   const [loaded, setLoaded] = useState(false);
   const t = useMemo(() => makeT(savedLang()), []);
+  // The window speaks the wallet's language, and its `<html lang>` says so.
+  useEffect(() => setDocumentLang(savedLang()), []);
   const [pwd, setPwd] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');

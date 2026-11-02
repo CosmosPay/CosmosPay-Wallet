@@ -5,8 +5,8 @@
 Portefeuille **non dépositaire** pour le réseau **Stellar**, construit avec **Astro + Vite +
 React (TSX)**. Disponible comme **extension de navigateur** (MV3 · Chrome / Edge / Firefox —
 popup **et** panneau latéral), **app mobile** (Tauri · Android / iOS) et web. UI
-**glassmorphism** animée, thèmes clair et sombre, **5 langues** (EN/ES/PT/DE/FR avec
-autodétection), multi-portefeuille sous un seul mot de passe et provider dapps
+**glassmorphism** animée, thèmes clair et sombre, **5 langues** (EN/ES/PT/DE/FR ; anglais par défaut,
+un lien peut en indiquer une : `?lang=fr`), multi-portefeuille sous un seul mot de passe et provider dapps
 (`window.cosmosWallet`) pour paiements et signatures.
 
 > **Vraiment non dépositaire :** les clés sont générées et chiffrées sur ton appareil. Ni la

@@ -6,7 +6,7 @@ A **non-custodial** wallet for the **Stellar** network, built with **Astro + Vit
 Ships as a **browser extension** (MV3 · Chrome / Edge / Firefox — popup **and** side panel), a
 **desktop app** (Tauri · Windows / macOS / Linux), a **mobile app** (Tauri · Android / iOS) and a
 web app. Animated **glassmorphism** UI, light &
-dark themes, **5 languages** (EN/ES/PT/DE/FR, auto-detected), multi-wallet under one password,
+dark themes, **5 languages** (EN/ES/PT/DE/FR; English by default, and a link can name one: `?lang=es`), multi-wallet under one password,
 and a dapp provider (`window.cosmosWallet`) so websites can request payments and signatures.
 
 > **Truly non-custodial:** keys are generated and encrypted on your device. Neither the recovery
@@ -298,7 +298,8 @@ instead of three.
 
 ```
 src/
-  pages/          Astro entries: index (app) · approve (dapp approval window)
+  pages/          Astro entries: index (app) · [lang]/index (the app in one language,
+                  /wallet/en/ …) · earn · approve (dapp approval window) · signed-in
   app/            the shells and their chrome — WalletApp, ApprovePopup, Shell,
                   BottomNav, NavMenu, Toast, ConfirmSign
   ui/             presentational primitives shared by MORE THAN ONE feature —

@@ -5,7 +5,7 @@
 **Nicht-verwahrende** Wallet für das **Stellar**-Netzwerk, gebaut mit **Astro + Vite + React (TSX)**.
 Erhältlich als **Browser-Erweiterung** (MV3 · Chrome / Edge / Firefox — Popup **und** Seitenleiste),
 **Mobile App** (Tauri · Android / iOS) und Web. Animiertes **Glassmorphism**-UI, heller und
-dunkler Modus, **5 Sprachen** (EN/ES/PT/DE/FR mit Autoerkennung), Multi-Wallet unter einem
+dunkler Modus, **5 Sprachen** (EN/ES/PT/DE/FR; standardmäßig Englisch, ein Link kann eine vorgeben: `?lang=de`), Multi-Wallet unter einem
 Passwort und ein Dapp-Provider (`window.cosmosWallet`) für Zahlungen und Signaturen.
 
 > **Wirklich non-custodial:** Schlüssel werden auf deinem Gerät erzeugt und verschlüsselt. Weder

@@ -1,0 +1,24 @@
+---
+/**
+ * `/wallet/en/`, `/wallet/es/`, … — a link that opens the wallet in one language.
+ *
+ * Real static pages rather than a redirect, so the address works on every host the web build
+ * is served from (nginx at cosmospay.lat, GitHub Pages, `npm run serve:dist`) and a shared link
+ * previews with the full share metadata instead of a redirect stub. Each is the same document
+ * as the root with its language in `<html lang>`; once the app loads it adopts the language as
+ * the person's choice and moves the address bar back to the root (`readUrlLang` in
+ * src/lib/i18n.ts). The extension and the apps never open these: build-extension.ts leaves
+ * them out.
+ */
+import WalletDocument from '@/app/WalletDocument.astro';
+import { LANG_CODES } from '@/constants/i18n';
+import type { Lang } from '@/lib/i18n';
+
+export function getStaticPaths() {
+  return LANG_CODES.map((lang) => ({ params: { lang } }));
+}
+
+const { lang } = Astro.params as { lang: Lang };
+---
+
+<WalletDocument lang={lang} />

@@ -1,0 +1,89 @@
+---
+/**
+ * The wallet's HTML document, shared by every page that boots the app: the root
+ * (src/pages/index.astro), one entry per language (src/pages/[lang]/index.astro, so
+ * `/wallet/en/` is a real page on any static host) and src/pages/earn.astro.
+ *
+ * `lang` is the document's language before any script runs — what a crawler, a link preview
+ * and the browser's first look at the page read. The app takes over from there: it adopts a
+ * language the URL carries and keeps `<html lang>` on the one on screen (`applyLangEarly`
+ * and `usePreferences`, src/state/usePreferences.ts).
+ *
+ * The share metadata is English on every entry (the owner's call: English is the primary
+ * language), points at the one canonical address, and lists the other languages as
+ * alternates of the same page.
+ */
+import WalletApp from '@/app/WalletApp.tsx';
+import { WALLET_WEB_URL } from '@/constants/app';
+import { DEFAULT_LANG, LANG_CODES } from '@/constants/i18n';
+import { ogLocale, type Lang } from '@/lib/i18n';
+// Global stylesheets, in cascade order. Nothing is styled from this file:
+// tokens, resets, keyframes and utilities all live under src/styles/.
+import '@/styles/theme.css';
+import '@/styles/base.css';
+import '@/styles/animations.css';
+import '@/styles/app.css';
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = DEFAULT_LANG } = Astro.props;
+const base = import.meta.env.BASE_URL;
+const title = 'Cosmos Pay · Stellar Wallet';
+const description =
+  'Cosmos Pay — non-custodial Stellar wallet. Send, receive and swap XLM and Stellar assets, with fiat on/off-ramp. Your keys never leave your device.';
+const shareImage = `${WALLET_WEB_URL}og-image.png`;
+const alternateLocales = LANG_CODES.filter((code) => code !== DEFAULT_LANG).map(ogLocale);
+---
+
+<!doctype html>
+<html lang={lang}>
+  <head>
+    <!-- Node globals (Buffer/global/process) expected by @stellar/js-xdr and bip39.
+         Goes first: Astro hoists page scripts into the head and modules run in document
+         order, so this lands before any island hydrates. -->
+    <script>
+      import '@/lib/nodeGlobals';
+    </script>
+    <meta charset="utf-8" />
+    <!-- interactive-widget=resizes-content makes the on-screen keyboard shrink the
+         LAYOUT viewport, so `100dvh` — and the shell frame with it — ends at the top of
+         the keys the way the Android WebView already does. The default (resizes-visual)
+         leaves the frame full height with its footer behind the keyboard; src/lib/viewport.ts
+         covers that case anyway, for iOS, which ignores this key. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <meta name="theme-color" content="#000000" />
+    <meta name="color-scheme" content="dark light" />
+    <!-- Sets data-theme (saved choice, else the device's) before the first paint. After
+         the theme-color meta, which it also updates; external because MV3 refuses inline
+         scripts. -->
+    <script is:inline src={`${base}theme-boot.js`}></script>
+    <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
+    <link rel="apple-touch-icon" href={`${base}favicon.svg`} />
+    <meta name="description" content={description} />
+    <meta name="application-name" content="Cosmos Pay" />
+    <title>{title}</title>
+    <link rel="canonical" href={WALLET_WEB_URL} />
+    <!-- How a shared link previews: English, whatever language the link opens in. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Cosmos Pay" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={WALLET_WEB_URL} />
+    <meta property="og:locale" content={ogLocale(DEFAULT_LANG)} />
+    {alternateLocales.map((locale) => <meta property="og:locale:alternate" content={locale} />)}
+    <meta property="og:image" content={shareImage} />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Cosmos Pay" />
+    <meta name="twitter:card" content="summary" />
+  </head>
+  <body>
+    <WalletApp client:only="react" />
+  </body>
+</html>
