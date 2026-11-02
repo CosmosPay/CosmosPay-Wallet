@@ -78,10 +78,14 @@ const alternateLocales = LANG_CODES.filter((code) => code !== DEFAULT_LANG).map(
     {alternateLocales.map((locale) => <meta property="og:locale:alternate" content={locale} />)}
     <meta property="og:image" content={shareImage} />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="512" />
-    <meta property="og:image:height" content="512" />
-    <meta property="og:image:alt" content="Cosmos Pay" />
-    <meta name="twitter:card" content="summary" />
+    <!-- A 1200x630 card (its source and how to redraw it: resources/share-card/card.html), the
+         size X, LinkedIn, WhatsApp and Facebook draw as a large preview. -->
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Cosmos Pay: your Stellar wallet. Send, receive and swap; your keys never leave your device." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content={shareImage} />
+    <meta name="twitter:image:alt" content="Cosmos Pay: your Stellar wallet. Send, receive and swap; your keys never leave your device." />
   </head>
   <body>
     <WalletApp client:only="react" />
