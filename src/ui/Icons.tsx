@@ -137,7 +137,7 @@ export function CloseIcon(p: IconProps) {
   );
 }
 
-/** `sun` and `moon` name a theme; `system` is the phone itself. */
+/** `sun` and `moon` name a theme; `system` follows the device appearance. */
 export function ThemeIcon({ kind, className }: IconProps & { kind: 'sun' | 'moon' | 'system' }) {
   if (kind === 'sun') {
     return (
@@ -156,8 +156,8 @@ export function ThemeIcon({ kind, className }: IconProps & { kind: 'sun' | 'moon
   }
   return (
     <Svg className={className}>
-      <rect x="6.5" y="2.5" width="11" height="19" rx="3" />
-      <path d="M12 7.5a4.5 4.5 0 0 1 0 9z" />
+      <rect x="3" y="4" width="18" height="13" rx="2" />
+      <path d="M12 17v4M8 21h8" />
     </Svg>
   );
 }
