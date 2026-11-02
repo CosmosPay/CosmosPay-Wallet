@@ -5,7 +5,6 @@ import { addWallet, listWallets, unlockSession } from '@/lib/vault';
 import { WrongPasswordError, deriveVaultKey, newKdfParams } from '@/lib/crypto';
 import { accountFromMnemonic } from '@/lib/wallet';
 import { cx } from '@/lib/cx';
-import { inkHandlers } from '@/lib/ink';
 import { DEBUG_NAV_KEY, DEBUG_WALLET_NAME, DEBUG_WALLET_PASSWORD, DEBUG_WALLET_PHRASE } from '@/constants/debug';
 import { Sheet } from '@/ui/Sheet';
 import { CheckRow } from '@/ui/CheckRow';
@@ -214,7 +213,7 @@ export function DebugNav({ store }: { store: WalletStore }) {
           <h2 id={titleId} className="sheet-title">
             Debug navigator
           </h2>
-          <button type="button" className="sheet-close ink" aria-label="Close" onClick={() => setOpen(false)} {...inkHandlers}>
+          <button type="button" className="sheet-close ink" aria-label="Close" onClick={() => setOpen(false)}>
             <CloseIcon />
           </button>
         </div>
