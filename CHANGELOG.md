@@ -2,6 +2,11 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.17.0] - 2026-11-02
+
+### Features
+- A 1200x630 share card for the web wallet (b4d96b4)
+
 ## [1.16.0] - 2026-11-02
 
 ### Features
