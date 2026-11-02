@@ -13,6 +13,9 @@
 import { chromium, type Route } from 'playwright';
 
 const URL = process.env.E2E_URL || 'http://127.0.0.1:4321';
+// The selectors below are Spanish, so the wallet is opened in Spanish the way a link would:
+// the device's locale no longer picks the language (src/constants/i18n.ts).
+const OPEN = `${URL.replace(/\/+$/, '')}/?lang=es`;
 const MNEMONIC = 'illness spike retreat truth genius clock brain pass fit cave bargain toe';
 const EXPECTED_PUB = 'GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6';
 
@@ -21,7 +24,7 @@ const ok = (c: unknown, m: string) =>
   c ? console.log('✓ ' + m) : (fails.push(m), console.log('✗ ' + m));
 
 const browser = await chromium.launch();
-// es-ES locale so i18n auto-detects Spanish and the selectors below match.
+// An es-ES device; the Spanish the selectors expect comes from OPEN, not from the locale.
 const page = await browser.newContext({ viewport: { width: 440, height: 880 }, locale: 'es-ES' }).then((c) => c.newPage());
 const pageErrors = [];
 page.on('pageerror', (e) => pageErrors.push(e.message));
@@ -63,7 +66,7 @@ await page.route('**/v1/wallet/auth/**', async (route: Route) => {
 });
 
 try {
-  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(OPEN, { waitUntil: 'domcontentloaded' });
   await page.getByText('Crear una wallet nueva').waitFor({ timeout: 20000 });
   ok(true, 'Welcome renders');
 

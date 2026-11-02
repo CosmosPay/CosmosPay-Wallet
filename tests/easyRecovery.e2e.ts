@@ -13,6 +13,9 @@
 import { chromium, type BrowserContext, type Page, type Route } from 'playwright';
 
 const URL = process.env.E2E_URL || 'http://127.0.0.1:4321';
+// The selectors below are Spanish, so the wallet is opened in Spanish the way a link would:
+// the device's locale no longer picks the language (src/constants/i18n.ts).
+const OPEN = `${URL.replace(/\/+$/, '')}/?lang=es`;
 const MNEMONIC = 'illness spike retreat truth genius clock brain pass fit cave bargain toe';
 const EXPECTED_PUB = 'GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6';
 const PASSWORD = 'Test-pass-123';
@@ -97,7 +100,7 @@ async function mailbox(ctx: BrowserContext) {
 async function open(ctx: BrowserContext): Promise<Page> {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => fails.push('page error: ' + e.message));
-  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(OPEN, { waitUntil: 'domcontentloaded' });
   await page.getByText('Crear una wallet nueva').waitFor({ timeout: 30000 });
   await page.waitForTimeout(2600); // the splash
   return page;
