@@ -6,7 +6,7 @@ Wallet **no custodial** para la red **Stellar**, construida con **Astro + Vite +
 Se distribuye como **extensión de navegador** (MV3 · Chrome / Edge / Firefox — popup **y** panel
 lateral), **app de escritorio** (Tauri · Windows / macOS / Linux), **app móvil** (Tauri · Android /
 iOS) y web. Interfaz **glassmorphism** animada,
-tema claro y oscuro, **5 idiomas** (EN/ES/PT/DE/FR con autodetección), multi-wallet bajo una sola
+tema claro y oscuro, **5 idiomas** (EN/ES/PT/DE/FR; inglés por defecto, y un enlace puede indicar uno: `?lang=es`), multi-wallet bajo una sola
 contraseña y proveedor para dapps (`window.cosmosWallet`) para que las webs pidan pagos y firmas.
 
 > **No custodial de verdad:** las claves se generan y cifran en tu dispositivo. Ni la frase de

@@ -32,6 +32,7 @@ import { TESTNETS } from '../src/constants/testnets.ts';
 import { CARDANO_ENDPOINTS } from '../src/constants/cardanoSend.ts';
 import { HYPERCORE_API } from '../src/constants/hypercoreSend.ts';
 import { ZCASH_INSIGHT_API, ZCASH_NODE_RPC } from '../src/constants/zcashSend.ts';
+import { LANG_CODES } from '../src/constants/i18n.ts';
 import { cosmosHostPermissions, hostPattern } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
@@ -88,6 +89,10 @@ if (!(await exists(DIST))) {
 // fresh copy of the build
 await rm(OUT, { recursive: true, force: true });
 await cp(DIST, OUT, { recursive: true });
+
+// The per-language entry pages (`/wallet/en/` …, src/pages/[lang]/index.astro) are web links:
+// nothing in the extension opens them, and their inline island scripts are never externalised.
+for (const code of LANG_CODES) await rm(join(OUT, code), { recursive: true, force: true });
 
 await mkdir(join(OUT, 'assets'), { recursive: true });
 

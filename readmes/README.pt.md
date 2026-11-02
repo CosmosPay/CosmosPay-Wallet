@@ -5,7 +5,7 @@
 Carteira **não custodial** para a rede **Stellar**, construída com **Astro + Vite + React (TSX)**.
 Distribui-se como **extensão de navegador** (MV3 · Chrome / Edge / Firefox — popup **e** painel
 lateral), **app móvel** (Tauri · Android / iOS) e web. Interface **glassmorphism** animada,
-tema claro e escuro, **5 idiomas** (EN/ES/PT/DE/FR com autodeteção), multi-carteira sob uma única
+tema claro e escuro, **5 idiomas** (EN/ES/PT/DE/FR; inglês por omissão, e um link pode indicar um: `?lang=pt`), multi-carteira sob uma única
 palavra-passe e provider para dapps (`window.cosmosWallet`) para pagamentos e assinaturas.
 
 > **Não custodial a sério:** as chaves são geradas e cifradas no teu dispositivo. Nem a frase de

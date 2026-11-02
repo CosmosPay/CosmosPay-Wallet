@@ -1,52 +1,136 @@
 /**
- * Lightweight i18n. Five languages: Spanish, English, Portuguese, German, French.
- * The active language is auto-detected from the device on first run and can be
- * overridden by the user (persisted in localStorage). `t(key, params)` resolves
- * a string for the active language, falling back to English then the key itself.
+ * Lightweight i18n. Five languages: English, Spanish, Portuguese, German, French.
+ *
+ * English is the default. A link can carry a language (`?lang=xx`, or an entry page
+ * `/<base>/xx/`), and the person can choose one, persisted in localStorage — the order is in
+ * `src/constants/i18n.ts`, and the device's own language is never consulted. `t(key, params)`
+ * resolves a string for the active language, falling back to English then the key itself.
  */
-export type Lang = 'es' | 'en' | 'pt' | 'de' | 'fr';
+import { DEFAULT_LANG, LANG_CODES, LANG_QUERY_PARAM, LANG_STORAGE_KEY } from '@/constants/i18n';
 
-/** Each language by its own name; its flag is drawn by src/ui/LangFlag.tsx. */
+export type Lang = (typeof LANG_CODES)[number];
+
+/** Each language by its own name, English first; its flag is drawn by src/ui/LangFlag.tsx. */
 export const LANGUAGES: { code: Lang; name: string }[] = [
-  { code: 'es', name: 'Español' },
   { code: 'en', name: 'English' },
+  { code: 'es', name: 'Español' },
   { code: 'pt', name: 'Português' },
   { code: 'de', name: 'Deutsch' },
   { code: 'fr', name: 'Français' },
 ];
 
-const LANG_KEY = 'cosmos.lang';
-const SUPPORTED: Lang[] = ['es', 'en', 'pt', 'de', 'fr'];
-
-/** Map a navigator.language like "pt-BR" to one of the supported languages. */
-export function detectLang(): Lang {
-  try {
-    const langs = navigator.languages?.length ? navigator.languages : [navigator.language];
-    for (const l of langs) {
-      const base = (l || '').slice(0, 2).toLowerCase() as Lang;
-      if (SUPPORTED.includes(base)) return base;
-    }
-  } catch {
-    /* non-browser */
-  }
-  return 'en';
+export function isLang(value: unknown): value is Lang {
+  return typeof value === 'string' && (LANG_CODES as readonly string[]).includes(value);
 }
 
+/**
+ * The language a link names, or null. Forgiving about the spelling — `EN`, `en-US`, `pt_BR` —
+ * because people type these by hand; strict about what it names: anything that is not one of
+ * the five is ignored, never guessed at.
+ */
+export function parseLang(value: string | null | undefined): Lang | null {
+  if (!value) return null;
+  const primary = value.trim().toLowerCase().split(/[-_]/)[0];
+  return isLang(primary) ? primary : null;
+}
+
+/** `<base>xx/` (also `<base>xx` and `<base>xx/index.html`): an entry page for one language. */
+function pathLang(pathname: string, base: string): Lang | null {
+  if (!pathname.startsWith(base)) return null;
+  const m = /^([A-Za-z]{2})(?:\/(?:index\.html)?)?$/.exec(pathname.slice(base.length));
+  return m ? parseLang(m[1]) : null;
+}
+
+/** What a page's URL says about the language. */
+export interface UrlLang {
+  lang: Lang;
+  /** The same address without it: the path, the rest of the query, the hash. */
+  rest: string;
+}
+
+/**
+ * The language a page was opened with: `?lang=xx` first, else an entry page `<base>xx/`
+ * (`/wallet/en/`). `base` is the build's BASE_URL.
+ *
+ * `rest` drops what was read — the parameter, and the language segment back to `<base>` — and
+ * keeps everything else (`?uri=` for SEP-7, the hash). Once adopted the language is the
+ * person's choice, so it leaves the address bar: a reload, or a link copied from it, must not
+ * re-apply the link's language over a choice made since.
+ */
+export function readUrlLang(href: string, base: string): UrlLang | null {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  const root = base.endsWith('/') ? base : `${base}/`;
+  const fromQuery = parseLang(url.searchParams.get(LANG_QUERY_PARAM));
+  const fromPath = pathLang(url.pathname, root);
+  const lang = fromQuery ?? fromPath;
+  if (!lang) return null;
+  if (fromQuery) url.searchParams.delete(LANG_QUERY_PARAM);
+  if (fromPath) url.pathname = root;
+  return { lang, rest: url.pathname + url.search + url.hash };
+}
+
+/**
+ * A choice made during this page load, for a browser that refuses to store it (blocked
+ * localStorage): the language still holds until the tab closes.
+ */
+let chosenThisLoad: Lang | null = null;
+
+/**
+ * The active language: the saved choice, else English. A language a link carried is the saved
+ * choice by the time anything renders — `adoptUrlLang` stores it first.
+ */
 export function savedLang(): Lang {
   try {
-    const l = localStorage.getItem(LANG_KEY) as Lang | null;
-    if (l && SUPPORTED.includes(l)) return l;
+    const l = localStorage.getItem(LANG_STORAGE_KEY);
+    if (isLang(l)) return l;
   } catch {
-    /* ignore */
+    /* storage blocked */
   }
-  return detectLang();
+  return chosenThisLoad ?? DEFAULT_LANG;
 }
 
 export function persistLang(lang: Lang): void {
+  chosenThisLoad = lang;
   try {
-    localStorage.setItem(LANG_KEY, lang);
+    localStorage.setItem(LANG_STORAGE_KEY, lang);
   } catch {
-    /* ignore */
+    /* storage blocked: `chosenThisLoad` carries it */
+  }
+}
+
+/**
+ * Adopt the language the page was opened with, once, before anything renders: it wins over a
+ * saved choice and becomes the saved choice, and it leaves the address bar (the entry's history
+ * state is kept). Returns the language adopted, or null when the URL named none.
+ */
+export function adoptUrlLang(
+  loc: { readonly href: string },
+  hist: Pick<History, 'state' | 'replaceState'>,
+  base: string,
+): Lang | null {
+  const found = readUrlLang(loc.href, base);
+  if (!found) return null;
+  persistLang(found.lang);
+  try {
+    hist.replaceState(hist.state, '', found.rest);
+  } catch {
+    /* a host that refuses replaceState keeps the URL; the choice is stored either way */
+  }
+  return found.lang;
+}
+
+/** `<html lang>` names the language on screen: screen readers, hyphenation and the browser's
+ *  offer to translate the page all read it. */
+export function setDocumentLang(lang: Lang): void {
+  try {
+    document.documentElement.setAttribute('lang', lang);
+  } catch {
+    /* non-browser context */
   }
 }
 
@@ -70,6 +154,11 @@ export function tNow(key: string, params?: Record<string, string | number>): str
 /** Locale tag for Intl (dates, numbers) derived from the language. */
 export function localeOf(lang: Lang): string {
   return { es: 'es-ES', en: 'en-US', pt: 'pt-BR', de: 'de-DE', fr: 'fr-FR' }[lang];
+}
+
+/** The same locale as Open Graph spells it (`og:locale`): `en_US`. */
+export function ogLocale(lang: Lang): string {
+  return localeOf(lang).replace('-', '_');
 }
 
 // Each entry: key -> { es, en, pt, de, fr }

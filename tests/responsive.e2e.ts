@@ -32,6 +32,9 @@
 import { chromium } from 'playwright';
 
 const URL = process.env.E2E_URL || 'http://127.0.0.1:4321';
+// The selectors below are Spanish, so the wallet is opened in Spanish the way a link would:
+// the device's locale no longer picks the language (src/constants/i18n.ts).
+const OPEN = `${URL.replace(/\/+$/, '')}/?lang=es`;
 const SHOTS = process.env.SHOTS || '';
 
 /** Long enough for the intro splash to finish and the column to settle. */
@@ -104,7 +107,7 @@ const browser = await chromium.launch();
 async function measure(w: number, h: number) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, locale: 'es-ES' });
   const page = await ctx.newPage();
-  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(OPEN, { waitUntil: 'domcontentloaded' });
   await page.getByText('Crear una wallet nueva').waitFor({ timeout: 20000 });
   await page.waitForTimeout(SETTLE_MS);
   const m = await page.evaluate(probe);

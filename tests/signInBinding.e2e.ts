@@ -16,6 +16,9 @@
 import { chromium, type BrowserContext, type Page, type Route } from 'playwright';
 
 const URL = process.env.E2E_URL || 'http://127.0.0.1:4321';
+// The selectors below are Spanish, so the wallet is opened in Spanish the way a link would:
+// the device's locale no longer picks the language (src/constants/i18n.ts).
+const OPEN = `${URL.replace(/\/+$/, '')}/?lang=es`;
 const STATE = 'c3RhdGUtb2YtYS1zaWduLWluLWZvci10aGlzLXRlc3Qx';
 const BINDING = 'Ymlu-ZGluZy1zZW50LXRvLXRoaXMtYnJvd3Nlci1vbmx5';
 const fails: string[] = [];
@@ -79,7 +82,7 @@ async function mockServer(context: BrowserContext, opts: { refuseReturn?: boolea
 
 /** Welcome → I have a wallet → my account → "Continuar con email" (Authentik's email source). */
 async function startEmailSignIn(page: Page) {
-  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(OPEN, { waitUntil: 'domcontentloaded' });
   await page.getByText('Ya tengo una wallet').click();
   await page.getByText('Con mi cuenta').first().click();
   await page.getByRole('button', { name: 'Continuar con email' }).click();

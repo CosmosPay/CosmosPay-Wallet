@@ -2,7 +2,7 @@
    Design tokens. Every colour in the app resolves through these custom
    properties, so flipping `data-theme` on <html> re-themes the whole UI
    instantly. Nothing but variables belongs in this file.
-   Loaded first by src/pages/index.astro.
+   Loaded first by src/app/WalletDocument.astro.
    ===================================================================== */
 
 /* Flat and matte: every surface is one solid colour. No gradients, no translucency, no
@@ -204,7 +204,7 @@
 /* ---------------- safe margins ----------------
    Two different things, kept apart on purpose.
 
-   `viewport-fit=cover` (src/pages/index.astro) lets the app draw edge-to-edge, so on
+   `viewport-fit=cover` (src/app/WalletDocument.astro) lets the app draw edge-to-edge, so on
    a phone the status bar, the notch and the gesture pill sit ON TOP of it — the four
    --safe-* insets are what the device demands back. They report 0 in portrait on most
    phones, which is why they are never the whole answer: --gutter is the breathing room

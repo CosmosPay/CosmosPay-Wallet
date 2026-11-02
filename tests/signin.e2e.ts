@@ -17,6 +17,9 @@
 import { chromium, type Page, type Route } from 'playwright';
 
 const URL = process.env.E2E_URL || 'http://127.0.0.1:4321';
+// The selectors below are Spanish, so the wallet is opened in Spanish the way a link would:
+// the device's locale no longer picks the language (src/constants/i18n.ts).
+const OPEN = `${URL.replace(/\/+$/, '')}/?lang=es`;
 const PASSWORD = 'Test-pass-123';
 const fails: string[] = [];
 const ok = (c: unknown, m: string) => (c ? console.log('✓ ' + m) : (fails.push(m), console.log('✗ ' + m)));
@@ -69,7 +72,7 @@ async function mockServer(page: Page, ready: (email: string) => unknown, finishe
 
 /** Welcome → create → with my account → email → a wrong code, then the right one. */
 async function signInWithEmail(page: Page) {
-  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await page.goto(OPEN, { waitUntil: 'domcontentloaded' });
   await page.getByText('Crear una wallet nueva').click();
   await page.getByRole('button', { name: 'Continuar con mi cuenta' }).click();
   await page.getByRole('button', { name: 'Continuar con Google' }).waitFor({ timeout: 10000 });

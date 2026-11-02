@@ -163,6 +163,17 @@ Argentina, English → USA, Portuguese → Brazil, German → Germany, French �
 user's call, the same as snap.cosmospay.lat. The flag SVGs load lazily; keep them out of
 the entry chunk.
 
+**English is the primary language, and a link can carry another** (the user's call,
+2026-11-02). The order is a language in the URL (`?lang=xx`, or the entry pages `/wallet/xx/`
+that `src/pages/[lang]/index.astro` builds for every code), then the saved choice, then English
+— **never the device's**: reading `navigator.languages` is what opened the wallet, and every link
+its owner shared, in Spanish. `applyLangEarly` (`src/state/usePreferences.ts`) adopts a URL's
+language before the first render, stores it as the choice and takes it off the address bar, so a
+reload never undoes a pick made since; `<html lang>` follows the language on screen. Every entry
+that boots the app renders `src/app/WalletDocument.astro`, whose share metadata is English on all
+of them. `tests/unit/language.test.ts` pins the order. **Nothing on Home or Welcome says "coming
+soon"**: a feature that is not ready is switched off and hidden (`EARN_ENABLED`), never labelled.
+
 **A redesigned screen uses only the new pieces — never mix old and new on one screen.**
 
 | New | Replaces |

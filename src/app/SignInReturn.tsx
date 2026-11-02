@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { SIGN_IN_RETURN_CLOSE_MS } from '@/constants/signIn';
-import { tNow } from '@/lib/i18n';
+import { savedLang, setDocumentLang, tNow } from '@/lib/i18n';
 import { browserBindingStore, keepBinding, readSignInReturn } from '@/lib/signInBinding';
 import { CosmosMark } from '@/ui/Icons';
 
@@ -17,6 +17,7 @@ export default function SignInReturn() {
   useEffect(() => {
     // Off the address bar first: the binding is for the wallet, not for a copy-paste.
     history.replaceState(null, '', location.pathname);
+    setDocumentLang(savedLang());
     if (returned?.binding) {
       const store = browserBindingStore();
       try {

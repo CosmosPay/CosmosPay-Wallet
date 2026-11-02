@@ -26,18 +26,17 @@ if (typeof globalThis.__APP_VERSION__ === 'undefined') {
 }
 
 /**
- * PIN THE LANGUAGE. Without this the suite's result depends on the OS locale of whoever
- * runs it.
+ * PIN THE LANGUAGE, so the suite means the same thing on every machine.
  *
- * `tNow()` resolves through `savedLang()` -> `localStorage` -> `detectLang()` ->
- * `navigator.language`, and Node fills that in from the machine. A developer on a Spanish
- * Windows box gets `es-AR` and every assertion over a user-facing string passes; CI's Linux
- * runner gets English and four of them fail. That is not hypothetical — it is exactly how
- * `memoProblem` and three `txGuard` row assertions went red on `dev` while the same commit
- * was green on two laptops, and `LANG=en_US` does not reproduce it because Windows takes
- * the locale from the OS rather than the environment.
+ * `tNow()` resolves through `savedLang()` -> `localStorage` -> English. It used to fall back
+ * to `navigator.language`, which Node fills in from the machine: a developer on a Spanish
+ * Windows box got `es-AR` and every assertion over a user-facing string passed, while CI's
+ * Linux runner got English and four of them failed — exactly how `memoProblem` and three
+ * `txGuard` row assertions went red on `dev` while the same commit was green on two laptops.
+ * The wallet no longer reads the device's language at all (src/constants/i18n.ts), so the
+ * default is English everywhere; the seed stays so the suite never depends on that default.
  *
- * `en` because it is the fallback language and the one every source string is written in,
+ * `en` because it is the default language and the one every source string is written in,
  * so an assertion message printed by a failing run reads in the same language as the code
  * that produced it.
  *

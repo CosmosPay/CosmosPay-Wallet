@@ -1,48 +1,7 @@
 ---
-import WalletApp from '@/app/WalletApp.tsx';
-// Global stylesheets, in cascade order. Nothing is styled from this file:
-// tokens, resets, keyframes and utilities all live under src/styles/.
-import '@/styles/theme.css';
-import '@/styles/base.css';
-import '@/styles/animations.css';
-import '@/styles/app.css';
+// The wallet. The document — head, share metadata, the island — is src/app/WalletDocument.astro,
+// shared with the per-language entries in src/pages/[lang]/index.astro.
+import WalletDocument from '@/app/WalletDocument.astro';
 ---
 
-<!doctype html>
-<html lang="es">
-  <head>
-    <!-- Node globals (Buffer/global/process) expected by @stellar/js-xdr and bip39.
-         Goes first: Astro hoists page scripts into the head and modules run in document
-         order, so this lands before any island hydrates. -->
-    <script>
-      import '@/lib/nodeGlobals';
-    </script>
-    <meta charset="utf-8" />
-    <!-- interactive-widget=resizes-content makes the on-screen keyboard shrink the
-         LAYOUT viewport, so `100dvh` — and the shell frame with it — ends at the top of
-         the keys the way the Android WebView already does. The default (resizes-visual)
-         leaves the frame full height with its footer behind the keyboard; src/lib/viewport.ts
-         covers that case anyway, for iOS, which ignores this key. -->
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
-    />
-    <meta name="theme-color" content="#000000" />
-    <meta name="color-scheme" content="dark light" />
-    <!-- Sets data-theme (saved choice, else the device's) before the first paint. After
-         the theme-color meta, which it also updates; external because MV3 refuses inline
-         scripts. -->
-    <script is:inline src={`${import.meta.env.BASE_URL}theme-boot.js`}></script>
-    <link rel="icon" type="image/svg+xml" href={`${import.meta.env.BASE_URL}favicon.svg`} />
-    <link rel="apple-touch-icon" href={`${import.meta.env.BASE_URL}favicon.svg`} />
-    <meta
-      name="description"
-      content="Cosmos Pay — non-custodial Stellar wallet. Send, receive and swap XLM and Stellar assets, with fiat on/off-ramp. Your keys never leave your device."
-    />
-    <meta name="application-name" content="Cosmos Pay" />
-    <title>Cosmos Pay · Stellar Wallet</title>
-  </head>
-  <body>
-    <WalletApp client:only="react" />
-  </body>
-</html>
+<WalletDocument />
