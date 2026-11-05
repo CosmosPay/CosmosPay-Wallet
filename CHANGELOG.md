@@ -2,6 +2,14 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.17.1] - 2026-11-05
+
+### Bug Fixes
+- Say why a pasted XDR cannot be signed (bcd98ba)
+
+### Miscellaneous
+- Sync the community server contract (fcc9b0e)
+
 ## [1.17.0] - 2026-11-02
 
 ### Features
