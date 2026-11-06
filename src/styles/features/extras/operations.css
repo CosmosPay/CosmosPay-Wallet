@@ -1,5 +1,44 @@
-/* src/features/extras/Operations.tsx — Home's "More": one list of ListRows (src/styles/ui/list-row.css). */
+/* Home's More tools: aligned line icons and readable rows, without decorative rings. */
 .operations-list {
   display: flex;
   flex-direction: column;
+  margin-top: 12px;
+}
+.operations-list .list-row {
+  min-height: 72px;
+  gap: 16px;
+  padding: 16px 4px;
+  border-radius: 6px;
+}
+.operations-list .list-row-icon {
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 0;
+  color: var(--text-soft);
+  transition: color var(--dur-quick) var(--ease-out);
+}
+.operations-list .list-row-icon svg { width: 20px; height: 20px; }
+.operations-list .list-row-text { gap: 6px; }
+.operations-list .list-row-title {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-soft);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+.operations-list .list-row-desc { font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.operations-list .list-row-chev { width: 16px; height: 16px; transition: color var(--dur-quick) var(--ease-out); }
+.operations-list .list-row::after { left: 44px; right: 4px; }
+.operations-list .list-row:focus-visible { outline-offset: -2px; }
+@media (hover: hover) and (pointer: fine) {
+  .operations-list .list-row:hover:not(:disabled):not([aria-disabled='true']) :is(.list-row-title, .list-row-icon, .list-row-chev) {
+    color: var(--text);
+  }
+}
+.operations-list .list-row:active:not(:disabled):not([aria-disabled='true']) .list-row-title { color: var(--text); }
+@media (prefers-reduced-motion: reduce) {
+  .operations-list :is(.list-row-title, .list-row-icon, .list-row-chev) { transition: none; }
 }

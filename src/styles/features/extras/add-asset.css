@@ -42,8 +42,8 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 68px;
-  padding: 10px 0;
+  min-height: 80px;
+  padding: 16px 0;
 }
 
 /* the line between rows, drawn like Home's */
@@ -104,10 +104,10 @@
   display: inline-grid;
   place-items: center;
   min-width: 84px;
-  height: 36px;
-  padding: 0 16px;
-  border: 1.5px solid var(--text);
-  border-radius: 999px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px !important;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -117,9 +117,13 @@
   transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out), opacity var(--dur-quick) var(--ease-out);
 }
 
+@media (hover: hover) and (pointer: fine) {
+
 .add-asset-btn:hover:not(:disabled) {
-  background: var(--text);
-  color: var(--bg);
+  border-color: var(--line);
+  background: transparent;
+  color: var(--text);
+}
 }
 
 .add-asset-btn:focus-visible {
@@ -159,8 +163,8 @@
 
 .add-asset-label {
   margin: 28px 0 8px;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 /* Above the unverified list, once: the warning applies to the whole group, and a badge repeated
@@ -169,7 +173,7 @@
   margin: 0 0 8px;
   padding: 12px 14px;
   border: 1px solid var(--danger);
-  border-radius: 14px;
+  border-radius: 6px;
   color: var(--text);
   font-size: 13px;
   line-height: 1.55;
@@ -215,4 +219,17 @@
 
 .add-asset-valid--bad {
   color: var(--danger);
+}
+
+.add-asset .screen-header { margin-bottom: 8px; }
+.add-asset .screen-header-title { font-size: clamp(28px, 4vw, 34px); letter-spacing: -0.8px; }
+.add-asset .btn-primary, .add-asset .btn-ghost { border-radius: 6px !important; font-size: 14px; }
+.add-asset-tools { flex-wrap: wrap; }
+.add-asset-search { min-width: 160px; }
+.add-asset .input { font-weight: 400; }
+@media (max-width: 480px) {
+  .add-asset-search { flex-basis: 100%; }
+  .add-asset-tools .net-select-btn-label { display: block; }
+  .add-asset-tools .net-select-btn { max-width: 100%; }
+  .add-asset-sub { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
 }
