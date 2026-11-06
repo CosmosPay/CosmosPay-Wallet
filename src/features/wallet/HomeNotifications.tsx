@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { WalletStore } from '@/state/store';
-import { HistoryRow } from '@/features/money/HistoryRow';
+import { NotificationRow } from '@/features/wallet/NotificationRow';
 import { Dropdown } from '@/ui/Dropdown';
 import { Tabs } from '@/ui/Tabs';
 import { Sheet } from '@/ui/Sheet';
@@ -76,7 +76,7 @@ export function HomeNotifications({ store }: { store: WalletStore }) {
                 {group.items.map((item) => (
                   <div key={item.id} className={cx('home-notif', isUnread(item, markedFrom) && 'is-new')}>
                     {isUnread(item, markedFrom) && <span className="sr-only">{t('notify.unread')}</span>}
-                    <HistoryRow item={item} store={store} dense />
+                    <NotificationRow item={item} store={store} />
                   </div>
                 ))}
               </section>
@@ -84,7 +84,7 @@ export function HomeNotifications({ store }: { store: WalletStore }) {
           })}
         </div>
       ) : (
-        <p className="home-notif-none">{t(items.length ? 'notify.emptyFilter' : 'notify.none')}</p>
+        <p className="home-notif-none">{t(!items.length ? 'notify.none' : filter === 'unread' ? 'notify.caughtUp' : 'notify.noRead')}</p>
       )}
       </div>
       <button
