@@ -1,6 +1,5 @@
 import { useCallback, useId, useRef, useState } from 'react';
 import { LANGUAGES, type Lang, type TFn } from '@/lib/i18n';
-import { inkHandlers } from '@/lib/ink';
 import { isDesktopLayout } from '@/lib/layout';
 import { cx } from '@/lib/cx';
 import type { Theme } from '@/state/usePreferences';
@@ -83,7 +82,6 @@ export function QuickPrefs({
           aria-expanded={open !== null}
           aria-label={t('prefs.language', { lang: current.name })}
           onClick={() => setOpen((o) => (o ? null : isDesktopLayout() ? 'menu' : 'sheet'))}
-          {...inkHandlers}
         >
           <LangFlag code={current.code} />
           <span lang={current.code}>{current.name}</span>
@@ -100,7 +98,6 @@ export function QuickPrefs({
         aria-label={themeLabel}
         title={themeLabel}
         onClick={() => onTheme(next)}
-        {...inkHandlers}
       >
         <ThemeIcon kind={next === 'light' ? 'sun' : 'moon'} className="quick-prefs-icon" />
       </button>
@@ -115,7 +112,6 @@ export function QuickPrefs({
             className="sheet-close ink"
             aria-label={t('a11y.close')}
             onClick={close}
-            {...inkHandlers}
           >
             <CloseIcon />
           </button>

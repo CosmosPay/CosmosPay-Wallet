@@ -1,5 +1,4 @@
 import { cx } from '@/lib/cx';
-import { inkHandlers } from '@/lib/ink';
 import { Spinner } from '@/ui/Spinner';
 import '@/styles/ui/passkey-button.css';
 
@@ -51,7 +50,6 @@ export function PasskeyButton({
       onClick={onClick}
       disabled={busy || disabled}
       className={cx(quiet ? 'btn-ghost' : 'btn-primary', 'ink passkey-btn', className)}
-      {...inkHandlers}
     >
       {busy ? <Spinner /> : <PasskeyIcon />}
       <span className="passkey-btn-label">{label}</span>

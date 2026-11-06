@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { inkHandlers } from '@/lib/ink';
 import { tNow } from '@/lib/i18n';
 import { ArrowLeftIcon } from '@/ui/Icons';
 import { useScreenBack } from '@/ui/ScreenBar';
@@ -41,7 +40,6 @@ export function ScreenHeader({
               className="screen-header-back ink"
               aria-label={tNow('a11y.back')}
               onClick={onBack}
-              {...inkHandlers}
             >
               <ArrowLeftIcon className="screen-header-back-icon" />
             </button>

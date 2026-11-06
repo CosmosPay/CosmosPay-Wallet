@@ -19,7 +19,7 @@ const STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -
  * tab stop, the chosen segment; the arrows move the choice and Home/End jump to the ends.
  * `controls` names the element the choice fills, when there is one.
  *
- * The thumb's place is written as custom properties at runtime, the way src/lib/ink.ts
+ * The thumb's place is written as custom properties at runtime, the way src/lib/viewport.ts
  * does — no `style` prop in JSX, and the paint itself stays in CSS.
  */
 export function Segmented<T extends string>({

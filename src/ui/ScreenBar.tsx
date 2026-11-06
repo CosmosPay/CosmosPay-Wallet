@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { cx } from '@/lib/cx';
-import { inkHandlers } from '@/lib/ink';
 import { tNow } from '@/lib/i18n';
 import { ArrowLeftIcon } from '@/ui/Icons';
 import '@/styles/ui/screen-bar.css';
@@ -49,7 +48,6 @@ export function ScreenBarHost({ children }: { children: ReactNode }) {
             className="screen-bar-back ink"
             aria-label={tNow('a11y.back')}
             onClick={() => handler.current?.()}
-            {...inkHandlers}
           >
             <ArrowLeftIcon className="screen-bar-back-icon" />
           </button>
