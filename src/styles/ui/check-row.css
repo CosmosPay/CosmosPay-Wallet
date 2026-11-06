@@ -28,7 +28,7 @@
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border: 1.5px solid var(--text);
+  border: 1.5px solid var(--line);
   border-radius: 7px;
   background: transparent;
   color: var(--bg);

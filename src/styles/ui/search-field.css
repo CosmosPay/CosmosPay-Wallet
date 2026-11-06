@@ -1,5 +1,5 @@
 /* =====================================================================
-   src/ui/SearchField.tsx — the app's one search box: a line pill, the glass inside its left
+   src/ui/SearchField.tsx — the app's one search box: a restrained outline, the search icon inside its left
    edge, the clear inside its right edge. The browser's own clear is hidden: one clear, drawn
    like the rest.
    ===================================================================== */
@@ -24,8 +24,8 @@
   width: 100%;
   height: 44px;
   padding: 0 44px 0 44px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -47,14 +47,17 @@
   appearance: none;
 }
 
-.search-field-input:hover {
-  border-color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+
+.search-field-input:hover:not(:disabled):not([aria-disabled='true']) {
+  border-color: var(--line);
+}
 }
 
 .search-field-input:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
-  border-color: var(--text);
+  border-color: var(--line);
 }
 
 .search-field-clear {
@@ -76,8 +79,11 @@
   transition: color var(--dur-quick) var(--ease-out);
 }
 
-.search-field-clear:hover {
+@media (hover: hover) and (pointer: fine) {
+
+.search-field-clear:hover:not(:disabled):not([aria-disabled='true']) {
   color: var(--text);
+}
 }
 
 .search-field-clear:focus-visible {

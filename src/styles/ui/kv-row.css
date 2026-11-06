@@ -11,7 +11,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 15px 0;
-  border-bottom: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--line);
   gap: 12px;
 }
 .kv-row:last-child {

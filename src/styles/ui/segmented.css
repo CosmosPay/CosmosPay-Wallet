@@ -1,6 +1,6 @@
 /* =====================================================================
    src/ui/Segmented.tsx — a segmented control drawn in lines: the track is a line,
-   the chosen segment a thumb outlined in ink, sliding between places.
+   the chosen segment a thumb using the shared border colour, sliding between places.
    --seg-count and --seg-index are written by the component.
    ===================================================================== */
 .segmented {
@@ -12,7 +12,7 @@
   gap: var(--seg-gap);
   padding: var(--seg-gap);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--button-radius);
 }
 
 .segmented-thumb {
@@ -21,8 +21,8 @@
   bottom: var(--seg-gap);
   left: var(--seg-gap);
   width: calc((100% - (var(--seg-count, 2) + 1) * var(--seg-gap)) / var(--seg-count, 2));
-  border: 1.5px solid var(--text);
-  border-radius: 999px;
+  border: 1px solid var(--line);
+  border-radius: var(--button-radius-small);
   /* A translate's percentage is the thumb's own width: one segment plus the gap per step. */
   transform: translateX(calc(var(--seg-index, 0) * (100% + var(--seg-gap))));
   transition: transform var(--dur-base) var(--ease-in-out);
@@ -38,7 +38,7 @@
   background: transparent;
   color: var(--muted);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: var(--button-weight);
   cursor: pointer;
   /* The press transform is animations.css's; this rule replaces its transition list. */
   transition: color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
@@ -49,7 +49,7 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .segmented-option:hover {
+  .segmented-option:hover:not(:disabled):not([aria-disabled='true']) {
     color: var(--text);
   }
 }

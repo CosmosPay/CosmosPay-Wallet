@@ -1,10 +1,8 @@
 /* =====================================================================
    src/ui/ChoiceCard.tsx — a whole-card option. A line on the canvas, no fill;
-   on hover it inks with the text colour, like every other control.
+   on hover a neutral surface fades in without changing text hierarchy.
    ===================================================================== */
 .choice-card {
-  --ink: var(--text);
-  --ink-text: var(--bg);
   width: 100%;
   min-height: 84px;
   display: flex;
@@ -61,15 +59,4 @@
   width: 20px;
   height: 20px;
   flex-shrink: 0;
-}
-
-/* Painted by the ink, the muted line follows the card's new ink colour. */
-.choice-card:focus-visible .choice-card-desc {
-  color: inherit;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .choice-card:hover:not(:disabled) .choice-card-desc {
-    color: inherit;
-  }
 }
