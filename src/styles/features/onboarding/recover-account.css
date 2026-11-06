@@ -37,7 +37,7 @@
 }
 
 .recover-item.is-on {
-  border-color: var(--text);
+  border-color: var(--line);
 }
 
 /* The address is the one thing worth reading character by character here: it is what
