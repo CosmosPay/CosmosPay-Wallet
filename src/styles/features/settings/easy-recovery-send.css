@@ -50,7 +50,7 @@
   place-items: center;
   width: 54px;
   height: 66px;
-  border: 1.5px solid var(--text);
+  border: 1.5px solid var(--line);
   border-radius: 14px;
   font-size: 30px;
   font-weight: 700;
@@ -69,7 +69,7 @@
   width: 88px;
   height: 88px;
   margin: 16px auto;
-  border: 1.5px solid var(--text);
+  border: 1.5px solid var(--line);
   border-radius: 50%;
   animation: fadeIn var(--dur-base) var(--ease-out);
 }

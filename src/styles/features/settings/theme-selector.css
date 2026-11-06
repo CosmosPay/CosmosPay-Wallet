@@ -1,0 +1,45 @@
+/* Compact, icon-only theme picker; native radios retain keyboard navigation. */
+.settings-theme {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  margin-top: 8px;
+  background: var(--home-control-bg);
+  border: 1px solid transparent;
+  border-radius: 12px;
+}
+.settings-theme-option { position: relative; min-width: 0; cursor: pointer; }
+.settings-theme-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  color: var(--muted);
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+}
+.settings-theme-content svg { width: 26px; height: 26px; }
+.settings-theme-option input[value='light'] + .settings-theme-content svg circle,
+.settings-theme-option input[value='dark'] + .settings-theme-content svg path { fill: currentColor; }
+.settings-theme-option input:checked + .settings-theme-content {
+  background: var(--bg);
+  border-color: color-mix(in srgb, var(--line) 50%, transparent);
+  color: var(--brand);
+}
+.settings-theme-option input:focus-visible + .settings-theme-content {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .settings-theme-option:hover input:not(:checked) + .settings-theme-content {
+    background: var(--interaction-hover-bg);
+    color: var(--text);
+  }
+}
+.settings-theme-option:active .settings-theme-content { background: var(--interaction-hover-bg); }
+@media (prefers-reduced-motion: reduce) {
+  .settings-theme-content { transition: none; }
+}

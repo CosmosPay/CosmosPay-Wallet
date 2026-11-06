@@ -6,6 +6,17 @@
   margin: 0 0 10px;
 }
 
+/* One spacing owner for every recovery state, including adjacent actions and notes. */
+.recovery-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-top: 4px;
+}
+.settings-list .recovery-content > * { margin: 0; }
+.recovery-content .recovery-desc { line-height: 1.6; }
+.recovery-content .recovery-footnote { font-size: 12px; }
+
 .recovery-status {
   align-items: center;
   gap: 10px;
@@ -42,23 +53,24 @@
 /* One per server. Monospace because the only reason to read it is to compare it with
    what a server reports, character by character. */
 .recovery-signer {
-  border-radius: 999px;
+  border-radius: 4px;
   padding: 4px 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11.5px;
   color: var(--text-soft);
-  background: var(--glass-bg);
+  background: transparent;
   border: 1px solid var(--glass-border);
 }
 
 .recovery-note {
-  border-radius: 14px;
+  border-radius: 6px !important;
   padding: 12px 14px;
   margin-bottom: 12px;
   font-size: 13px;
-  line-height: 1.45;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
   color: var(--text-soft);
-  background: var(--glass-bg);
+  background: transparent;
   border: 1px solid var(--glass-border);
 }
 
@@ -75,15 +87,18 @@
 
 .recovery-btn {
   width: 100%;
-  height: 46px;
-  border-radius: 14px;
+  min-height: 48px;
+  height: auto;
+  padding: 12px 16px;
+  line-height: 1.5;
+  border-radius: 6px !important;
   font-size: 14.5px;
   font-weight: 600;
 }
 
 .recovery-btn-danger {
   background: var(--danger);
-  color: #fff;
+  color: var(--bg);
   border: none;
 }
 
@@ -95,8 +110,9 @@
 .recovery-confirm {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 }
+.recovery-confirm > * { margin: 0; }
 
 /* The six digits from the email, when the operator is paying the reserve. Wide tracking
    for the same reason the sign-in screen uses it: these are read back off a screen. */

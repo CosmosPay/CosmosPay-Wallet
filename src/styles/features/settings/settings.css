@@ -2,10 +2,10 @@
    src/features/settings/Settings.tsx and its parts (SettingsSection,
    SettingsRow, ToggleRow, DevModeSection, ChangePassword, PasskeySwitch).
    Prefix: .settings-   A part is a title over rows between lines; choices
-   are line pills, the chosen one in ink; a switch is a real role="switch".
+   use thin outlines and an underline; a switch is a real role="switch".
    ===================================================================== */
 .settings-section {
-  margin-top: 26px;
+  margin-top: 32px;
 }
 
 .settings-section-title {
@@ -28,9 +28,10 @@
   justify-content: space-between;
   gap: 14px;
   width: 100%;
-  min-height: 58px;
-  padding: 10px 0;
+  min-height: 64px;
+  padding: 16px 0;
   border: 0;
+  border-radius: 4px !important;
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -72,13 +73,13 @@
 }
 
 .settings-item-label {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .settings-item-desc {
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--muted);
 }
 
@@ -102,7 +103,6 @@
   flex-wrap: wrap;
 }
 
-.settings-theme-btn,
 .settings-lang-btn {
   display: inline-flex;
   align-items: center;
@@ -110,39 +110,34 @@
   gap: 8px;
   min-height: 44px;
   padding: 0 16px;
-  border: 1.5px solid var(--line-strong);
+  border: 1px solid var(--line);
+  border-radius: 6px !important;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out),
-    border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
-.settings-theme-btn {
-  flex: 1;
+@media (hover: hover) and (pointer: fine) {
+
+.settings-lang-btn:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--interaction-hover-bg);
+}
 }
 
-.settings-theme-btn svg {
-  width: 18px;
-  height: 18px;
-}
-
-.settings-theme-btn:hover,
-.settings-lang-btn:hover {
-  border-color: var(--text);
-}
-
-.settings-theme-btn.is-on,
 .settings-lang-btn.is-on {
-  border-color: var(--text);
-  background: var(--text);
-  color: var(--bg);
+  border-color: var(--line);
+  background: transparent;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--brand);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 7px;
 }
 
-.settings-theme-btn:focus-visible,
 .settings-lang-btn:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
@@ -191,14 +186,14 @@
   margin: 0;
   padding-top: 4px;
   font-size: 13.5px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--muted);
 }
 
 .settings-dev-desc {
   margin: 0 0 12px;
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--muted);
 }
 
@@ -216,24 +211,29 @@
 }
 
 /* ---- danger zone: a line of --danger, never a tinted fill ---- */
+.settings-danger-zone {
+  padding-top: 12px;
+}
+
 .settings-danger-btn {
   width: 100%;
-  min-height: 54px;
-  border: 1.5px solid var(--danger);
+  min-height: 48px;
+  padding: 12px 16px;
+  line-height: 1.5;
+  border: 1px solid var(--danger);
+  border-radius: 6px !important;
   background: transparent;
   color: var(--danger);
   font: inherit;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out),
-    transform 0.13s var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
 /* The canvas colour on the red reads AA in both themes (white on the dark theme's light red
    would not). */
-.settings-danger-btn.is-solid,
-.settings-danger-btn:hover {
+.settings-danger-btn.is-solid {
   background: var(--danger);
   color: var(--bg);
 }
@@ -244,26 +244,56 @@
 }
 
 .settings-danger-box {
-  margin-top: 8px;
-  padding: 16px;
-  border: 1.5px solid var(--danger);
-  border-radius: 18px;
+  display: grid;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
 }
 
 .settings-danger-text {
-  margin: 0 0 14px;
+  margin: 0;
+  overflow-wrap: anywhere;
   font-size: 13.5px;
-  line-height: 1.5;
+  line-height: 1.6;
   color: var(--text);
 }
 
 .settings-danger-actions {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+@media (max-width: 420px) {
+  .settings-danger-box { padding: 16px; }
+  .settings-danger-actions { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* the recovery part, which the Wallet tab opens Settings at: clear of the fixed way back */
 .settings-anchor {
   scroll-margin-top: 72px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .settings-danger-btn:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 4px; }
+}
+
+.settings-screen .input,
+.settings-subform .btn-primary,
+.settings-subform .btn-ghost,
+.settings-danger-actions .btn-ghost { border-radius: 6px !important; }
+.settings-screen .switch-knob { transition-duration: 160ms; }
+.settings-addr-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-addr-copy { flex-shrink: 0; }
+@media (hover: hover) and (pointer: fine) {
+  button.settings-item:hover:not(:disabled) .settings-item-label {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    text-decoration-color: var(--line-strong);
+  }
+  button.settings-item:hover:not(:disabled) .settings-addr-copy { color: var(--text); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .settings-screen .switch-knob { transition: none; }
 }
