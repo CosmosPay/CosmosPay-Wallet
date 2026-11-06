@@ -620,6 +620,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'chainSend.failed': { es: 'No se pudo enviar', en: 'Could not send', pt: 'Não foi possível enviar', de: 'Senden fehlgeschlagen', fr: 'Envoi impossible' },
 
   // ---- profile ----
+  'profile.title': { es: 'Perfil', en: 'Profile', pt: 'Perfil', de: 'Profil', fr: 'Profil' },
   'profile.myWallets': { es: 'Mis wallets', en: 'My wallets', pt: 'As minhas wallets', de: 'Meine Wallets', fr: 'Mes portefeuilles' },
   'profile.active': { es: 'Activa', en: 'Active', pt: 'Ativa', de: 'Aktiv', fr: 'Active' },
   'profile.switch': { es: 'Cambiar', en: 'Switch', pt: 'Mudar', de: 'Wechseln', fr: 'Changer' },
@@ -755,6 +756,10 @@ export const T: Record<string, Record<Lang, string>> = {
   'success.encrypted': { es: 'Cifrada en el dispositivo', en: 'Encrypted on device', pt: 'Cifrada no dispositivo', de: 'Auf dem Gerät verschlüsselt', fr: 'Chiffré sur l’appareil' },
 
   // ---- swap ----
+  'swapw.description': { es: 'Tus activos, nuevas posibilidades.', en: 'Your assets, new possibilities.', pt: 'Os teus ativos, novas possibilidades.', de: 'Deine Assets, neue Möglichkeiten.', fr: 'Tes actifs, de nouvelles possibilités.' },
+  'swapw.halfBalance': { es: 'Usar el 50% del saldo disponible', en: 'Use 50% of the available balance', pt: 'Usar 50% do saldo disponível', de: '50 % des verfügbaren Guthabens verwenden', fr: 'Utiliser 50 % du solde disponible' },
+  'swapw.estimateNotice': { es: 'Estimación orientativa, pendiente de cotización', en: 'Indicative estimate, quote pending', pt: 'Estimativa indicativa, cotação pendente', de: 'Unverbindliche Schätzung, Angebot ausstehend', fr: 'Estimation indicative, cotation en attente' },
+  'swapw.walletDestination': { es: 'Recibe los activos en tu propia wallet.', en: 'Receive assets in your own wallet.', pt: 'Recebe os ativos na tua própria carteira.', de: 'Erhalte die Assets in deiner eigenen Wallet.', fr: 'Reçois les actifs dans ton propre portefeuille.' },
   'swapw.pay': { es: "Pagas", en: "You pay", pt: "Pagas", de: "Du zahlst", fr: "Tu paies" },
   'swapw.receive': { es: "Recibes", en: "You receive", pt: "Recebes", de: "Du erhältst", fr: "Tu reçois" },
   'swapw.receiveOn': { es: "Llega a tu dirección en {network}", en: "Arrives at your address on {network}", pt: "Chega ao teu endereço em {network}", de: "Kommt an deiner Adresse in {network} an", fr: "Arrive à ton adresse sur {network}" },
@@ -1944,6 +1949,10 @@ export const T: Record<string, Record<Lang, string>> = {
   'home.col.balance': { es: "Saldo", en: "Balance", pt: "Saldo", de: "Bestand", fr: "Solde" },
   'home.col.value': { es: "Valor", en: "Value", pt: "Valor", de: "Wert", fr: "Valeur" },
   'home.networkPick': { es: "Red: {network}. Cambiar de red", en: "Network: {network}. Change network", pt: "Rede: {network}. Mudar de rede", de: "Netzwerk: {network}. Netzwerk wechseln", fr: "Réseau : {network}. Changer de réseau" },
+  'notify.all': { es: 'Todas', en: 'All', pt: 'Todas', de: 'Alle', fr: 'Toutes' },
+  'notify.read': { es: 'Leídas', en: 'Read', pt: 'Lidas', de: 'Gelesen', fr: 'Lues' },
+  'notify.emptyFilter': { es: 'No hay notificaciones en esta vista.', en: 'No notifications in this view.', pt: 'Nenhuma notificação nesta vista.', de: 'Keine Benachrichtigungen in dieser Ansicht.', fr: 'Aucune notification dans cette vue.' },
+  'notify.unread': { es: 'Sin leer', en: 'Unread', pt: 'Não lida', de: 'Ungelesen', fr: 'Non lue' },
   'notify.title': { es: "Notificaciones", en: "Notifications", pt: "Notificações", de: "Benachrichtigungen", fr: "Notifications" },
   'notify.openNew': { es: "Notificaciones, {n} nuevas", en: "Notifications, {n} new", pt: "Notificações, {n} novas", de: "Benachrichtigungen, {n} neu", fr: "Notifications, {n} nouvelles" },
   'notify.none': { es: "Aquí verás los pagos que recibas y lo que hagas con tu wallet.", en: "Payments you receive and what you do with your wallet will show up here.", pt: "Aqui verás os pagamentos que recebes e o que fazes com a tua carteira.", de: "Hier siehst du empfangene Zahlungen und was du mit deiner Wallet machst.", fr: "Tu verras ici les paiements reçus et ce que tu fais avec ton portefeuille." },
@@ -1974,6 +1983,12 @@ export const T: Record<string, Record<Lang, string>> = {
   'home.network': { es: "Red", en: "Network", pt: "Rede", de: "Netzwerk", fr: "Réseau" },
   'home.allNetworks': { es: "Todas", en: "All", pt: "Todas", de: "Alle", fr: "Tous" },
   'home.allActivity': { es: "Ver toda la actividad", en: "See all activity", pt: "Ver toda a atividade", de: "Alle Aktivitäten", fr: "Voir toute l’activité" },
+  'home.insights.title': { es: 'Distribución de la cartera', en: 'Portfolio composition', pt: 'Distribuição da carteira', de: 'Portfoliozusammensetzung', fr: 'Répartition du portefeuille' },
+  'home.insights.caption': { es: 'Distribución actual de los activos con valor disponible.', en: 'Current allocation of assets with available valuations.', pt: 'Distribuição atual dos ativos com valor disponível.', de: 'Aktuelle Verteilung der bewerteten Positionen.', fr: 'Répartition actuelle des actifs dont la valeur est disponible.' },
+  'home.insights.empty': { es: 'Cuando tus activos tengan un valor disponible, verás aquí su distribución.', en: 'Your allocation will appear here once asset valuations are available.', pt: 'A distribuição aparecerá aqui quando os valores dos ativos estiverem disponíveis.', de: 'Sobald Bewertungen verfügbar sind, erscheint hier deine Verteilung.', fr: 'La répartition apparaîtra ici lorsque la valeur de tes actifs sera disponible.' },
+  'home.insights.largest': { es: 'Mayor peso por red', en: 'Largest network allocation', pt: 'Maior peso por rede', de: 'Größter Netzwerkanteil', fr: 'Part principale par réseau' },
+  'home.insights.networks': { es: 'Redes con saldo', en: 'Funded networks', pt: 'Redes com saldo', de: 'Netzwerke mit Guthaben', fr: 'Réseaux avec solde' },
+  'home.insights.positions': { es: 'Posiciones', en: 'Holdings', pt: 'Posições', de: 'Positionen', fr: 'Positions' },
   'home.byNetwork': { es: "Por red", en: "By network", pt: "Por rede", de: "Nach Netzwerk", fr: "Par réseau" },
   'home.byAsset': { es: "Por activo · cambio en 24 h", en: "By asset · 24h change", pt: "Por ativo · variação em 24 h", de: "Nach Asset · 24-Std.-Änderung", fr: "Par actif · variation sur 24 h" },
   'home.watch': { es: "Seguir {code}", en: "Watch {code}", pt: "Acompanhar {code}", de: "{code} beobachten", fr: "Suivre {code}" },
@@ -2309,3 +2324,4 @@ export function makeT(lang: Lang) {
 }
 
 export type TFn = ReturnType<typeof makeT>;
+
