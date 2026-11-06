@@ -3,13 +3,12 @@ import type { NetworkId } from '@/constants/networks';
 import type { SwapToken } from '@/lib/swapCatalog';
 import { tokenMatches } from '@/lib/swapCatalog';
 import { cx } from '@/lib/cx';
-import { inkHandlers } from '@/lib/ink';
 import { isHomeCoin } from '@/lib/logos';
 import { AssetLogo, NetworkLogo } from '@/ui/AssetLogo';
 import { Sheet } from '@/ui/Sheet';
 import { SearchField } from '@/ui/SearchField';
 import { CheckIcon, CloseIcon } from '@/ui/Icons';
-import '@/styles/features/money/swap.css';
+import '@/styles/features/money/swap-token-picker.css';
 
 /** Rows shown at once: a search narrows the rest (two hundred tokens scroll badly on a phone). */
 const MAX_ROWS = 250;
@@ -91,7 +90,7 @@ export function SwapTokenPicker({
         <h2 id={titleId} className="sheet-title">
           {title}
         </h2>
-        <button type="button" className="sheet-close ink" aria-label={labels.close} onClick={close} {...inkHandlers}>
+        <button type="button" className="sheet-close ink" aria-label={labels.close} onClick={close}>
           <CloseIcon />
         </button>
       </div>

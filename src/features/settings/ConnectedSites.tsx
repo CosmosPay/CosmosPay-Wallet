@@ -43,11 +43,11 @@ export function ConnectedSites({ store }: { store: WalletStore }) {
     <SettingsSection title={t('settings.sites')}>
       <p className="desc connected-sites-desc">{t('settings.sitesDesc')}</p>
       {!origins.length ? (
-        <div className="glass connected-sites-empty">{t('settings.sitesNone')}</div>
+        <div className="connected-sites-empty">{t('settings.sitesNone')}</div>
       ) : (
         <>
           {origins.map((o, i) => (
-            <div key={o} className={cx('glass row between connected-sites-row', i === origins.length - 1 && 'is-last')}>
+            <div key={o} className={cx('row between connected-sites-row', i === origins.length - 1 && 'is-last')}>
               <span className="min0 connected-sites-host">{o}</span>
               <button type="button" onClick={() => void revoke(o)} className="connected-sites-revoke">
                 {t('settings.revoke')}

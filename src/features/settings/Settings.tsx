@@ -3,9 +3,10 @@ import { SECTION_SCROLL_DELAY_MS } from '@/constants/ui';
 import type { WalletStore } from '@/state/store';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { GhostButton } from '@/ui/Buttons';
-import { CheckIcon, CopyIcon, ThemeIcon } from '@/ui/Icons';
+import { CheckIcon, CopyIcon } from '@/ui/Icons';
 import { LangFlag } from '@/ui/LangFlag';
 import { SettingsSection } from '@/features/settings/SettingsSection';
+import { ThemeSelector } from '@/features/settings/ThemeSelector';
 import { SettingsRow } from '@/features/settings/SettingsRow';
 import { ToggleRow } from '@/features/settings/ToggleRow';
 import { ChangePassword } from '@/features/settings/ChangePassword';
@@ -20,7 +21,7 @@ import { cx } from '@/lib/cx';
 import { openExternal } from '@/lib/openExternal';
 import { LANGUAGES } from '@/lib/i18n';
 import { deviceAuthFailureKey } from '@/lib/deviceAuth';
-import { AUTO_LOCK_OPTIONS, THEME_OPTIONS } from '@/constants/settings';
+import { AUTO_LOCK_OPTIONS } from '@/constants/settings';
 import '@/styles/features/settings/settings.css';
 
 export function Settings({ store }: { store: WalletStore }) {
@@ -52,24 +53,11 @@ export function Settings({ store }: { store: WalletStore }) {
   }, [store.navStep]);
 
   return (
-    <div className="scr screen pb-40">
+    <div className="scr screen pb-40 settings-screen">
       <ScreenHeader title={t('settings.title')} onBack={store.goBack} />
 
       <SettingsSection title={t('settings.appearance')}>
-        <div className="settings-choices">
-          {THEME_OPTIONS.map((o) => (
-            <button
-              key={o.id}
-              type="button"
-              aria-pressed={store.themePref === o.id}
-              onClick={() => store.setThemePref(o.id)}
-              className={cx('settings-theme-btn', store.themePref === o.id && 'is-on')}
-            >
-              <ThemeIcon kind={o.icon} />
-              {t(o.labelKey)}
-            </button>
-          ))}
-        </div>
+        <ThemeSelector value={store.themePref} onChange={store.setThemePref} t={t} />
       </SettingsSection>
 
       <SettingsSection title={t('settings.language')}>
@@ -194,6 +182,7 @@ export function Settings({ store }: { store: WalletStore }) {
       <DevModeSection store={store} />
 
       <SettingsSection title={t('settings.danger')}>
+        <div className="settings-danger-zone">
         {!confirmDelete ? (
           <button type="button" onClick={() => setConfirmDelete(true)} className="settings-danger-btn">
             {t('settings.deleteThis')}
@@ -211,6 +200,7 @@ export function Settings({ store }: { store: WalletStore }) {
             </div>
           </div>
         )}
+        </div>
       </SettingsSection>
     </div>
   );

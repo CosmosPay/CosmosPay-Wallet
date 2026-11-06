@@ -24,12 +24,13 @@ export function CosmosPay({ store }: { store: WalletStore }) {
   const adult = (ageFromBirthdate(store.meta?.birthdate ?? '') ?? 0) >= 18;
 
   return (
-    <div className="scr screen col pb-104">
+    <div className="scr screen col pb-104 cosmospay-screen">
       <ScreenHeader title="Cosmos Pay" onBack={store.goBack} />
-      <div className="desc cosmospay-margin">{t('cosmospay.integrationDesc')}</div>
+      <p className="desc cosmospay-margin">{t('cosmospay.integrationDesc')}</p>
 
       {/* API keys — per network */}
-      <div className="cosmospay-section">{t('cosmospay.apiKeys')}</div>
+      <section className="cosmospay-group" aria-labelledby="cosmospay-keys-title">
+      <h2 id="cosmospay-keys-title" className="cosmospay-section">{t('cosmospay.apiKeys')}</h2>
       {!cp || flowActive ? (
         <EnableReceivingCard store={store} />
       ) : (
@@ -40,13 +41,15 @@ export function CosmosPay({ store }: { store: WalletStore }) {
           <GhostButton onClick={() => store.enableReceiving()} className="cosmospay-reconnect">{t('cosmospay.reconnect')}</GhostButton>
         </div>
       )}
+      </section>
 
       {/* Receiver (fiat / BlindPay) — hidden entirely for minors (18+ only). */}
-      {adult && <div className="cosmospay-section">{t('cosmospay.receiverSection')}</div>}
-      {!adult ? null : receiverId ? (
+      {adult && <section className="cosmospay-group" aria-labelledby="cosmospay-receiver-title">
+      <h2 id="cosmospay-receiver-title" className="cosmospay-section">{t('cosmospay.receiverSection')}</h2>
+      {receiverId ? (
         <div className="glass cosmospay-card">
           <CosmosPayRow label={t('fiat.account')} value={preview(receiverId)} />
-          <div className="flexr g10 cosmospay-actions">
+          <div className="cosmospay-actions">
             <GhostButton onClick={() => store.setScreen('fiat')} className="f1">{t('cosmospay.manageReceiver')}</GhostButton>
             <GhostButton onClick={() => store.unlinkReceiver()} className="f1 cosmospay-unlink">{t('cosmospay.unlinkReceiver')}</GhostButton>
           </div>
@@ -57,6 +60,7 @@ export function CosmosPay({ store }: { store: WalletStore }) {
           <PrimaryButton disabled={!cp} onClick={() => store.setScreen('fiat')}>{t('cosmospay.linkReceiver')}</PrimaryButton>
         </div>
       )}
+      </section>}
     </div>
   );
 }

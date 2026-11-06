@@ -2,17 +2,15 @@ import { useId, useRef, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { Dropdown } from '@/ui/Dropdown';
 import { Sheet } from '@/ui/Sheet';
-import { CheckIcon, ChevronDownIcon, CloseIcon } from '@/ui/Icons';
+import { CheckIcon, ChevronDownIcon, CloseIcon, GlobeIcon } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
-import { inkHandlers } from '@/lib/ink';
 import { isDesktopLayout } from '@/lib/layout';
-import { networkEnv } from '@/lib/stellar';
 import '@/styles/features/wallet/home-header.css';
 
 /**
- * The Stellar network the wallet is on, beside the settings in Home's header — always, the real
- * one as much as a test one (the user's call) — and the switch between them: a panel under the
- * pill on a PC window, a sheet from the bottom on a phone, like the network picker. The same
+ * The active Stellar network beside the balance label: a quiet text selector with a network
+ * glyph and a disclosure arrow. A panel opens under it on desktop, a sheet from the bottom
+ * on a phone, like the network picker. The same
  * list as the Wallet tab's, ending in the way to add one.
  */
 export function HomeNetworkButton({ store }: { store: WalletStore }) {
@@ -25,7 +23,6 @@ export function HomeNetworkButton({ store }: { store: WalletStore }) {
     close();
     if (id !== store.network.id) void store.switchNetwork(id);
   };
-  const testnet = networkEnv(store.network) === 'dev';
 
   const list = (
     <div className="home-menu-body">
@@ -61,16 +58,18 @@ export function HomeNetworkButton({ store }: { store: WalletStore }) {
   );
 
   return (
-    <div className="home-menu">
+    <div className="home-menu home-network-menu">
       <button
         ref={trigger}
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open !== null}
         aria-label={t('home.networkPick', { network: store.network.label })}
+        title={t('home.networkPick', { network: store.network.label })}
         onClick={() => setOpen((o) => (o ? null : isDesktopLayout() ? 'menu' : 'sheet'))}
-        className={cx('home-net-pill', testnet && 'is-test')}
+        className={cx('home-net-trigger', open !== null && 'is-open')}
       >
+        <GlobeIcon className="home-net-icon" />
         <span className="home-net-label">{store.network.label}</span>
         <ChevronDownIcon className={cx('home-net-caret', open && 'is-open')} />
       </button>
@@ -83,7 +82,7 @@ export function HomeNetworkButton({ store }: { store: WalletStore }) {
           <h2 id={titleId} className="sheet-title">
             {t('wallets.ledger')}
           </h2>
-          <button type="button" className="sheet-close ink" aria-label={t('a11y.close')} onClick={close} {...inkHandlers}>
+          <button type="button" className="sheet-close ink" aria-label={t('a11y.close')} onClick={close}>
             <CloseIcon />
           </button>
         </div>

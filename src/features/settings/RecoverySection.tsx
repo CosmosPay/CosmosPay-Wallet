@@ -52,8 +52,10 @@ export function RecoverySection({ store }: { store: WalletStore }) {
   if (reachable !== true) {
     return (
       <SettingsSection title={t('recovery.title')}>
+        <div className="recovery-content">
         <div className="desc recovery-desc">{t('recovery.what')}</div>
         {reachable === false && <div className="recovery-note recovery-note-warn">{t('recovery.error.unreachable')}</div>}
+        </div>
       </SettingsSection>
     );
   }
@@ -82,6 +84,7 @@ export function RecoverySection({ store }: { store: WalletStore }) {
 
   return (
     <SettingsSection title={t('recovery.title')}>
+      <div className="recovery-content">
       <div className="desc recovery-desc">{t('recovery.what')}</div>
 
       {state && !state.exists ? (
@@ -164,7 +167,7 @@ export function RecoverySection({ store }: { store: WalletStore }) {
               >
                 {t('recovery.turnOn')}
               </button>
-              <div className="desc recovery-desc">{t('recovery.reserveNote')}</div>
+              <div className="desc recovery-desc recovery-footnote">{t('recovery.reserveNote')}</div>
             </>
           ) : sent ? (
             <>
@@ -203,6 +206,7 @@ export function RecoverySection({ store }: { store: WalletStore }) {
           )}
         </>
       )}
+      </div>
     </SettingsSection>
   );
 }
