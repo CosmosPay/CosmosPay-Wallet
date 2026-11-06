@@ -1,12 +1,5 @@
-/* DesktopNav — the vertical navigation rail (src/app/DesktopNav.tsx).
-   Shown only past --desk-min, where it runs the full height of the window down its
-   left edge; see the --desk-* block in src/styles/theme.css.
-   The 1024px literal below IS --desk-min, and `npm run test:responsive` asserts they
-   agree, because a media query cannot read a custom property. */
-
-/* Hidden by default, not shown by default. Below the breakpoint the rail is markup nobody
-   sees, and the bottom bar is the navigation — see src/styles/app/shell.css, which hides
-   the other one above it. Exactly one of the two is ever visible. */
+/* src/app/DesktopNav.tsx — persistent desktop navigation.
+   The 1024px breakpoint matches --desk-min in theme.css. */
 .shell-side {
   display: none;
 }
@@ -17,139 +10,149 @@
     flex-direction: column;
     width: var(--desk-side-w);
     flex-shrink: 0;
-    padding: 26px 16px 20px;
-    /* A line, not a grey panel: the brand draws surfaces with lines. */
+    min-height: 0;
+    padding: calc(32px + var(--safe-t)) 16px calc(20px + var(--safe-b));
     border-right: 1px solid var(--line);
     background: var(--bg);
-    /* The vertical device insets are on .shell-content, which the rail is not inside, so
-       it clears the status bar itself. Only relevant on a tablet in landscape, which is
-       the one non-desktop device that reaches this breakpoint. */
-    /* The logo's line is the screen header's: .shell-content's 32px plus the header's own
-       inset (shell.css, home.css). */
-    padding-top: calc(44px + var(--safe-t));
-    padding-bottom: calc(20px + var(--safe-b));
   }
-
-  /* the logo is a button home: no box of its own, the focus ring when the keyboard reaches it */
   .desk-brand {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin: 0 0 14px;
-    padding: 4px 10px 8px;
+    gap: 12px;
+    min-height: 44px;
+    flex-shrink: 0;
+    margin: 0 0 36px;
+    padding: 8px 12px;
     border: 0;
-    border-radius: 12px;
+    border-radius: 6px !important;
     background: transparent;
+    color: var(--text);
     font: inherit;
     text-align: left;
     cursor: pointer;
   }
-
-  .desk-brand:focus-visible {
-    outline: 2px solid var(--brand);
-    outline-offset: 2px;
-  }
-
   .desk-brand-mark {
-    width: 26px;
-    height: 26px;
-    color: var(--text);
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
   }
-
   .desk-brand-name {
     font-size: 15px;
-    font-weight: 800;
-    letter-spacing: -0.3px;
-    color: var(--text);
+    font-weight: 600;
+    letter-spacing: -0.4px;
   }
-
   .desk-nav-list {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    /* Takes the slack so the version line stays pinned to the bottom without a .spacer
-       element that exists only to be empty. */
     flex: 1;
     min-height: 0;
+    margin: 0;
+    padding: 2px;
+    list-style: none;
     overflow-y: auto;
   }
-
+  .desk-nav-entry {
+    flex-shrink: 0;
+  }
+  .desk-nav-entry.is-tool {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  .desk-nav-entry.is-account {
+    margin-top: auto;
+    padding-top: 32px;
+  }
   .desk-nav-item {
     position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
     width: 100%;
-    height: 44px;
-    padding: 0 12px;
-    /* Beats base.css's blanket `button { border-radius: 999px !important }`: a full pill
-       under a left-aligned icon-and-label row leaves the icon floating away from the edge
-       of its own highlight. Matching !important rather than raising specificity, because
-       the base rule is itself !important and nothing else can win against it. */
-    border-radius: 12px !important;
-    border: none;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 0;
+    border-radius: 6px !important;
     background: transparent;
     color: var(--muted);
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.5;
     text-align: left;
-    transition: color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out),
-      transform 0.13s var(--ease-out);
+    cursor: pointer;
+    transition:
+      color var(--dur-quick) var(--ease-out),
+      background-color var(--dur-quick) var(--ease-out);
   }
-
-  .desk-nav-item svg {
+  .desk-nav-item > svg {
+    width: 19px;
+    height: 19px;
     flex-shrink: 0;
   }
-
-  .desk-nav-item:hover {
-    box-shadow: inset 0 0 0 1px var(--line);
-    color: var(--text);
-  }
-
-  /* The active item, as the bar marks it (Figma): ink, and a line of the brand blue — here on
-     its left edge, the side the rail is read from. Lines, never a filled slab. */
+  /* Selection is persistent: stronger surface + a fixed ink rail.
+     Hover never adds that rail or imitates the selected item. */
   .desk-nav-item.is-on {
+    background: var(--surface);
     color: var(--text);
-    box-shadow: inset 0 0 0 1px var(--line);
   }
-
   .desk-nav-item::before {
-    content: '';
+    content: "";
     position: absolute;
     left: 0;
-    top: 10px;
-    bottom: 10px;
+    top: 12px;
+    bottom: 12px;
     width: 2px;
-    border-radius: 2px;
-    background: var(--brand);
+    background: var(--text);
     opacity: 0;
-    transform: scaleY(0.4);
-    transition: opacity var(--dur-base) var(--ease-out), transform var(--dur-base) var(--ease-out);
+    transition: opacity var(--dur-quick) var(--ease-out);
   }
-
   .desk-nav-item.is-on::before {
     opacity: 1;
-    transform: scaleY(1);
   }
-
-  .desk-nav-item:focus-visible {
+  .desk-nav-item:active:not(:disabled) {
+    color: var(--text);
+  }
+  .desk-nav-item:focus-visible,
+  .desk-brand:focus-visible {
     outline: 2px solid var(--brand);
-    outline-offset: 2px;
+    outline-offset: -2px;
   }
-
-  .desk-nav-label {
+  .desk-nav-copy {
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .desk-nav-label {
+    overflow-wrap: anywhere;
+  }
+  .desk-nav-detail {
+    font-size: 11px;
+    color: var(--muted);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-
   .desk-side-foot {
-    padding: 14px 12px 0;
-    border-top: 1px solid var(--hairline);
-    font-size: 11.5px;
-    font-weight: 700;
+    flex-shrink: 0;
+    padding: 16px 14px 0;
+    margin-top: 16px;
+    border-top: 1px solid var(--line);
     color: var(--dim);
+    font-size: 11px;
+    font-weight: 400;
+  }
+}
+@media (min-width: 1024px) and (hover: hover) and (pointer: fine) {
+  .desk-nav-item:hover:not(:disabled):not([aria-disabled="true"]) {
+    color: var(--text);
+  }
+  .desk-nav-item:not(.is-on):hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--surface-2);
+  }
+  .desk-brand:hover:not(:disabled) {
+    color: var(--text-soft);
   }
 }
