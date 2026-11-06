@@ -373,11 +373,24 @@
   height: 44px;
   border: 1.5px dashed var(--line);
   border-radius: 50%;
+  transition: color var(--dur-quick) var(--ease-out);
 }
 
 .home-add-ring svg {
   width: 20px;
   height: 20px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .home-add:enabled:hover .home-add-ring {
+    color: var(--home-active-text);
+  }
+}
+
+.home-add:enabled:active .home-add-ring {
+  color: var(--home-active-text);
+  border-color: currentColor;
+  transition-duration: 0s;
 }
 
 .home-add:focus-visible {
