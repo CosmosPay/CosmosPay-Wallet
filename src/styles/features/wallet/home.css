@@ -203,7 +203,7 @@
   border: 1.5px solid transparent;
   background: var(--home-control-bg);
   border-radius: 50%;
-  transition: border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out);
 }
 
 .home-action-ring svg {
@@ -692,7 +692,7 @@
 }
 .home-asset-list .asset-row-end { max-width: 46%; min-width: 0; }
 .home-asset-list .asset-row-amount { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.home-who, .home-icon-btn, .home-action, .home-action-ring, .home-tabs .tabs-tab { transition: color 0.2s ease, border-color 0.2s ease; }
+.home-who, .home-icon-btn, .home-tabs .tabs-tab { transition: color 0.2s ease, border-color 0.2s ease; }
 @media (hover: hover) and (pointer: fine) {
 
 
@@ -718,12 +718,14 @@
     border-color: transparent;
   }
   .home-action:hover:not(:disabled):not([aria-disabled='true']) .home-action-ring {
-    border-color: transparent;
+    color: var(--home-active-text);
   }
 }
-.home-icon-btn:active:not(:disabled):not([aria-disabled='true']),
+.home-icon-btn:active:not(:disabled):not([aria-disabled='true']) { border-color: transparent; }
 .home-action:active:not(:disabled):not([aria-disabled='true']) .home-action-ring {
-  border-color: transparent;
+  color: var(--home-active-text);
+  border-color: currentColor;
+  transition-duration: 0s;
 }
 /* Home keeps its resting surfaces during pointer feedback, including shared controls. */
 .home .ink::before { display: none; }
@@ -744,8 +746,7 @@
     text-underline-offset: 4px;
     text-decoration-thickness: 1px;
   }
-  .home-icon-btn:hover:not(:disabled):not([aria-disabled='true']),
-  .home-action:hover:not(:disabled):not([aria-disabled='true']) .home-action-ring {
+  .home-icon-btn:hover:not(:disabled):not([aria-disabled='true']) {
     color: var(--text-soft);
   }
   .home-watch-star:hover:not(:disabled),
