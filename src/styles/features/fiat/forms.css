@@ -23,7 +23,7 @@
 
 /* ------------------- quote summary (compose with .glass) --------------------- */
 .fiat-quote-card { border-radius: 16px; padding: 4px 16px; margin-top: 14px; }
-.fiat-quote-row { padding: 11px 0; border-bottom: 1px solid var(--hairline); } /* on .row.between */
+.fiat-quote-row { padding: 11px 0; border-bottom: 1px solid var(--line); } /* on .row.between */
 .fiat-quote-row-last { border-bottom: none; }
 /* QuoteRow delegates to KVRow, so the value carries .kv-row-val — this used to be a
    standalone `.fiat-quote-val` that stopped matching anything in the consolidation,
@@ -45,7 +45,7 @@
 /* small list-row card (compose with .glass) */
 .fiat-row-card { border-radius: 14px; padding: 12px 14px; margin-bottom: 8px; }
 /* small pill chip button; padding/colours per variant in each screen's css */
-.fiat-chip-btn { border: none; border-radius: 999px; font-size: 12px; font-weight: 800; cursor: pointer; }
+.fiat-chip-btn { border: none; border-radius: var(--button-radius); font-size: 12px; font-weight: var(--button-weight); cursor: pointer; }
 /* keep border:none when composed with .glass-soft regardless of bundle order */
 .glass-soft.fiat-chip-btn { border: none; }
 /* pushes the CTA to the bottom of the flex-column screen */

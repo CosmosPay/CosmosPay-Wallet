@@ -53,7 +53,7 @@
   overflow: hidden;
   margin: 2px 0 16px;
   padding: 16px;
-  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--glass-border));
+  border: 1px solid var(--line);
   border-radius: 20px;
   background: var(--glass-bg);
 }
@@ -67,7 +67,7 @@
 .ramp-provider-route b { color: var(--accent); font-size: 15px; }
 .ramp-provider-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 10.5px; font-weight: 700; }
 .ramp-provider-meta strong { color: var(--text); }
-.ramp-provider-note { position: relative; z-index: 1; margin: 13px 0 0; padding-top: 11px; border-top: 1px solid var(--hairline); color: var(--dim); font-size: 10.5px; line-height: 1.45; font-weight: 600; }
+.ramp-provider-note { position: relative; z-index: 1; margin: 13px 0 0; padding-top: 11px; border-top: 1px solid var(--line); color: var(--dim); font-size: 10.5px; line-height: 1.45; font-weight: 600; }
 .fiat-account-card { margin-bottom: 18px; } /* on .glass.card */
 .fiat-account-label { font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 6px; }
 .fiat-account-id { font-size: 14px; font-weight: 700; font-family: monospace; }
