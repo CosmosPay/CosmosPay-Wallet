@@ -1,543 +1,510 @@
-/* =====================================================================
-   src/features/money/Swap.tsx and SwapTokenPicker.tsx — the swap widget, the developer
-   platform's pattern: "you pay" and "you receive" panels (a big amount, a token button naming its
-   network), the flip on their seam, the rate with the details folded under it, the button.
-   Prefix: .swapw-   Lines on the canvas, no grey fills; spacing on the 4/8 grid.
-   ===================================================================== */
-
-/* The form's pieces are the screen's own children: the button's dock is sticky over the
-   keyboard, and sticky only travels within its direct flex parent (app.css). */
-.swapw-panels {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+/* src/features/money/Swap.tsx — a focused exchange form on the shared matte canvas.
+   4/8px spacing, Open Sauce typography and theme tokens; no feature-local colours. */
+.swapw > :is(.swapw-heading, .swapw-panels, .swapw-overview, .swapw-quote, .swapw-foot) {
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
 }
 
+.swapw-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+.swapw-heading .screen-header {
+  min-width: 0;
+  margin-bottom: 0;
+}
+.swapw-heading .screen-header-title {
+  font-size: clamp(28px, 4vw, 36px);
+  font-weight: 600;
+  letter-spacing: -1.2px;
+}
+.swapw-heading .screen-header-desc {
+  max-width: 36ch;
+  margin-top: 12px;
+  line-height: 1.65;
+}
+.swapw-heading .swapw-slip {
+  flex-shrink: 0;
+}
+
+.swapw-panels {
+
+  display: flex;
+
+  flex-direction: column;
+
+}
 .swapw-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 16px;
-  border: 1.5px solid var(--line-strong);
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 20px 24px;
+  border: 1px solid var(--line);
   border-radius: 20px;
-  transition: border-color var(--dur-quick) var(--ease-out);
+  background: var(--bg);
 }
-
-.swapw-panel:focus-within {
-  border-color: var(--text);
+.swapw-panel.is-get {
+  padding: 24px 20px 16px;
 }
-
 .swapw-panel-top {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 600;
+  line-height: 1.5;
 }
-
-.swapw-usd {
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
+.swapw-panel-top > :is(label, span) {
+  min-width: 0;
 }
-
 .swapw-panel-row {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
 }
-
 .swapw-amount {
-  flex: 1;
+  width: 100%;
   min-width: 0;
   height: 48px;
   padding: 0;
   border: 0;
+  border-radius: 4px;
+  outline: none;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 32px;
-  font-weight: 600;
+  font-size: clamp(32px, 7vw, 42px);
+  font-weight: 500;
+  line-height: 1.25;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.6px;
-  outline: none;
+  letter-spacing: -1.8px;
+  transition: all 0.2s ease;
 }
-
 .swapw-amount::placeholder {
-  color: var(--muted);
+  color: var(--dimmer);
+  opacity: 1;
 }
-
+.swapw-amount:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 4px;
+}
 .swapw-amount.is-invalid {
   color: var(--danger);
 }
-
-/* the received amount: an output, not a field */
 .swapw-amount.is-out {
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  animation: fadeIn var(--dur-base) var(--ease-out);
+  display: block;
+  height: auto;
+  min-height: 48px;
+  overflow-wrap: anywhere;
 }
-
 .swapw-amount.is-empty {
-  color: var(--muted);
+  color: var(--dimmer);
 }
-
 .swapw-amount.is-estimate {
   color: var(--muted);
 }
+.swapw-usd {
+  min-height: 20px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+  font-variant-numeric: tabular-nums;
+}
 
-/* the token button: its mark, symbol over network, a caret */
 .swapw-token {
-  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-  gap: 10px;
-  max-width: 60%;
-  min-height: 48px;
-  padding: 0 10px 0 8px;
-  border: 1.5px solid var(--line-strong);
+  flex-shrink: 0;
+  gap: 12px;
+  max-width: 65%;
+  min-height: 52px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
   border-radius: 999px;
   background: transparent;
   color: var(--text);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out);
 }
-
-.swapw-token:hover {
-  border-color: var(--text);
-}
-
-.swapw-token:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
-
 .swapw-token.is-empty {
-  padding-left: 16px;
+  padding-inline: 16px;
 }
-
 .swapw-token-text {
-  min-width: 0;
   display: flex;
   flex-direction: column;
-  line-height: 1.15;
+  min-width: 0;
+  gap: 3px;
+  line-height: 1.3;
 }
-
 .swapw-token-sym {
   overflow: hidden;
   font-size: 15px;
-  font-weight: 700;
-  white-space: nowrap;
+  font-weight: 600;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
 .swapw-token-net {
   overflow: hidden;
   color: var(--muted);
-  font-size: 11.5px;
-  white-space: nowrap;
+  font-size: 11px;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
 .swapw-token-chev {
   flex-shrink: 0;
   width: 16px;
   height: 16px;
   color: var(--muted);
 }
-
-.swapw-mark {
-  position: relative;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-}
-
-.swapw-mark.is-button {
-  width: 28px;
-  height: 28px;
-}
-
-.swapw-mark.is-row {
-  width: 36px;
-  height: 36px;
-}
-
-.swapw-mark-net {
-  position: absolute;
-  right: -6px;
-  bottom: -6px;
-  display: grid;
-  border: 2px solid var(--bg);
-  border-radius: 50%;
-  background: var(--bg);
-}
-
-.swapw-mark.is-button .swapw-mark-net {
-  transform: scale(0.75);
-  transform-origin: bottom right;
-}
-
 .swapw-panel-foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  min-height: 44px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.6;
   font-variant-numeric: tabular-nums;
 }
-
+.swapw-panel-foot > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.swapw-quick-amounts {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
 .swapw-max {
-  height: 28px;
-  padding: 0 12px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 8px;
+  border: 0;
+  border-radius: 8px;
   background: transparent;
-  color: var(--text);
+  color: var(--text-soft);
   font: inherit;
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out);
 }
-
-.swapw-max:hover:not(:disabled) {
-  border-color: var(--text);
-}
-
 .swapw-max:disabled {
-  opacity: 0.4;
+  color: var(--dim);
   cursor: default;
 }
+.swapw-balance-error {
+  margin: -4px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.5;
+}
 
-/* the flip, on the seam between the panels; it turns when used */
+/* The flip belongs to the seam, even when an error makes one panel taller. */
 .swapw-flip {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 2;
+  position: relative;
+  z-index: 1;
+  align-self: center;
   display: grid;
   place-items: center;
+  flex-shrink: 0;
   width: 44px;
   height: 44px;
+  margin-block: -18px;
   padding: 0;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 50%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
   background: var(--bg);
   color: var(--text);
   cursor: pointer;
-  translate: -50% -50%;
-  transition: transform var(--dur-base) var(--ease-in-out), border-color var(--dur-quick) var(--ease-out);
 }
-
 .swapw-flip svg {
   width: 20px;
   height: 20px;
   transform: rotate(90deg);
+  transition: transform 0.2s ease;
 }
-
-.swapw-flip.is-turned {
-  transform: rotate(180deg);
+.swapw-flip.is-turned svg {
+  transform: rotate(270deg);
 }
-
-.swapw-flip:hover:not(:disabled) {
-  border-color: var(--text);
-}
-
 .swapw-flip:disabled {
-  color: var(--muted);
+  color: var(--dim);
   cursor: default;
 }
 
-.swapw-flip:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
+.swapw-overview {
 
-/* ---- the rate, and the quote's details folding open under it ---- */
+  display: flex;
+
+  flex-direction: column;
+
+  gap: 12px;
+
+  margin-block: 20px 0;
+
+  padding-inline: 4px;
+
+}
+.swapw-overview > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.swapw-overview dt {
+  color: var(--muted);
+}
+.swapw-overview dd {
+  margin: 0;
+  color: var(--text-soft);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .swapw-quote {
   margin-top: 16px;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  animation: fadeIn var(--dur-base) var(--ease-out);
+  border-block: 1px solid var(--line);
 }
-
 .swapw-quote-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   justify-content: space-between;
-  gap: 12px;
-  padding: 4px 6px 4px 14px;
+  gap: 0 12px;
+  padding: 4px;
 }
-
 .swapw-rate {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 200px;
   min-width: 0;
-  padding: 10px 0;
+  min-height: 44px;
+  padding: 8px 0;
   border: 0;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 13.5px;
+  font-size: 12px;
+  line-height: 1.6;
   font-variant-numeric: tabular-nums;
   text-align: left;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
-
-.swapw-quote-toggle {
+.swapw-rate svg {
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
+  color: var(--muted);
+}
+.swapw-quote-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  min-height: 36px;
-  padding: 0 10px;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 0;
   border: 0;
-  border-radius: 999px;
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
+  text-align: left;
   cursor: pointer;
 }
-
-.swapw-quote-toggle:hover {
-  color: var(--text);
-}
-
 .swapw-quote-chev {
+  flex-shrink: 0;
   width: 16px;
   height: 16px;
-  transition: transform var(--dur-base) var(--ease-in-out);
+  transition: transform 0.2s ease;
 }
-
 .swapw-quote-chev.is-open {
   transform: rotate(180deg);
 }
-
-/* folding: a grid row that eases from 0fr to 1fr */
 .swapw-quote-body {
   display: grid;
   grid-template-rows: 0fr;
-  transition: grid-template-rows var(--dur-base) var(--ease-in-out);
+  visibility: hidden;
+  transition: grid-template-rows 0.2s ease, visibility 0.2s ease;
 }
-
 .swapw-quote.is-open .swapw-quote-body {
   grid-template-rows: 1fr;
+  visibility: visible;
 }
-
 .swapw-rows {
   min-height: 0;
   overflow: hidden;
   margin: 0;
-  padding: 0 14px;
+  padding-inline: 4px;
 }
-
-.swapw-quote.is-open .swapw-rows {
-  padding-bottom: 12px;
-}
-
 .swapw-rows > div {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  padding-block: 12px;
   border-top: 1px solid var(--line);
-  font-size: 13px;
+  font-size: 12px;
+  line-height: 1.6;
 }
-
 .swapw-rows dt {
   color: var(--muted);
 }
-
 .swapw-rows dd {
   margin: 0;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
-/* the button, docked over a phone's keyboard; right under the form on a PC window */
-.swapw-foot {
-  margin-top: auto;
+/* Direct screen child: the shared keyboard dock can remain sticky on phones. */
+.swapw .swapw-foot {
+  margin-top: 0;
   padding-top: 24px;
 }
-
+.swapw-foot .btn-primary {
+  transition: all 0.2s ease;
+}
 .swapw-error {
-  margin: 10px 2px 0;
+  margin: 12px 0 0;
   color: var(--danger);
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.swapw-reassurance {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
+}
+.swapw-reassurance svg {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
 }
 
-/* ---- the slippage setting, from the header's gear ---- */
 .swapw-slip {
-  position: relative;
-}
 
+  position: relative;
+
+}
 .swapw-slip-btn {
   display: grid;
   place-items: center;
   width: 44px;
   height: 44px;
   padding: 0;
-  border: 1.5px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 50%;
   background: transparent;
   color: var(--text);
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out);
 }
-
-.swapw-slip-btn:hover {
-  border-color: var(--text);
-}
-
 .swapw-slip-btn svg {
   width: 20px;
   height: 20px;
 }
-
 .dropdown.swapw-slip-panel {
-  width: 280px;
-  padding: 12px;
+  width: min(300px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 16px;
 }
-
 .swapw-slip-title {
-  margin: 0 4px 10px;
-  font-size: 14px;
-  font-weight: 700;
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
 }
-
 .swapw-slip-options {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
-
 .swapw-slip-opt {
-  height: 36px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
+  min-height: 44px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
 }
-
 .swapw-slip-opt.is-on {
-  border-color: var(--text);
   background: var(--text);
   color: var(--bg);
 }
 
-/* ---- the token sheet ---- */
-.swapw-pick-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+.swapw-token, .swapw-max, .swapw-flip, .swapw-slip-btn, .swapw-slip-opt, .swapw-rate, .swapw-quote-toggle {
 
-.swapw-pick-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: min(62vh, 560px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
+  transition: all 0.2s ease;
 
-.swapw-pick-head {
-  padding: 14px 12px 6px;
-  color: var(--muted);
-  font-size: 12.5px;
-  font-weight: 600;
 }
-
-.swapw-pick-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  min-height: 60px;
-  padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: 14px !important;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out);
+:is(.swapw-token, .swapw-max, .swapw-flip, .swapw-slip-btn, .swapw-slip-opt, .swapw-rate, .swapw-quote-toggle):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 3px;
 }
-
-.swapw-pick-item.is-on {
-  border-color: var(--text);
+:is(.swapw-token, .swapw-max, .swapw-flip, .swapw-slip-btn, .swapw-slip-opt:not(.is-on)):active:not(:disabled) {
+  background: var(--interaction-hover-bg);
 }
-
+.swapw-slip-opt.is-on:active {
+  background: var(--primary-pressed-bg);
+}
+:is(.swapw-rate, .swapw-quote-toggle):active {
+  color: var(--text-soft);
+}
 @media (hover: hover) and (pointer: fine) {
-  .swapw-pick-item:not(.is-on):hover {
-    border-color: var(--line);
+  :is(.swapw-token, .swapw-max, .swapw-flip, .swapw-slip-btn, .swapw-slip-opt:not(.is-on)):hover:not(:disabled) {
+    background: var(--interaction-hover-bg);
+  }
+  .swapw-slip-opt.is-on:hover {
+    background: var(--primary-hover-bg);
+  }
+  :is(.swapw-rate, .swapw-quote-toggle):hover {
+    color: var(--text-soft);
   }
 }
 
-.swapw-pick-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+@media (max-width: 359px) {
+  .swapw-heading {
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .swapw-panel, .swapw-panel.is-get {
+    padding-inline: 16px;
+  }
+  .swapw-token {
+    gap: 8px;
+    padding-inline: 10px;
+  }
+  .swapw-panel-top {
+    font-size: 12px;
+  }
+  .swapw-panel-foot:not(.is-plain) {
+    flex-wrap: wrap;
+  }
+  .swapw-quick-amounts {
+    margin-left: auto;
+  }
 }
-
-.swapw-pick-sym {
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.swapw-pick-sub {
-  overflow: hidden;
-  color: var(--muted);
-  font-size: 12.5px;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.swapw-pick-bal {
-  flex-shrink: 0;
-  font-size: 14px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.swapw-pick-check {
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  width: 18px;
-}
-
-.swapw-pick-check svg {
-  width: 18px;
-  height: 18px;
-}
-
-.swapw-pick-none {
-  margin: 0;
-  padding: 12px;
-  color: var(--muted);
-  font-size: 14px;
-}
-
-@media (min-width: 1024px) {
-  .has-desktop-mode .swapw-foot {
-    margin-top: 0;
-    padding-top: 28px;
+@media (prefers-reduced-motion: reduce) {
+  .swapw *, .swapw-slip-panel * {
+    transition: none;
+    animation: none;
   }
 }

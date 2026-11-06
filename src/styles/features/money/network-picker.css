@@ -17,14 +17,12 @@
 
 /* outlined pill: the network's coin, its name, a chevron */
 .network-picker-btn {
-  --ink: var(--brand);
-  --ink-text: #fff;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   min-height: 44px;
   padding: 0 14px 0 8px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   background: var(--bg);
   color: var(--text);
   font-size: 15px;
@@ -99,18 +97,17 @@
   font-weight: 500;
   text-align: left;
   cursor: pointer;
-  transition: transform 0.13s var(--ease-out), border-color var(--dur-quick) var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
 .network-picker-item.is-on {
-  border-color: var(--text);
+  border-color: var(--line);
   font-weight: 700;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .network-picker-item:not(.is-on):hover {
-    border-color: var(--line);
-    filter: none;
+  .network-picker-item:not(.is-on):hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--interaction-hover-bg);
   }
 }
 
@@ -149,18 +146,21 @@
   width: 100%;
   min-height: 72px;
   padding: 0 14px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   border-radius: 18px !important;
   background: transparent;
   color: var(--text);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
-.network-picker-card:hover {
-  border-color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+
+.network-picker-card:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--interaction-hover-bg);
+}
 }
 
 .network-picker-card:focus-visible {

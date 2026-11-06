@@ -1,8 +1,8 @@
 /* =====================================================================
    The activity list — src/features/money/ActivityList.tsx, HistoryRow.tsx
    and GenesisRow.tsx (Figma Home, Activity tab). Prefix: .activity-
-   Each row: a ringed mark, the title over who, the amount over the time.
-   The mark is a line, coloured by direction — no fills.
+   Each row: a line icon, the title over who, the amount over the time.
+   Colour distinguishes incoming transfers and failures; outgoing transfers keep the ink.
    ===================================================================== */
 .activity-list {
   display: flex;
@@ -15,7 +15,7 @@
 }
 
 .activity-day-label {
-  margin: 18px 0 4px;
+  margin: 28px 0 8px;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--muted);
@@ -30,18 +30,19 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  min-height: 68px;
-  padding: 10px 0;
+  min-height: 88px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line);
 }
 
 .activity-mark {
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
   color: var(--text);
 }
 
@@ -55,14 +56,14 @@
   color: var(--up);
 }
 
-/* money out: a send is red, mark and amount; a commission (.is-fee) keeps the ink */
+/* Outgoing transfers and fees use neutral ink. */
 .activity-mark.is-out {
-  border-color: var(--down);
-  color: var(--down);
+  border-color: var(--line);
+  color: var(--text-soft);
 }
 
 .activity-mark.is-swap {
-  border-color: var(--brand);
+  border-color: var(--line);
   color: var(--brand);
 }
 
@@ -85,8 +86,8 @@
 }
 
 .activity-title {
-  font-size: 15px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
   color: var(--text);
   text-decoration: none;
 }
@@ -96,7 +97,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 12px;
+  border-radius: 4px;
 }
 
 .activity-link:focus-visible {
@@ -128,12 +129,13 @@
   z-index: 1;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
   margin: -6px 0;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: 4px !important;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
@@ -145,7 +147,13 @@
   height: 15px;
 }
 
-.activity-copy:hover,
+@media (hover: hover) and (pointer: fine) {
+
+.activity-copy:hover:not(:disabled):not([aria-disabled='true']) {
+  color: var(--text);
+}
+}
+
 .activity-copy.is-copied {
   color: var(--text);
 }
@@ -174,7 +182,7 @@
 }
 
 .activity-amount.is-down {
-  color: var(--down);
+  color: var(--text-soft);
 }
 
 .activity-amount.is-failed {
@@ -185,4 +193,20 @@
 .activity-time {
   font-size: 12.5px;
   color: var(--muted);
+}
+
+.activity-row:last-child { border-bottom: 0; }
+.activity-row.is-genesis { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--line); }
+.activity-sub-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-amount { overflow-wrap: anywhere; }
+.activity-end { max-width: 48%; text-align: right; }
+.activity-title { transition: color 140ms ease; color: var(--text-soft); }
+@media (hover: hover) and (pointer: fine) {
+  .activity-link:hover { color: var(--text); }
+}
+@media (max-width: 380px) {
+  .activity-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 6px 12px; }
+  .activity-mark { width: 28px; height: 28px; align-self: start; }
+  .activity-end { grid-column: 2; flex-direction: row; align-items: baseline; justify-content: space-between; gap: 12px; max-width: none; text-align: left; }
+  .activity-time { flex-shrink: 0; }
 }
