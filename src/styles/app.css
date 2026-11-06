@@ -140,7 +140,7 @@
 /* A field is outlined too; its edge is all that shows where it is, so --line-strong. */
 .input {
   background: transparent;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
 }
 
 .glass-soft {
@@ -172,35 +172,34 @@
   color: var(--text);
 }
 
-/* full-width 48px pill action (paste pay-URL, scan upload/paste…) */
+/* Full-width secondary action (paste pay-URL, scan upload/paste). */
 .pill-btn {
   width: 100%;
   height: 48px;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--button-radius);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   font-size: 13.5px;
-  font-weight: 800;
+  font-weight: var(--button-weight);
   cursor: pointer;
   color: var(--text);
 }
 
-/* the three full-width 54px pill controls share one box */
+/* Fields and actions share width and padding; actions size to their content below. */
 .input,
 .btn-primary,
 .btn-ghost {
   width: 100%;
   height: 54px;
   box-sizing: border-box;
-  border-radius: 999px;
+  border-radius: var(--button-radius);
   padding: 0 20px;
 }
 
-/* The two actions are snap.cosmospay.lat's pills: bold, a 1.5px outline, and an ink fill
-   on hover (`.ink`, animations.css). Primary is solid ink; ghost is the outline alone. */
+/* Shared actions: solid primary, outlined secondary; neutral hover surfaces in animations.css. */
 .btn-primary,
 .btn-ghost {
   display: flex;
@@ -210,12 +209,18 @@
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
-  border: 1.5px solid;
+  border: 1px solid;
+  height: auto;
+  min-height: var(--button-height);
+  padding: 12px 20px;
+  line-height: 1.5;
+  white-space: normal;
+  text-align: center;
 }
 
-/* pill text field on a surface. The ring would be drawn square inside the pill on older
-   engines, so focus is the field's own outline turning blue instead. */
+/* Fields share the Activity border; keyboard focus adds a separate ring. */
 .input {
+  border-radius: 6px;
   color: var(--text);
   font-size: 15px;
   font-weight: 600;
@@ -223,14 +228,13 @@
   transition: border-color var(--dur-quick) var(--ease-out);
 }
 
-.input:focus {
-  border-color: var(--brand);
+.input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
-/* main CTA. Its ink is the canvas: black fills white in light, white fills black in dark. */
+/* Main CTA keeps its text contrast and visual priority during hover. */
 .btn-primary {
-  --ink: var(--bg);
-  --ink-text: var(--text);
   background: var(--primary-bg);
   border-color: var(--primary-border);
   color: var(--primary-text);
@@ -244,7 +248,7 @@
 .btn-primary:disabled {
   cursor: default;
   background: transparent;
-  border-color: var(--line-strong);
+  border-color: var(--line);
   color: var(--dim);
 }
 
@@ -259,13 +263,10 @@
   opacity: 0.4;
 }
 
-/* secondary full-width action: the outline alone. Its ink is the brand blue, so a hovered
-   secondary never looks like the primary (black fills white, outlined fills blue). */
+/* Secondary action: outline at rest, a subtle neutral surface on hover. */
 .btn-ghost {
-  --ink: var(--brand);
-  --ink-text: var(--on-brand);
   background: transparent;
-  border-color: var(--text);
+  border-color: var(--line);
   color: var(--text);
 }
 

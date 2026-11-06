@@ -80,9 +80,9 @@ body {
   outline-offset: 2px;
 }
 
-/* all buttons are fully rounded (pill) */
+/* Neutral default; each component owns its geometry (including circular icon controls). */
 button {
-  border-radius: 999px !important;
+  border-radius: var(--button-radius);
 }
 
 /* brand logo: white asset; invert to black in light mode */

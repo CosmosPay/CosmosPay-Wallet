@@ -3,9 +3,8 @@
    Every @keyframes in the project is declared here, so component sheets
    only ever reference them by name.
    Loaded by src/pages/index.astro after base.css.
-   ORDER MATTERS: the reduced-motion block must stay LAST — it beats the
-   `popIn` rule below on `!important` at equal specificity, so the cascade
-   resolves it by source order.
+   ORDER MATTERS: reduced-motion overrides stay last so they win against
+   the entrance and transition rules above.
    ===================================================================== */
 
 @keyframes pop {
@@ -122,29 +121,6 @@
   animation: splashIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
-/* entrance pop for buttons + input elements */
-@keyframes popIn {
-  0% {
-    opacity: 0;
-    transform: scale(0.9);
-  }
-  70% {
-    transform: scale(1.02);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-button,
-input,
-textarea,
-select,
-.tap {
-  animation: popIn 0.36s cubic-bezier(0.2, 0.9, 0.25, 1) !important;
-}
-
 /* ---------------------- staggered list entrances ----------------------
    A row's position used to arrive as an inline animation-delay. It is a
    fixed ladder instead: the caller clamps its index to the last step, so a
@@ -178,93 +154,55 @@ select,
 .stagger-dense-10 { animation-delay: 0.3s; }
 .stagger-dense-11 { animation-delay: 0.33s; }
 
-/* hover + tactile press feedback on buttons and tappable elements */
+/* Stable controls: no generic brightness, entrance bounce or press scaling. */
 button,
 .tap {
-  transition: transform 0.13s var(--ease-out), filter var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out),
+    border-color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
 }
+.tap { cursor: pointer; }
 
-.tap {
-  cursor: pointer;
-}
-
-/* Real pointers only: on iOS Safari and Android Chrome a tapped element
-   keeps :hover until you tap somewhere else, so the brightness would
-   stay stuck on the last button pressed. */
-@media (hover: hover) and (pointer: fine) {
-  button:hover,
-  .tap:hover {
-    filter: brightness(1.07);
-  }
-}
-
-button:active,
-.tap:active {
-  transform: scale(0.96);
-}
-
-/* ---------------------------- ink fill ----------------------------
-   snap.cosmospay.lat's hover: a circle of --ink grows from where the pointer entered
-   until it paints the whole control, and shrinks back towards where it left.
-   src/lib/ink.ts writes the centre (--ink-x/y) and the radius that reaches the farthest
-   corner (--ink-size); without them (keyboard focus) it grows from the centre, and 150%
-   of the width covers any control wider than it is tall. The control sets --ink and
-   --ink-text; only the scale changes, so the centre never drifts. */
+/* Existing .ink controls have their own padding (or a centred icon target).
+   Fade a neutral surface in place; preserve text, icon and focus-ring contrast. */
 .ink {
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  transition: transform 0.13s var(--ease-out), color var(--dur-base) var(--ease-out), border-color var(--dur-base) var(--ease-out),
-    background-color var(--dur-base) var(--ease-out);
 }
-
 .ink::before {
   content: '';
   position: absolute;
-  left: var(--ink-x, 50%);
-  top: var(--ink-y, 50%);
+  inset: 0;
   z-index: -1;
-  width: var(--ink-size, 150%);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: var(--ink, var(--text));
-  transform: translate(-50%, -50%) scale(0);
-  transition: transform 0.55s var(--ease-ink);
+  border-radius: inherit;
+  background: var(--interaction-hover-bg);
+  opacity: 0;
+  transition: opacity var(--dur-quick) var(--ease-out);
   pointer-events: none;
 }
-
-/* Keyboard focus and an open menu keep the control painted. */
-.ink:focus-visible,
-.ink[aria-expanded='true'] {
-  color: var(--ink-text, var(--bg));
-}
-
-.ink:focus-visible::before,
-.ink[aria-expanded='true']::before {
-  transform: translate(-50%, -50%) scale(1);
-}
-
-/* An outlined button inking blue takes the blue outline too, or a black ring would
-   frame the blue fill. */
-.btn-ghost.ink:focus-visible {
-  border-color: var(--brand);
-}
-
-/* Touch has no hover: a tap would leave the control painted. The brightness bump the
-   other buttons get would fight the fill, so it is off here. */
+.ink[aria-expanded='true']:not(:disabled)::before,
+.ink:active:not(:disabled):not([aria-disabled='true'])::before { opacity: 1; }
 @media (hover: hover) and (pointer: fine) {
-  .ink:hover:not(:disabled) {
-    color: var(--ink-text, var(--bg));
-    filter: none;
-  }
+  .ink:hover:not(:disabled):not([aria-disabled='true'])::before { opacity: 1; }
+}
+/* A primary action stays primary in every state. */
+.btn-primary.ink::before { background: var(--primary-hover-bg); }
+.btn-primary.ink:active:not(:disabled)::before { background: var(--primary-pressed-bg); }
 
-  .ink:hover:not(:disabled)::before {
-    transform: translate(-50%, -50%) scale(1);
+/* Standalone actions share the primary palette without changing their handlers. */
+@media (hover: hover) and (pointer: fine) {
+  .enable-receiving-cta:hover:not(:disabled), .confirm-sign-submit:hover:not(:disabled) {
+    background: var(--primary-hover-bg); color: var(--primary-text);
   }
-
-  .btn-ghost.ink:hover:not(:disabled) {
-    border-color: var(--brand);
+  :is(.pill-btn, .confirm-sign-cancel, .scan-device-btn, .sign-tx-paste, .sign-tx-copy, .fiat-chip-btn):hover:not(:disabled) {
+    background: var(--interaction-hover-bg);
   }
+}
+:is(.enable-receiving-cta, .confirm-sign-submit):active:not(:disabled) {
+  background: var(--primary-pressed-bg); color: var(--primary-text);
+}
+:is(.pill-btn, .confirm-sign-cancel, .scan-device-btn, .sign-tx-paste, .sign-tx-copy, .fiat-chip-btn):active:not(:disabled) {
+  background: var(--interaction-hover-bg);
 }
 
 /* A theme flip cross-fades (document.startViewTransition in src/state/usePreferences.ts)
@@ -276,8 +214,18 @@ button:active,
   animation-timing-function: var(--ease-in-out, cubic-bezier(0.45, 0, 0.55, 1));
 }
 
+/* Home entrances reuse the fixed stagger ladder; no perpetual motion. */
+.home-balance, .home-actions { animation: fadeUp var(--dur-slow) var(--ease-out) both; }
+.home-asset-list .asset-row { animation-name: fadeUp; animation-duration: var(--dur-base); animation-timing-function: var(--ease-out); animation-fill-mode: backwards; }
+
 /* respect users who prefer less motion. MUST STAY LAST (see file header). */
 @media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: 0s !important; }
+  .home *, .home *::before, .home *::after, .bottom-nav *,
+  .more *, .more *::before, .more *::after {
+    animation: none !important;
+    transition: none !important;
+  }
   button,
   input,
   textarea,
