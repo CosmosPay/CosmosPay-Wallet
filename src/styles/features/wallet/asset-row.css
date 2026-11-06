@@ -118,3 +118,9 @@
 .asset-row-col {
   display: none;
 }
+
+/* The content aligns to the gutter: feedback stays on the label. */
+.asset-row-name { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: text-decoration-color var(--dur-quick) var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .asset-row:hover:not(:disabled):not([aria-disabled='true']) .asset-row-name { text-decoration-color: var(--muted); }
+}

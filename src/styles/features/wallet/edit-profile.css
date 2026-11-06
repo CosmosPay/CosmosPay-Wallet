@@ -1,10 +1,56 @@
-/* Edit profile screen (src/features/wallet/EditProfile.tsx). */
-.edit-profile-label { margin-bottom: 7px; } /* on .label-up */
-.edit-profile-err { font-size: 12px; font-weight: 700; color: var(--danger); margin: -8px 2px 12px; }
-.edit-profile-genders { margin-bottom: 14px; } /* on .row.g8 */
-.edit-profile-gender { flex: 1; height: 44px; border-radius: 999px; font-size: 12.5px; font-weight: 800; cursor: pointer; }
-.edit-profile-gender-on { background: var(--primary-bg); color: var(--primary-text); border: 1px solid var(--primary-border); }
-.edit-profile-gender-off { color: var(--text); } /* surface from .glass-soft */
-/* read-only birthdate: shown but not editable (age gates must stay trustworthy) */
-.edit-profile-dob { border-radius: 999px; height: 54px; display: flex; align-items: center; padding: 0 20px; font-size: 15px; font-weight: 600; color: var(--muted); margin-bottom: 8px; } /* on .glass */
-.edit-profile-dob-note { font-size: 12px; color: var(--dim); font-weight: 600; margin: 0 2px 4px; }
+/* src/features/wallet/EditProfile.tsx — spacious profile form, flat controls. */
+.edit-profile .screen-header { margin-bottom: 32px; }
+.edit-profile .screen-header-title { font-size: clamp(28px, 4vw, 34px); letter-spacing: -0.8px; }
+.edit-profile-fields { display: flex; flex-direction: column; gap: 26px; }
+.edit-profile-field { display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.5; color: var(--text-soft); }
+.edit-profile .input {
+  height: 52px;
+  padding: 0 16px;
+  border-radius: 6px !important;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+  background: transparent;
+  transition: border-color 140ms ease;
+}
+.edit-profile .input:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.edit-profile .input[aria-invalid='true'] { border-color: var(--danger); }
+.edit-profile-err { margin: 0; font-size: 12px; color: var(--danger); }
+.edit-profile-genders { margin: 0; padding: 0; border: 0; min-width: 0; }
+.edit-profile-genders legend { padding: 0; margin-bottom: 10px; font-size: 14px; color: var(--text-soft); }
+.edit-profile-gender-options { display: flex; flex-wrap: wrap; gap: 10px; }
+.edit-profile-gender { position: relative; cursor: pointer; flex: 1 0 auto; max-width: 100%; }
+.edit-profile-gender > span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+.edit-profile-gender input:checked + span {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--line);
+}
+.edit-profile-gender input:focus-visible + span { outline: 2px solid var(--brand); outline-offset: 2px; }
+.edit-profile-dob { position: relative; }
+.edit-profile-dob .input { padding-right: 48px; color: var(--text-soft); }
+.edit-profile-dob > svg { position: absolute; right: 16px; top: 16px; width: 20px; height: 20px; color: var(--muted); pointer-events: none; }
+.edit-profile-dob-note { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.edit-profile-dob-note > svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
+.edit-profile-age { display: block; margin-top: 4px; }
+.edit-profile-actions { margin-top: 36px; }
+.edit-profile-actions .btn-primary { border-radius: 6px !important; font-size: 14px; font-weight: 600; }
+@media (hover: hover) and (pointer: fine) {
+  .edit-profile .input:not(:read-only):not(:focus):not([aria-invalid='true']):hover { border-color: var(--line); }
+  .edit-profile-gender:hover > span { color: var(--text); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .edit-profile .input, .edit-profile-gender > span { transition: none; }
+}

@@ -1,0 +1,85 @@
+/* src/features/wallet/HomeInsights.tsx — portfolio breakdown inside the Home tab. */
+.insights {
+  padding-top: 24px;
+  font-size: 13px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+.insights-heading h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.insights-heading p,
+.insights-empty {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.insights-section {
+  margin-top: 24px;
+}
+
+.insights-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.insights-section-head h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.insights-section-head > span,
+.insights-count,
+.insights-detail {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.insights-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.insights-network,
+.insights-position {
+  display: grid;
+  align-items: center;
+  column-gap: 12px;
+  padding-block: 10px;
+  overflow-wrap: anywhere;
+}
+
+.insights-network {
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) 6ch;
+}
+
+.insights-network .insights-detail,
+.insights-value,
+.insights-numbers {
+  text-align: right;
+}
+
+.insights-position {
+  grid-template-columns: 24px minmax(0, 1fr) minmax(0, auto);
+}
+
+.insights-position-name,
+.insights-numbers {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
