@@ -1237,6 +1237,33 @@ when the account only ever changed the commission: 150 bps on the public key, th
 rate with one. `store.publicAccess` is what a screen reads to show that difference — the
 percentage displayed in a quote is always the gateway's own number, never this flag.
 
+## Buying with local money is a widget, opened with the wallet's address fixed
+
+Fiat → "Comprar con tu moneda local (P2P)" (`features/fiat/P2pBuy.tsx`, screen `p2p-buy`) sells
+stablecoins from P2P sellers through El Dorado (`lib/eldorado.ts`, `constants/eldorado.ts`). It
+needs no BlindPay receiver, so both fiat entry screens offer it, before the KYC form too. Five
+rules:
+
+- **The wallet fills the order in; the widget takes it.** Currencies, payment methods and BUY
+  prices are public, keyless and CORS-open, so the screen reads them and shows an ESTIMATE
+  (price division, rounded down). A firm quote (`/quote/buy`) needs Cosmos's ClientID and
+  ReferralID, which we do not have yet; the widget shows the quote, fees included, before
+  anything is paid. `PUBLIC_ELDORADO_CLIENT_ID` / `_REFERRAL_ID` are optional: with them the URL
+  also carries an `externalReferenceId` and El Dorado attributes the order to Cosmos.
+- **The recipient is fixed, or nothing opens.** The widget's undocumented `address` parameter
+  (found in its bundle on 2026-11-05) makes it treat that 0x account as the connected wallet;
+  without it the person is asked to connect some other wallet, and what they bought lands
+  there. `p2pWidgetUrl` returns null unless the address is the wallet's own EVM one
+  (`store.addressOn('arb')`). If El Dorado ever drops that parameter, stop offering the screen
+  rather than open a widget that asks for a wallet.
+- **It opens outside the wallet** (`lib/openExternal.ts`), never in an iframe: the widget is an
+  app with its own login, a camera KYC and a payment step that outlives the popup.
+- **Test mode is the sandbox.** `widget-testnet` / `api-testnet`, and only El Dorado's test USDT
+  on Arbitrum Sepolia: any other token or chain fails the order there. Completing a sandbox order
+  needs a market maker ad on El Dorado's DEV app, which is Cosmos's to run.
+- **The provider is never named in the copy** (the developer platform's rule); the widget
+  carries its own brand. Code and comments keep the real name.
+
 ## Validation lives in `src/lib/`, never in a component
 
 **No `.tsx` file computes validity from a regex or a length literal.** Import a named

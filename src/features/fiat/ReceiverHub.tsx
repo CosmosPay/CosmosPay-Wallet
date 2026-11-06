@@ -55,6 +55,12 @@ export function ReceiverHub({ store, receiverId }: { store: WalletStore; receive
         title={t('fiat.offramp')} desc={t('fiat.offrampDesc')}
         onClick={() => (st.approved ? store.setScreen('withdraw') : store.flash(t('fiat.needApproved'), 'info'))}
       />
+      {/* Buying from P2P sellers needs no receiver and no KYC here: the widget runs its own. */}
+      <OpCard
+        icon={<path d="M7 7h10l-3-3M17 17H7l3 3M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
+        title={t('p2p.entryTitle')} desc={t('p2p.entryDesc')}
+        onClick={() => store.setScreen('p2p-buy')}
+      />
 
       {/* Deposit/payout accounts (per currency / rail). */}
       <div className="row between fiat-accounts-head">
