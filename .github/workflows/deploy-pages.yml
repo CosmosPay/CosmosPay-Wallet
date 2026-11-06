@@ -54,6 +54,8 @@ jobs:
           # lets it rotate without a redeploy. See src/lib/publicKey.ts.
           PUBLIC_COSMOS_PUBLIC_KEY_DEV: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_DEV }}
           PUBLIC_COSMOS_PUBLIC_KEY_PROD: ${{ vars.PUBLIC_COSMOS_PUBLIC_KEY_PROD }}
+          PUBLIC_ELDORADO_CLIENT_ID: ${{ vars.PUBLIC_ELDORADO_CLIENT_ID }}
+          PUBLIC_ELDORADO_REFERRAL_ID: ${{ vars.PUBLIC_ELDORADO_REFERRAL_ID }}
 
       - uses: actions/configure-pages@v6
         with:

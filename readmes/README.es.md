@@ -1,12 +1,13 @@
-# Cosmos Pay · Wallet no custodial de Stellar
+# Cosmos Pay · Wallet multichain no custodial
 
 [English](../README.md) · **Español** · [Português](README.pt.md) · [Deutsch](README.de.md) · [Français](README.fr.md)
 
-Wallet **no custodial** para la red **Stellar**, construida con **Astro + Vite + React (TSX)**.
-Se distribuye como **extensión de navegador** (MV3 · Chrome / Edge / Firefox — popup **y** panel
-lateral), **app de escritorio** (Tauri · Windows / macOS / Linux), **app móvil** (Tauri · Android /
-iOS) y web. Interfaz **glassmorphism** animada,
-tema claro y oscuro, **5 idiomas** (EN/ES/PT/DE/FR; inglés por defecto, y un enlace puede indicar uno: `?lang=es`), multi-wallet bajo una sola
+Wallet **no custodial** para **Stellar y otras 34 redes** (todas las que liquidan los swaps entre
+redes: las cadenas EVM, Solana, Bitcoin, XRP Ledger, Tron, TON, NEAR, Sui, Aptos, Cardano, Starknet
+y más), construida con **Astro + Vite + React (TSX)**. Una sola frase de recuperación es una dirección
+en cada una. Se distribuye como **extensión de navegador** (MV3 · Chrome / Edge / Firefox, popup **y**
+panel lateral), **app de escritorio** (Tauri · Windows / macOS / Linux), **app móvil** (Tauri ·
+Android / iOS) y web. Interfaz plana y mate, tema claro y oscuro, **5 idiomas** (EN/ES/PT/DE/FR; inglés por defecto, y un enlace puede indicar uno: `?lang=es`), multi-wallet bajo una sola
 contraseña y proveedor para dapps (`window.cosmosWallet`) para que las webs pidan pagos y firmas.
 
 > **No custodial de verdad:** las claves se generan y cifran en tu dispositivo. Ni la frase de
@@ -17,26 +18,27 @@ contraseña y proveedor para dapps (`window.cosmosWallet`) para que las webs pid
 
 | Función | Detalle |
 |---|---|
-| Crear / importar / exportar wallet | BIP-39 de 12 palabras + derivación **SEP-5** (`m/44'/148'/0'`); importa desde frase o clave secreta (`S…`) |
-| Vault cifrado | **AES-256-GCM**, clave derivada con **PBKDF2** (210k iteraciones); el desbloqueo descifra solo en memoria |
-| Auto-bloqueo | La sesión se descarta tras 5 minutos de inactividad; volver a entrar exige la contraseña |
+| Crear / importar / exportar wallet | BIP-39 de 12 palabras + derivación **SEP-5** (`m/44'/148'/0'`), más una dirección por familia de redes en las rutas de las wallets más usadas; importa desde frase o clave secreta (`S…`) |
+| Vault cifrado | **AES-256-GCM**, clave derivada con **PBKDF2** (600k iteraciones; las cajas antiguas de 210k se vuelven a sellar en el primer desbloqueo); el desbloqueo descifra solo en memoria |
+| Sesión y auto-bloqueo | La sesión sobrevive a una recarga, al cierre del popup y al reinicio del navegador, y vuelve a la pantalla en la que estaba, hasta que el auto-bloqueo por inactividad (15 min, 1 h, 1 día por defecto o 7 días, en Ajustes) la descarta |
 | Guardia de firma | `assertSafeToSign` decodifica cada XDR antes de firmarlo y rechaza lo que no encaja con el flujo (ver Modelo de seguridad) |
-| Saldos, enviar y recibir | Horizon; QR para recibir; el envío de XLM crea la cuenta destino si no existe |
-| Swap | Vía el gateway de Cosmos Pay (cotización automática, protección de slippage) |
-| Fiat (on/off-ramp) | Receiver BlindPay (KYC) — depósitos y retiros, **solo 18+** |
-| Historial | Últimas operaciones con iconos por color (verde entra / rojo sale / blanco neutro) + marcador génesis |
+| Saldos, enviar y recibir | Todas las redes, cada una leída de su propio endpoint público (una lectura fallida se muestra como no disponible, nunca como cero). Envía en cada red en la que la wallet tiene dirección; QR para recibir; el envío de XLM crea la cuenta destino si no existe |
+| Swap | Vía el gateway de Cosmos Pay (cotización automática, protección de slippage). Paga desde Stellar (DEX), Solana (Jupiter) o Monad (Kuru Flow), o entre redes con NEAR Intents (mainnet) |
+| Fiat (on/off-ramp) | Receiver BlindPay (KYC): depósitos y retiros por PIX, SPEI, transferencias en ARS (CBU/CVU/alias), PSE, TED, ACH, wire y RTP, **solo 18+** |
+| Comprar con moneda local (P2P) | El widget de El Dorado, abierto con la orden completa y la dirección de Arbitrum de la propia wallet fija como destino: transferencia bancaria (AR), PIX, Nequi, Bancolombia, Yape, Plin, Zelle y más, pagados a vendedores P2P; USDC o USDT llegan en Arbitrum. El inicio de sesión y el KYC ocurren en el widget; el modo de prueba usa el sandbox de El Dorado (USDT de prueba en Arbitrum Sepolia). IDs de integrador opcionales: `PUBLIC_ELDORADO_CLIENT_ID` / `PUBLIC_ELDORADO_REFERRAL_ID`. Ver [src/lib/eldorado.ts](../src/lib/eldorado.ts) |
+| Actividad | La pestaña Actividad de Inicio, por días: un envío en rojo, el dinero recibido en verde, un swap en azul y una comisión en tinta con su propia marca de recibo |
 | Favoritos y mercados | Marca activos con estrella para fijarlos en el top-5; precios en vivo (CoinGecko) con números animados |
 | Multi-wallet | Crear / importar / cambiar bajo una contraseña; correo editable y saludos según género |
 | Proveedor para dapps | `window.cosmosWallet` (estilo SEP-43): `getAddress`, `getNetwork`, `signTransaction`, `signMessage`, `requestPayment` |
 | Enlaces SEP-7 | `web+stellar:pay` vía proveedor, protocol handler en Firefox, keyword `pay` en la barra y detección automática |
 | Superficies de la extensión | Popup (400×600) y panel lateral, con botón de preferencia persistente |
-| Modo desarrollador | Endpoints re-apuntables en vivo (API de precios, Developer Platform, gateway) desde Ajustes |
+| Modo desarrollador | Endpoints re-apuntables en vivo (API de precios, gateway de pagos, los dos servidores de recuperación, RPC de Solana / Monad) desde Ajustes |
 
 La derivación de claves está verificada contra el **vector de prueba oficial SEP-5**.
 
 ## Modelo de seguridad
 
-1. Al crear/importar eliges una **contraseña**; la clave AES se deriva con `PBKDF2(contraseña, salt, 210 000, SHA-256)`.
+1. Al crear/importar eliges una **contraseña**; la clave AES se deriva con `PBKDF2(contraseña, salt, 600 000, SHA-256)`.
 2. Frase + clave secreta se sellan con `AES-256-GCM` (IV aleatorio) y se guardan cifradas
    (`tauri-plugin-store` en escritorio y móvil, `localStorage` en web/extensión — en
    [src/lib/storage.ts](../src/lib/storage.ts) está por qué el almacenamiento propio de una
@@ -47,8 +49,11 @@ La derivación de claves está verificada contra el **vector de prueba oficial S
    **Passkey en vez de contraseña** (web, extensión, escritorio y las apps en Android 9+ / iOS 18+): la contraseña de la app pasa a
    ser 32 bytes aleatorios sellados bajo la salida PRF de WebAuthn de la passkey, así que la
    huella abre el dispositivo y la misma passkey abre la copia en la nube en el siguiente.
-5. **Auto-bloqueo por inactividad:** una sesión abierta guarda la clave descifrada, así que tras
-   5 minutos sin interacción se descarta y se vuelve a pedir la contraseña.
+5. **Auto-bloqueo por inactividad:** una sesión abierta guarda la clave del vault, así que el
+   auto-bloqueo (Ajustes: 15 min, 1 h, 1 día por defecto, 7 días) la descarta y se vuelve a pedir
+   la contraseña. Hasta entonces la sesión se conserva entre recargas bajo una clave del navegador
+   no extraíble ([src/lib/sessionKeep.ts](../src/lib/sessionKeep.ts)); eso no protege de quien use el
+   mismo perfil del navegador, y por eso existe el auto-bloqueo.
 6. **Nada se firma sin decodificarlo antes.** Todo sobre lo que la wallet firma y que no construyó
    ella misma (el envelope que devuelve el gateway, el que entrega una dapp) pasa por
    `assertSafeToSign`: decodifica el XDR, comprueba que el origen somos nosotros, permite solo las
@@ -284,9 +289,14 @@ El móvil y el PC deben estar en el mismo Wi-Fi, y en Windows esa red debe estar
 
 ## Redes
 
-**Testnet** (por defecto — XLM gratis vía Friendbot) ⇄ **Mainnet** desde el selector circular de
-red del header; se pueden añadir redes personalizadas (Horizon + passphrase propios). La misma
-frase deriva la misma cuenta en todas las redes. Una cuenta nueva en Mainnet necesita ≥ **1 XLM**.
+**Testnet** (por defecto, XLM gratis vía Friendbot) ⇄ **Mainnet** desde la píldora de red del header
+de Inicio; se pueden añadir redes Stellar personalizadas (Horizon + passphrase propios). La píldora
+mueve **todas** las redes: en modo de prueba cada una está en su propia red de prueba (Solana devnet,
+Monad testnet, las cadenas EVM de prueba y el resto en
+[src/constants/testnets.ts](../src/constants/testnets.ts)), y una red sin red de prueba aquí no muestra
+dirección, así que el modo de prueba nunca lee ni ofrece una red principal. Las 35 redes están en
+[src/constants/networks.ts](../src/constants/networks.ts). Una cuenta Stellar nueva en Mainnet necesita
+≥ **1 XLM**.
 
 ## Aviso
 

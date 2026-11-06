@@ -1,10 +1,13 @@
-# Cosmos Pay · Nicht-verwahrende Stellar-Wallet
+# Cosmos Pay · Nicht-verwahrende Multichain-Wallet
 
 [English](../README.md) · [Español](README.es.md) · [Português](README.pt.md) · **Deutsch** · [Français](README.fr.md)
 
-**Nicht-verwahrende** Wallet für das **Stellar**-Netzwerk, gebaut mit **Astro + Vite + React (TSX)**.
-Erhältlich als **Browser-Erweiterung** (MV3 · Chrome / Edge / Firefox — Popup **und** Seitenleiste),
-**Mobile App** (Tauri · Android / iOS) und Web. Animiertes **Glassmorphism**-UI, heller und
+**Nicht-verwahrende** Wallet für **Stellar und 34 weitere Netzwerke** (alle, die die netzwerkübergreifenden
+Swaps abwickeln: die EVM-Chains, Solana, Bitcoin, XRP Ledger, Tron, TON, NEAR, Sui, Aptos, Cardano,
+Starknet und mehr), gebaut mit **Astro + Vite + React (TSX)**. Eine Wiederherstellungsphrase ist auf
+jedem davon eine Adresse. Erhältlich als **Browser-Erweiterung** (MV3 · Chrome / Edge / Firefox,
+Popup **und** Seitenleiste), **Desktop-App** (Tauri · Windows / macOS / Linux), **Mobile App**
+(Tauri · Android / iOS) und Web. Flaches, mattes UI, heller und
 dunkler Modus, **5 Sprachen** (EN/ES/PT/DE/FR; standardmäßig Englisch, ein Link kann eine vorgeben: `?lang=de`), Multi-Wallet unter einem
 Passwort und ein Dapp-Provider (`window.cosmosWallet`) für Zahlungen und Signaturen.
 
@@ -17,25 +20,26 @@ Passwort und ein Dapp-Provider (`window.cosmosWallet`) für Zahlungen und Signat
 | Funktion | Detail |
 |---|---|
 | Wallet erstellen / importieren / exportieren | 12-Wörter-BIP-39 + **SEP-5**-Ableitung (`m/44'/148'/0'`); Import per Phrase oder geheimem Schlüssel (`S…`) |
-| Verschlüsselter Tresor | **AES-256-GCM**, Schlüssel via **PBKDF2** (210k Iterationen); Entsperren entschlüsselt nur im Speicher |
-| Automatische Sperre | Die Sitzung wird nach 5 Minuten ohne Interaktion verworfen; danach ist das Passwort wieder nötig |
+| Verschlüsselter Tresor | **AES-256-GCM**, Schlüssel via **PBKDF2** (600k Iterationen; ältere 210k-Boxen werden beim ersten Entsperren neu versiegelt); Entsperren entschlüsselt nur im Speicher |
+| Sitzung & automatische Sperre | Die Sitzung übersteht ein Neuladen, ein geschlossenes Popup und einen Browser-Neustart und kehrt zum letzten Bildschirm zurück, bis die Inaktivitätssperre (15 Min., 1 Std., standardmäßig 1 Tag oder 7 Tage, in den Einstellungen) sie verwirft |
 | Signatur-Wächter | `assertSafeToSign` dekodiert jedes XDR vor dem Signieren und lehnt ab, was nicht zum Ablauf passt (siehe Sicherheitsmodell) |
-| Guthaben, Senden & Empfangen | Horizon; QR zum Empfangen; XLM-Versand erstellt das Zielkonto bei Bedarf |
+| Guthaben, Senden & Empfangen | Jedes Netzwerk, jeweils über seinen eigenen öffentlichen Endpunkt gelesen (ein fehlgeschlagener Abruf erscheint als nicht verfügbar, nie als null). Senden auf jedem Netzwerk mit einer Adresse der Wallet; QR zum Empfangen; XLM-Versand erstellt das Zielkonto bei Bedarf |
 | Swap | Über das Cosmos-Pay-Gateway (Auto-Quotes, Slippage-Schutz) |
-| Fiat (On/Off-Ramp) | BlindPay-Receiver (KYC) — Ein- und Auszahlungen, **nur 18+** |
-| Verlauf | Letzte Vorgänge mit Farbcodes (grün rein / rot raus / weiß neutral) + Genesis-Marker |
+| Fiat (On/Off-Ramp) | BlindPay-Receiver (KYC): Ein- und Auszahlungen per PIX, SPEI, ARS-Überweisung, PSE, TED, ACH, Wire und RTP, **nur 18+** |
+| Mit Landeswährung kaufen (P2P) | Das Widget von El Dorado, mit ausgefüllter Order und der eigenen Arbitrum-Adresse der Wallet als festem Empfänger geöffnet: Banküberweisung (AR), PIX, Nequi, Bancolombia, Yape, Plin, Zelle und mehr, an P2P-Verkäufer gezahlt; USDC oder USDT kommen auf Arbitrum an. Anmeldung und KYC finden im Widget statt; der Testmodus nutzt die Sandbox von El Dorado. Siehe [src/lib/eldorado.ts](../src/lib/eldorado.ts) |
+| Aktivität | Der Aktivität-Tab der Startseite, nach Tagen: ein Versand rot, empfangenes Geld grün, ein Swap blau, eine Provision in Tinte mit eigenem Belegsymbol |
 | Favoriten & Märkte | Assets anpinnen (Top-5); Live-Preise (CoinGecko) mit animierten Zahlen |
 | Multi-Wallet | Erstellen / importieren / wechseln unter einem Passwort; editierbare E-Mail, geschlechtergerechte Begrüßungen |
 | Dapp-Provider | `window.cosmosWallet` (SEP-43-Stil): `getAddress`, `getNetwork`, `signTransaction`, `signMessage`, `requestPayment` |
 | SEP-7-Links | `web+stellar:pay` via Provider, Firefox-Protocol-Handler, Omnibox-Keyword `pay`, Adressleisten-Erkennung |
 | Erweiterungs-Oberflächen | Popup (400×600) und Seitenleiste, mit persistenter Präferenz |
-| Entwicklermodus | Live umstellbare Endpunkte (Preis-API, Developer Platform, Gateway) in den Einstellungen |
+| Entwicklermodus | Live umstellbare Endpunkte (Preis-API, Zahlungs-Gateway, die zwei Wiederherstellungsserver, Solana-/Monad-RPC) in den Einstellungen |
 
 Die Schlüsselableitung ist gegen den offiziellen **SEP-5-Testvektor** verifiziert.
 
 ## Sicherheitsmodell
 
-1. Beim Erstellen/Import wählst du ein **Passwort**; der AES-Schlüssel kommt aus `PBKDF2(Passwort, Salt, 210 000, SHA-256)`.
+1. Beim Erstellen/Import wählst du ein **Passwort**; der AES-Schlüssel kommt aus `PBKDF2(Passwort, Salt, 600 000, SHA-256)`.
 2. Phrase + geheimer Schlüssel werden mit `AES-256-GCM` (zufälliger IV) versiegelt und
    verschlüsselt gespeichert (`tauri-plugin-store` mobil, `localStorage` web/Erweiterung).
 3. Entsperren entschlüsselt **nur im Speicher**; ein falsches Passwort scheitert am GCM-Tag.
@@ -44,8 +48,10 @@ Die Schlüsselableitung ist gegen den offiziellen **SEP-5-Testvektor** verifizie
    **Passkey statt Passwort** (Web, Erweiterung, Desktop und die Apps ab Android 9 / iOS 18): Das App-Passwort wird zu 32
    Zufallsbytes, versiegelt unter der WebAuthn-PRF-Ausgabe des Passkeys — der Fingerabdruck
    öffnet das Gerät, und derselbe Passkey öffnet die Cloud-Sicherung auf dem nächsten.
-5. **Automatische Sperre bei Inaktivität:** eine offene Sitzung hält den entschlüsselten Schlüssel,
-   deshalb wird sie nach 5 Minuten ohne Interaktion verworfen und das Passwort erneut verlangt.
+5. **Automatische Sperre bei Inaktivität:** eine offene Sitzung hält den Tresorschlüssel, deshalb
+   verwirft die automatische Sperre (Einstellungen: 15 Min., 1 Std., standardmäßig 1 Tag, 7 Tage)
+   sie und das Passwort wird erneut verlangt. Bis dahin bleibt die Sitzung über Neuladen hinweg
+   unter einem nicht exportierbaren Browser-Schlüssel erhalten.
 6. **Nichts wird signiert, was nicht vorher dekodiert wurde.** Alles, was die Wallet signiert und
    nicht selbst gebaut hat (das Envelope vom Gateway, das einer Dapp), läuft durch
    `assertSafeToSign`: dekodiert das XDR, prüft, dass die Quelle wir sind, lässt nur die
