@@ -2,6 +2,17 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.18.0] - 2026-11-06
+
+### Features
+- Buy stablecoins with local money through the P2P widget (28623a1)
+
+### Miscellaneous
+- Sync the community server's spec (P2P ramps) (b53e27f)
+
+### Documentation
+- Bring the READMEs up to date with the wallet as it is (cab6470)
+
 ## [1.17.1] - 2026-11-05
 
 ### Bug Fixes
