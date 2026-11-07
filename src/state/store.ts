@@ -277,7 +277,7 @@ import {
   recoverySetupSponsored,
 } from '@/lib/cosmospay';
 import { useToast } from '@/state/useToast';
-import { usePreferences, applySavedThemeEarly, savedRequireConfirm } from '@/state/usePreferences';
+import { usePreferences, applyLangEarly, applySavedThemeEarly, savedRequireConfirm } from '@/state/usePreferences';
 import { useSigningGate } from '@/state/useSigningGate';
 import { parseStellarQr } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
@@ -298,6 +298,8 @@ export type { Theme } from '@/state/usePreferences';
 
 // Applied at module load, before first paint, so there is no flash of the wrong theme.
 applySavedThemeEarly();
+// Likewise the language: a link's `?lang=` / `/wallet/xx/` is adopted before anything renders.
+applyLangEarly();
 
 // The screen list, each screen's fallback "back" target and which ones show the
 // bottom nav all live in one typed table now — see src/lib/screens.ts.

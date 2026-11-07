@@ -2,9 +2,10 @@
    Keyframes + the motion rules that apply across the whole app.
    Every @keyframes in the project is declared here, so component sheets
    only ever reference them by name.
-   Loaded by src/pages/index.astro after base.css.
-   ORDER MATTERS: reduced-motion overrides stay last so they win against
-   the entrance and transition rules above.
+   Loaded by src/app/WalletDocument.astro after base.css.
+   ORDER MATTERS: the reduced-motion block must stay LAST — it beats the
+   `popIn` rule below on `!important` at equal specificity, so the cascade
+   resolves it by source order.
    ===================================================================== */
 
 @keyframes pop {

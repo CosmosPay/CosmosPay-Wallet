@@ -1,52 +1,136 @@
 /**
- * Lightweight i18n. Five languages: Spanish, English, Portuguese, German, French.
- * The active language is auto-detected from the device on first run and can be
- * overridden by the user (persisted in localStorage). `t(key, params)` resolves
- * a string for the active language, falling back to English then the key itself.
+ * Lightweight i18n. Five languages: English, Spanish, Portuguese, German, French.
+ *
+ * English is the default. A link can carry a language (`?lang=xx`, or an entry page
+ * `/<base>/xx/`), and the person can choose one, persisted in localStorage — the order is in
+ * `src/constants/i18n.ts`, and the device's own language is never consulted. `t(key, params)`
+ * resolves a string for the active language, falling back to English then the key itself.
  */
-export type Lang = 'es' | 'en' | 'pt' | 'de' | 'fr';
+import { DEFAULT_LANG, LANG_CODES, LANG_QUERY_PARAM, LANG_STORAGE_KEY } from '@/constants/i18n';
 
-/** Each language by its own name; its flag is drawn by src/ui/LangFlag.tsx. */
+export type Lang = (typeof LANG_CODES)[number];
+
+/** Each language by its own name, English first; its flag is drawn by src/ui/LangFlag.tsx. */
 export const LANGUAGES: { code: Lang; name: string }[] = [
-  { code: 'es', name: 'Español' },
   { code: 'en', name: 'English' },
+  { code: 'es', name: 'Español' },
   { code: 'pt', name: 'Português' },
   { code: 'de', name: 'Deutsch' },
   { code: 'fr', name: 'Français' },
 ];
 
-const LANG_KEY = 'cosmos.lang';
-const SUPPORTED: Lang[] = ['es', 'en', 'pt', 'de', 'fr'];
-
-/** Map a navigator.language like "pt-BR" to one of the supported languages. */
-export function detectLang(): Lang {
-  try {
-    const langs = navigator.languages?.length ? navigator.languages : [navigator.language];
-    for (const l of langs) {
-      const base = (l || '').slice(0, 2).toLowerCase() as Lang;
-      if (SUPPORTED.includes(base)) return base;
-    }
-  } catch {
-    /* non-browser */
-  }
-  return 'en';
+export function isLang(value: unknown): value is Lang {
+  return typeof value === 'string' && (LANG_CODES as readonly string[]).includes(value);
 }
 
+/**
+ * The language a link names, or null. Forgiving about the spelling — `EN`, `en-US`, `pt_BR` —
+ * because people type these by hand; strict about what it names: anything that is not one of
+ * the five is ignored, never guessed at.
+ */
+export function parseLang(value: string | null | undefined): Lang | null {
+  if (!value) return null;
+  const primary = value.trim().toLowerCase().split(/[-_]/)[0];
+  return isLang(primary) ? primary : null;
+}
+
+/** `<base>xx/` (also `<base>xx` and `<base>xx/index.html`): an entry page for one language. */
+function pathLang(pathname: string, base: string): Lang | null {
+  if (!pathname.startsWith(base)) return null;
+  const m = /^([A-Za-z]{2})(?:\/(?:index\.html)?)?$/.exec(pathname.slice(base.length));
+  return m ? parseLang(m[1]) : null;
+}
+
+/** What a page's URL says about the language. */
+export interface UrlLang {
+  lang: Lang;
+  /** The same address without it: the path, the rest of the query, the hash. */
+  rest: string;
+}
+
+/**
+ * The language a page was opened with: `?lang=xx` first, else an entry page `<base>xx/`
+ * (`/wallet/en/`). `base` is the build's BASE_URL.
+ *
+ * `rest` drops what was read — the parameter, and the language segment back to `<base>` — and
+ * keeps everything else (`?uri=` for SEP-7, the hash). Once adopted the language is the
+ * person's choice, so it leaves the address bar: a reload, or a link copied from it, must not
+ * re-apply the link's language over a choice made since.
+ */
+export function readUrlLang(href: string, base: string): UrlLang | null {
+  let url: URL;
+  try {
+    url = new URL(href);
+  } catch {
+    return null;
+  }
+  const root = base.endsWith('/') ? base : `${base}/`;
+  const fromQuery = parseLang(url.searchParams.get(LANG_QUERY_PARAM));
+  const fromPath = pathLang(url.pathname, root);
+  const lang = fromQuery ?? fromPath;
+  if (!lang) return null;
+  if (fromQuery) url.searchParams.delete(LANG_QUERY_PARAM);
+  if (fromPath) url.pathname = root;
+  return { lang, rest: url.pathname + url.search + url.hash };
+}
+
+/**
+ * A choice made during this page load, for a browser that refuses to store it (blocked
+ * localStorage): the language still holds until the tab closes.
+ */
+let chosenThisLoad: Lang | null = null;
+
+/**
+ * The active language: the saved choice, else English. A language a link carried is the saved
+ * choice by the time anything renders — `adoptUrlLang` stores it first.
+ */
 export function savedLang(): Lang {
   try {
-    const l = localStorage.getItem(LANG_KEY) as Lang | null;
-    if (l && SUPPORTED.includes(l)) return l;
+    const l = localStorage.getItem(LANG_STORAGE_KEY);
+    if (isLang(l)) return l;
   } catch {
-    /* ignore */
+    /* storage blocked */
   }
-  return detectLang();
+  return chosenThisLoad ?? DEFAULT_LANG;
 }
 
 export function persistLang(lang: Lang): void {
+  chosenThisLoad = lang;
   try {
-    localStorage.setItem(LANG_KEY, lang);
+    localStorage.setItem(LANG_STORAGE_KEY, lang);
   } catch {
-    /* ignore */
+    /* storage blocked: `chosenThisLoad` carries it */
+  }
+}
+
+/**
+ * Adopt the language the page was opened with, once, before anything renders: it wins over a
+ * saved choice and becomes the saved choice, and it leaves the address bar (the entry's history
+ * state is kept). Returns the language adopted, or null when the URL named none.
+ */
+export function adoptUrlLang(
+  loc: { readonly href: string },
+  hist: Pick<History, 'state' | 'replaceState'>,
+  base: string,
+): Lang | null {
+  const found = readUrlLang(loc.href, base);
+  if (!found) return null;
+  persistLang(found.lang);
+  try {
+    hist.replaceState(hist.state, '', found.rest);
+  } catch {
+    /* a host that refuses replaceState keeps the URL; the choice is stored either way */
+  }
+  return found.lang;
+}
+
+/** `<html lang>` names the language on screen: screen readers, hyphenation and the browser's
+ *  offer to translate the page all read it. */
+export function setDocumentLang(lang: Lang): void {
+  try {
+    document.documentElement.setAttribute('lang', lang);
+  } catch {
+    /* non-browser context */
   }
 }
 
@@ -70,6 +154,11 @@ export function tNow(key: string, params?: Record<string, string | number>): str
 /** Locale tag for Intl (dates, numbers) derived from the language. */
 export function localeOf(lang: Lang): string {
   return { es: 'es-ES', en: 'en-US', pt: 'pt-BR', de: 'de-DE', fr: 'fr-FR' }[lang];
+}
+
+/** The same locale as Open Graph spells it (`og:locale`): `en_US`. */
+export function ogLocale(lang: Lang): string {
+  return localeOf(lang).replace('-', '_');
 }
 
 // Each entry: key -> { es, en, pt, de, fr }
@@ -973,6 +1062,26 @@ export const T: Record<string, Record<Lang, string>> = {
   'fiat.selfie': { es: 'Selfie', en: 'Selfie', pt: 'Selfie', de: 'Selfie', fr: 'Selfie' },
   'fiat.selfieHint': { es: 'Sácate una selfie con buena luz, mirando a la cámara.', en: 'Take a selfie in good light, looking at the camera.', pt: 'Take a selfie in good light, looking at the camera.', de: 'Take a selfie in good light, looking at the camera.', fr: 'Take a selfie in good light, looking at the camera.' },
   'fiat.uploadError': { es: 'No se pudo subir la foto.', en: 'Couldn’t upload the photo.', pt: 'Couldn’t upload the photo.', de: 'Couldn’t upload the photo.', fr: 'Couldn’t upload the photo.' },
+  'p2p.entryTitle': { es: 'Comprar con tu moneda local (P2P)', en: 'Buy with your local currency (P2P)', pt: 'Comprar com a tua moeda local (P2P)', de: 'Mit deiner Landeswährung kaufen (P2P)', fr: 'Acheter avec ta monnaie locale (P2P)' },
+  'p2p.entryDesc': { es: 'Paga por transferencia, PIX, Nequi, Yape y más. Recibes stablecoins en Arbitrum.', en: 'Pay by bank transfer, PIX, Nequi, Yape and more. You get stablecoins on Arbitrum.', pt: 'Paga por transferência, PIX, Nequi, Yape e mais. Recebes stablecoins na Arbitrum.', de: 'Zahle per Überweisung, PIX, Nequi, Yape und mehr. Du erhältst Stablecoins auf Arbitrum.', fr: 'Paie par virement, PIX, Nequi, Yape et plus. Tu reçois des stablecoins sur Arbitrum.' },
+  'p2p.title': { es: 'Comprar con moneda local', en: 'Buy with local currency', pt: 'Comprar com moeda local', de: 'Mit Landeswährung kaufen', fr: 'Acheter en monnaie locale' },
+  'p2p.desc': { es: 'Compras stablecoins a personas que las venden (P2P) y pagas con tu banco o tu app de pagos. Llegan a tu cuenta de Arbitrum.', en: 'You buy stablecoins from people selling them (P2P) and pay with your bank or payment app. They arrive in your Arbitrum account.', pt: 'Compras stablecoins a pessoas que as vendem (P2P) e pagas com o teu banco ou a tua app de pagamentos. Chegam à tua conta da Arbitrum.', de: 'Du kaufst Stablecoins von Menschen, die sie verkaufen (P2P), und zahlst mit deiner Bank oder Zahlungs-App. Sie kommen auf deinem Arbitrum-Konto an.', fr: 'Tu achètes des stablecoins à des personnes qui les vendent (P2P) et tu paies avec ta banque ou ton app de paiement. Ils arrivent sur ton compte Arbitrum.' },
+  'p2p.currency': { es: 'Moneda con la que pagas', en: 'Currency you pay with', pt: 'Moeda com que pagas', de: 'Währung, mit der du zahlst', fr: 'Monnaie avec laquelle tu paies' },
+  'p2p.receiveToken': { es: 'Recibes', en: 'You receive', pt: 'Recebes', de: 'Du erhältst', fr: 'Tu reçois' },
+  'p2p.amount': { es: 'Monto en {currency}', en: 'Amount in {currency}', pt: 'Montante em {currency}', de: 'Betrag in {currency}', fr: 'Montant en {currency}' },
+  'p2p.belowMin': { es: 'El mínimo es {min} {currency}.', en: 'The minimum is {min} {currency}.', pt: 'O mínimo é {min} {currency}.', de: 'Das Minimum ist {min} {currency}.', fr: 'Le minimum est de {min} {currency}.' },
+  'p2p.youGetAbout': { es: 'Recibes aprox.', en: 'You get about', pt: 'Recebes aprox.', de: 'Du erhältst ca.', fr: 'Tu reçois env.' },
+  'p2p.arrivesOn': { es: 'Llega a', en: 'Arrives on', pt: 'Chega a', de: 'Kommt an auf', fr: 'Arrive sur' },
+  'p2p.addressPending': { es: 'Preparando tu dirección…', en: 'Preparing your address…', pt: 'A preparar o teu endereço…', de: 'Deine Adresse wird vorbereitet…', fr: 'Préparation de ton adresse…' },
+  'p2p.note': { es: 'El precio final y las comisiones se muestran en el siguiente paso, antes de pagar. Se abre en una ventana aparte, donde inicias sesión y verificas tu identidad.', en: 'The final price and fees are shown in the next step, before you pay. It opens in a separate window, where you sign in and verify your identity.', pt: 'O preço final e as comissões aparecem no passo seguinte, antes de pagares. Abre numa janela à parte, onde inicias sessão e verificas a tua identidade.', de: 'Der endgültige Preis und die Gebühren werden im nächsten Schritt angezeigt, bevor du zahlst. Es öffnet sich in einem eigenen Fenster, in dem du dich anmeldest und deine Identität bestätigst.', fr: 'Le prix final et les frais s’affichent à l’étape suivante, avant de payer. Cela s’ouvre dans une fenêtre à part, où tu te connectes et vérifies ton identité.' },
+  'p2p.testNote': { es: 'Modo de prueba: recibes USDT de prueba en Arbitrum Sepolia, sin valor real.', en: 'Test mode: you receive test USDT on Arbitrum Sepolia, with no real value.', pt: 'Modo de teste: recebes USDT de teste na Arbitrum Sepolia, sem valor real.', de: 'Testmodus: Du erhältst Test-USDT auf Arbitrum Sepolia, ohne echten Wert.', fr: 'Mode test : tu reçois des USDT de test sur Arbitrum Sepolia, sans valeur réelle.' },
+  'p2p.continue': { es: 'Continuar', en: 'Continue', pt: 'Continuar', de: 'Weiter', fr: 'Continuer' },
+  'p2p.loadFailed': { es: 'No se pudieron cargar las monedas y los métodos de pago.', en: 'Couldn’t load the currencies and payment methods.', pt: 'Não foi possível carregar as moedas e os métodos de pagamento.', de: 'Die Währungen und Zahlungsmethoden konnten nicht geladen werden.', fr: 'Impossible de charger les monnaies et les moyens de paiement.' },
+  'p2p.retry': { es: 'Reintentar', en: 'Try again', pt: 'Tentar de novo', de: 'Erneut versuchen', fr: 'Réessayer' },
+  'p2p.noMarket': { es: 'Ahora no hay monedas disponibles para comprar.', en: 'No currencies are available to buy right now.', pt: 'De momento não há moedas disponíveis para comprar.', de: 'Gerade sind keine Währungen zum Kaufen verfügbar.', fr: 'Aucune monnaie n’est disponible à l’achat pour le moment.' },
+  'p2p.noAddress': { es: 'Tu wallet todavía no tiene una dirección de Arbitrum.', en: 'Your wallet doesn’t have an Arbitrum address yet.', pt: 'A tua wallet ainda não tem um endereço da Arbitrum.', de: 'Deine Wallet hat noch keine Arbitrum-Adresse.', fr: 'Ton wallet n’a pas encore d’adresse Arbitrum.' },
+  'p2p.opened': { es: 'La compra se abrió en una ventana aparte.', en: 'The purchase opened in a separate window.', pt: 'A compra abriu numa janela à parte.', de: 'Der Kauf wurde in einem eigenen Fenster geöffnet.', fr: 'L’achat s’est ouvert dans une fenêtre à part.' },
+  'p2p.openFailed': { es: 'No se pudo abrir la compra. Revisa si el navegador bloqueó la ventana.', en: 'Couldn’t open the purchase. Check whether the browser blocked the window.', pt: 'Não foi possível abrir a compra. Verifica se o navegador bloqueou a janela.', de: 'Der Kauf konnte nicht geöffnet werden. Prüfe, ob der Browser das Fenster blockiert hat.', fr: 'Impossible d’ouvrir l’achat. Vérifie si le navigateur a bloqué la fenêtre.' },
   'swap.cta': { es: 'Intercambiar', en: 'Swap', pt: 'Swap', de: 'Swap', fr: 'Swap' },
   'swap.quoteError': { es: 'No se pudo obtener la cotización.', en: 'Couldn’t get a quote.', pt: 'Couldn’t get a quote.', de: 'Couldn’t get a quote.', fr: 'Couldn’t get a quote.' },
   'swap.success': { es: 'Intercambio completado', en: 'Swap completed', pt: 'Swap completed', de: 'Swap completed', fr: 'Swap completed' },

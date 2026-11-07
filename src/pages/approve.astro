@@ -11,9 +11,10 @@ import '@/styles/approve.css';
 ---
 
 <!doctype html>
-<html lang="es" data-theme="dark">
+<html lang="en" data-theme="dark">
   <head>
-    <!-- Same as index.astro: the Node globals must exist before the island mounts. -->
+    <!-- Same as src/app/WalletDocument.astro: the Node globals must exist before the island
+         mounts. `lang` is the default until ApprovePopup names the wallet's own. -->
 
     <script>
       import '@/lib/nodeGlobals';
@@ -21,7 +22,7 @@ import '@/styles/approve.css';
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
-    <title>Cosmos Wallet · Aprobar</title>
+    <title>Cosmos Wallet · Approve</title>
   </head>
   <body>
     <ApprovePopup client:only="react" />

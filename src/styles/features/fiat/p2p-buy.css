@@ -1,0 +1,18 @@
+/* =====================================================================
+   Fiat: buying with local money from P2P sellers (src/features/fiat/P2pBuy.tsx).
+   The form is the shared Field / Select; only the screen's own blocks are here.
+   ===================================================================== */
+
+/* while the market loads: room for the spinner where the form will be */
+.p2p-loading { min-height: 180px; }
+
+/* the estimate and where it lands: KVRows on a line, no fill (the redesign's surface) */
+.p2p-summary {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 0 16px;
+  margin-top: 4px;
+}
+
+/* the notices under the summary */
+.p2p-note { margin-top: 12px; }

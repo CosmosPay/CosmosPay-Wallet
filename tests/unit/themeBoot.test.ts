@@ -22,8 +22,9 @@ test('theme-boot.js paints the browser chrome with the same colours', () => {
 });
 
 test('the page loads theme-boot.js before anything else can paint', () => {
-  const page = readFileSync(join(process.cwd(), 'src', 'pages', 'index.astro'), 'utf8');
+  // Every entry that boots the wallet renders this one document (index, [lang]/index, earn).
+  const page = readFileSync(join(process.cwd(), 'src', 'app', 'WalletDocument.astro'), 'utf8');
   const at = page.indexOf('theme-boot.js');
-  assert.ok(at > 0, 'index.astro does not load theme-boot.js');
+  assert.ok(at > 0, 'WalletDocument.astro does not load theme-boot.js');
   assert.ok(at < page.indexOf('<body'), 'theme-boot.js must be in <head>');
 });

@@ -44,6 +44,8 @@ export function SignTx({ store }: { store: WalletStore }) {
       setSummary(inspectXdr(signNet, trimmed));
     } catch {
       setSummary(null);
+      // Sign stays off without a summary: say why, instead of leaving a dead button.
+      setErr(t('guard.undecodable'));
     }
   };
 

@@ -1,13 +1,15 @@
-# Cosmos Pay · Non-custodial Stellar Wallet
+# Cosmos Pay · Non-custodial Multichain Wallet
 
 **English** · [Español](readmes/README.es.md) · [Português](readmes/README.pt.md) · [Deutsch](readmes/README.de.md) · [Français](readmes/README.fr.md)
 
-A **non-custodial** wallet for the **Stellar** network, built with **Astro + Vite + React (TSX)**.
-Ships as a **browser extension** (MV3 · Chrome / Edge / Firefox — popup **and** side panel), a
-**desktop app** (Tauri · Windows / macOS / Linux), a **mobile app** (Tauri · Android / iOS) and a
-web app. Animated **glassmorphism** UI, light &
-dark themes, **5 languages** (EN/ES/PT/DE/FR, auto-detected), multi-wallet under one password,
-and a dapp provider (`window.cosmosWallet`) so websites can request payments and signatures.
+A **non-custodial** wallet for **Stellar and 34 other networks** (every network the cross-chain
+swaps settle: the EVM chains, Solana, Bitcoin, XRP Ledger, Tron, TON, NEAR, Sui, Aptos, Cardano,
+Starknet and more), built with **Astro + Vite + React (TSX)**. One recovery phrase is an address on
+each of them. Ships as a **browser extension** (MV3 · Chrome / Edge / Firefox, popup **and** side
+panel), a **desktop app** (Tauri · Windows / macOS / Linux), a **mobile app** (Tauri · Android / iOS)
+and a web app. Flat, matte UI in light & dark themes, **5 languages** (EN/ES/PT/DE/FR; English by
+default, and a link can name one: `?lang=es`), multi-wallet under one password, and a dapp provider
+(`window.cosmosWallet`) so websites can request payments and signatures.
 
 > **Truly non-custodial:** keys are generated and encrypted on your device. Neither the recovery
 > phrase nor the secret key ever leaves it. Servers only receive locally-signed transactions.
@@ -18,31 +20,32 @@ and a dapp provider (`window.cosmosWallet`) so websites can request payments and
 
 | Feature | Detail |
 |---|---|
-| Create / import / export wallet | 12-word BIP-39 + **SEP-5** derivation (`m/44'/148'/0'`); import from phrase or secret key (`S…`) |
-| Encrypted vault | **AES-256-GCM**, key derived with **PBKDF2** (210k iters); unlock decrypts in memory only |
-| Idle auto-lock | The session is dropped after 5 minutes without interaction; getting back in needs the password |
+| Create / import / export wallet | 12-word BIP-39 + **SEP-5** derivation (`m/44'/148'/0'`), plus one address per network family at the paths the mainstream wallets use; import from phrase or secret key (`S…`) |
+| Encrypted vault | **AES-256-GCM**, key derived with **PBKDF2** (600k iterations; older 210k boxes are re-sealed on the first unlock); unlock decrypts in memory only |
+| Session & auto-lock | The session survives a reload, a closed popup and a browser restart, and comes back on the screen it was on, until the idle auto-lock (15 min, 1 h, 1 day by default, or 7 days in Settings) drops it |
 | Unlock with the phone | Opt-in on Android/iOS. The vault key is sealed under a key the OS releases only for a live biometric check, and that is destroyed when the biometric set changes; the password keeps working throughout |
 | Passkey | Web, extension, desktop, Android 9+ and iOS 18+: a passkey replaces the password. One fingerprint opens the device, and the same passkey restores the cloud backup on the next device. A browser without WebAuthn PRF keeps the password |
 | Account recovery | SEP-30 with two independent servers, offered on Home once the account is funded: whoever proves the email to both can put a new key on the account. The cloud backup also gets an **email door**: a random key split between the same two servers, so a forgotten password (with no passkey at hand) is recovered by proving the email to both — the whole wallet, same phrase and addresses, under a new password. Either server alone holds nothing usable; both together could open it |
 | Signing guard | `assertSafeToSign` decodes every XDR before the key touches it and refuses what does not fit the flow (see Security model) |
-| Balances, send & receive | Horizon; QR receive; XLM send creates the destination account when needed |
+| Balances, send & receive | Every network, each read from its own public endpoint (a failed read shows as unavailable, never as zero). Send signs on every network the wallet holds an address on; QR receive; an XLM send creates the destination account when needed |
 | Swap | Via the Cosmos Pay gateway (auto-quotes, slippage protection). Pay from Stellar (DEX), Solana (Jupiter) or Monad (Kuru Flow), or across chains through NEAR Intents (mainnet). A Solana swap is simulated before signing and refused if it would move more than confirmed; a Monad token sale approves exactly the amount, never unlimited. Solana/Monad nodes: `PUBLIC_SOLANA_RPC_URL` / `PUBLIC_MONAD_RPC_URL` (public mainnet endpoints are rate-limited) |
-| Fiat on/off-ramp | BlindPay receiver (KYC) — deposits & withdrawals, **18+ only** |
-| History | Last operations with color-coded icons (green in / red out / white neutral) + genesis marker |
+| Fiat on/off-ramp | BlindPay receiver (KYC): deposits & withdrawals over PIX, SPEI, ARS transfers (CBU/CVU/alias), PSE, TED, ACH, wire and RTP, **18+ only** |
+| Buy with local money (P2P) | El Dorado's widget, opened with the order filled in and the wallet's own Arbitrum address fixed as the recipient: bank transfer (AR), PIX, Nequi, Bancolombia, Yape, Plin, Zelle and more, paid to P2P sellers, USDC or USDT delivered on Arbitrum. The login and KYC happen in the widget; test mode uses El Dorado's sandbox (test USDT on Arbitrum Sepolia). Optional integrator ids: `PUBLIC_ELDORADO_CLIENT_ID` / `PUBLIC_ELDORADO_REFERRAL_ID`. See [src/lib/eldorado.ts](src/lib/eldorado.ts) |
+| Activity | Home's Activity tab, in days: a send is red, money received green, a swap blue, a commission ink with its own receipt mark |
 | Favorites & markets | Star assets to pin them in the top-5; live prices (CoinGecko) with animated tickers |
 | Multi-wallet | Create / import / switch under one password; per-wallet email, gender-aware greetings |
 | Sign-in | Cosmos Pay (Authentik), Google, GitHub or an emailed code. The key is generated on the device; the server keeps a backup it cannot open |
 | Dapp provider | `window.cosmosWallet` (SEP-43-style): `getAddress`, `getNetwork`, `signTransaction`, `signMessage`, `requestPayment` |
 | SEP-7 links | `web+stellar:pay` via provider, Firefox protocol handler, `pay` omnibox keyword and address-bar detection |
 | Extension surfaces | Popup (400×600) and side panel / sidebar, with a persistent preference toggle |
-| Developer mode | Live-overridable endpoints (prices API, Developer Platform, payments gateway, Solana / Monad RPC) from Settings |
+| Developer mode | Live-overridable endpoints (prices API, payments gateway, the two recovery servers, Solana / Monad RPC) from Settings |
 | Diagnostics | Opt-in (Settings → Privacy). Errors, screen views, gateway timings and the operations built — never the seed, the password, an address or a memo. With a Cosmos Pay account they reach that account's own dashboard; without one they are anonymous |
 
 Key derivation is verified against the official **SEP-5 test vector**.
 
 ## Security model
 
-1. On create/import you choose a **password**; an AES key is derived with `PBKDF2(password, salt, 210 000, SHA-256)`.
+1. On create/import you choose a **password**; an AES key is derived with `PBKDF2(password, salt, 600 000, SHA-256)`.
 2. Phrase + secret key are sealed with `AES-256-GCM` (random IV) and stored encrypted
    (`tauri-plugin-store` on desktop and mobile, `localStorage` on web/extension — see
    [src/lib/storage.ts](src/lib/storage.ts) for why a WebView's own storage is not good enough
@@ -54,8 +57,11 @@ Key derivation is verified against the official **SEP-5 test vector**.
    random bytes sealed under the passkey's WebAuthn PRF output, so a fingerprint opens the
    device and the same passkey opens the cloud backup on the next one — see
    [src/lib/passkeyUnlock.ts](src/lib/passkeyUnlock.ts).
-5. **Idle auto-lock:** an open session holds the decrypted key, so 5 minutes without interaction
-   drops it and the password is required again.
+5. **Idle auto-lock:** an open session holds the vault key, so the idle auto-lock (Settings: 15 min,
+   1 h, 1 day by default, 7 days) drops it and the password is required again. Until then the
+   session is kept across reloads under a non-extractable browser key
+   ([src/lib/sessionKeep.ts](src/lib/sessionKeep.ts)); that protects nothing from whoever uses the
+   same browser profile, which is what the auto-lock bounds.
 6. **Nothing is signed that has not been decoded first.** Everything the wallet signs but did not
    build itself — the envelope the gateway returns, the one a dapp hands over — goes through
    `assertSafeToSign` (`src/lib/txGuard.ts`): it decodes the XDR, checks the source is us,
@@ -286,9 +292,13 @@ New-NetFirewallRule -DisplayName "adb (Private)" -Direction Inbound -Action Allo
 
 ## Networks
 
-**Testnet** (default — free XLM via Friendbot) ⇄ **Mainnet** from the circular network selector
-in the header; custom networks (own Horizon + passphrase) can be added. The same phrase derives
-the same account on every network. New Mainnet accounts need ≥ **1 XLM** (base reserve).
+**Testnet** (default, free XLM via Friendbot) ⇄ **Mainnet** from the network pill in Home's header;
+custom Stellar networks (own Horizon + passphrase) can be added. The pill moves **every** network:
+in test mode each one is on its own test network (Solana devnet, Monad testnet, the EVM test
+chains and the rest in [src/constants/testnets.ts](src/constants/testnets.ts)), and a network with
+no test network here shows no address at all, so a test mode never reads or offers a main network.
+The 35 networks are [src/constants/networks.ts](src/constants/networks.ts). New Mainnet Stellar
+accounts need ≥ **1 XLM** (base reserve).
 
 ## Layout
 
@@ -298,11 +308,12 @@ instead of three.
 
 ```
 src/
-  pages/          Astro entries: index (app) · approve (dapp approval window)
-  app/            the shells and their chrome — WalletApp, ApprovePopup, Shell,
-                  BottomNav, NavMenu, Toast, ConfirmSign
-  ui/             presentational primitives shared by MORE THAN ONE feature —
-                  Field, KVRow, BackBar, Spinner, Logo, TokenAvatar, LangSelect…
+  pages/          Astro entries: index (app) · [lang]/index (the app in one language,
+                  /wallet/en/ …) · earn · approve (dapp approval window) · signed-in
+  app/            the shells and their chrome: WalletApp, ApprovePopup, Shell,
+                  BottomNav, DesktopNav, NavMenu, Toast, ConfirmSign
+  ui/             presentational primitives shared by MORE THAN ONE feature:
+                  Field, KVRow, ListRow, ScreenHeader, Notice, Spinner, TokenAvatar, LangFlag…
   features/       one folder per user-facing area; its screens and the components
                   only it uses live side by side
                   onboarding · wallet · money · liquidity · fiat · cosmospay ·

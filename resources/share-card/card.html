@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<!--
+  The wallet's share card: public/og-image.png, 1200x630, named by og:image in
+  src/app/WalletDocument.astro. English, like every share tag (English is the primary language).
+  Drawn from the brand's own art: the mono lockup and the Welcome hero's light poster.
+  Regenerate after changing this file (headless Chrome, then a 64-colour palette to keep it small):
+    chrome --headless=new --hide-scrollbars --allow-file-access-from-files --window-size=1200,630 --screenshot=card.png file:///<repo>/resources/share-card/card.html
+    python -c "from PIL import Image; Image.open('card.png').convert('RGB').quantize(colors=64).save('public/og-image.png', optimize=True)"
+-->
+
+<style>
+@font-face { font-family: OS; src: url(../../public/fonts/OpenSauceOne-Regular.woff2); font-weight: 400; }
+@font-face { font-family: OS; src: url(../../public/fonts/OpenSauceOne-Medium.woff2); font-weight: 500; }
+@font-face { font-family: OS; src: url(../../public/fonts/OpenSauceOne-Bold.woff2); font-weight: 700; }
+html, body { margin: 0; width: 1200px; height: 630px; background: #fff; overflow: hidden; }
+body { font-family: OS, sans-serif; color: #000; position: relative; }
+.frame { position: absolute; inset: 28px; border: 2px solid #e3e3e8; border-radius: 28px; }
+.copy { position: absolute; left: 84px; top: 88px; width: 520px; }
+.lockup { height: 52px; display: block; }
+h1 { font-size: 72px; line-height: 1.02; font-weight: 700; letter-spacing: -1.5px; margin: 46px 0 22px; }
+p { font-size: 28px; line-height: 1.35; color: #3a3a46; margin: 0; font-weight: 400; }
+.bar { width: 72px; height: 6px; border-radius: 3px; background: #4d66ff; margin-top: 40px; }
+.url { position: absolute; left: 84px; bottom: 70px; font-size: 24px; font-weight: 500; color: #000; }
+.art { position: absolute; right: 52px; top: 55px; width: 520px; height: 520px; }
+</style></head>
+<body>
+  <div class="frame"></div>
+  <div class="copy">
+    <img class="lockup" src="../../public/brand/lockup-cosmos-pay-mono.svg" alt="">
+    <h1>Your Stellar wallet</h1>
+    <p>Send, receive and swap. <span style="white-space:nowrap">Non-custodial</span>: your keys never leave your device.</p>
+    <div class="bar"></div>
+  </div>
+  <div class="url">cosmospay.lat/wallet</div>
+  <img class="art" src="../../public/brand/welcome/welcome-poster-light.png" alt="">
+</body></html>

@@ -67,6 +67,7 @@ export const SCREEN_IDS = [
   'bankaccount',
   'deposit',
   'withdraw',
+  'p2p-buy',
   'sign-tx',
   'add-network',
   'add-asset',
@@ -202,6 +203,7 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   bankaccount: { back: 'fiat' },
   deposit: { back: 'fiat' },
   withdraw: { back: 'fiat' },
+  'p2p-buy': { back: 'fiat' },
 
   // settings
   settings: { back: profileOrHome },

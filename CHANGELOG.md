@@ -2,6 +2,44 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.18.0] - 2026-11-06
+
+### Features
+- Buy stablecoins with local money through the P2P widget (28623a1)
+
+### Miscellaneous
+- Sync the community server's spec (P2P ramps) (b53e27f)
+
+### Documentation
+- Bring the READMEs up to date with the wallet as it is (cab6470)
+
+## [1.17.1] - 2026-11-05
+
+### Bug Fixes
+- Say why a pasted XDR cannot be signed (bcd98ba)
+
+### Miscellaneous
+- Sync the community server contract (fcc9b0e)
+
+## [1.17.0] - 2026-11-02
+
+### Features
+- A 1200x630 share card for the web wallet (b4d96b4)
+
+## [1.16.0] - 2026-11-02
+
+### Features
+- Open in English by default and take the language from the link (3755b4c)
+
+### Miscellaneous
+- Sync the community server contract (8feacb1)
+
+### Documentation
+- Say the wallet opens in English, not in the device's language (0102f22)
+
+### Testing
+- Open the wallet with ?lang=es instead of relying on the locale (66de9a2)
+
 ## [1.15.0] - 2026-11-01
 
 ### Features

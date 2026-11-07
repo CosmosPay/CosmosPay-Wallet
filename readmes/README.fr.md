@@ -1,12 +1,14 @@
-# Cosmos Pay · Portefeuille Stellar non dépositaire
+# Cosmos Pay · Portefeuille multichain non dépositaire
 
 [English](../README.md) · [Español](README.es.md) · [Português](README.pt.md) · [Deutsch](README.de.md) · **Français**
 
-Portefeuille **non dépositaire** pour le réseau **Stellar**, construit avec **Astro + Vite +
-React (TSX)**. Disponible comme **extension de navigateur** (MV3 · Chrome / Edge / Firefox —
-popup **et** panneau latéral), **app mobile** (Tauri · Android / iOS) et web. UI
-**glassmorphism** animée, thèmes clair et sombre, **5 langues** (EN/ES/PT/DE/FR avec
-autodétection), multi-portefeuille sous un seul mot de passe et provider dapps
+Portefeuille **non dépositaire** pour **Stellar et 34 autres réseaux** (tous ceux que règlent les
+swaps entre réseaux : les chaînes EVM, Solana, Bitcoin, XRP Ledger, Tron, TON, NEAR, Sui, Aptos,
+Cardano, Starknet et plus), construit avec **Astro + Vite + React (TSX)**. Une seule phrase de
+récupération est une adresse sur chacun. Disponible comme **extension de navigateur** (MV3 · Chrome /
+Edge / Firefox, popup **et** panneau latéral), **app de bureau** (Tauri · Windows / macOS / Linux),
+**app mobile** (Tauri · Android / iOS) et web. UI plate et mate, thèmes clair et sombre, **5 langues** (EN/ES/PT/DE/FR ; anglais par défaut,
+un lien peut en indiquer une : `?lang=fr`), multi-portefeuille sous un seul mot de passe et provider dapps
 (`window.cosmosWallet`) pour paiements et signatures.
 
 > **Vraiment non dépositaire :** les clés sont générées et chiffrées sur ton appareil. Ni la
@@ -18,25 +20,26 @@ autodétection), multi-portefeuille sous un seul mot de passe et provider dapps
 | Fonction | Détail |
 |---|---|
 | Créer / importer / exporter | BIP-39 de 12 mots + dérivation **SEP-5** (`m/44'/148'/0'`) ; import par phrase ou clé secrète (`S…`) |
-| Coffre chiffré | **AES-256-GCM**, clé dérivée via **PBKDF2** (210k itérations) ; déverrouillage en mémoire uniquement |
-| Verrouillage auto | La session est jetée après 5 minutes d’inactivité ; il faut ressaisir le mot de passe |
+| Coffre chiffré | **AES-256-GCM**, clé dérivée via **PBKDF2** (600k itérations ; les anciennes boîtes à 210k sont rescellées au premier déverrouillage) ; déverrouillage en mémoire uniquement |
+| Session & verrouillage auto | La session survit à un rechargement, à la fermeture du popup et au redémarrage du navigateur, et revient à l’écran où elle était, jusqu’à ce que le verrouillage par inactivité (15 min, 1 h, 1 jour par défaut ou 7 jours, dans les Réglages) la jette |
 | Garde de signature | `assertSafeToSign` décode chaque XDR avant de signer et refuse ce qui ne correspond pas au flux (voir Modèle de sécurité) |
-| Soldes, envoi & réception | Horizon ; QR pour recevoir ; l’envoi de XLM crée le compte destinataire si besoin |
+| Soldes, envoi & réception | Chaque réseau, lu depuis son propre endpoint public (une lecture échouée s’affiche comme indisponible, jamais comme zéro). Envoi sur chaque réseau où le portefeuille a une adresse ; QR pour recevoir ; l’envoi de XLM crée le compte destinataire si besoin |
 | Swap | Via la passerelle Cosmos Pay (devis auto, protection de slippage) |
-| Fiat (on/off-ramp) | Receiver BlindPay (KYC) — dépôts et retraits, **18+ uniquement** |
-| Historique | Dernières opérations avec icônes colorées (vert entrée / rouge sortie / blanc neutre) + marqueur genèse |
+| Fiat (on/off-ramp) | Receiver BlindPay (KYC) : dépôts et retraits par PIX, SPEI, virements en ARS, PSE, TED, ACH, wire et RTP, **18+ uniquement** |
+| Acheter en monnaie locale (P2P) | Le widget d’El Dorado, ouvert avec l’ordre rempli et l’adresse Arbitrum du portefeuille fixée comme destinataire : virement bancaire (AR), PIX, Nequi, Bancolombia, Yape, Plin, Zelle et plus, payés à des vendeurs P2P ; USDC ou USDT arrivent sur Arbitrum. La connexion et le KYC se font dans le widget ; le mode test utilise le sandbox d’El Dorado. Voir [src/lib/eldorado.ts](../src/lib/eldorado.ts) |
+| Activité | L’onglet Activité de l’Accueil, par jour : un envoi en rouge, l’argent reçu en vert, un swap en bleu, une commission à l’encre avec sa propre marque de reçu |
 | Favoris & marchés | Épingle des actifs dans le top-5 ; prix en direct (CoinGecko) avec chiffres animés |
 | Multi-portefeuille | Créer / importer / changer sous un seul mot de passe ; e-mail éditable, salutations selon le genre |
 | Provider dapps | `window.cosmosWallet` (style SEP-43) : `getAddress`, `getNetwork`, `signTransaction`, `signMessage`, `requestPayment` |
 | Liens SEP-7 | `web+stellar:pay` via provider, protocol handler Firefox, mot-clé `pay` et détection dans la barre |
 | Surfaces de l’extension | Popup (400×600) et panneau latéral, avec préférence persistante |
-| Mode développeur | Endpoints re-pointables à chaud (API de prix, Developer Platform, passerelle) dans les Réglages |
+| Mode développeur | Endpoints re-pointables à chaud (API de prix, passerelle de paiement, les deux serveurs de récupération, RPC Solana / Monad) dans les Réglages |
 
 La dérivation des clés est vérifiée contre le **vecteur de test officiel SEP-5**.
 
 ## Modèle de sécurité
 
-1. À la création/import tu choisis un **mot de passe** ; la clé AES vient de `PBKDF2(mot de passe, sel, 210 000, SHA-256)`.
+1. À la création/import tu choisis un **mot de passe** ; la clé AES vient de `PBKDF2(mot de passe, sel, 600 000, SHA-256)`.
 2. Phrase + clé secrète sont scellées en `AES-256-GCM` (IV aléatoire) et stockées chiffrées
    (`tauri-plugin-store` sur mobile, `localStorage` web/extension).
 3. Le déverrouillage déchiffre **en mémoire uniquement** ; un mauvais mot de passe échoue au tag GCM.
@@ -45,8 +48,10 @@ La dérivation des clés est vérifiée contre le **vecteur de test officiel SEP
    **Passkey au lieu du mot de passe** (web, extension, bureau et les apps sur Android 9+ / iOS 18+) : le mot de passe de l’app
    devient 32 octets aléatoires scellés sous la sortie PRF WebAuthn de la passkey, donc
    l’empreinte ouvre l’appareil et la même passkey ouvre la sauvegarde sur le suivant.
-5. **Verrouillage automatique par inactivité :** une session ouverte détient la clé déchiffrée ;
-   après 5 minutes sans interaction elle est jetée et le mot de passe redemandé.
+5. **Verrouillage automatique par inactivité :** une session ouverte détient la clé du coffre ; le
+   verrouillage auto (Réglages : 15 min, 1 h, 1 jour par défaut, 7 jours) la jette et le mot de passe
+   est redemandé. D’ici là, la session est conservée entre rechargements sous une clé de navigateur
+   non extractible.
 6. **Rien n’est signé sans avoir été décodé.** Tout ce que le portefeuille signe sans l’avoir
    construit lui-même (l’enveloppe renvoyée par la passerelle, celle fournie par une dapp) passe
    par `assertSafeToSign` : décodage du XDR, vérification que la source est bien nous, liste

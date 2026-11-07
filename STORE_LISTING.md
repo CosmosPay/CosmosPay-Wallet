@@ -56,7 +56,7 @@ Productivity  (alternatively: Tools)
 ## Language
 
 ```
-English  — add ES / PT / DE / FR store translations from the localized summaries above; the extension UI auto-detects all five.
+English  — add ES / PT / DE / FR store translations from the localized summaries above; the extension UI opens in English and offers all five.
 ```
 
 ---
