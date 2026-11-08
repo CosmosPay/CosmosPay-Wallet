@@ -2,6 +2,12 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.18.1] - 2026-11-08
+
+### Miscellaneous
+- Bump astro from 7.4.3 to 7.4.5 in the minor-and-patch group (f4aa205)
+- Sync the community server's spec (Monad swap txHash) (ae3925e)
+
 ## [1.18.0] - 2026-11-06
 
 ### Features
