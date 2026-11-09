@@ -138,16 +138,14 @@
 }
 
 /* 44px round close in the outlined-button style (.btn-ghost): the 1.5px outline alone, and
-   on hover the brand blue fills it and takes the outline too. */
+   on hover a neutral surface appears inside the existing target. */
 .sheet-close {
-  --ink: var(--brand);
-  --ink-text: var(--on-brand);
   width: 44px;
   height: 44px;
   padding: 0;
   display: grid;
   place-items: center;
-  border: 1.5px solid var(--text);
+  border: 1.5px solid var(--line);
   background: transparent;
   color: var(--text);
   cursor: pointer;
@@ -155,12 +153,13 @@
 }
 
 .sheet-close.ink:focus-visible {
-  border-color: var(--brand);
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .sheet-close.ink:hover {
-    border-color: var(--brand);
+  .sheet-close.ink:hover:not(:disabled):not([aria-disabled='true']) {
+    border-color: var(--line);
   }
 }
 

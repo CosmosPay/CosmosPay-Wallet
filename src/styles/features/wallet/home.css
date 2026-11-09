@@ -1,8 +1,8 @@
 /* =====================================================================
    src/features/wallet/Home.tsx (with HomeAction.tsx and HomeCard.tsx) —
    the Figma's Home ("Cosmos Wallet", 1:2). Prefix: .home-
-   Flat and drawn in lines: rings around the icon buttons, a line around a
-   card, never a grey fill. The brand blue only marks what is active.
+   Reference-led circular controls, generous spacing and a clear balance.
+   Shared theme tokens retain the light theme and the desktop dashboard.
    ===================================================================== */
 
 /* ---- who you are ---- */
@@ -12,7 +12,7 @@
   justify-content: space-between;
   gap: 12px;
   padding-top: 6px;
-  margin-bottom: 26px;
+  margin-bottom: 28px;
 }
 
 .home-who {
@@ -30,8 +30,10 @@
 }
 
 .home-who:focus-visible,
-.home-icon-btn:focus-visible,
-
+.home-icon-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 4px;
+}
 
 .home-avatar {
   flex-shrink: 0;
@@ -40,14 +42,15 @@
   width: 46px;
   height: 46px;
   overflow: hidden;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid transparent;
+  background: var(--home-control-bg);
   border-radius: 50%;
   color: var(--text);
 }
 
 .home-avatar-mark {
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
 }
 
 .home-avatar-img {
@@ -100,43 +103,43 @@
   width: 46px;
   height: 46px;
   padding: 0;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid transparent;
   border-radius: 50%;
-  background: transparent;
+  background: var(--home-chrome-bg);
   color: var(--text);
   cursor: pointer;
   transition: border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
 }
 
-.home-icon-btn:hover {
-  border-color: var(--text);
-}
 
-/* The network pill and the bell beside the settings: src/styles/features/wallet/home-header.css. */
+
+/* The network pill and notification bell: src/styles/features/wallet/home-header.css. */
 
 /* ---- the balance ---- */
 .home-balance {
-  margin-bottom: 26px;
+  margin-bottom: 28px;
 }
 
 .home-balance-label {
-  margin: 0 0 6px;
-  font-size: 13px;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 400;
   color: var(--muted);
 }
 
 .home-total {
   margin: 0;
-  font-size: 34px;
+  font-size: clamp(34px, 9.4vw, 48px);
   font-weight: 700;
   letter-spacing: -0.8px;
   line-height: 1.1;
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .home-cents {
-  font-size: 22px;
-  color: var(--muted);
+  font-size: inherit;
+  color: inherit;
 }
 
 .home-change {
@@ -176,7 +179,7 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 8px;
-  margin-bottom: 26px;
+  margin-bottom: 28px;
 }
 
 .home-action {
@@ -195,11 +198,12 @@
 .home-action-ring {
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
-  border: 1.5px solid var(--line-strong);
+  width: 48px;
+  height: 48px;
+  border: 1.5px solid transparent;
+  background: var(--home-control-bg);
   border-radius: 50%;
-  transition: border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out);
 }
 
 .home-action-ring svg {
@@ -207,9 +211,7 @@
   height: 22px;
 }
 
-.home-action:hover .home-action-ring {
-  border-color: var(--text);
-}
+
 
 .home-action:focus-visible {
   outline: none;
@@ -222,7 +224,7 @@
 
 .home-action-label {
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 500;
 }
 
 /* ---- cards that ask for something (HomeCard) ---- */
@@ -314,7 +316,7 @@
   gap: 8px;
   min-height: 44px;
   padding: 0 18px;
-  border: 1.5px solid var(--text);
+  border: 1.5px solid var(--line);
   border-radius: 999px;
   background: transparent;
   color: var(--text);
@@ -322,7 +324,7 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
+  transition: color var(--dur-quick) var(--ease-out);
 }
 
 .home-net-empty-btn svg {
@@ -330,9 +332,11 @@
   height: 18px;
 }
 
-.home-net-empty-btn:hover {
-  background: var(--text);
-  color: var(--bg);
+@media (hover: hover) and (pointer: fine) {
+
+.home-net-empty-btn:hover:not(:disabled):not([aria-disabled='true']) {
+  border-color: var(--line);
+}
 }
 
 .home-net-empty-btn:focus-visible {
@@ -367,8 +371,9 @@
   place-items: center;
   width: 44px;
   height: 44px;
-  border: 1.5px dashed var(--line-strong);
+  border: 1.5px dashed var(--line);
   border-radius: 50%;
+  transition: color var(--dur-quick) var(--ease-out);
 }
 
 .home-add-ring svg {
@@ -376,88 +381,22 @@
   height: 20px;
 }
 
+@media (hover: hover) and (pointer: fine) {
+  .home-add:enabled:hover .home-add-ring {
+    color: var(--home-active-text);
+  }
+}
+
+.home-add:enabled:active .home-add-ring {
+  color: var(--home-active-text);
+  border-color: currentColor;
+  transition-duration: 0s;
+}
+
 .home-add:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-radius: 12px;
-}
-
-/* ---- performance ---- */
-.home-perf {
-  display: flex;
-  flex-direction: column;
-}
-
-.home-perf-title {
-  margin: 18px 0 6px;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.home-perf-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 56px;
-}
-
-.home-perf-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.home-perf-line {
-  display: flex;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 14px;
-}
-
-.home-perf-name {
-  font-weight: 600;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.home-perf-value {
-  font-variant-numeric: tabular-nums;
-}
-
-.home-perf-pct {
-  width: 64px;
-  flex-shrink: 0;
-  text-align: right;
-  font-size: 13px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  color: var(--muted);
-}
-
-.home-perf-pct.is-up {
-  color: var(--up);
-}
-
-.home-perf-pct.is-down {
-  color: var(--down);
-}
-
-.home-share-line {
-  display: block;
-  width: 100%;
-  height: 2px;
-}
-
-.home-share-track {
-  fill: var(--line);
-}
-
-.home-share-fill {
-  fill: var(--text);
 }
 
 /* ---- watchlist ---- */
@@ -500,6 +439,7 @@
 .home-watch-name {
   font-size: 15px;
   font-weight: 600;
+  transition: color var(--dur-quick) var(--ease-out);
 }
 
 .home-watch-code {
@@ -605,7 +545,7 @@
   }
 
   .has-desktop-mode .is-wide .home-cents {
-    font-size: 28px;
+    font-size: inherit;
   }
 
   .has-desktop-mode .is-wide .home-balance {
@@ -721,5 +661,114 @@
   .has-desktop-mode .is-wide .home-asset-list .asset-row-value {
     grid-column: 6;
     text-align: right;
+  }
+}
+
+/* The reference is a 2x mobile capture: 20–24px gutters and 8px rhythm. */
+.home-balance-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.home-change { flex-wrap: wrap; row-gap: 4px; }
+.home-change-delta { font-size: 12px; }
+.home-avatar { background: var(--home-chrome-bg); }
+.home-tabs .tabs-tab { font-weight: 400; }
+.home-tabs .tabs-tab.is-on { color: var(--home-active-text); }
+.home-panel:focus-visible { outline: 2px solid var(--brand); outline-offset: 4px; }
+.home-asset-list {
+  /* Give keyboard focus room while keeping asset columns aligned with
+     the tabs and desktop table headings. Pointer feedback uses a quiet neutral surface. */
+  margin-inline: -12px;
+}
+.home-asset-list .asset-row {
+  min-height: 80px;
+  padding-inline: 11px;
+  border: 1px solid transparent;
+  border-radius: 8px !important;
+}
+.home-asset-list .asset-row:focus-visible {
+  outline-offset: 2px;
+}
+.home-asset-list .asset-row::after { display: none; }
+.home-asset-list .asset-row-sub { flex-wrap: wrap; gap: 3px 6px; }
+.home-asset-list .asset-row-name {
+  color: var(--text-soft);
+  text-decoration: none;
+  transition: color var(--dur-quick) var(--ease-out);
+}
+.home-asset-list .asset-row-value {
+  color: var(--text-soft);
+  transition: color var(--dur-quick) var(--ease-out);
+}
+.home-asset-list .asset-row-end { max-width: 46%; min-width: 0; }
+.home-asset-list .asset-row-amount { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-who, .home-icon-btn, .home-tabs .tabs-tab { transition: color 0.2s ease, border-color 0.2s ease; }
+@media (hover: hover) and (pointer: fine) {
+
+
+  .home-asset-list .asset-row:hover:not(:disabled):not([aria-disabled='true']) .asset-row-name,
+  .home-asset-list .asset-row:hover:not(:disabled):not([aria-disabled='true']) .asset-row-value { color: var(--text); }
+}
+@media (max-width: 359px) {
+  .home-head { gap: 8px; }
+  .home-head-end { gap: 6px; }
+  .home-who { gap: 8px; }
+  .home-icon-btn { width: 44px; height: 44px; }
+  .home-asset-list .asset-row { gap: 10px; }
+  .home-asset-list .asset-row-value { font-size: 13px; }
+  .home-asset-list .asset-row-sub, .home-asset-list .asset-row-amount { font-size: 11px; }
+}
+
+/* Home pointer feedback stays on text and icons; blue identifies selection/focus. */
+.home :is(.home-who, .home-watch-open, .home-watch-star, .asset-row, .home-net-trigger) {
+  transition: color 160ms ease;
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-icon-btn:hover:not(:disabled):not([aria-disabled='true']) {
+    border-color: transparent;
+  }
+  .home-action:hover:not(:disabled):not([aria-disabled='true']) .home-action-ring {
+    color: var(--home-active-text);
+  }
+}
+.home-icon-btn:active:not(:disabled):not([aria-disabled='true']) { border-color: transparent; }
+.home-action:active:not(:disabled):not([aria-disabled='true']) .home-action-ring {
+  color: var(--home-active-text);
+  border-color: currentColor;
+  transition-duration: 0s;
+}
+/* Home keeps its resting surfaces during pointer feedback, including shared controls. */
+.home .ink::before { display: none; }
+.home .asset-toolbar .net-select-btn:not([aria-expanded='true']):is(:hover, :active):not(:disabled),
+.home :is(.home-menu-item, .net-select-item):not(.is-on):is(:hover, :active):not(:disabled) {
+  background: transparent;
+}
+.home .asset-toolbar .net-select-btn[aria-expanded='true']:is(:hover, :active):not(:disabled) {
+  background: var(--surface-2);
+}
+.home .enable-receiving-cta:is(:hover, :active):not(:disabled) {
+  background: var(--text);
+  color: var(--bg);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home :is(.home-who, .home-net-empty-btn, .btn-primary, .btn-ghost, .enable-receiving-cta):hover:not(:disabled):not([aria-disabled='true']) {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1px;
+  }
+  .home-icon-btn:hover:not(:disabled):not([aria-disabled='true']) {
+    color: var(--text-soft);
+  }
+  .home-watch-star:hover:not(:disabled),
+  .home-tabs .tabs-tab:not(.is-on):hover:not(:disabled) { color: var(--text); }
+  .home-watch-open:hover:not(:disabled):not([aria-disabled='true']) .home-watch-name {
+    color: var(--text-soft);
+  }
+  .home .asset-toolbar .net-select-btn:hover:not(:disabled) .net-select-btn-label {
+    text-decoration: underline;
+    text-underline-offset: 4px;
   }
 }

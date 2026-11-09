@@ -1,7 +1,6 @@
 import { useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { NetworkId } from '@/constants/networks';
 import { cx } from '@/lib/cx';
-import { inkHandlers } from '@/lib/ink';
 import { isDesktopLayout } from '@/lib/layout';
 import { foldText } from '@/lib/assetList';
 import { NetworkLogo } from '@/ui/AssetLogo';
@@ -116,7 +115,7 @@ export function NetworkSelect({
           <h2 id={titleId} className="sheet-title">
             {labels.title}
           </h2>
-          <button type="button" className="sheet-close ink" aria-label={labels.close} onClick={close} {...inkHandlers}>
+          <button type="button" className="sheet-close ink" aria-label={labels.close} onClick={close}>
             <CloseIcon />
           </button>
         </div>

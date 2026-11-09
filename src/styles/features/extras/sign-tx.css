@@ -1,95 +1,37 @@
-/* SignTx screen (src/features/extras/SignTx.tsx). The source row's
-   monospace face is the .is-mono modifier at the bottom of this sheet. */
-
-.sign-tx-desc {
-  font-size: 13.5px;
-  color: var(--muted);
-  font-weight: 600;
-  line-height: 1.5;
-  margin: 12px 0 16px;
-}
-
-/* XDR paste area on a glass card */
+/* Sign transaction: input, network, review and result share one reading column. */
+.sign-tx-field { margin: 8px 0 24px; }
+.sign-tx-field-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
 .sign-tx-xdr {
-  width: 100%;
-  border-radius: 18px;
-  padding: 14px 16px;
-  color: var(--text);
-  font-size: 12.5px;
-  font-weight: 600;
-  resize: none;
-  outline: none;
-  font-family: monospace;
-  line-height: 1.5;
-  margin-bottom: 10px;
+  display: block; width: 100%; min-height: 144px; padding: 16px;
+  border-radius: 8px; color: var(--text); font: 400 12px/1.7 ui-monospace, monospace;
+  resize: vertical; overflow-wrap: anywhere;
 }
-
-.sign-tx-paste {
-  align-self: flex-start;
-  height: 40px;
-  color: var(--text);
-  border: none;
-  border-radius: 999px;
-  padding: 0 18px;
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-  margin-bottom: 16px;
+.sign-tx-xdr:focus-visible, .sign-tx-signed-xdr:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.sign-tx-paste, .sign-tx-copy {
+  flex-shrink: 0; min-height: 44px; padding: 8px 12px; border: 1px solid var(--line);
+  border-radius: var(--button-radius-small); background: transparent; color: var(--text-soft);
+  font: inherit; font-size: 12px; font-weight: 500; cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out);
 }
-
-/* the network the signature is for: a label, the segmented choice, one line on why */
-.sign-tx-net { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
-.sign-tx-net-label { font-size: 13px; font-weight: 700; color: var(--muted); }
-.sign-tx-net-hint { margin: 0; font-size: 12.5px; font-weight: 600; line-height: 1.5; color: var(--muted); }
-
-/* decoded-transaction summary card + its key/value rows */
-.sign-tx-summary { border-radius: 18px; padding: 6px 16px; margin-bottom: 16px; }
-.sign-tx-summary-row { padding: 12px 0; }
-.sign-tx-summary-row:not(:last-child) { border-bottom: 1px solid var(--hairline); }
-.sign-tx-summary-val {
-  font-size: 13px;
-  font-weight: 700;
-  text-align: right;
-  word-break: break-word;
+.sign-tx-net { display: flex; flex-direction: column; gap: 10px; margin-bottom: 24px; }
+.sign-tx-net-label { font-size: 13px; font-weight: 500; color: var(--text); }
+.sign-tx-net-hint { margin: 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.sign-tx-net .segmented-option { padding: 10px 8px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.sign-tx-summary { border-radius: 8px; padding: 4px 16px; margin: 0 0 24px; }
+.sign-tx-summary-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); align-items: start; gap: 16px; padding: 14px 0; }
+.sign-tx-summary-row:not(:last-child) { border-bottom: 1px solid var(--line); }
+.sign-tx-summary-row dt { line-height: 1.6; }
+.sign-tx-summary-val { margin: 0; font-size: 13px; font-weight: 500; line-height: 1.6; text-align: right; overflow-wrap: anywhere; white-space: pre-wrap; }
+.sign-tx-summary-val.is-mono { font-family: ui-monospace, monospace; }
+.sign-tx-signed { min-width: 0; border-radius: 8px; padding: 16px; margin-bottom: 24px; }
+.sign-tx-signed-label { margin: 0; font-size: 13px; font-weight: 500; color: var(--text); }
+.sign-tx-signed-xdr { margin: 0; max-height: 180px; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 12px/1.7 ui-monospace, monospace; color: var(--muted); scrollbar-width: thin; }
+.sign-tx-signed-xdr code { font: inherit; }
+.sign-tx-signed-xdr::-webkit-scrollbar { display: block; width: 4px; }
+.sign-tx-signed-xdr::-webkit-scrollbar-thumb { background: var(--line); }
+.sign-tx-err { margin-bottom: 16px; padding: 12px 14px; border-left: 2px solid var(--danger); font-size: 13px; line-height: 1.6; color: var(--danger); overflow-wrap: anywhere; }
+.sign-tx-actions { margin-top: 8px; }
+@media (hover: hover) and (pointer: fine) {
+  .sign-tx-screen :is(.sign-tx-paste, .sign-tx-copy):hover:not(:disabled) { background: transparent; color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
 }
-
-/* signed-XDR result card */
-.sign-tx-signed { border-radius: 18px; padding: 14px 16px; margin-bottom: 16px; }
-.sign-tx-signed-label {
-  font-size: 12px;
-  color: var(--accent);
-  font-weight: 800;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.sign-tx-signed-xdr {
-  font-size: 11.5px;
-  font-weight: 600;
-  word-break: break-all;
-  font-family: monospace;
-  line-height: 1.5;
-  color: var(--muted);
-  margin-bottom: 12px;
-}
-.sign-tx-copy {
-  width: 100%;
-  height: 44px;
-  color: var(--text);
-  border: none;
-  border-radius: 999px;
-  font-size: 13.5px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.sign-tx-err {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: var(--danger);
-  margin-bottom: 12px;
-  line-height: 1.5;
-}
-
-/* source account shown monospace */
-.sign-tx-summary-val.is-mono { font-family: monospace; }
+.sign-tx-screen :is(.sign-tx-paste, .sign-tx-copy):active:not(:disabled) { background: transparent; color: var(--text); }

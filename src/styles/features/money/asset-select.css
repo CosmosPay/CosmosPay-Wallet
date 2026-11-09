@@ -18,18 +18,21 @@
   gap: 8px;
   min-height: 44px;
   padding: 6px 12px 6px 6px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   background: transparent;
   color: var(--text);
   font: inherit;
   font-size: 15px;
   font-weight: 700;
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
-.asset-select-btn:hover {
-  border-color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+
+.asset-select-btn:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--interaction-hover-bg);
+}
 }
 
 .asset-select-btn:focus-visible {
@@ -61,7 +64,7 @@
   z-index: 31;
   min-width: 230px;
   padding: 6px;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: 16px;
   background: var(--bg);
   animation: fadeUp var(--dur-quick) var(--ease-out);
@@ -86,13 +89,14 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: box-shadow var(--dur-quick) var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
-.asset-select-item:hover,
-.asset-select-item:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 1px var(--line);
+@media (hover: hover) and (pointer: fine) {
+
+.asset-select-item:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--interaction-hover-bg);
+}
 }
 
 .asset-select-check {

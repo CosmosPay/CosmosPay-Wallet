@@ -98,18 +98,18 @@
   height: 52px;
   color: var(--text);
   border: none;
-  border-radius: 999px;
+  border-radius: var(--button-radius);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: var(--button-weight);
   cursor: pointer;
 }
 .confirm-sign-submit {
   flex: 1;
   height: 52px;
   color: var(--primary-text);
-  border-radius: 999px;
+  border-radius: var(--button-radius);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: var(--button-weight);
   cursor: pointer;
   display: flex;
   align-items: center;

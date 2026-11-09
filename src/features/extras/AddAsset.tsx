@@ -193,7 +193,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
   const nothing = (showStellar ? verified.length + (net === 'stellar' ? unverified.length : 0) : 0) + others.length === 0;
 
   return (
-    <div className="scr screen pb-40">
+    <div className="scr screen pb-40 add-asset">
       <ScreenHeader title={t('addAsset.title')} onBack={store.goBack} />
       <p className="add-asset-desc">{t('addAsset.descAll')}</p>
 

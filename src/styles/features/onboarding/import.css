@@ -1,7 +1,7 @@
 /* =====================================================================
    src/features/onboarding/Import.tsx — the phrase or the secret key. Prefix: .import-
    ===================================================================== */
-/* An outlined field like .input; its line turns blue on focus. */
+/* The shared border stays neutral; keyboard focus adds a separate ring. */
 .import-textarea {
   width: 100%;
   min-height: 132px;
@@ -14,13 +14,14 @@
   line-height: 1.7;
   resize: none;
   outline: none;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   background: transparent;
   transition: border-color var(--dur-quick) var(--ease-out);
 }
 
-.import-textarea:focus {
-  border-color: var(--brand);
+.import-textarea:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
 .import-criterion {

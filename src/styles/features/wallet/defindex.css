@@ -12,7 +12,7 @@
 .defindex-select {
   width: 100%;
   padding: 14px;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--line);
   color: var(--text);
   background: var(--surface);
   border-radius: 14px;

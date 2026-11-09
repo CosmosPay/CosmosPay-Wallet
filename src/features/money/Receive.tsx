@@ -53,14 +53,16 @@ export function Receive({ store }: { store: WalletStore }) {
   };
 
   useEffect(() => {
+    let live = true;
     setQr('');
     if (!addr) return;
     // Stellar encodes a SEP-7 payment request so other Stellar wallets pre-fill the send. The
     // other networks get the bare address: it is what every wallet on those chains scans. `H`:
     // the network's mark covers the centre.
     qrDataUrl(net === 'stellar' ? buildSep7Pay({ destination: addr }) : addr, 'H')
-      .then(setQr)
+      .then((value) => { if (live) setQr(value); })
       .catch(() => {});
+    return () => { live = false; };
   }, [net, addr]);
 
   const label = t('receive.addrOn', { network: name });
@@ -98,11 +100,11 @@ export function Receive({ store }: { store: WalletStore }) {
           </div>
 
           <div className="receive-actions">
-            <PrimaryButton onClick={() => void copy(addr)}>
+            <PrimaryButton disabled={!addr} onClick={() => void copy(addr)}>
               {copied ? <CheckIcon /> : <CopyIcon />}
               {copied ? t('common.copied') : t('common.copy')}
             </PrimaryButton>
-            <GhostButton onClick={() => void share()}>{t('common.share')}</GhostButton>
+            <GhostButton disabled={!addr} onClick={() => void share()}>{t('common.share')}</GhostButton>
           </div>
 
           {/* What arrives here: this network's assets only — said plainly, not as an error. */}

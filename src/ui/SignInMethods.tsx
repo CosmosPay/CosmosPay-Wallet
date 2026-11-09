@@ -2,7 +2,6 @@ import { useState, type ReactNode } from 'react';
 import { useKeptState } from '@/hooks/useKeptState';
 import { KEPT_INPUT } from '@/constants/keptInputs';
 import { copyText } from '@/lib/clipboard';
-import { inkHandlers } from '@/lib/ink';
 import { isAccessCode, isEmail, normalizeAccessCode } from '@/lib/validate';
 import type { TFn } from '@/lib/i18n';
 import { EMAIL_SOURCE_ID, type SignInOffer, type SignInPhase, type SignInProvider } from '@/constants/signIn';
@@ -100,7 +99,6 @@ export function SignInMethods({
           className="btn-primary ink"
           disabled={phase === 'verifying' || !isAccessCode(digits)}
           onClick={() => onCode(digits)}
-          {...inkHandlers}
         >
           {phase === 'verifying' ? <Spinner /> : t('signin.codeCta')}
         </button>
@@ -131,7 +129,6 @@ export function SignInMethods({
           className="btn-primary ink"
           disabled={busy || !ok}
           onClick={() => onEmail(email)}
-          {...inkHandlers}
         >
           {busy ? <Spinner /> : t('signin.sendCode')}
         </button>
@@ -157,7 +154,6 @@ export function SignInMethods({
               className="btn-ghost ink sign-in-btn"
               disabled={busy}
               onClick={() => onProvider('authentik', s.id)}
-              {...inkHandlers}
             >
               {SOURCE_MARK[s.id] ?? <AccountIcon className="sign-in-mark" />}
               {s.id === EMAIL_SOURCE_ID ? t('signin.emailCta') : t('signin.continueWith', { provider: s.name })}
@@ -173,7 +169,6 @@ export function SignInMethods({
                 className="btn-ghost ink sign-in-btn"
                 disabled={busy}
                 onClick={() => onProvider(p)}
-                {...inkHandlers}
               >
                 {PROVIDER_MARK[p]}
                 {t('signin.continueWith', { provider: PROVIDER_LABEL[p] })}
@@ -186,7 +181,6 @@ export function SignInMethods({
               className="btn-ghost ink sign-in-btn"
               disabled={busy}
               onClick={onEmailStep}
-              {...inkHandlers}
             >
               <MailIcon className="sign-in-mark" />
               {t('signin.emailCta')}

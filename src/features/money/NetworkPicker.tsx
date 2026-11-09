@@ -5,7 +5,6 @@ import { Sheet } from '@/ui/Sheet';
 import { SearchField } from '@/ui/SearchField';
 import { CheckIcon, ChevronDownIcon, CloseIcon } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
-import { inkHandlers } from '@/lib/ink';
 import { isDesktopLayout } from '@/lib/layout';
 import type { TFn } from '@/lib/i18n';
 import { NETWORKS, NETWORK_GROUPS, type NetworkId } from '@/constants/networks';
@@ -125,7 +124,6 @@ export function NetworkPicker({
           aria-label={t('networks.pick', { network: nameOf(value) })}
           onClick={() => setOpen((o) => (o ? null : isDesktopLayout() ? 'menu' : 'sheet'))}
           className="network-picker-btn ink"
-          {...inkHandlers}
         >
           <NetworkLogo network={value} size={26} />
           <span className="network-picker-current">{nameOf(value)}</span>
@@ -140,7 +138,7 @@ export function NetworkPicker({
           <h2 id={titleId} className="sheet-title">
             {t('receive.network')}
           </h2>
-          <button type="button" className="sheet-close ink" aria-label={t('a11y.close')} onClick={close} {...inkHandlers}>
+          <button type="button" className="sheet-close ink" aria-label={t('a11y.close')} onClick={close}>
             <CloseIcon />
           </button>
         </div>

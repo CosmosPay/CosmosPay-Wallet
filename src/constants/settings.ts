@@ -11,9 +11,9 @@
 /** Theme picker options — Settings appearance section. `system` (the default) follows
  *  the device; the icon names a `ThemeIcon` kind (src/ui/Icons.tsx). */
 export const THEME_OPTIONS = [
-  { id: 'system', labelKey: 'settings.system', icon: 'system' },
   { id: 'light', labelKey: 'settings.light', icon: 'sun' },
   { id: 'dark', labelKey: 'settings.dark', icon: 'moon' },
+  { id: 'system', labelKey: 'settings.system', icon: 'system' },
 ] as const;
 
 /** Idle auto-lock choices — Settings security section (`AUTO_LOCK_CHOICES_MS`, same order). */

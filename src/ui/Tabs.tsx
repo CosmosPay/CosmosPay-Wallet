@@ -56,6 +56,7 @@ export function Tabs<K extends string>({
               refs.current[i] = el;
             }}
             type="button"
+            id={panelId ? `${panelId}-${tb.key}` : undefined}
             role="tab"
             aria-selected={on}
             aria-controls={panelId}

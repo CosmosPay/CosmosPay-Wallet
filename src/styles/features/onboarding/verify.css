@@ -23,23 +23,23 @@
 /* the gap: an outline waiting for a word */
 .verify-word.is-empty {
   background: transparent;
-  border: 1.5px dashed var(--dimmer);
+  border: 1.5px dashed var(--line);
   transition: border-color var(--dur-quick) var(--ease-out);
 }
 
 /* while a word is in the air, the gaps say where it can go */
 .verify-grid.is-dragging .verify-word.is-empty {
-  border-color: var(--text);
+  border-color: var(--line);
 }
 
 /* a word placed by a tap or a drop: ink, so it reads as the person's own answer; it
    lands with a small settle */
 .verify-word.is-filled {
   background: var(--text);
-  border-color: var(--text);
+  border-color: var(--line);
   color: var(--bg);
   cursor: grab;
-  animation: popIn var(--dur-base) var(--ease-out);
+  animation: fadeIn var(--dur-base) var(--ease-out);
 }
 
 /* the place under the pointer: the active indicator, brand blue (beats the rule above) */
@@ -100,7 +100,7 @@
   align-items: center;
   min-height: 44px;
   padding: 0 18px;
-  border: 1.5px solid var(--text);
+  border: 1.5px solid var(--line);
   border-radius: 999px;
   background: var(--text);
   color: var(--bg);
@@ -121,7 +121,7 @@
 .verify-chip {
   min-height: 44px;
   padding: 0 18px;
-  border: 1.5px solid var(--text);
+  border: 1.5px solid var(--line);
   background: transparent;
   color: var(--text);
   font: inherit;

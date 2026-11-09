@@ -11,7 +11,7 @@
 
 .gateway-ops-row {
   padding: 12px 14px;
-  border-bottom: 1px solid var(--border-soft, rgba(255, 255, 255, 0.06));
+  border-bottom: 1px solid var(--line);
 }
 .gateway-ops-row:last-child {
   border-bottom: none;

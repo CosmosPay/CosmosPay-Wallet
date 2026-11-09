@@ -70,11 +70,13 @@
   border: 0;
   font: inherit;
   text-align: left;
-  transition: color var(--dur-quick) var(--ease-out), box-shadow var(--dur-quick) var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
-.nav-menu-item:hover {
+@media (hover: hover) and (pointer: fine) {
+.nav-menu-item:not(.is-on):hover:not(:disabled):not([aria-disabled='true']) {
   color: var(--text);
-  box-shadow: inset 0 0 0 1px var(--line);
+  background: var(--interaction-hover-bg);
+}
 }
 .nav-menu-item.is-on {
   color: var(--text);

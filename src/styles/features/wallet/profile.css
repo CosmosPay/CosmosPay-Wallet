@@ -1,248 +1,336 @@
-/* =====================================================================
-   src/features/wallet/Profile.tsx — the bar's "More": the person, then the
-   lists. Prefix: .more-   Rows between lines; ringed icons; no grey fills.
-   ===================================================================== */
-.more-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  min-height: 46px;
-  padding-top: 6px;
-  margin-bottom: 18px;
-}
-
-.more-title {
-  margin: 0;
-  font-size: 28px;
-  font-weight: 700;
-  letter-spacing: -0.5px;
-}
-
-.more-person {
-  display: flex;
-  align-items: center;
-  gap: 16px;
+/* src/features/wallet/Profile.tsx — identity, wallets and grouped account actions. */
+.more .screen-header {
   margin-bottom: 28px;
 }
-
+.more .screen-header-title {
+  font-size: 30px;
+  letter-spacing: -0.8px;
+}
+.more-person {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 32px;
+}
 .more-avatar {
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  width: 68px;
-  height: 68px;
+  width: 64px;
+  height: 64px;
   padding: 0;
   overflow: hidden;
-  border: 1.5px solid var(--line-strong);
-  background: transparent;
+  border: 1px solid transparent;
+  background: var(--avatar-bg);
   color: var(--text);
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out);
 }
-
-.more-avatar:hover {
-  border-color: var(--text);
+.more-avatar-initial {
+  font-size: 27px;
+  font-weight: 500;
 }
-
-.more-avatar:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 3px;
-}
-
-.more-avatar-mark {
-  width: 32px;
-  height: 32px;
-}
-
 .more-avatar-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-
 .more-person-text {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 8px;
+  align-items: center;
 }
-
 .more-name {
-  font-size: 19px;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  grid-column: 1 / -1;
+  max-width: 100%;
+  margin: 0 0 5px;
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  overflow-wrap: anywhere;
 }
-
 .more-email {
-  font-size: 13px;
+  grid-column: 1 / -1;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
-
-.more-addr {
+.more-address {
   display: flex;
   align-items: center;
-  gap: 4px;
-  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
-  font-size: 12.5px;
-  color: var(--muted);
-}
-
-.more-copy {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
   padding: 0;
   border: 0;
   background: transparent;
   color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: color var(--dur-quick) var(--ease-out);
 }
-
-.more-copy svg {
+.more-address span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.more-address svg {
   width: 15px;
   height: 15px;
+  flex-shrink: 0;
 }
-
-.more-copy:hover,
-.more-copy.is-copied {
-  color: var(--text);
+.more-address.is-copied {
+  color: var(--up);
 }
-
-.more-copy:focus-visible {
-  outline: 2px solid var(--brand);
+.more-address:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
-
+.more-person .home-network-menu {
+  max-width: 100%;
+}
+.more-person .home-net-trigger {
+  padding-left: 0;
+}
 .more-section {
   display: flex;
   flex-direction: column;
-  margin-bottom: 24px;
+  margin-bottom: 28px;
 }
-
 .more-section-title {
-  margin: 0 0 4px;
-  font-size: 13px;
-  font-weight: 600;
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
   color: var(--muted);
 }
-
-.more-row {
-  position: relative;
+.more-section-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.more-wallets .more-section-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.3px;
+}
+.more-count {
+  color: var(--muted);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.more-wallet-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.more-wallet,
+.more-add-wallet {
   display: flex;
   align-items: center;
   gap: 12px;
   width: 100%;
-  min-height: 60px;
-  padding: 8px 0;
+  min-height: 76px;
+  padding: 10px 0;
   border: 0;
+  border-radius: 12px !important;
   background: transparent;
   color: var(--text);
   font: inherit;
   text-align: left;
   cursor: pointer;
 }
-
-/* the line between rows: a pseudo-element, since base.css rounds every button into a pill */
-.more-row::after {
-  content: '';
-  position: absolute;
-  left: 52px;
-  right: 0;
-  bottom: 0;
-  height: 1px;
-  background: var(--line);
-}
-
-.more-row:last-child::after {
-  display: none;
-}
-
-.more-row:focus-visible {
-  outline: 2px solid var(--brand);
-  outline-offset: 2px;
-}
-
-.more-row-icon {
-  flex-shrink: 0;
+.more-wallet-initial,
+.more-add-icon {
   display: grid;
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 1.5px solid var(--line-strong);
+  flex-shrink: 0;
   border-radius: 50%;
+  background: var(--avatar-bg);
+  font-size: 17px;
+  font-weight: 500;
 }
-
-.more-row-icon svg {
-  width: 19px;
-  height: 19px;
-}
-
-.more-row-text {
+.more-wallet-text {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 6px;
 }
-
-.more-row-title {
+.more-wallet-name {
   font-size: 15px;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
-.more-row-desc {
-  font-size: 12.5px;
-  line-height: 1.4;
+.more-wallet-address {
+  font-size: 11px;
   color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
-.more-row-chev {
+.more-wallet-active {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--up);
+  white-space: nowrap;
+}
+.more-wallet-active svg {
+  width: 13px;
+  height: 13px;
+}
+.more-wallet-chevron {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
   color: var(--muted);
+  margin-left: auto;
 }
-
-/* lock now: an outlined pill across the column, ink on hover like the other outlined buttons */
+.more-add-wallet {
+  min-height: 64px;
+  font-size: 14px;
+  font-weight: 500;
+}
+.more-add-icon {
+  border: 1px solid var(--line);
+  background: transparent;
+}
+.more-add-icon svg {
+  width: 19px;
+  height: 19px;
+}
+.more-wallets {
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--line);
+}
+.more .list-row {
+  gap: 14px;
+  min-height: 60px;
+  border-radius: 8px !important;
+}
+.more .list-row-icon {
+  border: 0;
+  width: 28px;
+  height: 36px;
+}
+.more .list-row-icon svg {
+  width: 22px;
+  height: 22px;
+}
+.more .list-row-title {
+  font-size: 14px;
+  font-weight: 500;
+}
+.more .list-row-desc {
+  font-size: 12px;
+}
+.more .list-row::after {
+  left: 42px;
+}
+.more .list-row-chev {
+  width: 17px;
+  height: 17px;
+}
 .more-lock {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
-  min-height: 54px;
+  min-height: 48px;
+  padding: 12px;
   margin-top: 4px;
-  border: 1.5px solid var(--line-strong);
+  border: 0;
   background: transparent;
-  color: var(--text);
+  color: var(--danger);
   font: inherit;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out), transform 0.13s var(--ease-out);
 }
-
-.more-lock:hover {
-  border-color: var(--text);
+.more-lock svg {
+  width: 18px;
+  height: 18px;
 }
-
+.more-avatar,
+.more-address,
+.more-wallet,
+.more-add-wallet,
+.more .list-row,
+.more-lock,
+.more .list-row-chev,
+.more-wallet-chevron {
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.more-avatar:focus-visible,
+.more-address:focus-visible,
+.more-wallet:focus-visible,
+.more-add-wallet:focus-visible,
 .more-lock:focus-visible {
   outline: 2px solid var(--brand);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
-
-.more-lock svg {
-  width: 19px;
-  height: 19px;
+@media (hover: hover) and (pointer: fine) {
+  .more-avatar:hover:not(:disabled):not([aria-disabled='true']) {
+    border-color: var(--line);
+  }
+  .more-address:hover:not(:disabled):not([aria-disabled='true']) {
+    color: var(--text);
+  }
+  .more .list-row:hover:not(:disabled):not([aria-disabled='true']) .list-row-chev,
+.more-wallet:hover:not(:disabled):not([aria-disabled='true']) .more-wallet-chevron,
+.more-add-wallet:hover:not(:disabled):not([aria-disabled='true']) .more-wallet-chevron {
+    color: var(--text);
+  }
+  .more-lock:hover:not(:disabled):not([aria-disabled='true']) {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
 }
-
-/* the photo picker behind the avatar button */
+@media (max-width: 359px) {
+  .more-person {
+    gap: 12px;
+  }
+  .more-avatar {
+    width: 52px;
+    height: 52px;
+  }
+  .more-wallet {
+    gap: 8px;
+  }
+  .more-wallet-active svg {
+    display: none;
+  }
+}
+/* The picker remains keyboard-accessible through its labelled avatar button. */
 .hidden-input {
   display: none;
+}
+
+/* The content aligns to the gutter: feedback stays on the label. */
+.more-wallet-name { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: text-decoration-color var(--dur-quick) var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .more-wallet:hover:not(:disabled):not([aria-disabled='true']) .more-wallet-name { text-decoration-color: var(--muted); }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .more-add-wallet:hover:not(:disabled) > span:not([class]) { text-decoration: underline; text-underline-offset: 4px; }
 }

@@ -123,6 +123,8 @@ import type { EasyRecoveryLink, EasyRecoveryPayload } from '@/lib/easyRecovery';
 import { useEasyRecovery, type EasyRecoveryClaimFailure } from '@/state/useEasyRecovery';
 import { MOUSE_NAV_GRACE_MS, NAV_REWIND_TIMEOUT_MS } from '@/constants/ui';
 import { hydrate, invalidate, run } from '@/lib/query';
+import { bridgedAmount, type Usdt0Route } from '@/lib/usdt0';
+import { USDT0_ROUTES_TTL_MS } from '@/constants/usdt0';
 import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
 import { usePasskey } from '@/state/usePasskey';
@@ -165,6 +167,7 @@ import {
   historyKey,
   networksKey,
   INTENTS_ASSETS_KEY,
+  USDT0_ROUTES_KEY,
   opsKey,
   recoveryKey,
   type OpsDomain,
@@ -246,6 +249,10 @@ import {
   quoteCrossChainSwap as cpQuoteCrossChainSwap,
   createCrossChainSwap as cpCreateCrossChainSwap,
   reportCrossChainDeposit as cpReportCrossChainDeposit,
+  listUsdt0Routes as cpListUsdt0Routes,
+  quoteUsdt0 as cpQuoteUsdt0,
+  createUsdt0Transfer as cpCreateUsdt0Transfer,
+  submitUsdt0Transfer as cpSubmitUsdt0Transfer,
   createChainSwap as cpCreateChainSwap,
   submitChainSwap as cpSubmitChainSwap,
   signInEmailStart,
@@ -274,6 +281,7 @@ import {
   type CrossChainSwapInput,
   type CrossChainTarget,
   type CrossChainNetwork,
+  type Usdt0Quote,
   recoverySetupSponsored,
 } from '@/lib/cosmospay';
 import { useToast } from '@/state/useToast';
@@ -726,6 +734,7 @@ export function useWalletStore() {
   const chainHoldings = useQueryValue<ChainHoldings>(chainsKey(scope.net, scope.pub)) ?? null;
   const networkHoldings = useQueryValue<NetworkHoldings>(networksKey(scope.net, scope.pub)) ?? null;
   const intentsAssets = useQueryValue<CrossChainAsset[]>(INTENTS_ASSETS_KEY) ?? null;
+  const usdt0Routes = useQueryValue<Usdt0Route[]>(USDT0_ROUTES_KEY) ?? null;
   /** The tokens this wallet added beyond the registry's (lib/trackedTokens.ts), read from storage per wallet. */
   const [trackedTokens, setTrackedTokens] = useState<TrackedTokens>({});
   const trackedRef = useRef<TrackedTokens>({});
@@ -3018,6 +3027,107 @@ export function useWalletStore() {
     [session, network, openAccessKey, crossChainInput, requestSignature, refresh, exclusive, guardSession, t],
   );
 
+  /* --------------------- USDT0 through the bridge --------------------- */
+  // Stellar's USDT0 to USDT / USDT0 on an EVM network the routes list, 1:1, the bridge's fee in
+  // XLM (lib/usdt0.ts). The gateway builds ONE Soroban transaction; the guard's `usdt0` template
+  // matches every authorization in it against the quote before the key is used. It always lands
+  // on this wallet's own EVM address. Mainnet only: USDT0 does not exist on testnet.
+
+  /** Price a transfer of `amount` (cut to the bridge's six decimals) to `chain`. */
+  const quoteUsdt0 = useCallback(
+    async (amount: string, chain: NetworkId): Promise<Usdt0Quote | null> => {
+      const apiKey = openAccessKey();
+      const sent = bridgedAmount(amount);
+      if (!apiKey || !sent || testMode) return null;
+      try {
+        // With the source, the gateway also checks it holds the USDT0 and the XLM for the fee,
+        // and says so under the button before anything is built.
+        return await cpQuoteUsdt0(apiKey, { to: chain, amount: sent, ...(session ? { source: session.publicKey } : {}) });
+      } catch (e) {
+        throw e instanceof Error && e.message ? e : new Error(t('swap.quoteError'));
+      }
+    },
+    [openAccessKey, session, testMode, t],
+  );
+
+  /** Build, check, sign and relay the transfer the screen quoted. Lands on the success screen. */
+  const submitUsdt0 = useCallback(
+    async (amount: string, chain: NetworkId, quote: Usdt0Quote) => {
+      if (!session || testMode) return;
+      const apiKey = openAccessKey();
+      const sent = bridgedAmount(amount);
+      if (!apiKey || !sent) return;
+      await exclusive.run('swap', async () => {
+        const epoch = sessionEpochRef.current;
+        const okSig = await requestSignature({
+          title: t('usdt0.confirmTitle'),
+          message: t('usdt0.confirmMsg', { amount: sent, dest: quote.amountReceived, receives: quote.receives, network: NETWORKS[chain].name }),
+        });
+        if (!okSig) return;
+        setBusy(true);
+        try {
+          const recipient = addressOnNetwork(chain);
+          if (!recipient) throw new Error(t('xswap.noAddress', { chain: NETWORKS[chain].name }));
+          // The route the person picked, as the routes list names it, and the quote must agree on
+          // where it goes — the envelope is then held to that endpoint id.
+          const route = usdt0Routes?.find((r) => r.chain === chain);
+          if (!route || route.eid !== quote.eid) throw new Error(t('usdt0.failed'));
+          const transfer = await cpCreateUsdt0Transfer(apiKey, {
+            source: session.publicKey,
+            to: chain,
+            recipient,
+            amount: sent,
+            idempotencyKey: crypto.randomUUID(),
+          });
+          // Every bound comes from the screen: what was typed, the quote it rendered, the route
+          // picked, this wallet's own address. Never from `transfer`, the response that carried
+          // the XDR — bounding a gateway's envelope with the gateway's own numbers checks nothing.
+          assertSafeToSign(network, transfer.xdr, {
+            signer: session.publicKey,
+            intent: 'usdt0',
+            destinations: 'self',
+            maxSend: sent,
+            minReceive: quote.amountReceived,
+            maxNativeFee: quote.nativeFeeLimit,
+            maxCommission: quote.feeAmount,
+            dstEid: route.eid,
+            recipient,
+          });
+          guardSession(epoch);
+          const signedXdr = await signEnvelope(transfer.xdr);
+          const res = await cpSubmitUsdt0Transfer(apiKey, transfer.id, signedXdr, transfer.publicToken);
+          if (res.status !== 'SUBMITTED' && res.status !== 'DELIVERED') {
+            throw new Error(res.failureReason || t('usdt0.failed'));
+          }
+          report(EVENT.swapSubmitted, {
+            category: 'transaction',
+            props: { from: 'USDT0', to: quote.receives, chain, amount: sent, received: res.amountReceived, txHash: res.txHash ?? undefined, crossChain: true },
+          });
+          setSuccessInfo({
+            kind: 'ok',
+            title: t('usdt0.success'),
+            msg: t('usdt0.successMsg', { network: NETWORKS[chain].name }),
+            rows: [
+              { label: t('usdt0.sent'), val: `${res.amountSent} USDT0` },
+              { label: t('usdt0.receives'), val: `${res.amountReceived} ${quote.receives}` },
+              { label: t('xswap.to'), val: `${recipient.slice(0, 6)}…${recipient.slice(-6)}` },
+            ],
+            hash: res.txHash ?? undefined,
+          });
+          setScreen('success');
+          refresh(true);
+        } catch (e) {
+          reportError(EVENT.swapFailed, e, { from: 'USDT0', to: quote.receives, amount: sent, chain, crossChain: true });
+          setSuccessInfo({ kind: 'err', title: t('usdt0.failed'), msg: (e as Error).message, rows: [] });
+          setScreen('success');
+        } finally {
+          setBusy(false);
+        }
+      });
+    },
+    [session, testMode, network, openAccessKey, addressOnNetwork, usdt0Routes, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
+  );
+
   /* ------------------ paying from Solana / Monad ------------------- */
   // The same phrase derives an address on each; the wallet signs there with keys derived
   // at the moment of signing (`lib/chainKeys.ts`) and checks everything the gateway built
@@ -3156,6 +3266,24 @@ export function useWalletStore() {
       /* Nothing listed: the screens offer what the registry has. */
     }
   }, [crossChainAssets]);
+
+  /** Where the bridge takes Stellar's USDT0 — global, mainnet only, kept ten minutes. */
+  const loadUsdt0Routes = useCallback(async (): Promise<void> => {
+    const apiKey = openAccessKey();
+    if (!apiKey) return;
+    try {
+      await run({
+        key: USDT0_ROUTES_KEY,
+        fetcher: async () => {
+          const res = await cpListUsdt0Routes(apiKey);
+          return res.available ? res.routes : [];
+        },
+        ttl: USDT0_ROUTES_TTL_MS,
+      });
+    } catch {
+      /* No routes: Stellar's USDT0 leaves through NEAR Intents, where it is listed. */
+    }
+  }, [openAccessKey]);
 
   /**
    * A network's name in the wallet's mode — what every screen calls it: "Stellar Testnet",
@@ -7229,6 +7357,10 @@ export function useWalletStore() {
     networkName,
     intentsAssets,
     loadIntentsAssets,
+    usdt0Routes,
+    loadUsdt0Routes,
+    quoteUsdt0,
+    submitUsdt0,
     networkBalances,
     submitNetworkSend,
     loadChainHoldings,

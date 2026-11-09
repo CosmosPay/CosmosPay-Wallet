@@ -20,8 +20,6 @@
 /* 44px target whose arrow sits on the gutter line: the negative margin gives back the
    space around the 24px glyph. */
 .screen-bar-back {
-  --ink: var(--text);
-  --ink-text: var(--bg);
   width: 44px;
   height: 44px;
   margin-left: -10px;

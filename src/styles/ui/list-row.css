@@ -43,7 +43,7 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   border-radius: 50%;
 }
 
@@ -76,4 +76,10 @@
   width: 18px;
   height: 18px;
   color: var(--muted);
+}
+
+/* The content aligns to the gutter: feedback stays on the label. */
+.list-row-title { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: text-decoration-color var(--dur-quick) var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .list-row:hover:not(:disabled):not([aria-disabled='true']) .list-row-title { text-decoration-color: var(--muted); }
 }

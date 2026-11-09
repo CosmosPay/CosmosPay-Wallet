@@ -62,7 +62,7 @@
 }
 
 .profile-setup-gender.is-on {
-  border-color: var(--text);
+  border-color: var(--line);
   background: var(--text);
   color: var(--bg);
 }

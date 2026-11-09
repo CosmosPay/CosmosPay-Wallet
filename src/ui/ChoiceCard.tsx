@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import { cx } from '@/lib/cx';
-import { inkHandlers } from '@/lib/ink';
 import { ChevronRightIcon } from '@/ui/Icons';
 import '@/styles/ui/choice-card.css';
 
@@ -31,7 +30,6 @@ export function ChoiceCard({
       onClick={onClick}
       disabled={disabled}
       className={cx('choice-card ink', className)}
-      {...inkHandlers}
     >
       <span className="choice-card-icon">{icon}</span>
       <span className="choice-card-body">

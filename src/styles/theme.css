@@ -19,6 +19,12 @@
   /* Dark is the Figma file ("Cosmos Wallet"): black canvas, #171a22 controls, #07080b
      navigation, #8889a1 labels. Its tertiary grey #6b707c is 3.5:1 on a control, so
      --dim is lifted to #7d8290 (4.5:1 there). */
+  --home-control-bg: #171a22;
+  --home-chrome-bg: #07080b;
+  --home-active-text: #8191ff;
+  --interaction-hover-bg: #11131a;
+  --primary-hover-bg: #e5e7eb;
+  --primary-pressed-bg: #cfd0d6;
   --bg: #000000;
   --text: #ffffff;
   --text-soft: #cfd0d6;
@@ -36,19 +42,19 @@
      line around it. The names stay so nothing has to change at once. */
   --glass-bg: var(--bg);
   --glass-border: var(--line);
-  /* The brand draws surfaces with LINES, not grey fills (the user's rule): a card, a track,
-     a divider is --line on the canvas. A control whose edge is the only thing that shows
-     where it is (a text field, a checkbox) takes --line-strong, 3:1 on --bg (WCAG 1.4.11). */
+  /* Activity defines the shared border colour: fields, dividers, panels and controls
+     all use --line. Legacy names remain aliases, never separate shades.
+     Keyboard focus and validation retain their semantic colours. */
   --line: #2a2e39;
-  --line-strong: #5d6273;
+  --line-strong: var(--line);
   --glass-soft-bg: var(--bg);
-  --glass-soft-border: var(--line-strong);
+  --glass-soft-border: var(--line);
   --primary-bg: #ffffff;
-  --primary-border: #ffffff;
+  --primary-border: var(--line);
   --primary-text: #000000;
   --surface: #11131a;
   --surface-2: #0c0d12;
-  --hairline: #1f232d;
+  --hairline: var(--line);
   --nav-bg: var(--bg);
   /* Bottom sheets sit one step above the canvas so their edge reads without a shadow. */
   --sheet-bg: #0c0d12;
@@ -70,6 +76,12 @@
   /* Light is derived from the same system: white canvas, black ink, and the cool greys
      snap.cosmospay.lat uses, so the two products read as one. --up/--down/--danger keep
      their meaning (financial semantics, not brand) and were moved to AA on white. */
+  --home-control-bg: #eef0f4;
+  --home-chrome-bg: #f4f5f8;
+  --home-active-text: #4057df;
+  --interaction-hover-bg: #f4f5f8;
+  --primary-hover-bg: #22242c;
+  --primary-pressed-bg: #383b45;
   --bg: #ffffff;
   --text: #000000;
   --text-soft: #2b2d35;
@@ -84,15 +96,15 @@
   --glass-bg: var(--bg);
   --glass-border: var(--line);
   --line: #dcdfe6;
-  --line-strong: #8a8e9b;
+  --line-strong: var(--line);
   --glass-soft-bg: var(--bg);
-  --glass-soft-border: var(--line-strong);
+  --glass-soft-border: var(--line);
   --primary-bg: #000000;
-  --primary-border: #000000;
+  --primary-border: var(--line);
   --primary-text: #ffffff;
   --surface: #eef0f4;
   --surface-2: #f4f5f8;
-  --hairline: #e6e8ee;
+  --hairline: var(--line);
   --nav-bg: #ffffff;
   --sheet-bg: #ffffff;
   --scrim: rgba(0, 0, 0, 0.4);
@@ -233,4 +245,12 @@
      must stay lengths, for the same calc() reason as the --safe-* fallbacks. */
   --kb-h: 0px;
   --kb-reflow: 0px;
+}
+
+/* Button geometry: actions, compact controls and deliberate circular icon targets. */
+:root {
+  --button-radius: 8px;
+  --button-radius-small: 6px;
+  --button-height: 48px;
+  --button-weight: 600;
 }

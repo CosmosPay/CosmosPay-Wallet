@@ -1,7 +1,6 @@
 import { useId, useMemo, useRef, useState } from 'react';
 import type { NetworkId } from '@/constants/networks';
 import { cx } from '@/lib/cx';
-import { inkHandlers } from '@/lib/ink';
 import { isDesktopLayout } from '@/lib/layout';
 import { isHomeCoin } from '@/lib/logos';
 import { rowMatches } from '@/lib/assetList';
@@ -133,7 +132,7 @@ export function SendAssetPicker({
           <h2 id={titleId} className="sheet-title">
             {labels.title}
           </h2>
-          <button type="button" className="sheet-close ink" aria-label={labels.close} onClick={close} {...inkHandlers}>
+          <button type="button" className="sheet-close ink" aria-label={labels.close} onClick={close}>
             <CloseIcon />
           </button>
         </div>

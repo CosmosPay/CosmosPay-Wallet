@@ -14,3 +14,150 @@
 .asset-search {
   flex: 1;
 }
+/* Home toolbar: quiet rectangular controls with explicit focus and selection. */
+.asset-toolbar .search-field-input,
+.asset-toolbar .net-select-btn {
+  min-height: 44px;
+  border: 1px solid var(--line);
+  border-radius: 6px !important;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 400;
+  transition:
+    border-color 120ms ease,
+    color 120ms ease;
+}
+.asset-toolbar .search-field-input {
+  padding-left: 38px;
+}
+.asset-toolbar .search-field-icon {
+  left: 12px;
+  width: 16px;
+  height: 16px;
+}
+.asset-toolbar .search-field-clear {
+  border-radius: 4px !important;
+}
+.asset-toolbar .net-select-btn {
+  gap: 8px;
+  padding-inline: 12px;
+  max-width: 240px;
+}
+.asset-toolbar .net-select-btn-label {
+  display: block;
+}
+.asset-toolbar .net-all-mark {
+  border: 0;
+}
+.asset-toolbar .net-all-mark svg {
+  width: 80%;
+  height: 80%;
+}
+.asset-toolbar .net-select-caret {
+  width: 14px;
+  height: 14px;
+  transition: transform 120ms ease;
+}
+.asset-toolbar .search-field-input:focus-visible,
+.asset-toolbar .net-select-btn:focus-visible {
+  border-color: var(--line);
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.asset-toolbar .net-select-btn[aria-expanded="true"] {
+  border-color: var(--line);
+  background: var(--surface-2);
+}
+/* A short fade, not a zoom. Closing still fires Dropdown's opacity transitionend. */
+.asset-toolbar .dropdown.net-select-panel {
+  border-radius: 8px;
+  padding: 16px;
+  transform: none;
+  transition: opacity 120ms ease;
+}
+.asset-toolbar .sheet-panel,
+.asset-toolbar .sheet.is-open .sheet-panel {
+  border-radius: 8px 8px 0 0;
+  transition-duration: 180ms;
+}
+.asset-toolbar .sheet::backdrop,
+.asset-toolbar .sheet.is-open::backdrop {
+  transition-duration: 180ms;
+}
+.asset-toolbar .sheet-title {
+  font-size: 18px;
+  font-weight: 500;
+}
+.asset-toolbar .sheet-close {
+  border: 0;
+  border-radius: 6px !important;
+}
+.asset-toolbar .net-select-title {
+  margin: 0 0 16px;
+  font-size: 15px;
+  font-weight: 500;
+}
+.asset-toolbar .net-select-head {
+  padding: 16px 12px 8px;
+  font-size: 11px;
+  font-weight: 400;
+}
+.asset-toolbar .net-select-item {
+  min-height: 60px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 6px !important;
+  transition:
+    color 120ms ease;
+}
+.asset-toolbar .net-select-item.is-on {
+  border-color: transparent;
+  background: var(--surface);
+}
+.asset-toolbar .net-select-item:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+.asset-toolbar .net-select-name {
+  font-size: 13px;
+  font-weight: 500;
+}
+.asset-toolbar .net-select-sub {
+  font-size: 11px;
+  line-height: 1.5;
+}
+.asset-toolbar .net-select-value {
+  font-size: 12px;
+  font-weight: 400;
+}
+.asset-toolbar .net-select-check svg {
+  width: 16px;
+  height: 16px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .asset-toolbar .search-field-input:hover:not(:disabled),
+  .asset-toolbar .net-select-btn:hover:not(:disabled):not([aria-disabled='true']) {
+    border-color: var(--line);
+  }
+  .asset-toolbar
+    .net-select-item:not(.is-on):hover:not(:disabled):not(
+      [aria-disabled="true"]
+    ) {
+    border-color: transparent;
+  }
+}
+@media (max-width: 480px) {
+  .asset-toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .asset-toolbar > .asset-search {
+    flex-basis: 100%;
+  }
+  .asset-toolbar .net-select-btn {
+    max-width: 100%;
+  }
+  .asset-toolbar .net-select-btn-label {
+    display: block;
+  }
+}

@@ -6,7 +6,7 @@
 .token-avatar {
   border-radius: 50%;
   /* The redesign: a ring on the canvas, no fill and no bevel. */
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -22,7 +22,7 @@
 
 .token-avatar--brand {
   background: transparent;
-  border-color: var(--text);
+  border-color: var(--line);
 }
 
 /* liquidity-pool badge: a literal tint, deliberately identical in both themes */

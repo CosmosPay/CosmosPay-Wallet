@@ -18,8 +18,8 @@ const TITLES: Record<string, string> = {
 const FEE_TITLES: Record<string, string> = { liquidity: 'history.feeLiquidity', swap: 'history.feeSwap' };
 
 /**
- * One operation, as the Figma's Activity tab draws it: a ringed mark (green in, red out, the
- * brand blue for a swap, ink for a commission), the title over who it was with — that address copies — and the
+ * One operation: a line icon (green in, neutral out, blue for a swap), the title over
+ * who it was with — that address copies — and the
  * amount over the time. The row opens the operation on the explorer: the title is the link,
  * stretched over the row, so the copy button beside it is not a button inside a link.
  */
@@ -43,7 +43,7 @@ export function HistoryRow({ item, store, index = 0, dense = false }: { item: Hi
       : who
         ? t(inbound ? 'history.from' : 'history.to', { who: shortAddr(who, 6, 4) })
         : '';
-  // A send is red; a commission keeps the ink, with its own mark, so the two never read alike.
+  // A commission has its own mark; a failed operation always carries the danger tone.
   const isFee = item.kind === 'fee';
   const tone = item.failed ? 'is-failed' : item.kind === 'swap' ? 'is-swap' : inbound ? 'is-in' : isFee ? 'is-fee' : 'is-out';
   const Mark = item.kind === 'swap' ? ExchangeIcon : inbound ? ReceiveIcon : isFee ? FeeIcon : outbound ? SentIcon : DotsIcon;
@@ -64,7 +64,7 @@ export function HistoryRow({ item, store, index = 0, dense = false }: { item: Hi
         )}
         {sub && (
           <span className="activity-sub">
-            {sub}
+            <span className="activity-sub-text">{sub}</span>
             {who && item.kind !== 'swap' && (
               <button
                 type="button"
@@ -84,7 +84,7 @@ export function HistoryRow({ item, store, index = 0, dense = false }: { item: Hi
             {amountText}
           </span>
         )}
-        <span className="activity-time">{time}</span>
+        <time className="activity-time" dateTime={item.createdAt}>{time}</time>
       </div>
     </div>
   );

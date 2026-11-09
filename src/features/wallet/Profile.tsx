@@ -1,23 +1,26 @@
-import { useRef, type ReactNode } from 'react';
+import { useRef } from 'react';
 import type { WalletStore } from '@/state/store';
-import { buildKind } from '@/lib/platform';
 import { shortAddr } from '@/lib/format';
 import { useCopied } from '@/hooks/useCopied';
 import { cx } from '@/lib/cx';
-import { BackCircle } from '@/features/wallet/BackCircle';
+import { HomeNetworkButton } from '@/features/wallet/HomeNetworkButton';
+import { ListRow } from '@/ui/ListRow';
+import { ScreenHeader } from '@/ui/ScreenHeader';
+import { addressOn } from '@/lib/accountAddress';
 import {
   AccountIcon,
   ActivityIcon,
   CheckIcon,
   ChevronRightIcon,
   CopyIcon,
-  CosmosMark,
+  KeyIcon,
+  PlusIcon,
+  ReceiveIcon,
   GearIcon,
   InfoCircleIcon,
   LinkIcon,
   PowerIcon,
   ShieldIcon,
-  WalletIcon,
 } from '@/ui/Icons';
 import '@/styles/features/wallet/profile.css';
 
@@ -39,22 +42,6 @@ function resizeToDataUrl(file: File, size = 160): Promise<string> {
     img.onerror = () => reject(new Error('bad image'));
     img.src = URL.createObjectURL(file);
   });
-}
-
-/** One row of a list: a ringed icon, its name (and a line under it), a chevron. */
-function MoreRow({ icon, title, desc, onClick }: { icon: ReactNode; title: string; desc?: string; onClick: () => void }) {
-  return (
-    <button type="button" onClick={onClick} className="more-row">
-      <span className="more-row-icon" aria-hidden="true">
-        {icon}
-      </span>
-      <span className="more-row-text">
-        <span className="more-row-title">{title}</span>
-        {desc && <span className="more-row-desc">{desc}</span>}
-      </span>
-      <ChevronRightIcon className="more-row-chev" />
-    </button>
-  );
 }
 
 /* ------------------------------- MORE -------------------------------- */
@@ -84,47 +71,75 @@ export function Profile({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen pb-110 more">
-      <header className="more-head">
-        <h1 className="more-title">{t('tab.more')}</h1>
-        {/* In the extension there is no bar: the corner button goes back. */}
-        {buildKind() === 'ext' && <BackCircle store={store} />}
-      </header>
+      <ScreenHeader title={t('profile.title')} onBack={store.goBack} />
 
       <section className="more-person" aria-label={t('profile.accountDetails')}>
         <button type="button" onClick={() => fileRef.current?.click()} className="more-avatar" aria-label={t('profile.changePhoto')}>
-          {avatar ? <img src={avatar} alt="" className="more-avatar-img" /> : <CosmosMark className="more-avatar-mark" />}
+          {avatar ? <img src={avatar} alt="" className="more-avatar-img" /> : <span className="more-avatar-initial" aria-hidden="true">{name.trim().slice(0, 1).toUpperCase()}</span>}
         </button>
         <input ref={fileRef} type="file" accept="image/*" onChange={onFile} className="hidden-input" />
         <div className="more-person-text">
-          <span className="more-name">{name}</span>
+          <h2 className="more-name" title={name}>{name}</h2>
           {store.meta?.email && <span className="more-email">{store.meta.email}</span>}
-          <span className="more-addr">
-            {shortAddr(pub, 6, 6)}
-            <button
-              type="button"
-              onClick={() => void copy(pub)}
-              className={cx('more-copy', copied && 'is-copied')}
-              aria-label={copied ? t('common.copied') : t('profile.copyAddress')}
-            >
-              {copied ? <CheckIcon /> : <CopyIcon />}
-            </button>
-          </span>
+          <button
+            type="button"
+            onClick={() => void copy(pub)}
+            disabled={!pub}
+            className={cx('more-address', copied && 'is-copied')}
+            aria-label={copied ? t('common.copied') : t('profile.copyAddress')}
+            title={pub}
+          >
+            <span>{shortAddr(pub, 6, 6) || '—'}</span>
+            {copied ? <CheckIcon /> : <CopyIcon />}
+          </button>
+          <span className="sr-only" role="status">{copied ? t('common.copied') : ''}</span>
+          <HomeNetworkButton store={store} />
         </div>
+      </section>
+
+      <section className="more-section more-wallets" aria-labelledby="more-wallets">
+        <div className="more-section-heading">
+          <h2 id="more-wallets" className="more-section-title">{t('profile.myWallets')}</h2>
+          <span className="more-count">{store.wallets.length}</span>
+        </div>
+        <ul className="more-wallet-list">
+          {store.wallets.map((wallet) => {
+            const active = wallet.id === store.activeWalletId;
+            return (
+              <li key={wallet.id}>
+                <button
+                  type="button"
+                  className={cx('more-wallet', active && 'is-active')}
+                  aria-current={active ? 'true' : undefined}
+                  onClick={() => active ? store.go('wallets', 'wallet') : void store.switchWallet(wallet.id)}
+                >
+                  <span className="more-wallet-initial" aria-hidden="true">{wallet.name.trim().slice(0, 1).toUpperCase()}</span>
+                  <span className="more-wallet-text">
+                    <span className="more-wallet-name">{wallet.name}</span>
+                    <span className="more-wallet-address">{shortAddr(addressOn(wallet, store.network.passphrase), 6, 6)}</span>
+                  </span>
+                  {active && <span className="more-wallet-active"><CheckIcon />{t('profile.active')}</span>}
+                  <ChevronRightIcon className="more-wallet-chevron" />
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        <button type="button" className="more-add-wallet" onClick={() => store.setScreen('add-wallet')}>
+          <span className="more-add-icon" aria-hidden="true"><PlusIcon /></span>
+          <span>{t('profile.addWallet')}</span>
+          <ChevronRightIcon className="more-wallet-chevron" />
+        </button>
       </section>
 
       <section className="more-section" aria-labelledby="more-account">
         <h2 id="more-account" className="more-section-title">
           {t('more.account')}
         </h2>
-        <MoreRow icon={<AccountIcon />} title={t('profile.editProfile')} onClick={() => store.setScreen('edit-profile')} />
-        <MoreRow
-          icon={<WalletIcon />}
-          title={t('profile.myWallets')}
-          desc={t('wallets.onDevice', { n: store.wallets.length })}
-          onClick={() => store.go('wallets', 'wallet')}
-        />
+        <ListRow icon={<AccountIcon />} title={t('profile.editProfile')} onClick={() => store.setScreen('edit-profile')} />
+        <ListRow icon={<ReceiveIcon />} title={t('profile.receiveAddr')} onClick={() => { store.setReceiveNet('stellar'); store.setScreen('receive'); }} />
         {!!store.meta?.email && (
-          <MoreRow icon={<LinkIcon />} title={t('cosmospay.manage')} onClick={() => store.setScreen('cosmospay')} />
+          <ListRow icon={<LinkIcon />} title={t('cosmospay.manage')} onClick={() => store.setScreen('cosmospay')} />
         )}
       </section>
 
@@ -132,7 +147,8 @@ export function Profile({ store }: { store: WalletStore }) {
         <h2 id="more-security" className="more-section-title">
           {t('more.security')}
         </h2>
-        <MoreRow
+        <ListRow icon={<KeyIcon />} title={t('profile.exportKeys')} onClick={() => store.setScreen('export')} />
+        <ListRow
           icon={<ShieldIcon />}
           title={t('more.securityRow')}
           desc={t('more.securityDesc')}
@@ -144,9 +160,9 @@ export function Profile({ store }: { store: WalletStore }) {
         <h2 id="more-app" className="more-section-title">
           {t('more.app')}
         </h2>
-        <MoreRow icon={<GearIcon />} title={t('profile.settings')} desc={t('more.settingsDesc')} onClick={() => store.setScreen('settings')} />
-        <MoreRow icon={<ActivityIcon />} title={t('history.title')} onClick={() => store.setScreen('history')} />
-        <MoreRow icon={<InfoCircleIcon />} title={t('profile.about')} onClick={() => store.setScreen('about')} />
+        <ListRow icon={<GearIcon />} title={t('profile.settings')} desc={t('more.settingsDesc')} onClick={() => store.setScreen('settings')} />
+        <ListRow icon={<ActivityIcon />} title={t('history.title')} onClick={() => store.setScreen('history')} />
+        <ListRow icon={<InfoCircleIcon />} title={t('profile.about')} onClick={() => store.setScreen('about')} />
       </section>
 
       <button type="button" onClick={() => store.lock()} className="more-lock">

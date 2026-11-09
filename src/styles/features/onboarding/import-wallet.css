@@ -59,7 +59,7 @@
   width: 24px;
   height: 24px;
   flex-shrink: 0;
-  border: 1.5px solid var(--text);
+  border: 1.5px solid var(--line);
   border-radius: 50%;
   font-size: 12px;
   font-weight: 700;

@@ -4,14 +4,15 @@ import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Dropdown } from '@/ui/Dropdown';
 import { Spinner } from '@/ui/Spinner';
-import { ChevronDownIcon, ExchangeIcon, GearIcon } from '@/ui/Icons';
+import { ChevronDownIcon, ExchangeIcon, GearIcon, ShieldIcon } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
 import { fmt, trim } from '@/lib/format';
 import { isDesktopLayout } from '@/lib/layout';
 import { fromMinorUnits, sanitizeDecimalInput } from '@/lib/amount';
 import { spendableXlm } from '@/lib/balances';
 import { registrySnapshot } from '@/lib/assetRegistry';
-import { DEFAULT_SLIPPAGE_BPS, type CrossChainQuote, type SwapQuote } from '@/lib/cosmospay';
+import { DEFAULT_SLIPPAGE_BPS, type CrossChainQuote, type SwapQuote, type Usdt0Quote } from '@/lib/cosmospay';
+import { bridgedAmount } from '@/lib/usdt0';
 import { buildSwapCatalog, canPayWith, estimateOut, receivableFrom, routeFor, type SwapRoute, type SwapToken } from '@/lib/swapCatalog';
 import { SwapTokenPicker, TokenMark } from '@/features/money/SwapTokenPicker';
 import { CHAIN_SWAP_SLIPPAGE_BPS, CHAIN_TOKENS_BY_NET, NATIVE_RESERVE, type ChainToken } from '@/constants/chains';
@@ -23,7 +24,7 @@ import '@/styles/features/money/swap.css';
 const SLIPPAGES = ['', '50', '100', '200'] as const;
 type Slippage = (typeof SLIPPAGES)[number];
 
-type Quoted = { kind: 'dex'; q: SwapQuote } | { kind: 'near'; q: CrossChainQuote };
+type Quoted = { kind: 'dex'; q: SwapQuote } | { kind: 'near'; q: CrossChainQuote } | { kind: 'usdt0'; q: Usdt0Quote };
 type QuoteState = { status: 'idle' | 'loading' | 'ready' | 'error'; data: Quoted | null; error: string; key: string };
 
 const LEGACY = (c: NetworkId): c is 'solana' | 'monad' => c === 'solana' || c === 'monad';
@@ -37,17 +38,19 @@ const LEGACY = (c: NetworkId): c is 'solana' | 'monad' => c === 'solana' || c ==
  *
  * Every token on every network (lib/swapCatalog.ts): Stellar, Solana and Monad through their own
  * market; everything else, and every pair across networks, through NEAR Intents (a deposit
- * address the wallet pays from its own address). The wallet pays from networks it signs on and
+ * address the wallet pays from its own address); Stellar's USDT0 to an EVM network through the
+ * bridge (one Soroban transaction, 1:1, its fee in XLM). The wallet pays from networks it signs on and
  * receives on its own address — wherever the output lands is this wallet's. A test network swaps
  * on Stellar's market only. The flows, their checks and signatures are the store's.
  */
 export function Swap({ store }: { store: WalletStore }) {
   const t = store.t;
   const env = store.chainNet;
-  const { loadIntentsAssets, setSwapOrigin, addressOn } = store;
+  const { loadIntentsAssets, loadUsdt0Routes, setSwapOrigin, addressOn } = store;
   useEffect(() => {
     void loadIntentsAssets();
-  }, [loadIntentsAssets]);
+    if (env === 'mainnet') void loadUsdt0Routes();
+  }, [loadIntentsAssets, loadUsdt0Routes, env]);
 
   // Stellar's assets: the registry's verified ones and whatever the account holds, XLM always.
   const stellar = useMemo(() => {
@@ -63,8 +66,8 @@ export function Swap({ store }: { store: WalletStore }) {
   }, [store.account, store.network.id]);
 
   const catalog = useMemo(
-    () => buildSwapCatalog({ intents: store.intentsAssets, env, stellar, chainTokens: CHAIN_TOKENS_BY_NET[env] }),
-    [store.intentsAssets, env, stellar],
+    () => buildSwapCatalog({ intents: store.intentsAssets, env, stellar, chainTokens: CHAIN_TOKENS_BY_NET[env], usdt0Routes: store.usdt0Routes }),
+    [store.intentsAssets, store.usdt0Routes, env, stellar],
   );
   const signs = (c: NetworkId) => !!addressOn(c) && (c === 'stellar' || LEGACY(c) || NETWORKS[c].send);
   const receives = (c: NetworkId) => !!addressOn(c);
@@ -149,6 +152,10 @@ export function Swap({ store }: { store: WalletStore }) {
 
   const fetchQuote = async (): Promise<Quoted | null> => {
     if (!from || !to || !route || route.kind === 'none') return null;
+    if (route.kind === 'usdt0') {
+      const q = await store.quoteUsdt0(amount, route.chain);
+      return q ? { kind: 'usdt0', q } : null;
+    }
     const s = bps(route);
     if (route.kind === 'dex') {
       const q =
@@ -172,7 +179,8 @@ export function Swap({ store }: { store: WalletStore }) {
   // Quoted whatever the balance, as swap apps do: the person sees what they would get, and the
   // button says what is missing.
   const quotable = !!route && route.kind !== 'none' && amt > 0 && store.gatewayAccess;
-  const quoteKey = quotable && from && to ? JSON.stringify([from.key, to.key, amount, bps(route)]) : '';
+  // The bridge is 1:1 with no slippage, so the setting does not ask it again.
+  const quoteKey = quotable && from && to ? JSON.stringify([from.key, to.key, amount, route?.kind === 'usdt0' ? 0 : bps(route)]) : '';
   const [quote, setQuote] = useState<QuoteState>({ status: 'idle', data: null, error: '', key: '' });
   const latest = useRef('');
   const ask = (k: string) => {
@@ -202,15 +210,16 @@ export function Swap({ store }: { store: WalletStore }) {
   }, [quoteKey]);
 
   const fresh = quote.key === quoteKey ? quote.data : null;
-  const out = fresh ? (fresh.kind === 'dex' ? fresh.q.destination.estimated : fresh.q.destination.amount) : null;
-  // Before the quote: NEAR Intents' listed prices.
-  const estimate = !out && from && to ? estimateOut(amt, from, to) : null;
+  const out = fresh ? (fresh.kind === 'dex' ? fresh.q.destination.estimated : fresh.kind === 'usdt0' ? fresh.q.amountReceived : fresh.q.destination.amount) : null;
+  // Before the quote: NEAR Intents' listed prices, or 1:1 through the bridge.
+  const bridged = route?.kind === 'usdt0' ? bridgedAmount(amount) : null;
+  const estimate = !out && from && to ? (route?.kind === 'usdt0' ? (bridged ? Number(bridged) : null) : estimateOut(amt, from, to)) : null;
   const shownOut = out ?? (estimate !== null ? String(estimate) : '');
   const usd = (n: number | null) => (n === null || !Number.isFinite(n) ? null : `≈ $${fmt(n, 2)}`);
   const payUsd = from?.priceUsd && amt > 0 ? usd(amt * from.priceUsd) : null;
   const getUsd = to?.priceUsd && shownOut ? usd(Number(shownOut) * to.priceUsd) : null;
   const rate = shownOut && amt > 0 ? Number(shownOut) / amt : null;
-  const venue = !route || route.kind === 'none' ? '' : route.kind === 'near' ? t('swapw.venue.near') : t(`swapw.venue.${route.chain}`);
+  const venue = !route || route.kind === 'none' ? '' : route.kind === 'near' ? t('swapw.venue.near') : route.kind === 'usdt0' ? t('swapw.venue.usdt0') : t(`swapw.venue.${route.chain}`);
   const num = (v: string | number, dp = 7) => trim(Number(v) || 0, dp);
 
   // The button: what is missing, or the action.
@@ -222,12 +231,22 @@ export function Swap({ store }: { store: WalletStore }) {
     if (insufficient) return { label: t('swapw.ctaInsufficient', { code: from.symbol }), ok: false };
     if (quote.status === 'error' && quote.key === quoteKey) return { label: t('swapw.ctaRetry'), ok: true, retry: true };
     if (!fresh) return { label: t('swapw.ctaQuoting'), ok: false };
+    if (fresh.kind === 'usdt0') {
+      // The bridge's fee is paid in XLM, on top of the USDT0: the account must hold it beside its reserve.
+      const need = Number(fresh.q.nativeFeeLimit);
+      if (spendableXlm(store.account) < need) return { label: t('swapw.ctaNeedXlm', { amount: num(need, 2) }), ok: false };
+      return { label: t('swapw.ctaBridge', { network: store.networkName(to.chain) }), ok: true };
+    }
     return { label: route.kind === 'near' ? t('swapw.ctaNear') : t('swapw.ctaSwap', { venue }), ok: true };
   })();
 
   const submit = () => {
     if ('retry' in cta && cta.retry) return ask(quoteKey);
     if (!cta.ok || !from || !to || !route || !fresh || store.busy) return;
+    if (fresh.kind === 'usdt0' && route.kind === 'usdt0') {
+      void store.submitUsdt0(amount, route.chain, fresh.q);
+      return;
+    }
     const s = bps(route);
     if (fresh.kind === 'dex' && route.kind === 'dex') {
       if (route.chain === 'stellar') void store.submitSwap(amount, stellarRef(from), stellarRef(to), fresh.q, s);
@@ -267,6 +286,7 @@ export function Swap({ store }: { store: WalletStore }) {
       type="button"
       onClick={() => setPicker(side)}
       aria-haspopup="dialog"
+      aria-expanded={picker === side}
       aria-label={tk ? t('swapw.changeToken', { token: tk.symbol, network: store.networkName(tk.chain) }) : t('swapw.selectToken')}
       className={cx('swapw-token', !tk && 'is-empty')}
     >
@@ -323,72 +343,93 @@ export function Swap({ store }: { store: WalletStore }) {
   );
 
   return (
-    <div className="scr screen col pb-24 swapw">
-      <ScreenHeader title={t('swap.title')} onBack={store.goBack} right={slippageMenu} />
+    <form
+      className="scr screen col pb-24 swapw"
+      aria-label={t('swap.title')}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!store.busy && picker === null && !slipOpen) void submit();
+      }}
+    >
+      <div className="swapw-heading">
+        <ScreenHeader title={t('swap.title')} desc={t('swapw.description')} onBack={store.goBack} />
+        {slippageMenu}
+      </div>
 
       <div className="swapw-panels">
-        <div className="swapw-panel">
+        <section className={cx('swapw-panel', insufficient && 'has-error')} aria-labelledby="swapw-pay-label">
           <div className="swapw-panel-top">
-            <label htmlFor="swapw-pay">{t('swapw.pay')}</label>
-            {payUsd && <span className="swapw-usd">{payUsd}</span>}
+            <label id="swapw-pay-label" htmlFor="swapw-pay">{t('swapw.pay')}</label>
+            {tokenButton('from', from)}
           </div>
           <div className="swapw-panel-row">
             <input
               id="swapw-pay"
               value={amount}
               onChange={(e) => {
-                const v = sanitizeDecimalInput((e.target as HTMLInputElement).value.replace(',', '.'));
+                const v = sanitizeDecimalInput(e.currentTarget.value.replace(',', '.'));
                 if (v !== null) setAmount(v);
               }}
               inputMode="decimal"
               placeholder="0"
               autoComplete="off"
               aria-invalid={insufficient || undefined}
+              aria-describedby={from ? 'swapw-balance' : undefined}
+              aria-errormessage={insufficient ? 'swapw-balance-error' : undefined}
               className={cx('swapw-amount', insufficient && 'is-invalid')}
             />
-            {tokenButton('from', from)}
+            {payUsd && <span className="swapw-usd">{payUsd}</span>}
           </div>
           {from && (
             <div className="swapw-panel-foot">
-              <span>
+              <span id="swapw-balance">
                 {t('swap.balance')}: {trim(avail, 6)} {from.symbol}
               </span>
-              <button type="button" onClick={() => setAmount(String(Math.floor(avail * 1e6) / 1e6))} disabled={avail <= 0} className="swapw-max">
-                {t('send.max')}
-              </button>
+              <div className="swapw-quick-amounts">
+                <button type="button" onClick={() => setAmount(String(Math.floor(avail * 0.5 * 1e6) / 1e6))} disabled={avail <= 0} className="swapw-max" aria-label={t('swapw.halfBalance')}>50%</button>
+                <button type="button" onClick={() => setAmount(String(Math.floor(avail * 1e6) / 1e6))} disabled={avail <= 0} className="swapw-max">
+                  {t('send.max')}
+                </button>
+              </div>
             </div>
           )}
-        </div>
+          {insufficient && <p id="swapw-balance-error" className="swapw-balance-error" role="status">{t('swapw.ctaInsufficient', { code: from?.symbol ?? '' })}</p>}
+        </section>
 
         <button type="button" onClick={flip} disabled={!flippable} aria-label={t('swap.invert')} title={t('swap.invert')} className={cx('swapw-flip', flipped && 'is-turned')}>
           <ExchangeIcon />
         </button>
 
-        <div className="swapw-panel is-get" aria-busy={quote.status === 'loading' || undefined}>
+        <section className="swapw-panel is-get" aria-labelledby="swapw-get" aria-busy={quote.status === 'loading' || undefined}>
           <div className="swapw-panel-top">
-            <span id="swapw-get">{t('swapw.receive')}</span>
-            {getUsd && <span className="swapw-usd">{getUsd}</span>}
+            <span id="swapw-get">{t('swap.receiveEst')}</span>
+            {tokenButton('to', to)}
           </div>
           <div className="swapw-panel-row">
             <output aria-labelledby="swapw-get" aria-live="polite" className={cx('swapw-amount is-out', !shownOut && 'is-empty', !out && estimate !== null && 'is-estimate')}>
               {quote.status === 'loading' && !shownOut ? <Spinner size={18} tone="text" /> : shownOut ? `${!out ? '≈ ' : ''}${num(shownOut)}` : '0'}
             </output>
-            {tokenButton('to', to)}
+            {getUsd && <span className="swapw-usd">{getUsd}</span>}
           </div>
           {to && <div className="swapw-panel-foot is-plain">{t('swapw.receiveOn', { network: store.networkName(to.chain) })}</div>}
-        </div>
+        </section>
       </div>
+
+      <dl className="swapw-overview">
+        <div><dt>{t('swapw.route')}</dt><dd>{venue || '—'}</dd></div>
+        {route?.kind !== 'usdt0' && <div><dt>{t('swapw.slippage')}</dt><dd>{slippage ? `${Number(slippage) / 100}%` : `${t('swapw.slippageAuto')} · ${bps(route) / 100}%`}</dd></div>}
+      </dl>
 
       {rate !== null && from && to && (
         <div className={cx('swapw-quote', details && 'is-open')}>
           <div className="swapw-quote-head">
             <button type="button" onClick={() => setInverse((v) => !v)} title={t('swapw.invertRate')} className="swapw-rate">
+              <ExchangeIcon />
               {inverse ? `1 ${to.symbol} = ${num(1 / rate, 8)} ${from.symbol}` : `1 ${from.symbol} = ${num(rate, 8)} ${to.symbol}`}
             </button>
             <button type="button" aria-expanded={details} aria-controls="swapw-details" onClick={() => setDetails((d) => !d)} className="swapw-quote-toggle">
-              <span>{venue}</span>
+              <span>{t('swapw.details')}</span>
               <ChevronDownIcon className={cx('swapw-quote-chev', details && 'is-open')} />
-              <span className="sr-only">{t('swapw.details')}</span>
             </button>
           </div>
           <div id="swapw-details" className="swapw-quote-body" inert={!details}>
@@ -397,11 +438,33 @@ export function Swap({ store }: { store: WalletStore }) {
                 <div>
                   <dt>{t('swapw.minimum')}</dt>
                   <dd>
-                    {num(fresh.q.destination.minimum)} {to.symbol}
+                    {num(fresh.kind === 'usdt0' ? fresh.q.amountReceived : fresh.q.destination.minimum)} {to.symbol}
                   </dd>
                 </div>
               )}
-              {fresh && (
+              {fresh?.kind === 'usdt0' && Number(fresh.q.feeAmount) > 0 && (
+                <div>
+                  <dt>{t('swap.fee')}</dt>
+                  <dd>
+                    {num(fresh.q.feeAmount)} {from.symbol} ({fresh.q.feeBps / 100}%)
+                  </dd>
+                </div>
+              )}
+              {fresh?.kind === 'usdt0' && (
+                <div>
+                  <dt>{t('swapw.bridgeFee')}</dt>
+                  <dd>{num(fresh.q.nativeFee)} XLM</dd>
+                </div>
+              )}
+              {fresh?.kind === 'usdt0' && Number(fresh.q.dust ?? 0) > 0 && (
+                <div>
+                  <dt>{t('swapw.dust')}</dt>
+                  <dd>
+                    {num(fresh.q.dust ?? 0)} {from.symbol}
+                  </dd>
+                </div>
+              )}
+              {fresh && fresh.kind !== 'usdt0' && (
                 <div>
                   <dt>{t('swap.fee')}</dt>
                   <dd>
@@ -415,21 +478,15 @@ export function Swap({ store }: { store: WalletStore }) {
                   <dd>{t('swapw.seconds', { n: fresh.q.timeEstimateSeconds })}</dd>
                 </div>
               )}
-              <div>
-                <dt>{t('swapw.slippage')}</dt>
-                <dd>{slippage ? `${Number(slippage) / 100}%` : `${t('swapw.slippageAuto')} · ${bps(route) / 100}%`}</dd>
-              </div>
-              <div>
-                <dt>{t('swapw.route')}</dt>
-                <dd>{venue}</dd>
-              </div>
+              {!fresh && <div><dt>{t('swapw.estimateNotice')}</dt><dd>≈</dd></div>}
             </dl>
           </div>
         </div>
       )}
 
       <div className="swapw-foot kb-dock">
-        <PrimaryButton disabled={!cta.ok || store.busy} onClick={submit}>
+        <span className="sr-only" role="status">{cta.label}</span>
+        <PrimaryButton type="submit" disabled={!cta.ok || store.busy}>
           {store.busy ? <Spinner /> : cta.label}
         </PrimaryButton>
         {quote.status === 'error' && quote.key === quoteKey && quote.error && (
@@ -437,6 +494,7 @@ export function Swap({ store }: { store: WalletStore }) {
             {quote.error}
           </p>
         )}
+        <p className="swapw-reassurance"><ShieldIcon />{t('swapw.walletDestination')}</p>
       </div>
 
       <SwapTokenPicker
@@ -458,6 +516,6 @@ export function Swap({ store }: { store: WalletStore }) {
           none: t('send.noAsset'),
         }}
       />
-    </div>
+    </form>
   );
 }

@@ -7,16 +7,17 @@
 }
 
 .connected-sites-empty {
-  border-radius: 14px;
-  padding: 14px 16px;
+  border-radius: 6px !important;
+  padding: 14px 0;
   font-size: 13.5px;
   color: var(--text-soft);
 }
 
 .connected-sites-row {
-  border-radius: 14px;
-  padding: 12px 14px;
-  margin-bottom: 8px;
+  border-radius: 6px !important;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0;
   gap: 10px;
 }
 .connected-sites-row.is-last {
@@ -35,12 +36,13 @@
 .connected-sites-revoke {
   flex: none;
   border: none;
-  border-radius: 999px;
-  padding: 7px 14px;
+  border-radius: 6px !important;
+  padding: 10px 12px;
+  min-height: 44px;
   font-size: 12.5px;
-  font-weight: 800;
+  font-weight: 500;
   cursor: pointer;
-  background: var(--glass-soft-bg);
+  background: transparent;
   color: var(--danger);
 }
 
@@ -48,11 +50,18 @@
   width: 100%;
   margin-top: 10px;
   border: none;
-  border-radius: 14px;
+  border-radius: 6px !important;
   padding: 12px;
   font-size: 13px;
-  font-weight: 800;
+  font-weight: 500;
   cursor: pointer;
   background: transparent;
   color: var(--danger);
+}
+
+.connected-sites-revoke:focus-visible,
+.connected-sites-revoke-all:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (hover: hover) and (pointer: fine) {
+  .connected-sites-revoke:hover:not(:disabled),
+  .connected-sites-revoke-all:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 4px; }
 }

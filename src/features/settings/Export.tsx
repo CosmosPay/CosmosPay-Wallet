@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { RevealedBackup, WalletStore } from '@/state/store';
 import { ScreenHeader } from '@/ui/ScreenHeader';
-import { PrimaryButton } from '@/ui/Buttons';
+import { LockIcon, WarningIcon } from '@/ui/Icons';
 import { Spinner } from '@/ui/Spinner';
 import { Reveal } from '@/features/settings/Reveal';
 import { PasskeyButton } from '@/ui/PasskeyButton';
@@ -17,20 +17,23 @@ import '@/styles/features/settings/export.css';
  */
 export function Export({ store }: { store: WalletStore }) {
   const t = store.t;
+  const passwordId = useId();
   const [pwd, setPwd] = useState('');
   // Held only while this screen is open, and only after the password check.
   const [backup, setBackup] = useState<RevealedBackup | null>(null);
   const [busy, run] = useBusy();
   const [copied, copy] = useCopied();
 
-  const unlock = () =>
-    run(async () => {
+  const unlock = () => {
+    if (!pwd || busy) return;
+    return run(async () => {
       // Decrypts on demand with the password just entered — the backup material is
       // not a readable field on the store.
       const result = await store.revealBackup(pwd);
-      if (result) setBackup(result);
+      if (result) { setBackup(result); setPwd(''); }
       else store.flash(t('pwd.label') + ' ✗', 'err');
     });
+  };
 
   // A passkey device has no password to type here; the passkey stands in for it. Null means
   // the store already said why (a dismissed sheet says nothing at all).
@@ -46,11 +49,11 @@ export function Export({ store }: { store: WalletStore }) {
   const networksPhrase = backup?.networksPhrase ?? null;
 
   return (
-    <div className="scr screen col pb-30">
+    <form className="scr screen col pb-30 export-screen" onSubmit={(event) => { event.preventDefault(); if (!backup && !store.passkeyUnlock) void unlock(); }}>
       <ScreenHeader title={t('export.title')} onBack={store.goBack} />
 
       <div className="export-warning">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="export-warning-icon"><path d="M12 3l9 16H3l9-16z" stroke="#ff7a7a" strokeWidth="1.8" strokeLinejoin="round" /><path d="M12 10v4M12 17h.01" stroke="#ff7a7a" strokeWidth="1.8" strokeLinecap="round" /></svg>
+        <WarningIcon className="export-warning-icon" />
         <span className="export-warning-text">
           {t('export.warning')}
         </span>
@@ -60,19 +63,22 @@ export function Export({ store }: { store: WalletStore }) {
         <>
           {store.passkeyUnlock ? (
             <>
-              <div className="export-hint">{t('passkey.exportHint')}</div>
+              <p className="export-hint">{t('passkey.exportHint')}</p>
               <div className="kb-dock">
                 <PasskeyButton label={t('export.reveal')} busy={busy} onClick={unlockWithPasskey} />
               </div>
             </>
           ) : (
             <>
-              <div className="export-hint">
-                {t('export.enterPwd')}
-              </div>
-              <input type="password" value={pwd} placeholder={t('pwd.label')} onChange={(e) => setPwd((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && unlock()} className="input export-pwd-input" />
+              <p className="export-hint" id={`${passwordId}-hint`}>{t('export.enterPwd')}</p>
+              <label htmlFor={passwordId} className="export-pwd-label">{t('pwd.label')}</label>
+              <input id={passwordId} type="password" value={pwd} autoComplete="current-password"
+                aria-describedby={`${passwordId}-hint`} required
+                onChange={(event) => setPwd(event.target.value)} className="input export-pwd-input" />
               <div className="kb-dock">
-                <PrimaryButton disabled={!pwd || busy} onClick={unlock}>{busy ? <Spinner /> : t('export.reveal')}</PrimaryButton>
+                <button type="submit" className="btn-primary ink" disabled={!pwd || busy} aria-busy={busy}>
+                  {busy ? <Spinner /> : <LockIcon />}{t('export.reveal')}
+                </button>
               </div>
             </>
           )}
@@ -87,7 +93,7 @@ export function Export({ store }: { store: WalletStore }) {
               <div className="export-compat">{t('export.networksPhraseDesc')}</div>
             </>
           ) : (
-            <div className="glass export-nophrase">
+            <div className="export-nophrase">
               {t('export.noPhrase')}
             </div>
           )}
@@ -106,7 +112,7 @@ export function Export({ store }: { store: WalletStore }) {
           )}
         </>
       )}
-    </div>
+    </form>
   );
 }
 

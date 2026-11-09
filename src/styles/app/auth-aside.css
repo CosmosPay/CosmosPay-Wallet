@@ -10,7 +10,7 @@
   flex: 1 1 50%;
   min-width: 0;
   flex-direction: column;
-  border-left: 1px solid var(--hairline);
+  border-left: 1px solid var(--line);
   background: var(--bg);
 }
 

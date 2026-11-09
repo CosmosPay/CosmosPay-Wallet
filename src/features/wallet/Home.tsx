@@ -21,6 +21,7 @@ import {
 } from '@/ui/Icons';
 import { ActivityList } from '@/features/money/ActivityList';
 import { HomeAction } from '@/features/wallet/HomeAction';
+import { HomeInsights } from '@/features/wallet/HomeInsights';
 import { AssetListRow } from '@/features/wallet/AssetListRow';
 import { HomeNetworkButton } from '@/features/wallet/HomeNetworkButton';
 import { HomeNotifications } from '@/features/wallet/HomeNotifications';
@@ -136,7 +137,7 @@ export function Home({ store }: { store: WalletStore }) {
   };
 
   return (
-    <div className="scr screen pb-110 home">
+    <section className="scr screen pb-110 home" aria-label={t('tab.home')}>
       <header className="home-head">
         <button type="button" onClick={() => store.go('profile', 'profile')} className="home-who">
           <span className="home-avatar" aria-hidden="true">
@@ -152,9 +153,6 @@ export function Home({ store }: { store: WalletStore }) {
         </button>
         <div className="home-head-end">
           {store.loading && <Spinner size={15} tone="text" />}
-          {/* The network, always, and the notifications, beside the settings (the user's call;
-              the bell is the Figma's). */}
-          <HomeNetworkButton store={store} />
           <HomeNotifications store={store} />
           {buildKind() === 'ext' ? (
             <>
@@ -174,7 +172,10 @@ export function Home({ store }: { store: WalletStore }) {
           left, the lists on the right. On a phone both wrappers are `display: contents`. */}
       <div className="home-summary">
         <section className="home-balance" aria-label={t('home.balance')}>
-          <p className="home-balance-label">{t('home.balance')}</p>
+          <div className="home-balance-heading">
+            <h1 className="home-balance-label">{t('home.balance')}</h1>
+            <HomeNetworkButton store={store} />
+          </div>
           <p className="home-total">
             {money.whole}
             <span className="home-cents">{money.cents}</span>
@@ -218,7 +219,7 @@ export function Home({ store }: { store: WalletStore }) {
           className="home-tabs"
         />
 
-        <div id={panelId} role="tabpanel" className="home-panel">
+        <div id={panelId} role="tabpanel" aria-labelledby={`${panelId}-${tab}`} tabIndex={0} className="home-panel">
           {tab === 'assets' && (
             <>
               <AssetToolbar
@@ -309,87 +310,12 @@ export function Home({ store }: { store: WalletStore }) {
             </>
           )}
 
-          {tab === 'performance' && <Performance store={store} rows={rows} total={total} networkName={networkName} />}
+          {tab === 'performance' && <HomeInsights store={store} rows={rows} total={total} networkName={networkName} />}
 
           {tab === 'watchlist' && <Watchlist store={store} />}
         </div>
       </div>
-    </div>
-  );
-}
-
-/* ---------------------------- PERFORMANCE ---------------------------- */
-/** A share of the whole as a line: the track in the line colour, the share in ink. An SVG,
- *  so the length is an attribute rather than a style. */
-function ShareLine({ share }: { share: number }) {
-  const w = Math.max(0, Math.min(100, share));
-  return (
-    <svg className="home-share-line" viewBox="0 0 100 2" preserveAspectRatio="none" aria-hidden="true">
-      <rect className="home-share-track" width="100" height="2" rx="1" />
-      <rect className="home-share-fill" width={w} height="2" rx="1" />
-    </svg>
-  );
-}
-
-/**
- * How the portfolio splits — by network, then by holding — and how each holding moved in 24
- * hours. Everything here is computed from what Home already shows; nothing is fetched.
- */
-function Performance({
-  store,
-  rows,
-  total,
-  networkName,
-}: {
-  store: WalletStore;
-  rows: AssetRow[];
-  total: number;
-  networkName: (n: NetworkId) => string;
-}) {
-  const t = store.t;
-  const byNetwork = NETWORK_IDS.map((n) => ({ n, value: rows.filter((r) => networkOf(r) === n).reduce((s, r) => s + (r.value ?? 0), 0) }))
-    .filter((x) => x.value > 0 || x.n === 'stellar')
-    .sort((a, b) => (a.n === 'stellar' ? -1 : b.n === 'stellar' ? 1 : b.value - a.value));
-  const held = rows.filter((r) => (r.value ?? 0) > 0).sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
-  const share = (v: number) => (total > 0 ? (v / total) * 100 : 0);
-
-  return (
-    <div className="home-perf">
-      <h3 className="home-perf-title">{t('home.byNetwork')}</h3>
-      {byNetwork.map(({ n, value }) => (
-        <div key={n} className="home-perf-row">
-          <NetworkLogo network={n} size={28} />
-          <div className="home-perf-main">
-            <div className="home-perf-line">
-              <span className="home-perf-name">{networkName(n)}</span>
-              <span className="home-perf-value">${fmt(value, 2)}</span>
-            </div>
-            <ShareLine share={share(value)} />
-          </div>
-          <span className="home-perf-pct">{fmt(share(value), 0)}%</span>
-        </div>
-      ))}
-
-      <h3 className="home-perf-title">{t('home.byAsset')}</h3>
-      {held.map((r) => {
-        const chg = store.prices[r.code]?.change24h;
-        return (
-          <div key={rowKey(r)} className="home-perf-row">
-            <AssetLogo code={r.code} size={28} />
-            <div className="home-perf-main">
-              <div className="home-perf-line">
-                <span className="home-perf-name">{assetMeta(r.code).name}</span>
-                <span className="home-perf-value">${fmt(r.value ?? 0, 2)}</span>
-              </div>
-              <ShareLine share={share(r.value ?? 0)} />
-            </div>
-            <span className={cx('home-perf-pct', chg !== undefined && (chg >= 0 ? 'is-up' : 'is-down'))}>
-              {chg !== undefined ? pct(chg) : '—'}
-            </span>
-          </div>
-        );
-      })}
-    </div>
+    </section>
   );
 }
 

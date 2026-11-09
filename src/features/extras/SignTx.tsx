@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
@@ -12,6 +12,8 @@ import { cx } from '@/lib/cx';
 /* --------------------------- SIGN TRANSACTION ----------------------- */
 export function SignTx({ store }: { store: WalletStore }) {
   const t = store.t;
+  const fieldId = useId();
+  const hintId = useId();
   const [xdr, setXdr] = useState('');
   const [summary, setSummary] = useState<TxSummary | null>(null);
   const [signed, setSigned] = useState('');
@@ -84,11 +86,16 @@ export function SignTx({ store }: { store: WalletStore }) {
   };
 
   return (
-    <div className="scr screen col">
-      <ScreenHeader title={t('sign.title')} onBack={store.goBack} />
-      <div className="sign-tx-desc">{t('sign.desc')}</div>
+    <div className="scr screen col sign-tx-screen">
+      <ScreenHeader title={t('sign.title')} desc={t('sign.desc')} onBack={store.goBack} />
 
+      <div className="sign-tx-field">
+        <div className="sign-tx-field-head">
+          <label htmlFor={fieldId} className="sign-tx-net-label">XDR</label>
+          <button type="button" onClick={paste} className="sign-tx-paste">{t('sign.paste')}</button>
+        </div>
       <textarea
+        id={fieldId}
         value={xdr}
         onChange={(e) => onXdr((e.target as HTMLTextAreaElement).value)}
         placeholder="AAAAAgAAAAB…"
@@ -96,18 +103,16 @@ export function SignTx({ store }: { store: WalletStore }) {
         spellCheck={false}
         className="glass sign-tx-xdr"
       />
-      <button onClick={paste} className="glass-soft sign-tx-paste">
-        {t('sign.paste')}
-      </button>
+      </div>
 
-      <div className="sign-tx-net">
+      <div className="sign-tx-net" role="group" aria-label={t('sign.network')} aria-describedby={hintId}>
         <div className="sign-tx-net-label">{t('sign.network')}</div>
         <Segmented label={t('sign.network')} options={netChoices.map((n) => ({ value: n.id, label: n.label }))} value={signNet.id} onChange={pickNet} />
-        <p className="sign-tx-net-hint">{t('sign.networkHint')}</p>
+        <p id={hintId} className="sign-tx-net-hint">{t('sign.networkHint')}</p>
       </div>
 
       {summary && (
-        <div className="glass sign-tx-summary">
+        <dl className="glass sign-tx-summary">
           {[
             [t('sign.source'), summary.source ? `${summary.source.slice(0, 6)}…${summary.source.slice(-6)}` : '—'],
             [t('sign.fee'), `${summary.fee} stroops`],
@@ -116,25 +121,26 @@ export function SignTx({ store }: { store: WalletStore }) {
             [t('sign.signatures'), String(summary.signatures)],
           ].map((r) => (
             <div key={r[0]} className="flexr between g12 sign-tx-summary-row">
-              <span className="t-muted-13">{r[0]}</span>
-              <span className={cx('sign-tx-summary-val', r[0] === t('sign.source') && 'is-mono')}>{r[1]}</span>
+              <dt className="t-muted-13">{r[0]}</dt>
+              <dd className={cx('sign-tx-summary-val', r[0] === t('sign.source') && 'is-mono')}>{r[1]}</dd>
             </div>
           ))}
-        </div>
+        </dl>
       )}
 
       {signed && (
         <div className="glass sign-tx-signed">
-          <div className="sign-tx-signed-label">{t('sign.signedLabel')}</div>
-          <div className="sign-tx-signed-xdr">{signed}</div>
-          <button onClick={copySigned} className="glass-soft sign-tx-copy">{t('common.copy')}</button>
+          <div className="sign-tx-field-head">
+            <h2 className="sign-tx-signed-label">{t('sign.signedLabel')}</h2>
+            <button type="button" onClick={copySigned} className="sign-tx-copy">{t('common.copy')}</button>
+          </div>
+          <pre tabIndex={0} aria-label={t('sign.signedLabel')} className="sign-tx-signed-xdr"><code>{signed}</code></pre>
         </div>
       )}
 
-      {err && <div className="sign-tx-err">{err}</div>}
+      {err && <div role="alert" className="sign-tx-err">{err}</div>}
 
-      <div className="f1" />
-      <div className="col g10 kb-dock">
+      <div className="col g10 kb-dock sign-tx-actions">
         {!signed ? (
           <PrimaryButton disabled={!summary} onClick={sign}>{t('sign.sign')}</PrimaryButton>
         ) : (

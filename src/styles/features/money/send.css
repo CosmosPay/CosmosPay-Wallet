@@ -37,18 +37,21 @@
   display: flex;
   align-items: center;
   min-height: 56px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   border-radius: 18px;
   background: transparent;
   transition: border-color var(--dur-quick) var(--ease-out);
 }
 
-.send-box:hover {
-  border-color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+
+.send-box:hover:not(:disabled):not([aria-disabled='true']) {
+  border-color: var(--line);
+}
 }
 
 .send-box:focus-within {
-  border-color: var(--text);
+  border-color: var(--line);
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
@@ -113,8 +116,11 @@
   transition: color var(--dur-quick) var(--ease-out);
 }
 
-.send-box-btn:hover {
+@media (hover: hover) and (pointer: fine) {
+
+.send-box-btn:hover:not(:disabled):not([aria-disabled='true']) {
   color: var(--text);
+}
 }
 
 .send-box-btn:focus-visible {
@@ -137,19 +143,22 @@
 .send-max {
   height: 32px;
   padding: 0 12px;
-  border: 1.5px solid var(--line-strong);
-  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--button-radius);
   background: transparent;
   color: var(--text);
   font: inherit;
   font-size: 12.5px;
-  font-weight: 700;
+  font-weight: var(--button-weight);
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
+@media (hover: hover) and (pointer: fine) {
+
 .send-max:hover:not(:disabled) {
-  border-color: var(--text);
+    background: var(--interaction-hover-bg);
+}
 }
 
 .send-max:disabled {
@@ -235,18 +244,21 @@
   width: 100%;
   min-height: 72px;
   padding: 0 14px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   border-radius: 18px !important;
   background: transparent;
   color: var(--text);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
-.send-asset-card:hover {
-  border-color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+
+.send-asset-card:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--interaction-hover-bg);
+}
 }
 
 .send-asset-card:focus-visible {
@@ -376,16 +388,16 @@
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: border-color var(--dur-quick) var(--ease-out);
+  transition: background-color var(--dur-quick) var(--ease-out), color var(--dur-quick) var(--ease-out);
 }
 
 .send-asset-item.is-on {
-  border-color: var(--text);
+  border-color: var(--line);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .send-asset-item:not(.is-on):hover {
-    border-color: var(--line);
+  .send-asset-item:not(.is-on):hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--interaction-hover-bg);
   }
 }
 

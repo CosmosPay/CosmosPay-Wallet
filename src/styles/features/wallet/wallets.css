@@ -51,7 +51,7 @@
 .wallets-badge {
   flex-shrink: 0;
   padding: 3px 10px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   border-radius: 999px;
   font-size: 11.5px;
   font-weight: 700;
@@ -101,7 +101,7 @@
   width: 40px;
   height: 40px;
   padding: 0;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   border-radius: 50%;
   background: transparent;
   color: var(--text);
@@ -114,8 +114,11 @@
   height: 18px;
 }
 
-.wallets-icon-btn:hover {
-  border-color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+
+.wallets-icon-btn:hover:not(:disabled):not([aria-disabled='true']) {
+  border-color: var(--line);
+}
 }
 
 .wallets-icon-btn.is-done {
@@ -197,7 +200,7 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   border-radius: 50%;
 }
 
@@ -225,7 +228,7 @@
   place-items: center;
   width: 24px;
   height: 24px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   border-radius: 50%;
   transition: border-color var(--dur-quick) var(--ease-out), background-color var(--dur-quick) var(--ease-out);
 }
@@ -236,7 +239,7 @@
 }
 
 .wallets-row.is-on .wallets-radio {
-  border-color: var(--text);
+  border-color: var(--line);
   background: var(--text);
   color: var(--bg);
 }
@@ -247,14 +250,14 @@
   place-items: center;
   width: 40px;
   height: 40px;
-  border: 1.5px solid var(--line-strong);
+  border: 1.5px solid var(--line);
   border-radius: 50%;
   font-size: 15px;
   font-weight: 700;
 }
 
 .wallets-row.is-on .wallets-initial {
-  border-color: var(--text);
+  border-color: var(--line);
 }
 
 .wallets-initial.is-add {
@@ -276,4 +279,10 @@
 
 .wallets-link {
   margin-top: 6px;
+}
+
+/* The content aligns to the gutter: feedback stays on the label. */
+.wallets-row-title { text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 4px; transition: text-decoration-color var(--dur-quick) var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .wallets-row:hover:not(:disabled):not([aria-disabled='true']) .wallets-row-title { text-decoration-color: var(--muted); }
 }

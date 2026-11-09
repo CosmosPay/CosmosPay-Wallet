@@ -88,3 +88,6 @@ export const TTL = {
    */
   ops: 20_000,
 } as const;
+
+/** Where the bridge takes Stellar's USDT0 (`GET /v1/usdt0/routes`) — global, mainnet only. */
+export const USDT0_ROUTES_KEY = 'usdt0-routes';
