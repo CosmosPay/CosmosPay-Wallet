@@ -673,6 +673,21 @@ test('the real two-op swap envelope is signed', () => {
   assert.equal(review.operations.length, 2);
 });
 
+test('a swap from the commission wallet itself is signed: its fee goes nowhere', () => {
+  // The operator swaps from its own fee account. The gateway still carves the fee out as a
+  // payment to the fee wallet — itself — and the path payment settles back there too, so
+  // every operation names the commission wallet as destination. Summing all of that as
+  // "commission" refused every such swap; a payment to ourselves moves nothing.
+  const own = { ...SWAP_OPTS, destinations: [ME], commission: { amount: '0.15', asset: { code: 'XLM', issuer: null }, wallet: ME } } as const;
+  assertSafeToSign(CFG, envelope([feeOp({ destination: ME }), swapAfterFee()]), own);
+  // With no fee op at all (a gateway that charges its own wallet nothing) it passes too.
+  assertSafeToSign(CFG, envelope([swapOp()]), own);
+  // And the bounds that still apply do: more than typed leaving is refused…
+  throws(() => assertSafeToSign(CFG, envelope([feeOp({ destination: ME, amount: '5' }), swapAfterFee()]), own), 'guard.overMaxSend');
+  // …and anything paid to a third party is refused as before.
+  throws(() => assertSafeToSign(CFG, envelope([feeOp({ destination: ATTACKER }), swapAfterFee()]), own), 'guard.notCommissionWallet');
+});
+
 test('a commission larger than the quote showed is refused', () => {
   // Without this bound `payment` would let the gateway route the whole typed amount
   // to itself: `maxSend` is a TOTAL, so 9.99 to the fee wallet and 0.01 through the
