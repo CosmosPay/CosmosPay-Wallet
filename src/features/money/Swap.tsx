@@ -11,7 +11,8 @@ import { isDesktopLayout } from '@/lib/layout';
 import { fromMinorUnits, sanitizeDecimalInput } from '@/lib/amount';
 import { spendableXlm } from '@/lib/balances';
 import { registrySnapshot } from '@/lib/assetRegistry';
-import { DEFAULT_SLIPPAGE_BPS, type CrossChainQuote, type SwapQuote } from '@/lib/cosmospay';
+import { DEFAULT_SLIPPAGE_BPS, type CrossChainQuote, type SwapQuote, type Usdt0Quote } from '@/lib/cosmospay';
+import { bridgedAmount } from '@/lib/usdt0';
 import { buildSwapCatalog, canPayWith, estimateOut, receivableFrom, routeFor, type SwapRoute, type SwapToken } from '@/lib/swapCatalog';
 import { SwapTokenPicker, TokenMark } from '@/features/money/SwapTokenPicker';
 import { CHAIN_SWAP_SLIPPAGE_BPS, CHAIN_TOKENS_BY_NET, NATIVE_RESERVE, type ChainToken } from '@/constants/chains';
@@ -23,7 +24,7 @@ import '@/styles/features/money/swap.css';
 const SLIPPAGES = ['', '50', '100', '200'] as const;
 type Slippage = (typeof SLIPPAGES)[number];
 
-type Quoted = { kind: 'dex'; q: SwapQuote } | { kind: 'near'; q: CrossChainQuote };
+type Quoted = { kind: 'dex'; q: SwapQuote } | { kind: 'near'; q: CrossChainQuote } | { kind: 'usdt0'; q: Usdt0Quote };
 type QuoteState = { status: 'idle' | 'loading' | 'ready' | 'error'; data: Quoted | null; error: string; key: string };
 
 const LEGACY = (c: NetworkId): c is 'solana' | 'monad' => c === 'solana' || c === 'monad';
@@ -37,17 +38,19 @@ const LEGACY = (c: NetworkId): c is 'solana' | 'monad' => c === 'solana' || c ==
  *
  * Every token on every network (lib/swapCatalog.ts): Stellar, Solana and Monad through their own
  * market; everything else, and every pair across networks, through NEAR Intents (a deposit
- * address the wallet pays from its own address). The wallet pays from networks it signs on and
+ * address the wallet pays from its own address); Stellar's USDT0 to an EVM network through the
+ * bridge (one Soroban transaction, 1:1, its fee in XLM). The wallet pays from networks it signs on and
  * receives on its own address — wherever the output lands is this wallet's. A test network swaps
  * on Stellar's market only. The flows, their checks and signatures are the store's.
  */
 export function Swap({ store }: { store: WalletStore }) {
   const t = store.t;
   const env = store.chainNet;
-  const { loadIntentsAssets, setSwapOrigin, addressOn } = store;
+  const { loadIntentsAssets, loadUsdt0Routes, setSwapOrigin, addressOn } = store;
   useEffect(() => {
     void loadIntentsAssets();
-  }, [loadIntentsAssets]);
+    if (env === 'mainnet') void loadUsdt0Routes();
+  }, [loadIntentsAssets, loadUsdt0Routes, env]);
 
   // Stellar's assets: the registry's verified ones and whatever the account holds, XLM always.
   const stellar = useMemo(() => {
@@ -63,8 +66,8 @@ export function Swap({ store }: { store: WalletStore }) {
   }, [store.account, store.network.id]);
 
   const catalog = useMemo(
-    () => buildSwapCatalog({ intents: store.intentsAssets, env, stellar, chainTokens: CHAIN_TOKENS_BY_NET[env] }),
-    [store.intentsAssets, env, stellar],
+    () => buildSwapCatalog({ intents: store.intentsAssets, env, stellar, chainTokens: CHAIN_TOKENS_BY_NET[env], usdt0Routes: store.usdt0Routes }),
+    [store.intentsAssets, store.usdt0Routes, env, stellar],
   );
   const signs = (c: NetworkId) => !!addressOn(c) && (c === 'stellar' || LEGACY(c) || NETWORKS[c].send);
   const receives = (c: NetworkId) => !!addressOn(c);
@@ -149,6 +152,10 @@ export function Swap({ store }: { store: WalletStore }) {
 
   const fetchQuote = async (): Promise<Quoted | null> => {
     if (!from || !to || !route || route.kind === 'none') return null;
+    if (route.kind === 'usdt0') {
+      const q = await store.quoteUsdt0(amount, route.chain);
+      return q ? { kind: 'usdt0', q } : null;
+    }
     const s = bps(route);
     if (route.kind === 'dex') {
       const q =
@@ -172,7 +179,8 @@ export function Swap({ store }: { store: WalletStore }) {
   // Quoted whatever the balance, as swap apps do: the person sees what they would get, and the
   // button says what is missing.
   const quotable = !!route && route.kind !== 'none' && amt > 0 && store.gatewayAccess;
-  const quoteKey = quotable && from && to ? JSON.stringify([from.key, to.key, amount, bps(route)]) : '';
+  // The bridge is 1:1 with no slippage, so the setting does not ask it again.
+  const quoteKey = quotable && from && to ? JSON.stringify([from.key, to.key, amount, route?.kind === 'usdt0' ? 0 : bps(route)]) : '';
   const [quote, setQuote] = useState<QuoteState>({ status: 'idle', data: null, error: '', key: '' });
   const latest = useRef('');
   const ask = (k: string) => {
@@ -202,15 +210,16 @@ export function Swap({ store }: { store: WalletStore }) {
   }, [quoteKey]);
 
   const fresh = quote.key === quoteKey ? quote.data : null;
-  const out = fresh ? (fresh.kind === 'dex' ? fresh.q.destination.estimated : fresh.q.destination.amount) : null;
-  // Before the quote: NEAR Intents' listed prices.
-  const estimate = !out && from && to ? estimateOut(amt, from, to) : null;
+  const out = fresh ? (fresh.kind === 'dex' ? fresh.q.destination.estimated : fresh.kind === 'usdt0' ? fresh.q.amountReceived : fresh.q.destination.amount) : null;
+  // Before the quote: NEAR Intents' listed prices, or 1:1 through the bridge.
+  const bridged = route?.kind === 'usdt0' ? bridgedAmount(amount) : null;
+  const estimate = !out && from && to ? (route?.kind === 'usdt0' ? (bridged ? Number(bridged) : null) : estimateOut(amt, from, to)) : null;
   const shownOut = out ?? (estimate !== null ? String(estimate) : '');
   const usd = (n: number | null) => (n === null || !Number.isFinite(n) ? null : `≈ $${fmt(n, 2)}`);
   const payUsd = from?.priceUsd && amt > 0 ? usd(amt * from.priceUsd) : null;
   const getUsd = to?.priceUsd && shownOut ? usd(Number(shownOut) * to.priceUsd) : null;
   const rate = shownOut && amt > 0 ? Number(shownOut) / amt : null;
-  const venue = !route || route.kind === 'none' ? '' : route.kind === 'near' ? t('swapw.venue.near') : t(`swapw.venue.${route.chain}`);
+  const venue = !route || route.kind === 'none' ? '' : route.kind === 'near' ? t('swapw.venue.near') : route.kind === 'usdt0' ? t('swapw.venue.usdt0') : t(`swapw.venue.${route.chain}`);
   const num = (v: string | number, dp = 7) => trim(Number(v) || 0, dp);
 
   // The button: what is missing, or the action.
@@ -222,12 +231,22 @@ export function Swap({ store }: { store: WalletStore }) {
     if (insufficient) return { label: t('swapw.ctaInsufficient', { code: from.symbol }), ok: false };
     if (quote.status === 'error' && quote.key === quoteKey) return { label: t('swapw.ctaRetry'), ok: true, retry: true };
     if (!fresh) return { label: t('swapw.ctaQuoting'), ok: false };
+    if (fresh.kind === 'usdt0') {
+      // The bridge's fee is paid in XLM, on top of the USDT0: the account must hold it beside its reserve.
+      const need = Number(fresh.q.nativeFeeLimit);
+      if (spendableXlm(store.account) < need) return { label: t('swapw.ctaNeedXlm', { amount: num(need, 2) }), ok: false };
+      return { label: t('swapw.ctaBridge', { network: store.networkName(to.chain) }), ok: true };
+    }
     return { label: route.kind === 'near' ? t('swapw.ctaNear') : t('swapw.ctaSwap', { venue }), ok: true };
   })();
 
   const submit = () => {
     if ('retry' in cta && cta.retry) return ask(quoteKey);
     if (!cta.ok || !from || !to || !route || !fresh || store.busy) return;
+    if (fresh.kind === 'usdt0' && route.kind === 'usdt0') {
+      void store.submitUsdt0(amount, route.chain, fresh.q);
+      return;
+    }
     const s = bps(route);
     if (fresh.kind === 'dex' && route.kind === 'dex') {
       if (route.chain === 'stellar') void store.submitSwap(amount, stellarRef(from), stellarRef(to), fresh.q, s);
@@ -398,7 +417,7 @@ export function Swap({ store }: { store: WalletStore }) {
 
       <dl className="swapw-overview">
         <div><dt>{t('swapw.route')}</dt><dd>{venue || '—'}</dd></div>
-        <div><dt>{t('swapw.slippage')}</dt><dd>{slippage ? `${Number(slippage) / 100}%` : `${t('swapw.slippageAuto')} · ${bps(route) / 100}%`}</dd></div>
+        {route?.kind !== 'usdt0' && <div><dt>{t('swapw.slippage')}</dt><dd>{slippage ? `${Number(slippage) / 100}%` : `${t('swapw.slippageAuto')} · ${bps(route) / 100}%`}</dd></div>}
       </dl>
 
       {rate !== null && from && to && (
@@ -419,11 +438,33 @@ export function Swap({ store }: { store: WalletStore }) {
                 <div>
                   <dt>{t('swapw.minimum')}</dt>
                   <dd>
-                    {num(fresh.q.destination.minimum)} {to.symbol}
+                    {num(fresh.kind === 'usdt0' ? fresh.q.amountReceived : fresh.q.destination.minimum)} {to.symbol}
                   </dd>
                 </div>
               )}
-              {fresh && (
+              {fresh?.kind === 'usdt0' && Number(fresh.q.feeAmount) > 0 && (
+                <div>
+                  <dt>{t('swap.fee')}</dt>
+                  <dd>
+                    {num(fresh.q.feeAmount)} {from.symbol} ({fresh.q.feeBps / 100}%)
+                  </dd>
+                </div>
+              )}
+              {fresh?.kind === 'usdt0' && (
+                <div>
+                  <dt>{t('swapw.bridgeFee')}</dt>
+                  <dd>{num(fresh.q.nativeFee)} XLM</dd>
+                </div>
+              )}
+              {fresh?.kind === 'usdt0' && Number(fresh.q.dust ?? 0) > 0 && (
+                <div>
+                  <dt>{t('swapw.dust')}</dt>
+                  <dd>
+                    {num(fresh.q.dust ?? 0)} {from.symbol}
+                  </dd>
+                </div>
+              )}
+              {fresh && fresh.kind !== 'usdt0' && (
                 <div>
                   <dt>{t('swap.fee')}</dt>
                   <dd>

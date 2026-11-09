@@ -40,6 +40,7 @@ import {
   LiquidityPoolFeeV18,
   TransactionBuilder,
   getLiquidityPoolId,
+  scValToNative,
   type Transaction,
 } from '@stellar/stellar-sdk';
 import type { NetConfig } from '@/lib/stellar';
@@ -61,6 +62,15 @@ import {
 // The recovery weights are the WALLET's, never the servers' claim about themselves. See
 // `assertRecoveryTemplate`, and `src/constants/recovery.ts` for the arithmetic.
 import { DEVICE_WEIGHT, SERVER_WEIGHT } from '@/constants/recovery';
+import {
+  USDT0_FEE_COLLECTOR,
+  USDT0_FEE_WRAPPERS,
+  USDT0_MAX_FEE_LEGS,
+  USDT0_OFT,
+  USDT0_SAC,
+  XLM_SAC_MAINNET,
+} from '@/constants/usdt0';
+import { evmAddressToBytes32 } from '@/lib/usdt0';
 
 /* Re-exported so the guard stays the one import a signing flow needs; the values
    themselves live in constants/, per the rule in CLAUDE.md. */
@@ -895,6 +905,28 @@ export type GuardOptions =
        * for is ours, and that the account named as payer is the one that actually signed.
        */
       sponsored: boolean;
+    })
+  | (GuardBase & {
+      intent: 'usdt0';
+      /**
+       * The USDT0 the user typed. Caps EVERYTHING that leaves in USDT0 — what the OFT burns
+       * plus every commission paid on the way — as one total.
+       */
+      maxSend: string;
+      /** What the quote said arrives. The envelope's on-chain floor may not undercut it. */
+      minReceive: string;
+      /** The ceiling the quote showed for the bridge's XLM fee (`nativeFeeLimit`). */
+      maxNativeFee: string;
+      /**
+       * The commission the quote declared, in USDT0: `'0'` when it charges none, and then a
+       * transfer through the fee wrapper is refused outright. Required for the reason the
+       * swap's `commission` is: an omitted bound would be a third-party payment with no cap.
+       */
+      maxCommission: string;
+      /** The destination's endpoint id, from the route the user picked — never from the reply. */
+      dstEid: number;
+      /** The wallet's own EVM address there: the only place the USDT may arrive. */
+      recipient: string;
     });
 
 /** Does a decoded asset satisfy a confirmed bound? Never a prefix match. */
@@ -1068,6 +1100,247 @@ function assertRecoveryTemplate(
   }
 }
 
+/* ------------------------------ USDT0 template ----------------------------- */
+
+type Fail = (key: string, params?: Record<string, string | number>) => never;
+
+/** One contract call in an authorization tree, its arguments decoded to plain values. */
+interface ContractCall {
+  contract: string;
+  fn: string;
+  args: unknown[];
+  subs: ContractCall[];
+}
+
+/** Accessor methods up to stellar-sdk 16, readonly properties from 17 on. */
+function field(host: unknown, key: string): unknown {
+  const v = (host as Record<string, unknown> | null | undefined)?.[key];
+  return typeof v === 'function' ? (v as () => unknown).call(host) : v;
+}
+
+/** A union's discriminant: a plain `type` string from stellar-sdk 17, `switch().name` before. */
+function unionTag(u: unknown): string | null {
+  const t = (u as { type?: unknown } | null | undefined)?.type;
+  if (typeof t === 'string') return t;
+  try {
+    const n = (u as { switch?: () => { name?: unknown } } | null | undefined)?.switch?.()?.name;
+    return typeof n === 'string' ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A symbol as text: stellar-sdk 17 wraps it as `{ bytes }`. */
+function symbolText(v: unknown): string {
+  const bytes = v && typeof v === 'object' && 'bytes' in v ? (v as { bytes: unknown }).bytes : v;
+  return bytes instanceof Uint8Array ? new TextDecoder().decode(bytes) : typeof bytes === 'string' ? bytes : '';
+}
+
+/** `InvokeContractArgs`, decoded; null when any part will not decode. */
+function decodeCall(args: unknown): Omit<ContractCall, 'subs'> | null {
+  const contract = contractIdOf(field(args, 'contractAddress'));
+  const fn = symbolText(field(args, 'functionName'));
+  const raw = field(args, 'args');
+  if (!contract || !fn || !Array.isArray(raw)) return null;
+  try {
+    return { contract, fn, args: raw.map((a) => scValToNative(a as Parameters<typeof scValToNative>[0]) as unknown) };
+  } catch {
+    return null;
+  }
+}
+
+/** An authorized invocation and everything under it. Anything but a contract call is refused. */
+function decodeInvocation(inv: unknown, fail: Fail): ContractCall {
+  const call = field(field(inv, 'function'), 'contractFn');
+  const head = call ? decodeCall(call) : null;
+  const subs = field(inv, 'subInvocations');
+  if (!head || !Array.isArray(subs)) return fail('guard.usdt0NotCall');
+  return { ...head, subs: subs.map((s) => decodeInvocation(s, fail)) };
+}
+
+/** A decoded value as one canonical string, so two arguments compare by content. */
+function canon(v: unknown): string {
+  if (typeof v === 'bigint') return `${v}n`;
+  if (v instanceof Uint8Array) return `0x${Array.from(v, (b) => b.toString(16).padStart(2, '0')).join('')}`;
+  if (Array.isArray(v)) return `[${v.map(canon).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canon(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(v) ?? 'undefined';
+}
+
+const bytesOf = (v: unknown): Uint8Array | null => (v instanceof Uint8Array ? v : null);
+const stroopsText = (n: bigint): string => (Number(n) / 1e7).toFixed(7).replace(/\.?0+$/, '');
+
+/** `node` must be exactly `contract.fn(...args)`, authorizing nothing beneath it. */
+function expectLeaf(node: ContractCall, contract: string, fn: string, args: unknown[], fail: Fail): void {
+  if (node.contract !== contract || node.fn !== fn || canon(node.args) !== canon(args) || node.subs.length) {
+    fail('guard.usdt0Tree', { call: `${short(node.contract, 4)}.${node.fn}` });
+  }
+}
+
+/**
+ * USDT0 out of Stellar, checked as a TEMPLATE: one contract call, its arguments, and the whole
+ * tree of authorizations the account gives with it, against the exact shape a `send` records.
+ *
+ * ## Why a template
+ *
+ * The operation is `invokeHostFunction`, which the guard otherwise refuses because it decodes a
+ * contract id and a function name and nothing else — it could not tell "bridge 10 USDT0 to my
+ * own address" from "send my USDT0 to someone else". What makes this one decodable is that its
+ * authority is spelled out: the transaction's source authorizes a tree of calls, and the host
+ * refuses any `require_auth` of the account that is not in that tree. So the tree is the whole
+ * of what the signature allows, and the guard reads every node of it.
+ *
+ * ## The shape (a mainnet simulation, 2026-11-09)
+ *
+ *     OFT.send(me, send_param, fee, refund = me)
+ *       USDT0.burn(me, send_param.amount_ld)
+ *       XLM.transfer(me, fee collector, fee.native_fee)
+ *
+ * or, when the gateway charges a commission, through a fee wrapper:
+ *
+ *     wrapper.send(me, [{ amount, wallet }], send_param, fee, refund = me)
+ *       USDT0.transfer(me, wallet, amount)
+ *       OFT.send(me, send_param, fee, refund = me)
+ *         USDT0.burn(me, send_param.amount_ld)
+ *         XLM.transfer(me, fee collector, fee.native_fee)
+ *
+ * `send_param` names the route the user chose (`dst_eid`), the wallet's own address there
+ * (`to`), and carries no options, compose message or command. Bounds, every one from the quote
+ * the user saw: USDT0 burned plus commission ≤ what they typed; the on-chain floor ≥ what the
+ * quote said arrives; the XLM fee ≤ the quote's ceiling; the commission ≤ the quote's.
+ */
+function assertUsdt0Template(
+  cfg: NetConfig,
+  xdr: string,
+  review: TxReview,
+  opts: Extract<GuardOptions, { intent: 'usdt0' }>,
+  fail: Fail,
+): void {
+  const ops = review.operations;
+  if (ops.length !== 1) fail('guard.usdt0Shape', { count: ops.length });
+  // The allowlist first, so `ALLOWED_OPS.usdt0` is load-bearing (see the note on `recovery`).
+  if (!ALLOWED_OPS.usdt0.includes(ops[0].type)) fail('guard.unexpectedOp', { op: ops[0].type });
+  if (ops[0].source && ops[0].source !== opts.signer) fail('guard.foreignOpSource', { source: short(ops[0].source) });
+  // Ours is the signature this call decides; another one is a transaction someone else prepared.
+  if (review.signatures > 0) fail('guard.usdt0Presigned', { count: review.signatures });
+
+  const maxSend = stroops(opts.maxSend);
+  const floor = stroops(opts.minReceive);
+  const maxNative = stroops(opts.maxNativeFee);
+  const maxCommission = stroops(opts.maxCommission);
+  if (maxSend === null || floor === null || maxNative === null || maxCommission === null || maxSend <= 0n) {
+    fail('guard.usdt0Unbounded');
+  }
+  const recipient = evmAddressToBytes32(opts.recipient);
+  if (!recipient) fail('guard.usdt0Recipient', { recipient: short(opts.recipient) });
+
+  // The call itself. A fee bump was refused before this runs, so the envelope is a Transaction.
+  let tx: Transaction;
+  try {
+    tx = TransactionBuilder.fromXDR(xdr.trim(), cfg.passphrase) as Transaction;
+  } catch {
+    fail('guard.undecodable');
+  }
+  const op = (tx.operations as unknown[])[0] as { func?: unknown; auth?: unknown };
+  const invoke = field(op.func, 'invokeContract');
+  const call = invoke ? decodeCall(invoke) : null;
+  if (!call) fail('guard.usdt0NotCall');
+
+  // One authorization, given by the transaction's own source: an entry with credentials of
+  // its own is a second signature this wallet would be giving without knowing it.
+  const auth = Array.isArray(op.auth) ? op.auth : [];
+  if (auth.length !== 1) fail('guard.usdt0Auth', { count: auth.length });
+  if (unionTag(field(auth[0], 'credentials')) !== 'sorobanCredentialsSourceAccount') fail('guard.usdt0Credentials');
+  const root = decodeInvocation(field(auth[0], 'rootInvocation'), fail);
+  // The authorization is for the call this transaction makes, argument for argument.
+  if (root.contract !== call.contract || root.fn !== call.fn || canon(root.args) !== canon(call.args)) {
+    fail('guard.usdt0AuthMismatch');
+  }
+
+  const wrapped = USDT0_FEE_WRAPPERS.includes(root.contract);
+  if (root.contract !== USDT0_OFT && !wrapped) fail('guard.usdt0Contract', { contract: short(root.contract, 8) });
+  if (root.fn !== 'send') fail('guard.usdt0Tree', { call: `${short(root.contract, 4)}.${root.fn}` });
+
+  let commission = 0n;
+  let send: ContractCall = root;
+  if (wrapped) {
+    if (root.args.length !== 5) fail('guard.usdt0Tree', { call: `${short(root.contract, 4)}.send` });
+    const [from, fees, ...forwarded] = root.args;
+    if (from !== opts.signer) fail('guard.usdt0From');
+    if (!Array.isArray(fees) || !fees.length || fees.length > USDT0_MAX_FEE_LEGS) {
+      fail('guard.usdt0Fees', { count: Array.isArray(fees) ? fees.length : 0 });
+    }
+    if (root.subs.length !== fees.length + 1) fail('guard.usdt0Tree', { call: `${short(root.contract, 4)}.send` });
+    fees.forEach((leg, i) => {
+      const amount = (leg as Record<string, unknown> | null)?.amount;
+      const wallet = (leg as Record<string, unknown> | null)?.wallet;
+      if (typeof amount !== 'bigint' || amount <= 0n || typeof wallet !== 'string' || wallet === opts.signer) {
+        fail('guard.usdt0Fees', { count: fees.length });
+      }
+      expectLeaf(root.subs[i], USDT0_SAC, 'transfer', [opts.signer, wallet, amount], fail);
+      commission += amount;
+    });
+    // The wrapper forwards its own arguments to the OFT, unchanged.
+    send = root.subs[fees.length];
+    if (send.contract !== USDT0_OFT || send.fn !== 'send' || canon(send.args) !== canon([from, ...forwarded])) {
+      fail('guard.usdt0Tree', { call: `${short(send.contract, 4)}.${send.fn}` });
+    }
+  }
+  if (commission * 10_000n > maxCommission * (10_000n + BOUND_TOLERANCE_BPS)) {
+    fail('guard.usdt0Commission', { amount: stroopsText(commission), max: opts.maxCommission });
+  }
+
+  // OFT.send(from, send_param, fee, refund_address)
+  if (send.args.length !== 4) fail('guard.usdt0Tree', { call: `${short(send.contract, 4)}.send` });
+  const [from, param, fee, refund] = send.args;
+  // The refund of the unused fee comes back to us; any other address keeps it.
+  if (from !== opts.signer || refund !== opts.signer) fail('guard.usdt0From');
+  const p = (param ?? {}) as Record<string, unknown>;
+  if (Object.keys(p).sort().join(',') !== 'amount_ld,compose_msg,dst_eid,extra_options,min_amount_ld,oft_cmd,to') {
+    fail('guard.usdt0Options');
+  }
+  // A compose message, executor options or an OFT command each make the destination do more
+  // than credit the recipient — none of which the screen described.
+  if (bytesOf(p.compose_msg)?.length !== 0 || bytesOf(p.extra_options)?.length !== 0 || bytesOf(p.oft_cmd)?.length !== 0) {
+    fail('guard.usdt0Options');
+  }
+  if (p.dst_eid !== opts.dstEid) fail('guard.usdt0Network', { eid: String(p.dst_eid) });
+  const to = bytesOf(p.to);
+  if (!to || to.length !== 32 || !to.every((b, i) => b === recipient[i])) {
+    fail('guard.usdt0Recipient', { recipient: to ? short(`0x${canon(to).slice(-40)}`) : '—' });
+  }
+  const amount = p.amount_ld;
+  const min = p.min_amount_ld;
+  if (typeof amount !== 'bigint' || typeof min !== 'bigint' || amount <= 0n || min < 0n || min > amount) {
+    fail('guard.usdt0Unbounded');
+  }
+  if ((amount + commission) * 10_000n > maxSend * (10_000n + BOUND_TOLERANCE_BPS)) {
+    fail('guard.usdt0Amount', { amount: stroopsText(amount + commission), max: opts.maxSend });
+  }
+  if (min * 10_000n < floor * (10_000n - BOUND_TOLERANCE_BPS)) {
+    fail('guard.usdt0Floor', { min: stroopsText(min), floor: opts.minReceive });
+  }
+  const f = (fee ?? {}) as Record<string, unknown>;
+  // Paid in XLM only: a ZRO fee would be a third token leaving the account.
+  if (Object.keys(f).sort().join(',') !== 'native_fee,zro_fee' || f.zro_fee !== 0n) fail('guard.usdt0Options');
+  const nativeFee = f.native_fee;
+  if (typeof nativeFee !== 'bigint' || nativeFee < 0n || nativeFee * 10_000n > maxNative * (10_000n + BOUND_TOLERANCE_BPS)) {
+    fail('guard.usdt0NativeFee', { fee: typeof nativeFee === 'bigint' ? stroopsText(nativeFee) : '?', max: opts.maxNativeFee });
+  }
+
+  // What `send` does with the account's authority: burn exactly what it sends, pay exactly the
+  // fee it names, to the collector the OFT is bound to — and nothing else, at any depth.
+  if (send.subs.length !== 2) fail('guard.usdt0Tree', { call: `${short(send.contract, 4)}.send` });
+  expectLeaf(send.subs[0], USDT0_SAC, 'burn', [opts.signer, amount], fail);
+  expectLeaf(send.subs[1], XLM_SAC_MAINNET, 'transfer', [opts.signer, USDT0_FEE_COLLECTOR, nativeFee], fail);
+}
+
 /**
  * Decode, verify, and either return the review or refuse. Refusals are hard:
  * a transaction the wallet cannot explain is a transaction the wallet does not sign.
@@ -1138,6 +1411,12 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
   // "and nothing else" negotiable.
   if (opts.intent === 'recovery') {
     assertRecoveryTemplate(review, opts, fail);
+    return review;
+  }
+  // The same reasoning: a USDT0 transfer is one contract call whose every authorization is
+  // matched against the shape a `send` records, so the per-operation loop has nothing to add.
+  if (opts.intent === 'usdt0') {
+    assertUsdt0Template(cfg, xdr, review, opts, fail);
     return review;
   }
 

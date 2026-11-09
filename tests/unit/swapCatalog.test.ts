@@ -79,3 +79,47 @@ test('before a quote, the estimate uses the listed prices', () => {
   assert.equal(estimateOut(10, find(cat, 'stellar', 'XLM'), find(cat, 'stellar', 'USDC')), 1.7000000000000002);
   assert.equal(estimateOut(0, find(cat, 'stellar', 'XLM'), find(cat, 'stellar', 'USDC')), null);
 });
+
+/* ---------------------------- USDT0's bridge ---------------------------- */
+
+const USDT0_ISSUER = 'GATISXX6BZ6NC7IKQBY37CJD4SOZL3CYZJWXEDG6JVIY4WBS6KXJHN6Q';
+const usdt0Routes = [
+  { chain: 'eth', name: 'Ethereum', eid: 30101, receives: 'USDT' as const },
+  { chain: 'arb', name: 'Arbitrum', eid: 30110, receives: 'USDT0' as const },
+  { chain: 'unknownchain', name: 'Nowhere', eid: 1, receives: 'USDT0' as const },
+];
+const withUsdt0 = (env: 'mainnet' | 'testnet') =>
+  buildSwapCatalog({
+    intents: [...intents, listing('eth', 'USDT', '0xdac17f958d2ee523a2206206994597c13d831ec7', 1)],
+    env,
+    stellar: [...stellar, { code: 'USDT0', issuer: USDT0_ISSUER, issuerName: 'Tether' }],
+    chainTokens: CHAIN_TOKENS,
+    usdt0Routes,
+  });
+
+test('Stellar’s USDT0 goes out through the bridge, ahead of NEAR Intents, on mainnet only', () => {
+  const cat = withUsdt0('mainnet');
+  const usdt0 = cat.find((t) => t.chain === 'stellar' && t.symbol === 'USDT0' && t.contract === USDT0_ISSUER)!;
+  // A network NEAR Intents lists USDT on: that token, now reachable both ways.
+  const ethUsdt = find(cat, 'eth', 'USDT');
+  assert.ok(ethUsdt.usdt0 && ethUsdt.near, 'the listed token is marked, not duplicated');
+  assert.deepEqual(routeFor(usdt0, ethUsdt, 'mainnet'), { kind: 'usdt0', chain: 'eth' });
+  // A network where nothing lists it: a token only the bridge reaches, never the network's coin.
+  const arb = cat.filter((t) => t.chain === 'arb' && t.usdt0);
+  assert.equal(arb.length, 1);
+  assert.equal(arb[0].symbol, 'USDT0');
+  assert.notEqual(arb[0].contract, null, 'null is the coin everywhere in the catalogue');
+  assert.deepEqual(routeFor(usdt0, arb[0], 'mainnet'), { kind: 'usdt0', chain: 'arb' });
+  // A route to a network the wallet does not know adds nothing.
+  assert.ok(!cat.some((t) => t.chain === ('unknownchain' as never)));
+  // A destination, never a source: nothing to pay with, and no route back.
+  assert.equal(canPayWith(arb[0], () => true), false);
+  assert.notEqual(routeFor(arb[0], usdt0, 'mainnet').kind, 'usdt0');
+  // Any other Stellar token keeps NEAR Intents.
+  assert.deepEqual(routeFor(find(cat, 'stellar', 'XLM'), ethUsdt, 'mainnet'), { kind: 'near' });
+  // An impostor USDT0 (same code, other issuer) is not Tether's and gets no bridge.
+  const fake = { ...usdt0, key: 'stellar:USDT0:GFAKE', contract: 'G' + 'A'.repeat(55) };
+  assert.notEqual(routeFor(fake, ethUsdt, 'mainnet').kind, 'usdt0');
+  // A test network has no bridge at all.
+  assert.ok(!withUsdt0('testnet').some((t) => t.usdt0));
+});
