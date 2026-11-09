@@ -1287,8 +1287,15 @@ export function assertSafeToSign(cfg: NetConfig, xdr: string, opts: GuardOptions
    *
    * Summed across operations for the same reason every other bound here is: Stellar
    * allows 100 operations, so a per-operation cap is a 100x cap.
+   *
+   * Not when the commission wallet IS the signer (the operator swapping from its own fee
+   * account): then a fee is a payment to ourselves, nothing leaves, and every operation
+   * that settles back to us — the path payment's output included — has the commission
+   * wallet as its destination. Summed as "commission", that output tripped this bound on
+   * every such swap ("the commission is higher than the quote's"). `maxSend` and the
+   * floor below still hold, and every destination is still ours.
    */
-  if (commission) {
+  if (commission && commission.wallet !== opts.signer) {
     const cap = stroops(commission.amount);
     if (cap === null || cap < 0n) {
       fail('guard.commissionUnreadable');
