@@ -155,6 +155,15 @@ export const Usdt0TransferShape = object({
   publicToken: optional(str),
 });
 
+/** The submit's answer: the outcome on top, the transfer under `transfer`. */
+export const Usdt0SubmitResultShape = object({
+  submitted: bool,
+  status: str,
+  txHash: optional(str),
+  reason: optional(str),
+  transfer: object({ id, amountSent: amount, amountReceived: amount }),
+});
+
 /* ------------------------- backup recovery shares ------------------------ */
 
 /** A filed half: only the receipt comes back. */

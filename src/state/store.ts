@@ -125,6 +125,7 @@ import { MOUSE_NAV_GRACE_MS, NAV_REWIND_TIMEOUT_MS } from '@/constants/ui';
 import { hydrate, invalidate, run } from '@/lib/query';
 import { bridgedAmount, type Usdt0Route } from '@/lib/usdt0';
 import { USDT0_ROUTES_TTL_MS } from '@/constants/usdt0';
+import { AFTER_OPERATION_REREAD_MS } from '@/constants/home';
 import { useQueryValue } from '@/hooks/useQuery';
 import { useDeviceAuth } from '@/state/useDeviceAuth';
 import { usePasskey } from '@/state/usePasskey';
@@ -1048,7 +1049,7 @@ export function useWalletStore() {
 
   /* ------------------------- data loading ------------------------- */
   const refresh = useCallback(
-    async (silent = false) => {
+    async (silent = false, force = !silent) => {
       if (!session) return;
       if (!silent) setLoading(true);
       try {
@@ -1063,7 +1064,7 @@ export function useWalletStore() {
               ttl: TTL.account,
               retry: 2, // idempotent read — safe to retry, unlike anything that signs
             },
-            !silent,
+            force,
           ),
           run({
             key: PRICES_KEY,
@@ -1087,6 +1088,15 @@ export function useWalletStore() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [session, network, networkId, flash],
   );
+
+  /**
+   * Every balance read again after a flow that moved money — Stellar, Solana and Monad, every other
+   * network — forced past the cache, at once and after each of `AFTER_OPERATION_REREAD_MS`. Called
+   * from each flow's `finally`, so an error after the signature (a transaction that may well have
+   * landed) refreshes too. Through a ref: the readers it calls are declared further down.
+   */
+  const afterOperationRef = useRef<() => void>(() => {});
+  const refreshAfterOperation = useCallback(() => afterOperationRef.current(), []);
 
   // reload whenever the session opens or the network changes
   useEffect(() => {
@@ -2464,7 +2474,6 @@ export function useWalletStore() {
         });
         setScreen('success');
         setSend({ to: '', amount: '0', memo: '', memoKind: 'text', asset: XLM });
-        refresh(true);
       } catch (e) {
         reportError(EVENT.paymentFailed, e, { asset: code, amount: send.amount });
         // show a red error confirmation screen instead of a transient toast
@@ -2477,6 +2486,7 @@ export function useWalletStore() {
         setScreen('success');
       } finally {
         setBusy(false);
+        refreshAfterOperation();
       }
     });
   }, [session, network, send, refresh, requestSignature, exclusive, guardSession, t]);
@@ -2865,7 +2875,6 @@ export function useWalletStore() {
               hash: res.txHash ?? undefined,
             });
             setScreen('success');
-            refresh(true);
           } else {
             const codes = res.resultCodes ? JSON.stringify(res.resultCodes) : '';
             // A refused submit is not a thrown error: the gateway answered, and its
@@ -2892,6 +2901,7 @@ export function useWalletStore() {
           setScreen('success');
         } finally {
           setBusy(false);
+          refreshAfterOperation();
         }
       });
     },
@@ -3014,13 +3024,13 @@ export function useWalletStore() {
             hash,
           });
           setScreen('success');
-          refresh(true);
         } catch (e) {
           reportError(EVENT.swapFailed, e, { from: from.code, to: dest.symbol, amount, crossChain: true });
           setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: (e as Error).message, rows: [] });
           setScreen('success');
         } finally {
           setBusy(false);
+          refreshAfterOperation();
         }
       });
     },
@@ -3096,32 +3106,31 @@ export function useWalletStore() {
           guardSession(epoch);
           const signedXdr = await signEnvelope(transfer.xdr);
           const res = await cpSubmitUsdt0Transfer(apiKey, transfer.id, signedXdr, transfer.publicToken);
-          if (res.status !== 'SUBMITTED' && res.status !== 'DELIVERED') {
-            throw new Error(res.failureReason || t('usdt0.failed'));
-          }
+          if (!res.submitted) throw new Error(res.reason || t('usdt0.failed'));
           report(EVENT.swapSubmitted, {
             category: 'transaction',
-            props: { from: 'USDT0', to: quote.receives, chain, amount: sent, received: res.amountReceived, txHash: res.txHash ?? undefined, crossChain: true },
+            props: { from: 'USDT0', to: quote.receives, chain, amount: sent, received: res.transfer.amountReceived, txHash: res.txHash ?? undefined, crossChain: true },
           });
           setSuccessInfo({
             kind: 'ok',
             title: t('usdt0.success'),
             msg: t('usdt0.successMsg', { network: NETWORKS[chain].name }),
             rows: [
-              { label: t('usdt0.sent'), val: `${res.amountSent} USDT0` },
-              { label: t('usdt0.receives'), val: `${res.amountReceived} ${quote.receives}` },
+              { label: t('usdt0.sent'), val: `${res.transfer.amountSent} USDT0` },
+              { label: t('usdt0.receives'), val: `${res.transfer.amountReceived} ${quote.receives}` },
               { label: t('xswap.to'), val: `${recipient.slice(0, 6)}…${recipient.slice(-6)}` },
             ],
             hash: res.txHash ?? undefined,
           });
           setScreen('success');
-          refresh(true);
         } catch (e) {
           reportError(EVENT.swapFailed, e, { from: 'USDT0', to: quote.receives, amount: sent, chain, crossChain: true });
           setSuccessInfo({ kind: 'err', title: t('usdt0.failed'), msg: (e as Error).message, rows: [] });
           setScreen('success');
         } finally {
           setBusy(false);
+          refreshAfterOperation();
+          refreshAfterOperation();
         }
       });
     },
@@ -3237,6 +3246,16 @@ export function useWalletStore() {
     },
     [session, meta, networkAddresses, addressOnNetwork, chainNet, networkId, trackedTokens],
   );
+
+  afterOperationRef.current = () => {
+    const readAll = () => {
+      void refresh(true, true);
+      void loadChainHoldings(true);
+      void loadNetworkHoldings(true);
+    };
+    readAll();
+    for (const ms of AFTER_OPERATION_REREAD_MS) setTimeout(readAll, ms);
+  };
 
   // A token added or removed is read (or dropped) now, not at the next poll.
   const trackedSig = JSON.stringify(trackedTokens);
@@ -3443,7 +3462,7 @@ export function useWalletStore() {
           setScreen('success');
         } finally {
           setBusy(false);
-          void loadChainHoldings(true);
+          refreshAfterOperation();
         }
       });
     },
@@ -3525,13 +3544,12 @@ export function useWalletStore() {
           setScreen('success');
         } finally {
           setBusy(false);
-          void loadNetworkHoldings(true);
+          refreshAfterOperation();
         }
       });
     },
-    [session, chainNet, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, submitChainSend, loadNetworkHoldings, t],
+    [refreshAfterOperation, session, chainNet, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, submitChainSend, loadNetworkHoldings, t],
   );
-
   const quoteChainSwap = useCallback(
     async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, slippageBps: number = CHAIN_SWAP_SLIPPAGE_BPS): Promise<SwapQuote | null> => {
       const apiKey = openAccessKey();
@@ -3639,7 +3657,7 @@ export function useWalletStore() {
           setScreen('success');
         } finally {
           setBusy(false);
-          void loadChainHoldings(true);
+          refreshAfterOperation();
         }
       });
     },
@@ -3761,14 +3779,13 @@ export function useWalletStore() {
             explorer: CHAIN_EXPLORER_TX[origin](hash),
           });
           setScreen('success');
-          if (dest.chain === 'stellar') refresh(true);
         } catch (e) {
           reportError(EVENT.swapFailed, e, { from: from.symbol, to: dest.symbol, amount, origin, crossChain: true });
           setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: chainSwapMessage(e), rows: [] });
           setScreen('success');
         } finally {
           setBusy(false);
-          void loadChainHoldings(true);
+          refreshAfterOperation();
         }
       });
     },
@@ -3993,18 +4010,17 @@ export function useWalletStore() {
             ...(def.explorerTx ? { explorer: def.explorerTx.replace('{tx}', hash) } : {}),
           });
           setScreen('success');
-          if (dest.chain === 'stellar') refresh(true);
         } catch (e) {
           reportError(EVENT.swapFailed, e, { from: from.symbol, to: dest.symbol, amount, origin, crossChain: true });
           setSuccessInfo({ kind: 'err', title: t('swap.failed'), msg: chainSwapMessage(e), rows: [] });
           setScreen('success');
         } finally {
           setBusy(false);
-          void loadNetworkHoldings(true);
+          refreshAfterOperation();
         }
       });
     },
-    [session, chainNet, openAccessKey, crossChainFromNetworkInput, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, loadNetworkHoldings, refresh, t],
+    [refreshAfterOperation, session, chainNet, openAccessKey, crossChainFromNetworkInput, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, loadNetworkHoldings, refresh, t],
   );
   const cosmosApiKey = useCallback((): string | null => {
     const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
@@ -4910,7 +4926,6 @@ export function useWalletStore() {
               hash: res.txHash ?? undefined,
             });
             setScreen('success');
-            refresh(true);
           } else {
             const codes = res.resultCodes ? JSON.stringify(res.resultCodes) : '';
             report(EVENT.liquidityFailed, {
@@ -4928,6 +4943,7 @@ export function useWalletStore() {
           setScreen('success');
         } finally {
           setBusy(false);
+          refreshAfterOperation();
         }
       });
     },
@@ -4987,7 +5003,6 @@ export function useWalletStore() {
               hash: res.txHash ?? undefined,
             });
             setScreen('success');
-            refresh(true);
           } else {
             const codes = res.resultCodes ? JSON.stringify(res.resultCodes) : '';
             report(EVENT.liquidityFailed, {
@@ -5005,6 +5020,7 @@ export function useWalletStore() {
           setScreen('success');
         } finally {
           setBusy(false);
+          refreshAfterOperation();
         }
       });
     },
@@ -5362,7 +5378,6 @@ export function useWalletStore() {
             ],
           });
           setScreen('success');
-          refresh(true);
           return true;
         } catch (e) {
           setSuccessInfo({ kind: 'err', title: t('fiat.withdrawFailed'), msg: (e as Error).message, rows: [] });
@@ -5370,6 +5385,7 @@ export function useWalletStore() {
           return false;
         } finally {
           setBusy(false);
+          refreshAfterOperation();
         }
       });
       return run.ran ? run.value : false;
