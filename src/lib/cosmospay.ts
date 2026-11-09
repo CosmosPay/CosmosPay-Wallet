@@ -136,7 +136,8 @@ export interface CreateSwapInput extends QuoteSwapInput {
 
 import { parseShape, type Check } from '@/lib/apiShape';
 import { ApiRequestError, apiError } from '@/lib/apiError';
-import { PAGE_SIZE, RETRY_AFTER_CAP_S } from '@/constants/api';
+import { PAGE_SIZE, RECORD_TOKEN_HEADER, RETRY_AFTER_CAP_S } from '@/constants/api';
+import type { Usdt0Route } from '@/lib/usdt0';
 import {
   AuthorizePayoutShape,
   BankAccountListShape,
@@ -167,6 +168,9 @@ import {
   CrossChainAssetListShape,
   CrossChainQuoteShape,
   CrossChainSwapShape,
+  Usdt0QuoteShape,
+  Usdt0RoutesShape,
+  Usdt0TransferShape,
   RecoveryShareFiledShape,
   RecoveryShareListShape,
   ChainSwapShape,
@@ -970,6 +974,86 @@ export async function reportCrossChainDeposit(apiKey: string, id: string, txHash
     authHeaders(apiKey),
     false,
     CrossChainSwapShape,
+  );
+}
+
+/* ------------------------------ USDT0 bridge ----------------------------- */
+/*
+ * USDT0 out of Stellar through the bridge's OFT (lib/usdt0.ts): 1:1 to the networks the routes
+ * list, the bridge's fee paid in XLM. The gateway builds one Soroban transaction for the holder,
+ * the wallet checks it (the `usdt0` intent in lib/txGuard.ts), signs it and hands it back.
+ * Mainnet only: USDT0 does not exist on testnet.
+ */
+
+export interface Usdt0Routes {
+  available: boolean;
+  routes: Usdt0Route[];
+}
+
+export interface Usdt0Quote {
+  to: string;
+  eid: number;
+  receives: 'USDT' | 'USDT0';
+  amount: string;
+  /** The plan's commission rate and amount, in USDT0, taken out of `amount`. */
+  feeBps: number;
+  feeAmount: string;
+  amountSent: string;
+  /** What arrives: also the on-chain floor of the transaction. */
+  amountReceived: string;
+  /** Decimals past the bridge's sixth: they stay in the account. */
+  dust?: string;
+  /** The bridge's fee in XLM, and the ceiling the transaction may offer for it. */
+  nativeFee: string;
+  nativeFeeLimit: string;
+}
+
+export interface Usdt0TransferInput {
+  source: string;
+  to: string;
+  recipient: string;
+  amount: string;
+  idempotencyKey?: string;
+}
+
+export interface Usdt0Transfer {
+  id: string;
+  status: string;
+  to: string;
+  recipient: string;
+  amountSent: string;
+  amountReceived: string;
+  xdr: string;
+  txHash?: string | null;
+  scanUrl?: string | null;
+  failureReason?: string | null;
+  /** Only on the shared public key: the record's token, which its submit must carry. */
+  publicToken?: string;
+}
+
+/** Where USDT0 can go from Stellar. */
+export async function listUsdt0Routes(apiKey: string): Promise<Usdt0Routes> {
+  return getJson<Usdt0Routes>(`${gatewayApi()}/v1/usdt0/routes`, apiKey, Usdt0RoutesShape);
+}
+
+/** Price a transfer: what arrives, the commission and the bridge's XLM fee. */
+export async function quoteUsdt0(apiKey: string, input: { to: string; amount: string; source?: string }): Promise<Usdt0Quote> {
+  return postJson<Usdt0Quote>(`${gatewayApi()}/v1/usdt0/quote`, input, authHeaders(apiKey), false, Usdt0QuoteShape);
+}
+
+/** Build the transfer: the unsigned transaction the holder signs. */
+export async function createUsdt0Transfer(apiKey: string, input: Usdt0TransferInput): Promise<Usdt0Transfer> {
+  return postJson<Usdt0Transfer>(`${gatewayApi()}/v1/usdt0/transfers`, input, authHeaders(apiKey), false, Usdt0TransferShape);
+}
+
+/** Hand back the signed transaction; the gateway relays it and waits for the ledger. */
+export async function submitUsdt0Transfer(apiKey: string, id: string, signedXdr: string, recordToken?: string): Promise<Usdt0Transfer> {
+  return postJson<Usdt0Transfer>(
+    `${gatewayApi()}/v1/usdt0/transfers/${encodeURIComponent(id)}/submit`,
+    { signedXdr },
+    { ...authHeaders(apiKey), ...(recordToken ? { [RECORD_TOKEN_HEADER]: recordToken } : {}) },
+    false,
+    Usdt0TransferShape,
   );
 }
 

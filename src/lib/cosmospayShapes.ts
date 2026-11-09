@@ -116,6 +116,45 @@ export const CrossChainSwapShape = object({
   timeEstimateSeconds: num,
 });
 
+/* ------------------------------ USDT0 bridge ----------------------------- */
+
+/** Where USDT0 can go from Stellar. `eid` is what the guard compares the envelope's route to. */
+export const Usdt0RoutesShape = object({
+  available: bool,
+  routes: arrayOf(object({ chain: str, name: str, eid: num, receives: str })),
+});
+
+/** The quote's figures are the guard's bounds, so each one it reads is asserted to be an amount. */
+export const Usdt0QuoteShape = object({
+  to: str,
+  eid: num,
+  receives: str,
+  amount,
+  feeBps: num,
+  feeAmount: amount,
+  amountSent: amount,
+  amountReceived: amount,
+  nativeFee: amount,
+  nativeFeeLimit: amount,
+});
+
+/**
+ * A USDT0 transfer. `xdr` is what gets signed; that it is SAFE to sign is the guard's call (the
+ * `usdt0` template in `lib/txGuard.ts`), bounded by the quote, never by these figures.
+ * `publicToken` comes only to a caller on the shared public key: its submit must carry it.
+ */
+export const Usdt0TransferShape = object({
+  id,
+  status: str,
+  to: str,
+  recipient: str,
+  amountSent: amount,
+  amountReceived: amount,
+  xdr,
+  txHash: optional(nullable(str)),
+  publicToken: optional(str),
+});
+
 /* ------------------------- backup recovery shares ------------------------ */
 
 /** A filed half: only the receipt comes back. */

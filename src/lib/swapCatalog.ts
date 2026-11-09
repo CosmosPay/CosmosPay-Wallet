@@ -17,13 +17,20 @@
  * and — off Stellar, Solana and Monad — the coin or a registry token, the only ones its transfer
  * pays out (lib/networkSend.ts). What it can RECEIVE is anything a route reaches on a network it
  * holds an address on: the output always lands on the wallet's own address.
+ *
+ * USDT0 on Stellar has a route of its own, ahead of NEAR Intents: the bridge's OFT
+ * (lib/usdt0.ts) moves it 1:1 to the EVM networks its routes list, as USDT on Ethereum and USDT0
+ * elsewhere. Those destinations are the network's listed USDT / USDT0 when NEAR Intents has it,
+ * else a token of their own that only the bridge reaches — a destination, never a source.
  */
 import type { ChainNet, ChainToken } from '@/constants/chains';
 import { NETWORKS, type NetworkId } from '@/constants/networks';
+import { USDT0_BRIDGE_TOKEN } from '@/constants/usdt0';
 import type { CrossChainAsset } from '@/lib/cosmospay';
 import { rowMatches } from '@/lib/assetList';
 import { isKnownNetwork } from '@/lib/crossChainDest';
 import { isRegistryToken } from '@/lib/trackedTokens';
+import { isUsdt0OnStellar, type Usdt0Route } from '@/lib/usdt0';
 
 export interface SwapToken {
   /** Unique in the catalogue: network, symbol and issuer / mint / contract. */
@@ -41,6 +48,8 @@ export interface SwapToken {
   near: CrossChainAsset | null;
   /** Tradable on its chain's own market on this network. */
   dex: boolean;
+  /** Reached from Stellar's USDT0 through the bridge (USDT on Ethereum, USDT0 elsewhere). */
+  usdt0?: boolean;
 }
 
 /** The chains with a market of their own for swaps within the chain. */
@@ -63,9 +72,11 @@ export interface CatalogInput {
   stellar: readonly { code: string; issuer: string | null; issuerName: string | null }[];
   /** Solana's and Monad's market tokens on this network (`CHAIN_TOKENS_BY_NET`). */
   chainTokens: Record<'solana' | 'monad', readonly ChainToken[]>;
+  /** Where the bridge takes Stellar's USDT0 (`GET /v1/usdt0/routes`); mainnet only. */
+  usdt0Routes?: readonly Usdt0Route[] | null;
 }
 
-export function buildSwapCatalog({ intents, env, stellar, chainTokens }: CatalogInput): SwapToken[] {
+export function buildSwapCatalog({ intents, env, stellar, chainTokens, usdt0Routes }: CatalogInput): SwapToken[] {
   const out: SwapToken[] = [];
   const add = (t: SwapToken) => {
     if (!out.some((x) => x.key === t.key)) out.push(t);
@@ -104,17 +115,34 @@ export function buildSwapCatalog({ intents, env, stellar, chainTokens }: Catalog
     if (DEX_CHAINS.includes(chain) || !tradesOnNear(a)) continue;
     add({ key: keyOf(chain, a.symbol, a.contract), chain, symbol: a.symbol, contract: a.contract, issuerName: null, decimals: a.decimals, priceUsd: a.priceUsd ?? null, near: a, dex: false });
   }
+
+  // The bridge's destinations: an EVM network this wallet knows, its listed USDT / USDT0 when
+  // there is one (now reachable both ways), else USDT0 as a token only the bridge reaches.
+  for (const r of usdt0Routes ?? []) {
+    if (!isKnownNetwork(r.chain)) continue;
+    const chain = r.chain as NetworkId;
+    if (chain === 'stellar' || NETWORKS[chain].address !== 'evm') continue;
+    const listed = out.filter((t) => t.chain === chain && ['USDT', 'USDT0'].includes(t.symbol.toUpperCase()));
+    if (listed.length) {
+      for (const t of listed) t.usdt0 = true;
+    } else {
+      add({ key: keyOf(chain, r.receives, USDT0_BRIDGE_TOKEN), chain, symbol: r.receives, contract: USDT0_BRIDGE_TOKEN, issuerName: 'Tether', decimals: 6, priceUsd: 1, near: null, dex: false, usdt0: true });
+    }
+  }
   return out;
 }
 
 export type SwapRoute =
   | { kind: 'dex'; chain: NetworkId }
   | { kind: 'near' }
+  | { kind: 'usdt0'; chain: NetworkId }
   | { kind: 'none'; reason: 'same-token' | 'mainnet-only' | 'unsupported' };
 
 /** How a pair is swapped on this network, or why it cannot be. */
 export function routeFor(from: SwapToken, to: SwapToken, env: ChainNet): SwapRoute {
   if (from.key === to.key) return { kind: 'none', reason: 'same-token' };
+  // Stellar's USDT0 out through the bridge, ahead of NEAR Intents: 1:1, to networks it lists too.
+  if (env === 'mainnet' && isUsdt0OnStellar(from) && to.usdt0 && to.chain !== 'stellar') return { kind: 'usdt0', chain: to.chain };
   if (from.chain === to.chain && DEX_CHAINS.includes(from.chain)) {
     if (from.dex && to.dex) return { kind: 'dex', chain: from.chain };
     return { kind: 'none', reason: 'unsupported' };

@@ -347,8 +347,14 @@ catalogue, unit-tested): Stellar DEX / Jupiter / Kuru Flow within Stellar, Solan
 Intents across networks or within any network without a market. The wallet PAYS only from networks
 it signs on (off the three markets, only the coin or a registry token — `sendNetworkTransfer`'s
 rule; EVM and Fogo origins fund the deposit through `submitCrossChainFromNetwork`) and RECEIVES only
-on its own addresses. A test network swaps on Stellar's market only. Not ported from the platform:
-USDT0's LayerZero route, a recipient other than the wallet, a token pasted by address.
+on its own addresses. A test network swaps on Stellar's market only. **Stellar's USDT0 has a route of
+its own, ahead of NEAR Intents** (`lib/usdt0.ts`, the platform's): the bridge's OFT moves it 1:1 to the
+EVM networks `GET /v1/usdt0/routes` lists — USDT on Ethereum, USDT0 elsewhere — as one Soroban
+transaction the gateway builds, the bridge's fee paid in XLM (the button asks for it before the
+quote is taken). Its destinations are the network's NEAR-listed USDT / USDT0, or a token only the
+bridge reaches (`USDT0_BRIDGE_TOKEN`, never `null`, which is a coin); a destination, never a source.
+The copy says "USDT0 bridge", not the protocol's name. Not ported from the platform: a recipient
+other than the wallet, a token pasted by address.
 The token list is a sheet from the bottom on a phone and a dialog in the middle of a PC window
 (`Sheet placement="center"`), like the platform's modal — the user's call: never a bottom sheet on a PC.
 
@@ -464,6 +470,20 @@ fee and the operation count, rejects fee-bump wrappers, requires a bounded valid
 window, checks **where** the value lands, bounds what leaves by the quote the user
 confirmed and what comes back by the quote's floor. Refuse, don't warn. If a new flow
 signs something, it gets an entry in `ALLOWED_OPS`, not an exemption.
+
+Two internal flows sign an operation in `CRITICAL_OPS`, and both are checked as a TEMPLATE, not
+bounded: the SEP-30 setup (`recovery`, below) and **USDT0 through the bridge** (`usdt0`). The second
+is one `invokeHostFunction`, and what makes it decodable is that its authority is spelled out — the
+source authorizes a tree of calls, and the host refuses any `require_auth` of the account outside
+it. So `assertUsdt0Template` reads every node: `OFT.send` (or the fee wrapper's `send`, whose only
+extra node is the commission's `USDT0.transfer`), and under it exactly `USDT0.burn` of what is sent
+and `XLM.transfer` of the bridge's fee to the collector the OFT is bound to — the contract ids are
+`src/constants/usdt0.ts`, read from the ledger. The route's endpoint id, this wallet's own EVM
+address, no options / compose message / ZRO fee, the refund to us, and the totals bounded by the
+quote: burned + commission ≤ typed, floor ≥ what the quote said arrives, the XLM fee ≤ its ceiling,
+the commission ≤ the quote's (`'0'` refuses the wrapper). `tests/unit/usdt0Guard.test.ts` builds the
+envelopes as a mainnet simulation recorded them; add a case there before touching the template. A
+redeployed fee wrapper is a new id in `USDT0_FEE_WRAPPERS`, and until then its transfers are refused.
 
 Five rules the guard is built on — each one is a hole it shipped with:
 

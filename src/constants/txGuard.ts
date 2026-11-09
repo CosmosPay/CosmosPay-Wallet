@@ -23,7 +23,7 @@
  * its onramp will pay out in, and the wallet signs it. `stellarAddTrustline` still
  * builds the by-hand case locally and still does not come through here.
  */
-export type SignIntent = 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'trustline' | 'recovery' | 'dapp';
+export type SignIntent = 'swap' | 'lp-deposit' | 'lp-withdraw' | 'offramp' | 'trustline' | 'recovery' | 'usdt0' | 'dapp';
 
 /**
  * Operations that can hand over the account itself, or move value in a way this
@@ -100,6 +100,16 @@ export const ALLOWED_OPS: Record<Exclude<SignIntent, 'dapp'>, readonly string[]>
    * below is the template's first filter and nothing more.
    */
   recovery: ['setOptions', 'beginSponsoringFutureReserves', 'endSponsoringFutureReserves'],
+  /**
+   * USDT0 out of Stellar through the bridge's OFT (`lib/usdt0.ts`): ONE contract call, which is
+   * the second internal flow whose operation is in `CRITICAL_OPS`. The reason it is critical is
+   * the reason it needs more than this row: the wallet would otherwise decode a contract id and
+   * a function name and nothing else. So, like `recovery`, it is checked as a TEMPLATE in
+   * `txGuard.ts` — the call, its arguments and every authorization the account gives, against
+   * the exact tree a `send` records (a mainnet simulation on 2026-11-09), bounded by the quote
+   * the user saw. This row is that template's first filter and nothing more.
+   */
+  usdt0: ['invokeHostFunction'],
 };
 
 /**

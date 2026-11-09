@@ -40,3 +40,11 @@ export const PUBLIC_KEY_TTL_MS = 5 * 60 * 1000;
  */
 export const NETWORK_RETRY_ATTEMPTS = 4;
 export const NETWORK_RETRY_BASE_MS = 1_500;
+
+/**
+ * The header a caller on the shared public key sends a record's token in, on the actions of
+ * one record the gateway created for it (the community server's `public-record-token`). The
+ * create answer carries the token as `publicToken`; without it the gateway refuses the submit,
+ * since the public key alone names every anonymous wallet at once.
+ */
+export const RECORD_TOKEN_HEADER = 'x-record-token';
