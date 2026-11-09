@@ -2,6 +2,48 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.19.0] - 2026-11-09
+
+### Features
+- Enhance navigation by adding history tab and updating button actions (9e909f5)
+- Add account shortcuts and enhance navigation functionality (b305e00)
+- Add new translations for profile, swap, and notifications sections to enhance multilingual support (98e5490)
+- Implement NotificationRow component and update HomeNotifications for improved notification handling and UI presentation (e7b48bb)
+- Add ink effect handlers for button hover interactions to enhance user experience (253e624)
+- Send Stellar USDT0 through the USDT0 bridge (3bee512)
+
+### Bug Fixes
+- Update ThemeIcon description and adjust SVG structure for improved clarity (5709a9e)
+- Reorder theme options to ensure 'system' is listed last (decc87c)
+- Let PrimaryButton submit its form (5c02d6f)
+- A swap from the commission wallet itself is not overcharged (ca86692)
+
+### Miscellaneous
+- Sync the community server contract (3a941e5)
+
+### Refactor
+- Remove unused inkHandlers import and clean up button click handler (43ddc4a)
+- Streamline shortcuts and update navigation actions (77d9c2f)
+- Enhance navigation structure by adding shortcuts and improving accessibility (02e5844)
+- Remove unused inkHandlers import and simplify button click handler (a7cb6e2)
+- Remove unused inkHandlers imports from buttons and enhance button type handling (53b7825)
+- Standardize border colors across components and update hover effects for consistency (92d47ef)
+- Enhance accessibility and structure by updating semantic elements and improving ARIA attributes across various components (c878bf4)
+- Unify border styles and enhance hover effects across wallet components for improved consistency and accessibility (a4b58ed)
+- Update connected sites, recovery, and settings styles for improved consistency and accessibility, including border adjustments and hover effects (4460f15)
+- Standardize border colors across onboarding components for improved consistency and accessibility (1811236)
+- Unify border styles and hover effects across money components for improved consistency and accessibility (b16912e)
+- Enhance layout and styling consistency across asset management components, including button sizes, border adjustments, and responsive design improvements (d56f486)
+- Update button styles, border colors, and hover effects across various components for improved consistency and accessibility (1c7493c)
+- Enhance Cosmos Pay integration styles with improved layout, button dimensions, and responsive design adjustments for better user experience (0228714)
+- Streamline button and input styles, unify border colors, and enhance hover effects for improved consistency and accessibility (0a20cc8)
+- Unify border colors in fiat components for improved consistency and accessibility (cc4cb0b)
+- Standardize border colors in liquidity components for improved consistency and accessibility (1642669)
+- Simplify component logic and enhance UI presentation by removing unused elements and improving conditional rendering for better clarity (bd1c886)
+- Remove unused ink handling logic to streamline codebase and improve maintainability (52099a8)
+- Update transition properties and color handling for action elements to enhance visual feedback and consistency (a9141d1)
+- Enhance hover and active states for home add button with transition effects for improved user interaction (a6fd43c)
+
 ## [1.18.1] - 2026-11-08
 
 ### Miscellaneous
