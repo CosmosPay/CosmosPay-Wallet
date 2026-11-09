@@ -2,6 +2,11 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.19.1] - 2026-11-09
+
+### Bug Fixes
+- Read the USDT0 submit's real answer, refresh balances after every operation (3491eaa)
+
 ## [1.19.0] - 2026-11-09
 
 ### Features
