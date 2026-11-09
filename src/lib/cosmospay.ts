@@ -171,6 +171,7 @@ import {
   Usdt0QuoteShape,
   Usdt0RoutesShape,
   Usdt0TransferShape,
+  Usdt0SubmitResultShape,
   RecoveryShareFiledShape,
   RecoveryShareListShape,
   ChainSwapShape,
@@ -1046,14 +1047,27 @@ export async function createUsdt0Transfer(apiKey: string, input: Usdt0TransferIn
   return postJson<Usdt0Transfer>(`${gatewayApi()}/v1/usdt0/transfers`, input, authHeaders(apiKey), false, Usdt0TransferShape);
 }
 
+/**
+ * What the submit answers: whether the transaction is on the ledger (`submitted`), its status and
+ * hash, the reason when it is not, and the transfer as it now stands. Not the transfer itself —
+ * reading it as one is what turned a transfer that went through into an error on screen.
+ */
+export interface Usdt0SubmitResult {
+  submitted: boolean;
+  status: string;
+  txHash?: string;
+  reason?: string;
+  transfer: Usdt0Transfer;
+}
+
 /** Hand back the signed transaction; the gateway relays it and waits for the ledger. */
-export async function submitUsdt0Transfer(apiKey: string, id: string, signedXdr: string, recordToken?: string): Promise<Usdt0Transfer> {
-  return postJson<Usdt0Transfer>(
+export async function submitUsdt0Transfer(apiKey: string, id: string, signedXdr: string, recordToken?: string): Promise<Usdt0SubmitResult> {
+  return postJson<Usdt0SubmitResult>(
     `${gatewayApi()}/v1/usdt0/transfers/${encodeURIComponent(id)}/submit`,
     { signedXdr },
     { ...authHeaders(apiKey), ...(recordToken ? { [RECORD_TOKEN_HEADER]: recordToken } : {}) },
     false,
-    Usdt0TransferShape,
+    Usdt0SubmitResultShape,
   );
 }
 

@@ -17,3 +17,10 @@ export const NOTIFY_KINDS: ReadonlySet<string> = new Set(['received', 'sent', 's
 export const NOTIFY_ROWS = 12;
 /** Where the bell remembers, per wallet and network, the newest operation already seen. */
 export const NOTIFY_SEEN_KEY = 'cosmos.notifySeen';
+
+/**
+ * After a flow that moved money, every balance is read again at once (past its cache), then again
+ * after each of these delays: a ledger's public API and the explorers index a transaction a few
+ * seconds after it lands, so the first read can still show the old balance.
+ */
+export const AFTER_OPERATION_REREAD_MS = [4_000, 15_000] as const;
