@@ -13,7 +13,7 @@
 import type { ChainNet } from '@/constants/chains';
 import { EVM_ERR } from '@/constants/evmDapp';
 import { WC_EVENTS, WC_METHODS, WC_NAMESPACE, WC_SIGN_METHODS, WC_URI_MAX_CHARS, type WcMethod } from '@/constants/walletConnect';
-import { evmDappChains, parseChainId } from '@/lib/evmDapp';
+import { evmDappChains, parseChainId } from '@/lib/evmDappChains';
 
 /* ------------------------------------------------------------------ errors */
 

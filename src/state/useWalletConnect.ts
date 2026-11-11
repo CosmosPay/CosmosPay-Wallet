@@ -40,7 +40,7 @@ import {
   type WcProposalProblem,
   type WcVerify,
 } from '@/lib/walletConnect';
-import { evmFailure, evmReviewNotes, reviewEvmRequest, type EvmReview } from '@/lib/evmReview';
+import type { EvmReview } from '@/lib/evmReview';
 import {
   wcApprovedNamespaces,
   wcClient,
@@ -131,10 +131,13 @@ function chainsOfSession(s: WcSession): number[] {
 }
 
 /** A refusal's text for the person: its i18n key when it carries one, else its message. */
-function failureText(e: unknown, t: WalletConnectDeps['t']): string {
+function failureText(e: unknown, t: WalletConnectDeps['t'], fallback: string): string {
   const key = (e as { key?: unknown } | null)?.key;
-  return typeof key === 'string' ? t(key) : evmFailure(e).message;
+  return typeof key === 'string' ? t(key) : fallback;
 }
+
+/** The request review (`lib/evmReview.ts`), loaded when a request arrives: it carries the curve. */
+const reviewLib = () => import('@/lib/evmReview');
 
 export function useWalletConnect(d: WalletConnectDeps) {
   // The queue lives in a ref (the event handlers need to know at once whether something was
@@ -230,7 +233,7 @@ export function useWalletConnect(d: WalletConnectDeps) {
           await respond(ev.topic, ev.id, { ok: true, value: null }).catch(() => {});
           return;
         }
-        const review = reviewEvmRequest({ method: route.method, params: route.params, chainId: route.chainId, account, env });
+        const review = (await reviewLib()).reviewEvmRequest({ method: route.method, params: route.params, chainId: route.chainId, account, env });
         const added = enqueue({ kind: 'request', id: ev.id, topic: ev.topic, peer, verify: wcVerifyState(ev.verifyContext), chain: chainId, method: request.method, params: request.params, review });
         if (!added && !queueRef.current.some((x) => x.kind === 'request' && x.id === ev.id)) await refuse(WC_ERR.userRejected, 'wc.err.busy');
       };
@@ -396,6 +399,7 @@ export function useWalletConnect(d: WalletConnectDeps) {
       const route = wcRouteRequest(session, p.chain, p.method, null, env, account);
       if (!route.ok) return fail(route.error, t(route.key, { site }));
       // Read again: the mode or the account may have changed since it arrived.
+      const { reviewEvmRequest, evmReviewNotes, evmFailure } = await reviewLib();
       const review = reviewEvmRequest({ method: route.method, params: p.params, chainId: route.chainId, account, env });
       if (review.refusal || !review.request) {
         return fail({ code: review.refusalCode, message: review.refusalMessage || 'Refused.' }, t(review.refusal ?? 'approve.evm.err.params'));
@@ -409,7 +413,8 @@ export function useWalletConnect(d: WalletConnectDeps) {
         await respond(p.topic, id, { ok: true, value });
         flash(t(review.request.kind === 'sendTransaction' ? 'wc.sent' : 'wc.signed'), 'ok');
       } catch (e) {
-        await fail(evmFailure(e), failureText(e, t));
+        const failure = evmFailure(e);
+        await fail(failure, failureText(e, t, failure.message));
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
