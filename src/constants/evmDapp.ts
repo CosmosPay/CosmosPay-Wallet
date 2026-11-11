@@ -109,6 +109,9 @@ export const KNOWN_SAFE_TYPED_DATA: readonly string[] = [];
  * (Seaport's `offerer` and `recipient` sit in nested items). `TYPED_DATA_AMOUNT_RE` adds the
  * amount-like names.
  */
+/** How deep typed data may nest (structs and arrays); deeper is refused, not walked. */
+export const TYPED_DATA_MAX_DEPTH = 32;
+
 /** The most grant-like fields the window names for one typed signature; past it the list is cut (it is red anyway). */
 export const TYPED_DATA_MAX_GRANT_FIELDS = 24;
 

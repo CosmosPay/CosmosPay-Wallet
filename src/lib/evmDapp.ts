@@ -23,6 +23,7 @@ import {
   PERMIT_PRIMARY_TYPES,
   TYPED_DATA_AMOUNT_RE,
   TYPED_DATA_GRANT_FIELDS,
+  TYPED_DATA_MAX_DEPTH,
   TYPED_DATA_MAX_GRANT_FIELDS,
   UNLIMITED_ALLOWANCE,
   type Erc20Function,
@@ -297,8 +298,10 @@ export function personalMessageBytes(raw: string): Uint8Array {
 export function messagePreview(bytes: Uint8Array): { text: string; hex: boolean } {
   try {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    // Control characters other than line breaks and tabs hide what is being signed.
-    if (!/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(text)) return { text, hex: false };
+    // Control characters (C0 and C1, line breaks and tabs aside), format characters — bidi
+    // overrides and isolates, zero-width joiners and spaces, the BOM — and the Unicode line and
+    // paragraph separators can make the text read as something it is not: those show as hex.
+    if (!HIDING_CHARS.test(text)) return { text, hex: false };
   } catch {
     /* not UTF-8 */
   }
@@ -320,6 +323,41 @@ export function signEvmDigest(digest: Uint8Array, secret: Uint8Array): string {
 /* ------------------------------------------------------------ typed data */
 
 const IDENT = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+/** What `messagePreview` will not render as text: Cc but \t \n \r, every Cf, U+2028/U+2029. */
+const HIDING_CHARS = /[^\P{Cc}\t\n\r]|\p{Cf}|[\u2028\u2029]/u;
+
+const ARRAY_SUFFIX = /\[(\d*)\]$/;
+
+/**
+ * Check that `value` is exactly what `type` encodes: a struct has every declared field and
+ * nothing else, an array is an array (of its declared length when fixed), all the way down. The
+ * hash only reads declared fields, so anything extra would be shown and not signed — or a field
+ * shown as one value while the type encodes another. Refused rather than hidden.
+ */
+function checkTyped(types: Record<string, TypedField[]>, type: string, value: unknown, path: string, depth: number): void {
+  if (depth > TYPED_DATA_MAX_DEPTH) refuse('approve.evm.err.params', `Typed data is nested too deeply at ${path}.`);
+  const arr = ARRAY_SUFFIX.exec(type);
+  if (arr) {
+    if (!Array.isArray(value)) refuse('approve.evm.err.params', `${path} must be an array.`);
+    const list = value as unknown[];
+    if (arr[1] !== '' && list.length !== Number(arr[1])) refuse('approve.evm.err.params', `${path} must hold ${arr[1]} items.`);
+    const inner = type.slice(0, arr.index);
+    list.forEach((item, i) => checkTyped(types, inner, item, `${path}[${i}]`, depth + 1));
+    return;
+  }
+  const fields = types[type];
+  if (!fields) return; // an atomic type: its encoder checks the value
+  if (!isObject(value) || Array.isArray(value)) return refuse('approve.evm.err.params', `${path} must be an object.`);
+  const declared = new Set(fields.map((f) => f.name));
+  for (const key of Object.keys(value)) {
+    if (!declared.has(key)) refuse('approve.evm.err.params', `${path}.${key} is not in the type ${type}.`);
+  }
+  for (const f of fields) {
+    if (!Object.hasOwn(value, f.name)) refuse('approve.evm.err.params', `${path}.${f.name} is missing.`);
+    checkTyped(types, f.type, value[f.name], `${path}.${f.name}`, depth + 1);
+  }
+}
 
 /** The EIP712Domain fields in their canonical order, when a site leaves the type out. */
 const DOMAIN_FIELDS: readonly TypedField[] = [
@@ -359,6 +397,9 @@ export function parseTypedData(raw: unknown): TypedData {
   const domain = v.domain;
   if (!types.EIP712Domain) types.EIP712Domain = DOMAIN_FIELDS.filter((f) => domain[f.name] !== undefined);
   if (!types[v.primaryType]) return refuse('approve.evm.err.params', `Unknown primaryType "${v.primaryType}".`);
+  // What the window shows (the domain's name and chain, the message) must be what is signed.
+  checkTyped(types, 'EIP712Domain', domain, 'domain', 0);
+  checkTyped(types, v.primaryType, v.message, v.primaryType, 0);
   return { types, primaryType: v.primaryType, domain, message: v.message };
 }
 
