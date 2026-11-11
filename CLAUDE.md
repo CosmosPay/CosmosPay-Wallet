@@ -1348,8 +1348,9 @@ percentage displayed in a quote is always the gateway's own number, never this f
 
 ## Buying and selling with local money goes through the Cosmos Pay API
 
-Fiat → "Comprar con moneda local" / "Vender por moneda local" (`features/fiat/RampEntries.tsx`) open
-screen `ramp` (`features/fiat/Ramp.tsx`): the developer platform's Fiat → On-ramp / Off-ramp, over the
+Fiat → "Comprar con moneda local" / "Vender por moneda local" (`features/fiat/RampEntries.tsx`), the
+same two rows at the top of Home → More (`features/extras/Operations.tsx`) and "Comprar" under
+Receive's address (`features/money/Receive.tsx`) open screen `ramp` (`features/fiat/Ramp.tsx`): the developer platform's Fiat → On-ramp / Off-ramp, over the
 same API (`/v1/onramp/p2p` buys, `/v1/offramp/p2p` sells; calls in `lib/cosmospay.ts`, rules in
 `lib/p2pRamp.ts`), drawn like the Swap (`styles/ui/swap-widget.css` is the look both share). The user's
 call (2026-11-11): "tiene que usar la api de cosmos" — the wallet never calls the P2P marketplace
