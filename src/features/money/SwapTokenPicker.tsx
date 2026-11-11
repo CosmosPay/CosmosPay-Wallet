@@ -8,7 +8,7 @@ import { AssetLogo, NetworkLogo } from '@/ui/AssetLogo';
 import { Sheet } from '@/ui/Sheet';
 import { SearchField } from '@/ui/SearchField';
 import { CheckIcon, CloseIcon } from '@/ui/Icons';
-import '@/styles/features/money/swap-token-picker.css';
+import '@/styles/ui/swap-widget.css';
 
 /** Rows shown at once: a search narrows the rest (two hundred tokens scroll badly on a phone). */
 const MAX_ROWS = 250;
