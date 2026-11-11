@@ -195,8 +195,8 @@ function RampForm({ store, side }: { store: WalletStore; side: RampSide }) {
       : null;
 
   // The firm quote follows the order on its own, a moment after the last keystroke; an answer
-  // for an order that has since changed is dropped. Only an account may ask for one.
-  const quoteKey = order && hasAccount && !firmOff ? orderKey(order) : '';
+  // for an order that has since changed is dropped.
+  const quoteKey = order && !firmOff ? orderKey(order) : '';
   const latest = useRef('');
   useEffect(() => {
     latest.current = quoteKey;
@@ -212,8 +212,9 @@ function RampForm({ store, side }: { store: WalletStore; side: RampSide }) {
         .then((data) => latest.current === k && setQuote({ status: 'ready', data, error: '', key: k }))
         .catch((e) => {
           if (latest.current !== k) return;
-          // A deployment without the marketplace's integrator ids: keep the estimate, stop asking.
-          if (e instanceof ApiRequestError && e.status === 503) {
+          // A deployment without the marketplace's integrator ids, or one that has not opened the
+          // quote to the shared key: keep the estimate, stop asking.
+          if (e instanceof ApiRequestError && (e.status === 503 || (!hasAccount && (e.status === 401 || e.status === 403)))) {
             setFirmOff(true);
             setQuote(IDLE);
             return;
@@ -240,7 +241,6 @@ function RampForm({ store, side }: { store: WalletStore; side: RampSide }) {
     if (problem === 'decimals') return { label: t('ramp.ctaDecimals', { n: token.decimals, token: token.symbol }), ok: false };
     if (problem === 'below-min') return { label: t('ramp.ctaMin', { min: minText }), ok: false };
     if (!address) return { label: t('ramp.ctaNoAddress', { network: netName }), ok: false };
-    if (!hasAccount) return { label: t('ramp.ctaAccount'), ok: false };
     return { label: t(side === 'buy' ? 'ramp.ctaBuy' : 'ramp.ctaSell'), ok: true };
   })();
 
@@ -259,7 +259,9 @@ function RampForm({ store, side }: { store: WalletStore; side: RampSide }) {
       store.flash(t(ok ? 'ramp.opened' : 'ramp.openBlocked'), ok ? 'ok' : 'info');
     } catch (e) {
       tab.cancel();
-      setOpenError((e as Error).message || t('ramp.openFailed'));
+      // The shared key refused: this deployment opens orders to accounts only.
+      const refused = !hasAccount && e instanceof ApiRequestError && (e.status === 401 || e.status === 403);
+      setOpenError(refused ? t('ramp.needAccount') : (e as Error).message || t('ramp.openFailed'));
     } finally {
       setBusy(false);
     }
@@ -454,12 +456,6 @@ function RampForm({ store, side }: { store: WalletStore; side: RampSide }) {
             </option>
           ))}
         </Select>
-      )}
-
-      {!hasAccount && (
-        <div className="ramp-account">
-          {store.meta?.email ? <EnableReceivingCard store={store} /> : <Notice>{`${t('ramp.needAccount')} ${t('cosmospay.needEmail')}`}</Notice>}
-        </div>
       )}
 
       <Notice className="ramp-note">
