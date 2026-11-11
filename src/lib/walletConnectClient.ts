@@ -3,15 +3,15 @@
  *
  * It is a few hundred kilobytes and opens a WebSocket to the relay, so nothing here is imported
  * statically: the entry chunk and the extension popup's first paint never carry it, and a build
- * without `PUBLIC_WALLETCONNECT_PROJECT_ID` never loads it at all — the feature is hidden there
- * (`wcEnabled`), never a broken button. One client per page, as the SDK asks; its sessions live
+ * with `PUBLIC_WALLETCONNECT_PROJECT_ID=off` (or an id that is not one) never loads it at all —
+ * the feature is hidden there (`wcEnabled`), never a broken button. One client per page, as the SDK asks; its sessions live
  * in IndexedDB under the SDK's own prefix and survive a reload.
  *
  * The rules live elsewhere: what may be paired, offered and routed is `src/lib/walletConnect.ts`,
  * what a request asks and whether it may be signed is `src/lib/evmReview.ts`.
  */
 import type { WalletKitTypes } from '@reown/walletkit';
-import { WC_METADATA } from '@/constants/walletConnect';
+import { WC_DEFAULT_PROJECT_ID, WC_METADATA } from '@/constants/walletConnect';
 import type { WcError, WcSupported } from '@/lib/walletConnect';
 
 const ENV = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
@@ -22,7 +22,7 @@ const ENV = (import.meta as unknown as { env?: Record<string, string | undefined
  * against it. Anything that is not 32 hex characters is treated as absent.
  */
 export function wcProjectId(): string {
-  const id = (ENV.PUBLIC_WALLETCONNECT_PROJECT_ID ?? '').trim();
+  const id = (ENV.PUBLIC_WALLETCONNECT_PROJECT_ID || WC_DEFAULT_PROJECT_ID).trim();
   return /^[0-9a-f]{32}$/i.test(id) ? id : '';
 }
 

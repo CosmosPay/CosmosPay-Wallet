@@ -6,6 +6,14 @@
  * scans or pastes it, approves a session, and answers its requests through the relay.
  */
 
+/**
+ * Cosmos's own project on dashboard.walletconnect.com (a "Wallet" project), compiled in like the
+ * gateway's default URL: every build — CI, a laptop, the stores — connects with it unless
+ * `PUBLIC_WALLETCONNECT_PROJECT_ID` names another (a self-hosted build's own) or `off`. Not a
+ * secret: it ships in every client, and the dashboard's domain allowlist is what confines it.
+ */
+export const WC_DEFAULT_PROJECT_ID = 'a4a9322c6efd4b491c0b194fe68d0e65';
+
 /** The CAIP-2 namespace of every chain the wallet offers: EVM only. */
 export const WC_NAMESPACE = 'eip155';
 
