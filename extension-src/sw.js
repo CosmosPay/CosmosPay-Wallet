@@ -184,8 +184,12 @@ async function handleEvm(port, pageId, origin, call, mirror) {
     }
     case 'wallet_revokePermissions':
       // The same grant as Settings → Connected sites: the site forgets the wallet, both chains.
-      if (mirror && approved.includes(origin)) {
-        await chrome.storage.local.set({ [MIRROR_KEY]: { ...mirror, approvedOrigins: approved.filter((o) => o !== origin) } });
+      // Through the mirror's one writer, from a copy read under its lock — never `mirror`, which
+      // was read before this call and may be older than what another writer stored since.
+      try {
+        await updateMirror((cur) => ({ ...cur, approvedOrigins: (Array.isArray(cur.approvedOrigins) ? cur.approvedOrigins : []).filter((o) => o !== origin) }));
+      } catch {
+        return fail(EVM_ERR.internal, 'Could not forget the site.');
       }
       return reply(null);
     default:
@@ -224,6 +228,25 @@ async function getMirror() {
   } catch {
     return null;
   }
+}
+
+// The mirror's one writer here. The approval window and Settings write it too, so every
+// read-modify-write holds the same Web Lock (DAPP_MIRROR_LOCK in src/constants/dapp.ts; one lock
+// manager per extension origin, shared with those pages) and re-reads the mirror inside it. The
+// promise chain keeps this worker's own writes in order where Web Locks are missing.
+const MIRROR_LOCK = 'cosmos.dapp.mirror';
+let mirrorQueue = Promise.resolve();
+
+function updateMirror(change) {
+  const write = async () => {
+    const cur = await getMirror();
+    if (!cur) return;
+    await chrome.storage.local.set({ [MIRROR_KEY]: change(cur) });
+  };
+  const locked = () => (self.navigator && self.navigator.locks ? self.navigator.locks.request(MIRROR_LOCK, write) : write());
+  const run = mirrorQueue.then(locked, locked);
+  mirrorQueue = run.catch(() => {});
+  return run;
 }
 
 function networkReply(mirror) {
