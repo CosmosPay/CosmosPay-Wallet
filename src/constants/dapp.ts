@@ -32,6 +32,15 @@ export type DappMethod = (typeof DAPP_METHODS)[number];
 export const DAPP_MIRROR_KEY = 'cosmos.dapp';
 
 /**
+ * The mirror's grant lists, one per account a site may be shown: the Stellar address
+ * (`getAddress`) and the 0x account (`eth_requestAccounts`). Separate on purpose — connecting
+ * a site to one is not consent to show it the other. The service worker keeps its own copy of
+ * these literals (extension-src/sw.js); `tests/unit/evmDapp.test.ts` keeps them equal.
+ */
+export const DAPP_GRANT_FIELDS = { stellar: 'approvedOrigins', evm: 'evmApprovedOrigins' } as const;
+export type DappGrantKind = keyof typeof DAPP_GRANT_FIELDS;
+
+/**
  * The mirror is written from three places: the service worker (a site's
  * `wallet_revokePermissions`), the approval window and Settings → Connected sites. Every
  * read-modify-write holds this Web Lock — one lock manager per extension origin, shared by the

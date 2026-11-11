@@ -598,9 +598,16 @@ reach the worker as method `evm` (`src/constants/evmDapp.ts`); the window is the
   fails when they drift and prints the line to paste. A chain switch inside that list needs no
   window; anything else is 4902. The approval window re-checks the chain against the mode as it
   is NOW — the worker's view of the mode is only as fresh as the last window.
-- **The connect is the Stellar connect.** One grant list, one Settings screen; `eth_accounts`
-  answers `[]` to anyone not on it, and the three signing calls are 4100 until then. One window
-  per site at a time (-32002).
+- **Each account has its own connect.** `eth_requestAccounts` grants the 0x account
+  (`evmApprovedOrigins`), `getAddress` the Stellar address (`approvedOrigins`;
+  `DAPP_GRANT_FIELDS`): connecting a site to one is not consent to show it the other. One Settings
+  screen lists both and revokes both; a site's `wallet_revokePermissions` drops only the EVM one.
+  `eth_accounts` answers `[]` to anyone not on the EVM list, and the three signing calls are 4100
+  until then. One window per site at a time (-32002).
+- **Typed data shows only what it signs.** `parseTypedData` refuses a domain or message key the
+  types do not declare, a declared field left out and a fixed array of the wrong length, so the
+  domain name, the chain and the message on screen are exactly what is hashed. A `personal_sign`
+  text with a control or format character (bidi, zero-width, C1, U+2028) is shown as hex.
 - **Reads go to the chain's public node from the worker**, never to a node the page names.
 - **Decode before signing, and the acknowledgement for anything that outlives the click.** Only
   a plain coin payment, a registry token's `transfer` and a `personal_sign` text go without it

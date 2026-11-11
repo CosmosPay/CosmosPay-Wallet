@@ -27,7 +27,7 @@ import {
   EVM_SIGN_METHODS,
   KNOWN_SAFE_TYPED_DATA,
 } from '@/constants/evmDapp';
-import { DAPP_MIRROR_KEY, DAPP_MIRROR_LOCK } from '@/constants/dapp';
+import { DAPP_GRANT_FIELDS, DAPP_MIRROR_KEY, DAPP_MIRROR_LOCK } from '@/constants/dapp';
 import { NETWORKS } from '@/constants/networks';
 import { grantApprovedOrigin, listApprovedOrigins, revokeApprovedOrigins, updateMirror } from '@/lib/dappOrigins';
 import {
@@ -334,7 +334,19 @@ test('fix 2: every typed signature needs the acknowledgement; grant fields at an
     },
     primaryType: 'OrderComponents',
     domain: { name: 'Seaport', version: '1.6', chainId: 1, verifyingContract: OTHER },
-    message: {},
+    message: {
+      offerer: ME,
+      zone: OTHER,
+      offer: [],
+      consideration: [],
+      orderType: 0,
+      startTime: 0,
+      endTime: 0,
+      zoneHash: '0x' + '00'.repeat(32),
+      salt: 0,
+      conduitKey: '0x' + '00'.repeat(32),
+      counter: 0,
+    },
   });
   assert.equal(typedDataGrants(seaport), true);
   const fields = typedDataGrantFields(seaport);
@@ -342,7 +354,7 @@ test('fix 2: every typed signature needs the acknowledgement; grant fields at an
     assert.ok(fields.includes(f), `${f} in ${fields.join(', ')}`);
   }
   // A self-referencing type does not loop.
-  const tree = parseTypedData({ types: { Node: [{ name: 'child', type: 'Node[]' }, { name: 'operator', type: 'address' }] }, primaryType: 'Node', domain: {}, message: {} });
+  const tree = parseTypedData({ types: { Node: [{ name: 'child', type: 'Node[]' }, { name: 'operator', type: 'address' }] }, primaryType: 'Node', domain: {}, message: { child: [], operator: OTHER } });
   assert.deepEqual(typedDataGrantFields(tree), ['Node.operator']);
 });
 
@@ -458,4 +470,78 @@ test('a typed-data type graph that reuses its types is walked once per type, not
   assert.equal(fields.length, 1);
   assert.match(fields[0], /\.spender$/);
   assert.equal(typedDataGrants(td), true);
+});
+
+test('typed data shows only what it signs: undeclared, missing or misshapen fields are refused', () => {
+  const base = {
+    types: {
+      EIP712Domain: [{ name: 'name', type: 'string' }],
+      Order: [{ name: 'amount', type: 'uint256' }, { name: 'legs', type: 'Leg[2]' }],
+      Leg: [{ name: 'to', type: 'address' }],
+    },
+    primaryType: 'Order',
+    domain: { name: 'Site' },
+    message: { amount: '1', legs: [{ to: ME }, { to: OTHER }] },
+  };
+  assert.ok(parseTypedData(base));
+  // A chainId the domain type does not encode would be shown (and chain-checked) but not signed.
+  assert.equal(refusalKey(() => parseTypedData({ ...base, domain: { name: 'Site', chainId: 1 } })), 'approve.evm.err.params');
+  // A message field outside the type, at the top or nested.
+  assert.equal(refusalKey(() => parseTypedData({ ...base, message: { ...base.message, note: 'free money' } })), 'approve.evm.err.params');
+  assert.equal(refusalKey(() => parseTypedData({ ...base, message: { amount: '1', legs: [{ to: ME, memo: 'x' }, { to: OTHER }] } })), 'approve.evm.err.params');
+  // A declared field left out, and a fixed array of the wrong length.
+  assert.equal(refusalKey(() => parseTypedData({ ...base, message: { legs: base.message.legs } })), 'approve.evm.err.params');
+  assert.equal(refusalKey(() => parseTypedData({ ...base, message: { amount: '1', legs: [{ to: ME }] } })), 'approve.evm.err.params');
+  // Nesting past the cap is refused, not walked.
+  const deep = { types: { N: [{ name: 'n', type: 'N[]' }] }, primaryType: 'N', domain: {}, message: {} as Record<string, unknown> };
+  let cur = deep.message;
+  for (let i = 0; i < 40; i++) {
+    const next: Record<string, unknown> = {};
+    cur.n = [next];
+    cur = next;
+  }
+  cur.n = [];
+  assert.equal(refusalKey(() => parseTypedData(deep)), 'approve.evm.err.params');
+});
+
+test('a message with bidi, zero-width or C1 characters is shown as hex', () => {
+  const enc = (t: string) => new TextEncoder().encode(t);
+  const NL = String.fromCharCode(10);
+  assert.deepEqual(messagePreview(enc(`Sign in to example.com${NL}Nonce: 12`)), { text: `Sign in to example.com${NL}Nonce: 12`, hex: false });
+  const sneaky = ['pay \u202Eredneccsa', 'appr\u200Bove', 'line\u2028break', 'c1\u0085', 'bom\uFEFF', 'isolate\u2066x\u2069'];
+  for (const text of sneaky) assert.equal(messagePreview(enc(text)).hex, true, JSON.stringify(text));
+});
+
+test('the 0x account and the Stellar address are granted separately; Settings revokes both', async () => {
+  const store: Record<string, unknown> = { [DAPP_MIRROR_KEY]: { address: 'G…', evmAddress: ME, mode: 'mainnet' } };
+  const g = globalThis as { chrome?: unknown };
+  const before = g.chrome;
+  g.chrome = {
+    runtime: {},
+    storage: {
+      local: {
+        get: async (k: string) => ({ [k]: structuredClone(store[k]) }),
+        set: async (o: Record<string, unknown>) => void Object.assign(store, structuredClone(o)),
+      },
+    },
+  };
+  const mirror = () => store[DAPP_MIRROR_KEY] as Record<string, unknown>;
+  try {
+    await grantApprovedOrigin('https://evm.example', 'evm');
+    await grantApprovedOrigin('https://stellar.example', 'stellar');
+    assert.deepEqual(mirror()[DAPP_GRANT_FIELDS.evm], ['https://evm.example']);
+    assert.deepEqual(mirror()[DAPP_GRANT_FIELDS.stellar], ['https://stellar.example']);
+    assert.deepEqual([...(await listApprovedOrigins())].sort(), ['https://evm.example', 'https://stellar.example']);
+    await grantApprovedOrigin('https://both.example', 'evm');
+    await grantApprovedOrigin('https://both.example', 'stellar');
+    assert.deepEqual([...(await revokeApprovedOrigins('https://both.example'))].sort(), ['https://evm.example', 'https://stellar.example']);
+    assert.ok(!(mirror()[DAPP_GRANT_FIELDS.evm] as string[]).includes('https://both.example'));
+    assert.ok(!(mirror()[DAPP_GRANT_FIELDS.stellar] as string[]).includes('https://both.example'));
+  } finally {
+    g.chrome = before;
+  }
+  // The worker reads each list under the same literal and answers eth_accounts from the EVM one.
+  assert.ok(SW.includes(`const STELLAR_GRANTS = '${DAPP_GRANT_FIELDS.stellar}';`));
+  assert.ok(SW.includes(`const EVM_GRANTS = '${DAPP_GRANT_FIELDS.evm}';`));
+  assert.match(SW, /const approved = \(mirror && Array\.isArray\(mirror\[EVM_GRANTS\]\)/);
 });

@@ -23,7 +23,11 @@
  * origin the content script stamped.
  */
 
-const MIRROR_KEY = 'cosmos.dapp'; // { address, networkId, networkPassphrase, networkUrl, approvedOrigins: [] }
+const MIRROR_KEY = 'cosmos.dapp'; // { address, networkId, networkPassphrase, networkUrl, approvedOrigins: [], evmAddress, mode, evmApprovedOrigins: [] }
+// The grant lists (src/constants/dapp.ts DAPP_GRANT_FIELDS): the Stellar address and the 0x account
+// are granted separately — connecting a site to one is not consent to show it the other.
+const STELLAR_GRANTS = 'approvedOrigins';
+const EVM_GRANTS = 'evmApprovedOrigins';
 const REQ_PREFIX = 'cosmos.req.'; // session-scoped pending request, keyed by internal rid
 const RES_PREFIX = 'cosmos.res.'; // session-scoped parked reply, keyed by origin + page id
 
@@ -148,7 +152,7 @@ async function handleEvm(port, pageId, origin, call, mirror) {
 
   const mode = evmMode(mirror);
   const chain = await evmChainOf(origin, mode);
-  const approved = (mirror && mirror.approvedOrigins) || [];
+  const approved = (mirror && Array.isArray(mirror[EVM_GRANTS]) && mirror[EVM_GRANTS]) || [];
   const account = mirror && typeof mirror.evmAddress === 'string' ? mirror.evmAddress : null;
   const granted = approved.includes(origin) && !!account;
 
@@ -183,11 +187,11 @@ async function handleEvm(port, pageId, origin, call, mirror) {
       return reply(null);
     }
     case 'wallet_revokePermissions':
-      // The same grant as Settings → Connected sites: the site forgets the wallet, both chains.
+      // EIP-2255: the site gives up the 0x account (its Stellar grant, if any, is not this call's).
       // Through the mirror's one writer, from a copy read under its lock — never `mirror`, which
       // was read before this call and may be older than what another writer stored since.
       try {
-        await updateMirror((cur) => ({ ...cur, approvedOrigins: (Array.isArray(cur.approvedOrigins) ? cur.approvedOrigins : []).filter((o) => o !== origin) }));
+        await updateMirror((cur) => ({ ...cur, [EVM_GRANTS]: (Array.isArray(cur[EVM_GRANTS]) ? cur[EVM_GRANTS] : []).filter((o) => o !== origin) }));
       } catch {
         return fail(EVM_ERR.internal, 'Could not forget the site.');
       }
@@ -326,7 +330,7 @@ chrome.runtime.onConnect.addListener((port) => {
       }
 
       const mirror = await getMirror();
-      const approved = (mirror && mirror.approvedOrigins) || [];
+      const approved = (mirror && Array.isArray(mirror[STELLAR_GRANTS]) && mirror[STELLAR_GRANTS]) || [];
 
       if (method === EVM_METHOD) return handleEvm(port, pageId, origin, params, mirror);
 

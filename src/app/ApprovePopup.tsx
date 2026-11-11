@@ -147,21 +147,20 @@ async function loadReq(): Promise<DappReq | null> {
  * 0x address and its mode (what the EVM provider answers `eth_accounts` and picks chains with),
  * and the approved origins.
  */
-async function writeMirror(patch: { entry: WalletEntry; cfg: NetConfig; addOrigin?: string }) {
+async function writeMirror(patch: { entry: WalletEntry; cfg: NetConfig }) {
   if (!hasChrome()) return;
   // Under the mirror's lock, from a copy read inside it (`updateMirror`): a site's revoke in the
-  // worker, or one in Settings, is never undone by this window putting back an older list.
+  // worker, or one in Settings, is never undone by this window putting back an older list. The
+  // grant lists are carried over untouched; only `grantApprovedOrigin` adds to them.
   await updateMirror((cur) => {
-    const approvedOrigins: string[] = Array.isArray(cur.approvedOrigins) ? [...(cur.approvedOrigins as string[])] : [];
-    if (patch.addOrigin && !approvedOrigins.includes(patch.addOrigin)) approvedOrigins.push(patch.addOrigin);
     return {
+      ...cur,
       address: patch.entry.publicKey,
       networkId: patch.cfg.id,
       networkPassphrase: patch.cfg.passphrase,
       networkUrl: patch.cfg.horizon,
       evmAddress: evmAccountOf(patch.entry),
       mode: chainNetOf(patch.cfg),
-      approvedOrigins,
     };
   });
 }
@@ -371,13 +370,14 @@ export default function ApprovePopup() {
     await noteAttemptSuccess();
     // Refresh the public mirror, but do NOT grant the origin here: signing once is
     // not consent to be recognised forever. Only the explicit connect approval
-    // (getAddress / eth_requestAccounts) writes to approvedOrigins.
+    // (getAddress / eth_requestAccounts) grants the origin, each its own account's list.
     await writeMirror({ entry, cfg });
     return vault;
   };
 
   /**
-   * An EVM request, approved: the connect grants the origin (the same list as the Stellar one);
+   * An EVM request, approved: the connect grants the origin the 0x account (its own list —
+   * connecting for one account is not consent to show the other);
    * everything else opens the vault, derives the 0x key — refused unless it spells the account
    * the site was granted — and signs or sends. The key is wiped whatever happens.
    */
@@ -387,8 +387,8 @@ export default function ApprovePopup() {
       throw new EvmDappRefused(v.refusal ?? 'approve.evm.err.params', v.refusalMessage || 'Refused.', v.refusalCode);
     }
     if (request.kind === 'connect') {
-      await writeMirror({ entry, cfg, addOrigin: req.origin });
-      await grantApprovedOrigin(req.origin);
+      await writeMirror({ entry, cfg });
+      await grantApprovedOrigin(req.origin, 'evm');
       respond(req, true, [account]);
       return;
     }
@@ -429,8 +429,8 @@ export default function ApprovePopup() {
         // mirror (which is also how it answers a read without opening a window), the
         // web's in this build's own storage. `grantApprovedOrigin` picks; both are what
         // Settings → Connected sites lists and revokes.
-        await writeMirror({ entry, cfg, addOrigin: req.origin });
-        await grantApprovedOrigin(req.origin);
+        await writeMirror({ entry, cfg });
+        await grantApprovedOrigin(req.origin, 'stellar');
         respond(req, true, { address: entry.publicKey }, undefined, false, netInfo(cfg));
         return;
       }
