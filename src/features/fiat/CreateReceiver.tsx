@@ -7,7 +7,7 @@ import { Select } from '@/features/fiat/Select';
 import { Field } from '@/ui/Field';
 import { PhotoStep } from '@/features/fiat/PhotoStep';
 import { RampProviderCard } from '@/features/fiat/RampProviderCard';
-import { OpCard } from '@/features/fiat/OpCard';
+import { RampEntries } from '@/features/fiat/RampEntries';
 import { COUNTRIES, DOC_TYPES } from '@/constants/fiat';
 import '@/styles/features/fiat/fiat.css';
 import { cx } from '@/lib/cx';
@@ -68,12 +68,8 @@ export function CreateReceiver({ store }: { store: WalletStore }) {
       {step === 0 && (
         <>
           <RampProviderCard store={store} />
-          {/* The P2P purchase skips this form: its widget verifies identity itself. */}
-          <OpCard
-            icon={<path d="M7 7h10l-3-3M17 17H7l3 3M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-            title={t('p2p.entryTitle')} desc={t('p2p.entryDesc')}
-            onClick={() => store.setScreen('p2p-buy')}
-          />
+          {/* Buying and selling P2P skip this form: the hosted window verifies identity itself. */}
+          <RampEntries store={store} />
           <div className="desc fiat-kyc-desc">{t('fiat.createDesc')}</div>
           <div className="flexr g10">
             <div className="f1"><Field tone="soft" label={t('fiat.firstName')} value={firstName} onChange={setFirstName} /></div>

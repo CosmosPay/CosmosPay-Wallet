@@ -1,0 +1,95 @@
+/* src/features/fiat/RampOrders.tsx — the orders opened from this account, rows between lines. */
+.ramp-orders {
+  margin-top: 32px;
+}
+.ramp-orders-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.ramp-orders-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ramp-order {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 64px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 14px !important;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
+}
+/* The divider is drawn, not a border: base.css pills every button. */
+.ramp-orders-list li + li .ramp-order::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 12px;
+  left: 12px;
+  height: 1px;
+  background: var(--line);
+}
+.ramp-order:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.ramp-order-mark {
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+}
+.ramp-order-net {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  display: grid;
+  border: 2px solid var(--bg);
+  border-radius: 50%;
+  background: var(--bg);
+}
+.ramp-order-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ramp-order-main {
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.ramp-order-arrow {
+  color: var(--muted);
+  font-weight: 400;
+}
+.ramp-order-sub {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ramp-order-go {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  color: var(--muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ramp-order:hover {
+    background: var(--interaction-hover-bg);
+  }
+}

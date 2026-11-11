@@ -246,6 +246,11 @@ import {
   offrampQuote as cpOfframpQuote,
   onrampQuote as cpOnrampQuote,
   quoteSwap as cpQuoteSwap,
+  rampMarket as cpRampMarket,
+  rampTokens as cpRampTokens,
+  rampQuote as cpRampQuote,
+  createRampSession as cpCreateRampSession,
+  listRampSessions as cpListRampSessions,
   listCrossChainAssets as cpListCrossChainAssets,
   quoteCrossChainSwap as cpQuoteCrossChainSwap,
   createCrossChainSwap as cpCreateCrossChainSwap,
@@ -291,6 +296,8 @@ import { useSigningGate } from '@/state/useSigningGate';
 import { parseStellarQr } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
 import { cachedPublicKey, warmPublicKey } from '@/lib/publicKey';
+import { rampSessionProblem, rampWalletNetwork, type RampMarket, type RampOrder, type RampQuote, type RampSession, type RampTokenPage } from '@/lib/p2pRamp';
+import { RAMP_SESSIONS_PAGE, RAMP_TOKENS_PAGE, type RampSide } from '@/constants/ramp';
 import {
   configureTelemetry,
   hasFreshOwnership,
@@ -5245,6 +5252,76 @@ export function useWalletStore() {
     [cosmosPay, network, meta, t, flash],
   );
 
+  /* ---------------- P2P: buying and selling with local money ---------------- */
+
+  /**
+   * The key the ramp READS the market with: this account's, else the shared public key (the API
+   * admits it on the market and the token lists). No toast: the screen says what is missing.
+   */
+  const rampReadKey = useCallback(async (): Promise<string | null> => {
+    const env = networkEnv(network);
+    return cosmosPay?.keys[env] ?? cachedPublicKey(env) ?? ((await warmPublicKey(env)) || null);
+  }, [cosmosPay, network]);
+
+  /** What can be bought or sold right now. Throws (an ApiRequestError on a refusal) for the screen to say. */
+  const rampMarket = useCallback(
+    async (side: RampSide): Promise<RampMarket> => {
+      const key = await rampReadKey();
+      if (!key) throw new Error(t('cosmospay.enableFirst'));
+      return cpRampMarket(key, side);
+    },
+    [rampReadKey, t],
+  );
+
+  /** One network's tokens, a page at a time; `q` searches a symbol or an address. */
+  const rampTokens = useCallback(
+    async (side: RampSide, chainId: number, q: string, skip = 0): Promise<RampTokenPage> => {
+      const key = await rampReadKey();
+      if (!key) throw new Error(t('cosmospay.enableFirst'));
+      return cpRampTokens(key, side, { chainId, q: q.trim() || undefined, take: RAMP_TOKENS_PAGE, skip: skip || undefined });
+    },
+    [rampReadKey, t],
+  );
+
+  /** The firm price of an order: the account's key only (a quote belongs to an account). */
+  const rampQuote = useCallback(
+    async (side: RampSide, order: RampOrder): Promise<RampQuote> => {
+      const key = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!key) throw new Error(t('cosmospay.enableFirst'));
+      return cpRampQuote(key, side, order);
+    },
+    [cosmosPay, network, t],
+  );
+
+  /**
+   * Record the order and answer the session whose window takes it, once it is checked to be
+   * the order confirmed, for this wallet's own account (`rampSessionProblem`). The address is
+   * read again here rather than trusted from the screen.
+   */
+  const openRampSession = useCallback(
+    async (side: RampSide, order: RampOrder): Promise<RampSession> => {
+      const key = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!key) throw new Error(t('cosmospay.enableFirst'));
+      const net = rampWalletNetwork(order.chainId, chainNet);
+      const own = net ? addressOnNetwork(net) : null;
+      if (!own || own.toLowerCase() !== order.address.toLowerCase()) throw new Error(t('ramp.addressMismatch'));
+      const session = await cpCreateRampSession(key, side, order);
+      if (rampSessionProblem(session, side, order)) throw new Error(t('ramp.sessionMismatch'));
+      return session;
+    },
+    [cosmosPay, network, chainNet, addressOnNetwork, t],
+  );
+
+  /** The orders this account opened on `side`, newest first; none without an account. */
+  const rampSessions = useCallback(
+    async (side: RampSide): Promise<RampSession[]> => {
+      const key = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!key) return [];
+      return (await cpListRampSessions(key, side, RAMP_SESSIONS_PAGE)).items;
+    },
+    [cosmosPay, network],
+  );
+
   /** Onramp step 1: price a deposit. `blockchain_wallet_id` comes from ensureBlockchainWallet. */
   const quoteDeposit = useCallback(
     async (input: PayinQuoteInput): Promise<PayinQuote | null> => {
@@ -7411,6 +7488,11 @@ export function useWalletStore() {
     addFiatBankAccount,
     removeFiatBankAccount,
     ensureBlockchainWallet,
+    rampMarket,
+    rampTokens,
+    rampQuote,
+    openRampSession,
+    rampSessions,
     quoteDeposit,
     confirmDeposit,
     quoteWithdraw,

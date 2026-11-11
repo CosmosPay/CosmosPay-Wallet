@@ -1,0 +1,74 @@
+/* src/features/fiat/Ramp.tsx — buying and selling with local money, drawn like the swap: the
+   panels, the asset buttons and the rate are styles/ui/swap-widget.css; only the screen's own
+   blocks are here. */
+.ramp > :is(.screen-header, .ramp-sides, form, .ramp-state) {
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+.ramp-sides {
+  margin-bottom: 20px;
+}
+
+/* While the market loads, or what stops it: room where the form will be. */
+.ramp-state {
+  min-height: 180px;
+  margin-top: 4px;
+}
+
+/* The seam between the panels: an arrow, not a flip — a purchase does not turn into a sale. */
+.ramp-seam {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin-block: -18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--text);
+}
+.ramp-seam svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* "Market price" where the firm quote's toggle goes once there is one. */
+.ramp-quote-src {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ramp-method,
+.ramp-account {
+  margin-top: 16px;
+}
+.ramp-note {
+  margin-top: 12px;
+}
+
+.ramp-foot {
+  padding-top: 24px;
+}
+.ramp-reopen {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ramp * {
+    transition: none;
+    animation: none;
+  }
+}

@@ -19,4 +19,7 @@ export const KEPT_INPUT = {
   /** Home: the tab under the actions, and the holdings' network filter. */
   homeTab: 'home.tab',
   homeNetwork: 'home.network',
+  /** Ramp: buying or selling, and each side's order (currency, method, token, amount) per mode. */
+  rampSide: 'ramp.side',
+  rampDraft: 'ramp.draft',
 } as const;

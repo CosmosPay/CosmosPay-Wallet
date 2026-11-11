@@ -121,6 +121,15 @@ export function ChevronDownIcon(p: IconProps) {
   );
 }
 
+/** Straight down: what goes in turns into what comes out (the fiat ramp's seam, which does not flip). */
+export function ArrowDownIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 5v14M6 13l6 6 6-6" />
+    </Svg>
+  );
+}
+
 export function CheckIcon(p: IconProps) {
   return (
     <Svg {...p}>

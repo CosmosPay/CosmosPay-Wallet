@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { OpCard } from '@/features/fiat/OpCard';
+import { RampEntries } from '@/features/fiat/RampEntries';
 import { railLabel } from '@/lib/fiatRails';
 import { RampProviderCard } from '@/features/fiat/RampProviderCard';
 import '@/styles/features/fiat/fiat.css';
@@ -55,12 +56,8 @@ export function ReceiverHub({ store, receiverId }: { store: WalletStore; receive
         title={t('fiat.offramp')} desc={t('fiat.offrampDesc')}
         onClick={() => (st.approved ? store.setScreen('withdraw') : store.flash(t('fiat.needApproved'), 'info'))}
       />
-      {/* Buying from P2P sellers needs no receiver and no KYC here: the widget runs its own. */}
-      <OpCard
-        icon={<path d="M7 7h10l-3-3M17 17H7l3 3M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />}
-        title={t('p2p.entryTitle')} desc={t('p2p.entryDesc')}
-        onClick={() => store.setScreen('p2p-buy')}
-      />
+      {/* Buying and selling P2P need no receiver and no KYC here: the hosted window runs its own. */}
+      <RampEntries store={store} />
 
       {/* Deposit/payout accounts (per currency / rail). */}
       <div className="row between fiat-accounts-head">
