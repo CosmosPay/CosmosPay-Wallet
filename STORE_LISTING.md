@@ -123,14 +123,14 @@ https://cosmospay.lat
 
 **Support / Terms URL**
 ```
-https://wallet.cosmospay.lat/tos
+https://cosmospay.lat/tos
 ```
 
 **Privacy policy URL**
 ```
-https://wallet.cosmospay.lat/privacy
+https://cosmospay.lat/tos#privacy
 ```
-(The wallet's own pages, linked from its Welcome screen. Both must be live before submitting; the Store requires a privacy policy for extensions that handle user data.)
+(The same two links the Welcome screen shows, `TERMS_URL` and `PRIVACY_URL` in `src/constants/app.ts`: Cosmos Pay's terms, which cover the wallet, and their privacy section. The Store requires a privacy policy for extensions that handle user data, so check before submitting that both answer and that the privacy section describes what the wallet collects, as listed above. wallet.cosmospay.lat has no DNS record: do not list it until its pages are live.)
 
 ---
 

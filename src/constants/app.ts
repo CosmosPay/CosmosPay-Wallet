@@ -40,15 +40,21 @@ export const APP_PRODUCER = 'Un producto de Cosmos';
 export const MEMO_SIGNATURE = 'Cosmos Wallet';
 
 /**
- * The wallet's own legal pages, on its own domain: the Terms & Conditions of use and the
- * privacy policy. Linked from the foot of Welcome (both) and the backup consent checkbox
- * (Terms). Required on every first run, so they are linked even before the pages are
- * published — the user's call (2026-10-28); the pages go up at these exact addresses.
- * Not snap.cosmospay.lat/privacy: that one is the Stellar Snap's and says it keeps no user
- * accounts, which is untrue of the wallet (sign-in, email, the encrypted backup, metrics).
+ * The Terms & Conditions of use and the privacy terms. Linked from the foot of Welcome
+ * (both) and the backup consent checkbox (Terms).
+ *
+ * Cosmos Pay's terms page, which covers the wallet (its section 2 is the non-custodial
+ * wallet, section 8 its privacy; the developer platform serves it, `#privacy` is section 8's
+ * anchor). These links used to name wallet.cosmospay.lat/tos and /privacy, pages that were
+ * to be published later: that host has no DNS record, so every first run linked two dead
+ * pages, and a store reviewer opening the privacy link met nothing (security audit,
+ * 2026-11-11). A page of the wallet's own replaces these the day it is live, at an address
+ * that answers. Not snap.cosmospay.lat/privacy: that one is the Stellar Snap's and says it
+ * keeps no user accounts, which is untrue of the wallet (sign-in, email, the encrypted
+ * backup, metrics).
  */
-export const TERMS_URL = 'https://wallet.cosmospay.lat/tos';
-export const PRIVACY_URL = 'https://wallet.cosmospay.lat/privacy';
+export const TERMS_URL = 'https://cosmospay.lat/tos';
+export const PRIVACY_URL = 'https://cosmospay.lat/tos#privacy';
 
 /**
  * Where the web wallet lives (deploy/update-wallet-web.sh publishes it there). Every entry
