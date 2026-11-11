@@ -641,10 +641,13 @@ answers its requests in a sheet over any screen (`src/features/walletconnect/`).
 `src/lib/walletConnect.ts`, the state `src/state/useWalletConnect.ts`, the SDK — loaded on demand —
 `src/lib/walletConnectClient.ts`. Six rules:
 
-- **No project id, no feature.** `PUBLIC_WALLETCONNECT_PROJECT_ID` is a "Wallet" project of
-  Cosmos's on dashboard.walletconnect.com; without it nothing is shown and the SDK never loads.
-  Never ship someone else's id. With it, the SDK still loads only when a session exists or the
-  person pairs, so a wallet that never used it opens no relay socket.
+- **Cosmos's project id is compiled in.** `WC_DEFAULT_PROJECT_ID` (`src/constants/walletConnect.ts`)
+  is Cosmos's "Wallet" project on dashboard.walletconnect.com; `PUBLIC_WALLETCONNECT_PROJECT_ID`
+  overrides it (a self-hosted build's own id) and `off` hides the feature — then nothing is shown
+  and the SDK never loads. Never ship someone else's id. Even with one, the SDK loads only when a
+  session exists or the person pairs, so a wallet that never used it opens no relay socket.
+  `npm run test:e2e:walletconnect` (a dev server in `E2E_URL`) pairs a Node site with the wallet
+  over the public relay and checks a recovered `personal_sign`, a typed signature and a rejection.
 - **One reading of a request.** Every request goes through `reviewEvmRequest` /
   `evmReviewNotes` (`src/lib/evmReview.ts`), the reading `ApprovePopup` makes: the same parsing,
   refusals, warnings and acknowledgement. A check added for one transport lands in that file.
