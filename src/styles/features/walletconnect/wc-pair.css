@@ -1,0 +1,21 @@
+/* src/features/walletconnect/WcPair.tsx — connect a site by its WalletConnect link or QR. */
+.wc-pair-scan {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.wc-pair-scan svg {
+  width: 18px;
+  height: 18px;
+}
+.wc-pair-waiting {
+  align-items: center;
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.wc-pair-note {
+  margin-top: 16px;
+}

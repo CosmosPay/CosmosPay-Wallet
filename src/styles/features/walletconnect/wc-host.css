@@ -1,0 +1,99 @@
+/* src/features/walletconnect/WcHost.tsx — a site's WalletConnect proposal or request, in a sheet
+   over whatever screen is open: who asks (name and host), the Verify verdict, what it asks
+   (src/features/walletconnect/WcReview.tsx), the acknowledgement and the answer. */
+.wc-body {
+  gap: 14px;
+  padding-bottom: 8px;
+}
+
+.wc-peer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.wc-peer-mark {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  color: var(--text);
+}
+.wc-peer-mark svg {
+  width: 18px;
+  height: 18px;
+}
+.wc-peer-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+.wc-peer-name {
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wc-peer-host {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wc-peer-more {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* The Verify API's "domain match": stated, not alarming. */
+.wc-verified {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.wc-card {
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+/* A long request scrolls inside the sheet; the answer stays under it. */
+.wc-scroll {
+  max-height: min(48vh, 460px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.wc-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.wc-ack {
+  margin: 0;
+}
+
+.wc-actions {
+  display: flex;
+  gap: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .wc-body * {
+    transition: none;
+    animation: none;
+  }
+}
