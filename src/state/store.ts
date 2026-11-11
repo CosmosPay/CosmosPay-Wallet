@@ -5306,7 +5306,7 @@ export function useWalletStore() {
       const own = net ? addressOnNetwork(net) : null;
       if (!own || own.toLowerCase() !== order.address.toLowerCase()) throw new Error(t('ramp.addressMismatch'));
       const session = await cpCreateRampSession(key, side, order);
-      if (rampSessionProblem(session, side, order)) throw new Error(t('ramp.sessionMismatch'));
+      if (rampSessionProblem(session, side, order, chainNet)) throw new Error(t('ramp.sessionMismatch'));
       return session;
     },
     [cosmosPay, network, chainNet, addressOnNetwork, t],

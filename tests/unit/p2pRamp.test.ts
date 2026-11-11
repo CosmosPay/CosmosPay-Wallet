@@ -16,6 +16,7 @@ import {
   rampMinIn,
   rampNetworks,
   rampSessionProblem,
+  rampWindowProblem,
   rampWalletNetwork,
   tokenUsd,
   type RampCurrency,
@@ -142,31 +143,54 @@ const session = (over: Partial<RampSession> = {}): RampSession => ({
   address: ME,
   estimatedAmountOut: '12.11',
   reference: 'ref',
-  widgetUrl: `https://widget.example/exchange?operation=BUY&address=${ME}`,
+  widgetUrl: `https://widget.eldorado.io/exchange?operation=BUY&address=${ME}`,
   createdAt: '2026-11-11T00:00:00Z',
   ...over,
 });
 
 test('a session opens only when it is the order confirmed, for this wallet', () => {
-  assert.equal(rampSessionProblem(session(), 'buy', order), null);
-  assert.equal(rampSessionProblem(session({ side: 'sell' }), 'buy', order), 'side');
-  assert.equal(rampSessionProblem(session({ amount: '200000' }), 'buy', order), 'order');
-  assert.equal(rampSessionProblem(session({ tokenAddress: OTHER }), 'buy', order), 'order');
-  assert.equal(rampSessionProblem(session({ chainId: 8453 }), 'buy', order), 'order');
-  assert.equal(rampSessionProblem(session({ address: OTHER }), 'buy', order), 'address');
+  assert.equal(rampSessionProblem(session(), 'buy', order, 'mainnet'), null);
+  assert.equal(rampSessionProblem(session({ side: 'sell' }), 'buy', order, 'mainnet'), 'side');
+  assert.equal(rampSessionProblem(session({ amount: '200000' }), 'buy', order, 'mainnet'), 'order');
+  assert.equal(rampSessionProblem(session({ tokenAddress: OTHER }), 'buy', order, 'mainnet'), 'order');
+  assert.equal(rampSessionProblem(session({ chainId: 8453 }), 'buy', order, 'mainnet'), 'order');
+  assert.equal(rampSessionProblem(session({ address: OTHER }), 'buy', order, 'mainnet'), 'address');
   // The window would deliver to another account.
-  assert.equal(rampSessionProblem(session({ widgetUrl: `https://widget.example/exchange?address=${OTHER}` }), 'buy', order), 'address');
-  assert.equal(rampSessionProblem(session({ widgetUrl: 'https://widget.example/exchange' }), 'buy', order), 'address');
-  assert.equal(rampSessionProblem(session({ widgetUrl: `http://widget.example/exchange?address=${ME}` }), 'buy', order), 'url');
-  assert.equal(rampSessionProblem(session({ widgetUrl: 'not a url' }), 'buy', order), 'url');
+  assert.equal(rampSessionProblem(session({ widgetUrl: `https://widget.eldorado.io/exchange?address=${OTHER}` }), 'buy', order, 'mainnet'), 'address');
+  assert.equal(rampSessionProblem(session({ widgetUrl: 'https://widget.eldorado.io/exchange' }), 'buy', order, 'mainnet'), 'address');
+  assert.equal(rampSessionProblem(session({ widgetUrl: `http://widget.example/exchange?address=${ME}` }), 'buy', order, 'mainnet'), 'url');
+  assert.equal(rampSessionProblem(session({ widgetUrl: 'not a url' }), 'buy', order, 'mainnet'), 'url');
   // A sale names no recipient in the window: the seller connects the wallet that sends.
-  assert.equal(rampSessionProblem(session({ side: 'sell', widgetUrl: 'https://widget.example/exchange?operation=SELL' }), 'sell', order), null);
+  assert.equal(rampSessionProblem(session({ side: 'sell', widgetUrl: 'https://widget.eldorado.io/exchange?operation=SELL' }), 'sell', order, 'mainnet'), null);
   // The amount compares as a number: the API may normalise "20000.00".
-  assert.equal(rampSessionProblem(session({ amount: '20000.00' }), 'buy', order), null);
+  assert.equal(rampSessionProblem(session({ amount: '20000.00' }), 'buy', order, 'mainnet'), null);
 });
 
 test('the order key changes with every field and ignores address case', () => {
   assert.equal(orderKey(order), orderKey({ ...order, address: ME.toUpperCase().replace('0X', '0x') }));
   assert.notEqual(orderKey(order), orderKey({ ...order, amount: '20001' }));
   assert.notEqual(orderKey(order), orderKey({ ...order, paymentMethod: 'other' }));
+});
+
+test('a window opens only on the marketplace origin of the mode, with exactly one recipient, ours', () => {
+  // Another origin, or the other mode's.
+  assert.equal(rampSessionProblem(session({ widgetUrl: `https://evil.example/exchange?address=${ME}` }), 'buy', order, 'mainnet'), 'url');
+  assert.equal(rampSessionProblem(session(), 'buy', order, 'testnet'), 'url');
+  assert.equal(
+    rampSessionProblem(session({ widgetUrl: `https://widget-testnet.eldorado.io/exchange?address=${ME}` }), 'buy', order, 'testnet'),
+    null,
+  );
+  // Two recipients: the window and this check could each read a different one.
+  assert.equal(
+    rampSessionProblem(session({ widgetUrl: `https://widget.eldorado.io/exchange?address=${ME}&address=${OTHER}` }), 'buy', order, 'mainnet'),
+    'address',
+  );
+  // A sale fixes no recipient; one that does is refused.
+  assert.equal(
+    rampSessionProblem(session({ side: 'sell', widgetUrl: `https://widget.eldorado.io/exchange?address=${ME}` }), 'sell', order, 'mainnet'),
+    'address',
+  );
+  // An order in the list: ours, or not opened.
+  assert.equal(rampWindowProblem(session(), 'buy', ME, 'mainnet'), null);
+  assert.equal(rampWindowProblem(session(), 'buy', OTHER, 'mainnet'), 'address');
 });

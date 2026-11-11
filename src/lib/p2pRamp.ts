@@ -17,6 +17,8 @@ import {
   RAMP_FIAT_MAX_DIGITS,
   RAMP_TOKEN_MAX_DIGITS,
   RAMP_USD_STABLES,
+  RAMP_WINDOW_ADDRESS_PARAM,
+  RAMP_WINDOW_ORIGINS,
   type RampSide,
 } from '@/constants/ramp';
 import { networkDefOn } from '@/lib/testnets';
@@ -242,12 +244,38 @@ const sameHex = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 export type RampSessionProblem = 'side' | 'order' | 'address' | 'url';
 
 /**
- * Whether a session the API answered is the order the person confirmed, and safe to open:
- * the same side, currency, method, network, token and amount; this wallet's own account; an
- * https window that, for a purchase, delivers to that account. Opening anything else would
- * take the person to an order they did not make.
+ * Whether a session's window is safe to open for this wallet: the side asked for, this wallet's
+ * own account, an https window on the marketplace's origin for the mode, and — for a purchase —
+ * exactly one fixed recipient, ours (two `address` parameters could be read differently by the
+ * window than here). A sale names none: the person connects the wallet that sends. Checked both
+ * when an order is opened and before an order in the list is opened again.
  */
-export function rampSessionProblem(session: RampSession, side: RampSide, order: RampOrder): RampSessionProblem | null {
+export function rampWindowProblem(session: RampSession, side: RampSide, own: string, env: ChainNet): RampSessionProblem | null {
+  if (session.side !== side) return 'side';
+  if (!sameHex(session.address, own)) return 'address';
+  let url: URL;
+  try {
+    url = new URL(session.widgetUrl);
+  } catch {
+    return 'url';
+  }
+  if (url.protocol !== 'https:' || !RAMP_WINDOW_ORIGINS[env].includes(url.origin)) return 'url';
+  const fixed = url.searchParams.getAll(RAMP_WINDOW_ADDRESS_PARAM);
+  if (side === 'buy') {
+    // The window treats this account as the connected wallet: whatever is bought lands there.
+    if (fixed.length !== 1 || !sameHex(fixed[0], own)) return 'address';
+  } else if (fixed.length > 0) {
+    return 'address';
+  }
+  return null;
+}
+
+/**
+ * Whether a session the API answered is the order the person confirmed, and safe to open: the
+ * same currency, method, network, token and amount, and a window `rampWindowProblem` accepts for
+ * the order's own address. Opening anything else would take the person to an order they did not make.
+ */
+export function rampSessionProblem(session: RampSession, side: RampSide, order: RampOrder, env: ChainNet): RampSessionProblem | null {
   if (session.side !== side) return 'side';
   if (
     session.currency !== order.currency ||
@@ -258,18 +286,5 @@ export function rampSessionProblem(session: RampSession, side: RampSide, order: 
   ) {
     return 'order';
   }
-  if (!sameHex(session.address, order.address)) return 'address';
-  let url: URL;
-  try {
-    url = new URL(session.widgetUrl);
-  } catch {
-    return 'url';
-  }
-  if (url.protocol !== 'https:') return 'url';
-  if (side === 'buy') {
-    // The window treats this account as the connected wallet: whatever is bought lands there.
-    const fixed = url.searchParams.get('address');
-    if (!fixed || !sameHex(fixed, order.address)) return 'address';
-  }
-  return null;
+  return rampWindowProblem(session, side, order.address, env);
 }

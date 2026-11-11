@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import type { RampSide } from '@/constants/ramp';
-import { currencyLabel, methodLabel, rampWalletNetwork, type RampMarket, type RampSession } from '@/lib/p2pRamp';
+import { currencyLabel, methodLabel, rampWalletNetwork, rampWindowProblem, type RampMarket, type RampSession } from '@/lib/p2pRamp';
 import { openExternal } from '@/lib/openExternal';
 import { staggerClass } from '@/lib/stagger';
 import { cx } from '@/lib/cx';
@@ -13,12 +13,15 @@ import '@/styles/features/fiat/ramp-orders.css';
 /**
  * The orders this account opened on one side, newest first (the developer platform's sessions
  * table, as a list): what was paid and what it gives, the method, when; a tap opens its window
- * again, where the order goes on. The window, not this list, knows how an order ended.
+ * again, where the order goes on. The window, not this list, knows how an order ended. An order
+ * is listed only when its window passes the same check as a new one (`rampWindowProblem`): this
+ * wallet's account, the marketplace's origin, a purchase delivering to us.
  */
 export function RampOrders({ store, side, market, rev }: { store: WalletStore; side: RampSide; market: RampMarket; rev: number }) {
   const t = store.t;
   const lang = store.lang;
-  const { rampSessions } = store;
+  const { rampSessions, addressOn } = store;
+  const env = store.chainNet;
   // undefined while it loads, null when it could not be read.
   const [rows, setRows] = useState<RampSession[] | null | undefined>(undefined);
 
@@ -32,7 +35,12 @@ export function RampOrders({ store, side, market, rev }: { store: WalletStore; s
     };
   }, [rampSessions, side, rev]);
 
-  if (!rows || rows.length === 0) return null;
+  const safe = (rows ?? []).filter((x) => {
+    const net = rampWalletNetwork(x.chainId, env);
+    const own = net ? addressOn(net) : null;
+    return !!own && rampWindowProblem(x, side, own, env) === null;
+  });
+  if (safe.length === 0) return null;
 
   const num = (v: string, max: number) => {
     const n = Number(v);
@@ -53,8 +61,8 @@ export function RampOrders({ store, side, market, rev }: { store: WalletStore; s
         {t('ramp.orders')}
       </h2>
       <ul className="ramp-orders-list">
-        {rows.map((x, i) => {
-          const net = rampWalletNetwork(x.chainId, store.chainNet);
+        {safe.map((x, i) => {
+          const net = rampWalletNetwork(x.chainId, env);
           const paid = side === 'buy' ? `${num(x.amount, 2)} ${x.currency}` : `${num(x.amount, 6)} ${x.token}`;
           const out = x.estimatedAmountOut === null ? '' : side === 'buy' ? `≈ ${num(x.estimatedAmountOut, 6)} ${x.token}` : `≈ ${num(x.estimatedAmountOut, 2)} ${x.currency}`;
           return (

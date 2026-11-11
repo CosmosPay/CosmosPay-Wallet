@@ -40,3 +40,16 @@ export const RAMP_USD_STABLES: readonly string[] = ['USDT', 'USDT0', 'USDC', 'US
 
 /** The zero address: a chain's own coin in the marketplace's token lists. */
 export const RAMP_NATIVE_TOKEN = '0x0000000000000000000000000000000000000000';
+
+/**
+ * The origins the hosted window that takes an order may be on, per mode: the P2P marketplace's
+ * widget (El Dorado's; code may name it, copy never does). A session whose window is anywhere
+ * else is refused, and so is an order in the list. A new marketplace host is a wallet release.
+ */
+export const RAMP_WINDOW_ORIGINS: Record<'mainnet' | 'testnet', readonly string[]> = {
+  mainnet: ['https://widget.eldorado.io'],
+  testnet: ['https://widget-testnet.eldorado.io'],
+};
+
+/** The query parameter the window reads a purchase's fixed recipient from. */
+export const RAMP_WINDOW_ADDRESS_PARAM = 'address';
