@@ -25,17 +25,21 @@ import {
   EVM_PROVIDER_RDNS,
   EVM_READ_METHODS,
   EVM_SIGN_METHODS,
+  KNOWN_SAFE_TYPED_DATA,
 } from '@/constants/evmDapp';
+import { DAPP_MIRROR_KEY, DAPP_MIRROR_LOCK } from '@/constants/dapp';
 import { NETWORKS } from '@/constants/networks';
+import { grantApprovedOrigin, listApprovedOrigins, revokeApprovedOrigins, updateMirror } from '@/lib/dappOrigins';
 import {
   EvmDappRefused,
+  allowanceCoversAll,
+  callNeedsAck,
   encodeType,
   evmDappChain,
   evmDappChains,
   feeWithinCap,
   formatUnits,
   hashStruct,
-  isPermitLike,
   messagePreview,
   parseEvmDappRequest,
   parseTypedData,
@@ -44,6 +48,9 @@ import {
   reviewCall,
   signEvmDigest,
   typedDataDigest,
+  typedDataGrantFields,
+  typedDataGrants,
+  typedDataNeedsAck,
 } from '@/lib/evmDapp';
 import { bytesToHex, evmAddressOf } from '@/lib/evmTx';
 import { T } from '@/lib/i18n';
@@ -154,32 +161,68 @@ test('personal_sign takes either parameter order, and hex is bytes', () => {
 
 /* --------------------------------------------------------------- calldata */
 
-test('ERC-20 calls are put in words, the rest is marked unreadable', () => {
-  const usdc = NETWORKS.arb.tokens.find((x) => x.symbol === 'USDC');
-  assert.ok(usdc);
-  const approve = `0x095ea7b3${word(OTHER)}${word((5_000_000n).toString(16))}`;
-  const r = reviewCall(usdc.asset, approve, NETWORKS.arb.tokens);
+const USDC_ARB = NETWORKS.arb.tokens.find((x) => x.symbol === 'USDC');
+
+test('an ERC-20 call to a registry token is put in words', () => {
+  assert.ok(USDC_ARB);
+  const r = reviewCall(USDC_ARB.asset, `0x095ea7b3${word(OTHER)}${word((5_000_000n).toString(16))}`, NETWORKS.arb.tokens);
   assert.equal(r.kind, 'erc20');
-  if (r.kind === 'erc20') {
-    assert.equal(r.fn, 'approve');
-    assert.equal(r.token?.symbol, 'USDC');
-    assert.equal(r.counterparty, OTHER);
-    assert.equal(r.amount, 5_000_000n);
-    assert.equal(r.unlimited, false);
-    assert.equal(`${formatUnits(r.amount, r.token?.decimals ?? 0)}`, '5');
-  }
-  const unlimited = reviewCall(usdc.asset, `0x095ea7b3${word(OTHER)}${'f'.repeat(64)}`, NETWORKS.arb.tokens);
-  assert.ok(unlimited.kind === 'erc20' && unlimited.unlimited);
-  // A transfer of the max is not an allowance.
-  const transferMax = reviewCall(usdc.asset, `0xa9059cbb${word(OTHER)}${'f'.repeat(64)}`, []);
-  assert.ok(transferMax.kind === 'erc20' && !transferMax.unlimited && transferMax.token === null);
-  const from = reviewCall(OTHER, `0x23b872dd${word(ME)}${word(OTHER)}${word('01')}`, []);
-  assert.ok(from.kind === 'erc20' && from.fn === 'transferFrom' && from.owner === ME && from.counterparty === OTHER);
-  // A dirty address word, a short body and an unknown selector are not ERC-20 calls.
-  assert.equal(reviewCall(OTHER, `0x095ea7b3${'1'.repeat(64)}${word('01')}`, []).kind, 'contract');
-  assert.equal(reviewCall(OTHER, `0x095ea7b3${word(OTHER)}`, []).kind, 'contract');
-  assert.deepEqual(reviewCall(OTHER, '0xdeadbeef00', []), { kind: 'contract', selector: '0xdeadbeef', bytes: 5 });
+  if (r.kind !== 'erc20') return;
+  assert.equal(r.fn, 'approve');
+  assert.equal(r.token.symbol, 'USDC');
+  assert.equal(r.counterparty, OTHER);
+  assert.equal(r.amount, 5_000_000n);
+  assert.equal(r.grant, true);
+  assert.equal(r.unlimited, false);
+  assert.equal(formatUnits(r.amount, r.token.decimals), '5');
+  const transfer = reviewCall(USDC_ARB.asset, `0xa9059cbb${word(OTHER)}${word('01')}`, NETWORKS.arb.tokens);
+  assert.ok(transfer.kind === 'erc20' && transfer.fn === 'transfer' && !transfer.grant);
   assert.deepEqual(reviewCall(OTHER, '0x', []), { kind: 'coin' });
+});
+
+test('fix 1: an ERC-20 selector on a contract the registry does not list is a contract call', () => {
+  // Any contract can answer approve/transfer and do something else: the arguments are a hint only.
+  const approve = reviewCall(OTHER, `0x095ea7b3${word(ME)}${word('05')}`, NETWORKS.arb.tokens);
+  assert.equal(approve.kind, 'contract');
+  assert.ok(approve.kind === 'contract' && approve.erc20?.fn === 'approve' && approve.erc20.counterparty === ME && approve.erc20.amount === 5n);
+  assert.equal(callNeedsAck(approve), true);
+  const transfer = reviewCall(OTHER, `0xa9059cbb${word(ME)}${word('05')}`, NETWORKS.arb.tokens);
+  assert.ok(transfer.kind === 'contract' && transfer.erc20?.fn === 'transfer');
+  assert.equal(callNeedsAck(transfer), true, 'even a transfer, when the contract is not a known token');
+  // A registry token of ANOTHER chain is not one here.
+  assert.ok(USDC_ARB);
+  assert.equal(reviewCall(USDC_ARB.asset, `0xa9059cbb${word(ME)}${word('05')}`, NETWORKS.base.tokens).kind, 'contract');
+  const from = reviewCall(OTHER, `0x23b872dd${word(ME)}${word(OTHER)}${word('01')}`, []);
+  assert.ok(from.kind === 'contract' && from.erc20?.fn === 'transferFrom' && from.erc20.owner === ME && from.erc20.counterparty === OTHER);
+  // A dirty address word, a short body and an unknown selector carry no hint at all.
+  assert.ok((() => { const r = reviewCall(OTHER, `0x095ea7b3${'1'.repeat(64)}${word('01')}`, []); return r.kind === 'contract' && r.erc20 === null; })());
+  assert.ok((() => { const r = reviewCall(OTHER, `0x095ea7b3${word(OTHER)}`, []); return r.kind === 'contract' && r.erc20 === null; })());
+  assert.deepEqual(reviewCall(OTHER, '0xdeadbeef00', []), { kind: 'contract', selector: '0xdeadbeef', bytes: 5, erc20: null });
+  // Only a coin payment and a registry token's transfer go without the acknowledgement.
+  assert.equal(callNeedsAck({ kind: 'coin' }), false);
+  assert.equal(callNeedsAck(reviewCall(USDC_ARB.asset, `0xa9059cbb${word(ME)}${word('05')}`, NETWORKS.arb.tokens)), false);
+});
+
+test('fix 3: every allowance needs the acknowledgement; 2^128 or the whole balance is "everything"', () => {
+  assert.ok(USDC_ARB);
+  const small = reviewCall(USDC_ARB.asset, `0x095ea7b3${word(OTHER)}${word('01')}`, NETWORKS.arb.tokens);
+  assert.ok(small.kind === 'erc20' && small.grant && !small.unlimited);
+  assert.equal(callNeedsAck(small), true, 'a one-unit allowance still outlives the transaction');
+  const increase = reviewCall(USDC_ARB.asset, `0x39509351${word(OTHER)}${word('01')}`, NETWORKS.arb.tokens);
+  assert.equal(callNeedsAck(increase), true);
+  const from = reviewCall(USDC_ARB.asset, `0x23b872dd${word(OTHER)}${word(ME)}${word('01')}`, NETWORKS.arb.tokens);
+  assert.ok(from.kind === 'erc20' && callNeedsAck(from));
+  // The threshold: 2^128, not 2^255.
+  const at = reviewCall(USDC_ARB.asset, `0x095ea7b3${word(OTHER)}${word((2n ** 128n).toString(16))}`, NETWORKS.arb.tokens);
+  const below = reviewCall(USDC_ARB.asset, `0x095ea7b3${word(OTHER)}${word((2n ** 128n - 1n).toString(16))}`, NETWORKS.arb.tokens);
+  assert.ok(at.kind === 'erc20' && at.unlimited);
+  assert.ok(below.kind === 'erc20' && !below.unlimited);
+  assert.equal(allowanceCoversAll(2n ** 128n, null), true);
+  assert.equal(allowanceCoversAll(1000n, 1000n), true, 'the whole balance');
+  assert.equal(allowanceCoversAll(1001n, 1000n), true);
+  assert.equal(allowanceCoversAll(999n, 1000n), false);
+  assert.equal(allowanceCoversAll(999n, null), false, 'unread balance: only the unlimited threshold');
+  assert.equal(allowanceCoversAll(1n, 0n), true, 'anything covers an empty balance, and every later deposit');
 });
 
 /* ---------------------------------------------------------------- digests */
@@ -242,13 +285,73 @@ test('EIP-712 v4 matches the specification’s example', () => {
   );
 });
 
-test('typed data is bound to the selected chain, and a permit is flagged', () => {
+test('fix 2: every typed signature needs the acknowledgement; grant fields at any depth are red', () => {
+  // Nothing is on the known-safe list: even the spec's Mail asks, and its `to` is a grant field.
+  assert.equal(KNOWN_SAFE_TYPED_DATA.length, 0);
+  const mail = parseTypedData(MAIL);
+  assert.equal(typedDataNeedsAck(mail), true);
+  assert.deepEqual(typedDataGrantFields(mail), ['Mail.to']);
+  // A plain login message: no grant field, still acknowledged.
+  const login = parseTypedData({
+    types: { Login: [{ name: 'nonce', type: 'string' }, { name: 'issuedAt', type: 'string' }] },
+    primaryType: 'Login',
+    domain: { name: 'Site' },
+    message: { nonce: 'abc', issuedAt: '2026-01-01' },
+  });
+  assert.equal(typedDataNeedsAck(login), true);
+  assert.equal(typedDataGrants(login), false);
+  // Seaport's order: the offerer at the top, the amounts and the recipient in nested arrays.
+  const seaport = parseTypedData({
+    types: {
+      OrderComponents: [
+        { name: 'offerer', type: 'address' },
+        { name: 'zone', type: 'address' },
+        { name: 'offer', type: 'OfferItem[]' },
+        { name: 'consideration', type: 'ConsiderationItem[]' },
+        { name: 'orderType', type: 'uint8' },
+        { name: 'startTime', type: 'uint256' },
+        { name: 'endTime', type: 'uint256' },
+        { name: 'zoneHash', type: 'bytes32' },
+        { name: 'salt', type: 'uint256' },
+        { name: 'conduitKey', type: 'bytes32' },
+        { name: 'counter', type: 'uint256' },
+      ],
+      OfferItem: [
+        { name: 'itemType', type: 'uint8' },
+        { name: 'token', type: 'address' },
+        { name: 'identifierOrCriteria', type: 'uint256' },
+        { name: 'startAmount', type: 'uint256' },
+        { name: 'endAmount', type: 'uint256' },
+      ],
+      ConsiderationItem: [
+        { name: 'itemType', type: 'uint8' },
+        { name: 'token', type: 'address' },
+        { name: 'identifierOrCriteria', type: 'uint256' },
+        { name: 'startAmount', type: 'uint256' },
+        { name: 'endAmount', type: 'uint256' },
+        { name: 'recipient', type: 'address' },
+      ],
+    },
+    primaryType: 'OrderComponents',
+    domain: { name: 'Seaport', version: '1.6', chainId: 1, verifyingContract: OTHER },
+    message: {},
+  });
+  assert.equal(typedDataGrants(seaport), true);
+  const fields = typedDataGrantFields(seaport);
+  for (const f of ['OrderComponents.offerer', 'OrderComponents.offer[].startAmount', 'OrderComponents.consideration[].recipient']) {
+    assert.ok(fields.includes(f), `${f} in ${fields.join(', ')}`);
+  }
+  // A self-referencing type does not loop.
+  const tree = parseTypedData({ types: { Node: [{ name: 'child', type: 'Node[]' }, { name: 'operator', type: 'address' }] }, primaryType: 'Node', domain: {}, message: {} });
+  assert.deepEqual(typedDataGrantFields(tree), ['Node.operator']);
+});
+
+test('typed data is bound to the selected chain, and a permit is red', () => {
   assert.equal(parseEvmDappRequest('eth_signTypedData_v4', [ME, JSON.stringify(MAIL)], 1).kind, 'signTypedData');
   assert.equal(refusalKey(() => parseEvmDappRequest('eth_signTypedData_v4', [ME, JSON.stringify(MAIL)], 42161)), 'approve.evm.err.typedChain');
   // EIP712Domain left out: derived from the domain's fields, in their canonical order.
   const { EIP712Domain: _d, ...rest } = MAIL.types;
   assert.equal(bytesToHex(typedDataDigest(parseTypedData({ ...MAIL, types: rest }))), '0xbe609aee343fb3c4b28e1df9e632fca64fcfaede20f02e86244efddf30957bd2');
-  assert.equal(isPermitLike(parseTypedData(MAIL)), false);
   const permit = {
     types: {
       Permit: [
@@ -264,7 +367,9 @@ test('typed data is bound to the selected chain, and a permit is flagged', () =>
     message: { owner: ME, spender: OTHER, value: '1000000', nonce: 0, deadline: '1893456000' },
   };
   const parsed = parseEvmDappRequest('eth_signTypedData_v4', [ME, permit], 42161);
-  assert.ok(parsed.kind === 'signTypedData' && isPermitLike(parsed.typed));
+  assert.ok(parsed.kind === 'signTypedData' && typedDataGrants(parsed.typed));
+  // A permit type is red by its name alone, whatever its fields are called.
+  assert.equal(typedDataGrants(parseTypedData({ ...permit, types: { Permit: [{ name: 'x', type: 'uint256' }] }, message: { x: 1 } })), true);
   // Values that do not fit their type are refusals, not truncations.
   assert.equal(refusalKey(() => typedDataDigest(parseTypedData({ ...permit, message: { ...permit.message, value: '-1' } }))), 'approve.evm.err.params');
   assert.equal(refusalKey(() => typedDataDigest(parseTypedData({ ...permit, message: { ...permit.message, spender: 'bob' } }))), 'approve.evm.err.params');
@@ -279,6 +384,56 @@ test('the fee cap is a total, and a network without one gets nothing', () => {
   assert.equal(feeWithinCap(0n, 21000n, 1000n), true);
   assert.equal(feeWithinCap(1n, 1n, 0n), false);
   assert.equal(feeWithinCap(1n, 0n, 1000n), false);
+});
+
+/* ----------------------------------------------------------------- mirror */
+
+test('fix 4: the worker writes the mirror through one locked writer that re-reads it', () => {
+  assert.ok(SW.includes(`const MIRROR_LOCK = '${DAPP_MIRROR_LOCK}';`), 'the worker’s lock name is DAPP_MIRROR_LOCK');
+  // One storage write in the whole worker, and it sits inside updateMirror, after a fresh read.
+  assert.equal(SW.split('chrome.storage.local.set(').length - 1, 1);
+  assert.match(SW, /function updateMirror\(change\) \{\s*const write = async \(\) => \{\s*const cur = await getMirror\(\);[^}]*chrome\.storage\.local\.set\(\{ \[MIRROR_KEY\]: change\(cur\) \}\)/);
+  assert.match(SW, /locks\.request\(MIRROR_LOCK, write\)/);
+  assert.match(SW, /case 'wallet_revokePermissions':[\s\S]{0,400}await updateMirror\(/);
+});
+
+test('fix 4: concurrent mirror writers in the wallet never lose each other’s change', async () => {
+  // A chrome.storage.local whose reads and writes take a while, so unlocked writers would interleave.
+  const store: Record<string, unknown> = {
+    [DAPP_MIRROR_KEY]: { address: 'G…', evmAddress: ME, mode: 'mainnet', approvedOrigins: ['https://c.example'] },
+  };
+  const later = () => new Promise((r) => setTimeout(r, 5));
+  const g = globalThis as { chrome?: unknown };
+  const before = g.chrome;
+  g.chrome = {
+    runtime: {},
+    storage: {
+      local: {
+        get: async (k: string) => {
+          await later();
+          return { [k]: structuredClone(store[k]) };
+        },
+        set: async (o: Record<string, unknown>) => {
+          await later();
+          Object.assign(store, structuredClone(o));
+        },
+      },
+    },
+  };
+  try {
+    await Promise.all([
+      grantApprovedOrigin('https://a.example'),
+      grantApprovedOrigin('https://b.example'),
+      revokeApprovedOrigins('https://c.example'),
+      updateMirror((cur) => ({ ...cur, mode: 'testnet' })),
+    ]);
+    assert.deepEqual([...(await listApprovedOrigins())].sort(), ['https://a.example', 'https://b.example']);
+    const mirror = store[DAPP_MIRROR_KEY] as Record<string, unknown>;
+    assert.equal(mirror.mode, 'testnet', 'the other fields survive every writer');
+    assert.equal(mirror.evmAddress, ME);
+  } finally {
+    g.chrome = before;
+  }
 });
 
 /* ------------------------------------------------------------------- copy */

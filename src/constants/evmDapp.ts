@@ -89,13 +89,32 @@ export const ERC20_FN_KEYS: Record<Erc20Function, string> = {
   increaseAllowance: 'approve.evm.fn.increaseAllowance',
 };
 
-/** An allowance at or above this is "unlimited" in practice (2^255; max uint256 is the usual one). */
-export const UNLIMITED_ALLOWANCE = 2n ** 255n;
+/**
+ * An allowance at or above this is "unlimited" in practice: no token has 2^128 base units in
+ * circulation, so the number only ever means "everything, forever". An allowance at or above the
+ * holder's balance means the same for today, and the window reads the balance to say so.
+ */
+export const UNLIMITED_ALLOWANCE = 2n ** 128n;
+
+/**
+ * EIP-712 primary types a signature may be given for without the explicit acknowledgement.
+ * Empty on purpose: a typed signature can be an order, a permit or a delegation that a site
+ * redeems later without asking again, and the wallet cannot tell them apart by their shape.
+ */
+export const KNOWN_SAFE_TYPED_DATA: readonly string[] = [];
+
+/**
+ * Field names that make typed data a grant — someone who may spend, receive or act for the
+ * signer, or an amount that moves — matched case-insensitively anywhere in the structure
+ * (Seaport's `offerer` and `recipient` sit in nested items). `TYPED_DATA_AMOUNT_RE` adds the
+ * amount-like names.
+ */
+export const TYPED_DATA_GRANT_FIELDS: readonly string[] = ['spender', 'operator', 'offerer', 'recipient', 'receiver', 'to', 'delegate', 'delegatee', 'approved'];
+export const TYPED_DATA_AMOUNT_RE = /amount|allowance|value/i;
 
 /**
  * EIP-712 primary types that grant a spender: EIP-2612 `Permit`, DAI's, and Uniswap's Permit2.
- * A signature over one of these moves tokens without a transaction, so the window treats it like
- * an unlimited approval: red, and an explicit acknowledgement.
+ * A signature over one of these moves tokens without a transaction: always red.
  */
 export const PERMIT_PRIMARY_TYPES: readonly string[] = [
   'Permit',

@@ -16,10 +16,13 @@ import { NETWORKS, type NetworkId, type NetworkToken } from '@/constants/network
 import {
   ERC20_SELECTORS,
   EVM_ERR,
+  KNOWN_SAFE_TYPED_DATA,
   MAX_EVM_CALLDATA_CHARS,
   MAX_EVM_MESSAGE_CHARS,
   MAX_EVM_TYPED_DATA_CHARS,
   PERMIT_PRIMARY_TYPES,
+  TYPED_DATA_AMOUNT_RE,
+  TYPED_DATA_GRANT_FIELDS,
   UNLIMITED_ALLOWANCE,
   type Erc20Function,
 } from '@/constants/evmDapp';
@@ -196,50 +199,90 @@ export function parseEvmDappRequest(method: string, params: unknown, chainId: nu
 
 /* --------------------------------------------------------------- calldata */
 
+/** The arguments of an ERC-20 call, as its selector and words spell them. */
+export interface Erc20Args {
+  fn: Erc20Function;
+  /** Who is approved (approve, increaseAllowance) or paid (transfer, transferFrom). */
+  counterparty: string;
+  /** transferFrom's owner. */
+  owner: string | null;
+  amount: bigint;
+  /** approve / increaseAllowance: someone may spend later, without asking again. */
+  grant: boolean;
+  /** An allowance of 2^128 or more: everything, forever. */
+  unlimited: boolean;
+}
+
 export type CallReview =
   /** No calldata: the coin moves, and nothing else. */
   | { kind: 'coin' }
-  | {
-      kind: 'erc20';
-      fn: Erc20Function;
-      /** The registry's token at `to`, or null for a contract the wallet does not list. */
-      token: NetworkToken | null;
-      /** Who is approved (approve, increaseAllowance) or paid (transfer, transferFrom). */
-      counterparty: string;
-      /** transferFrom's owner. */
-      owner: string | null;
-      amount: bigint;
-      unlimited: boolean;
-    }
-  /** Any other call: shown raw, behind a warning and an acknowledgement. */
-  | { kind: 'contract'; selector: string; bytes: number };
+  /** An ERC-20 call to a token of the wallet's registry on this chain: put in words. */
+  | ({ kind: 'erc20'; token: NetworkToken } & Erc20Args)
+  /**
+   * Any other call, shown raw behind a warning and the acknowledgement. `erc20` is what its
+   * arguments would mean if the contract were an honest ERC-20 — a hint, never a reading: any
+   * contract can answer the `approve` or `transfer` selector and do something else entirely.
+   */
+  | { kind: 'contract'; selector: string; bytes: number; erc20: Erc20Args | null };
 
 /** A 32-byte ABI word holding an address, or null when its top 12 bytes are not zero. */
 function wordAddress(word: string): string | null {
   return /^0{24}[0-9a-f]{40}$/.test(word) ? `0x${word.slice(24)}` : null;
 }
 
-/** What `data` sent to `to` does, as far as the wallet can say it in words. */
+/** `data` read as an ERC-20 call, or null when its selector or shape is not one. */
+function erc20Args(hex: string): Erc20Args | null {
+  const selector = hex.slice(0, 10);
+  const body = hex.slice(10);
+  const fn = (Object.keys(ERC20_SELECTORS) as Erc20Function[]).find((k) => ERC20_SELECTORS[k] === selector);
+  if (!fn || body.length % 64) return null;
+  const words = body.match(/.{64}/g) ?? [];
+  const arity = fn === 'transferFrom' ? 3 : 2;
+  if (words.length !== arity) return null;
+  const addrs = words.slice(0, arity - 1).map(wordAddress);
+  if (addrs.some((a) => a === null)) return null;
+  const amount = BigInt(`0x${words[arity - 1]}`);
+  const grant = fn === 'approve' || fn === 'increaseAllowance';
+  return {
+    fn,
+    counterparty: (fn === 'transferFrom' ? addrs[1] : addrs[0]) as string,
+    owner: fn === 'transferFrom' ? addrs[0] : null,
+    amount,
+    grant,
+    unlimited: grant && amount >= UNLIMITED_ALLOWANCE,
+  };
+}
+
+/**
+ * What `data` sent to `to` does, as far as the wallet can say it in words: only a call to a token
+ * of its own registry on this chain (`tokens`) is read as ERC-20; everything else is a contract.
+ */
 export function reviewCall(to: string, data: string, tokens: readonly NetworkToken[]): CallReview {
   const hex = data.toLowerCase();
   if (hex === '0x') return { kind: 'coin' };
-  const selector = hex.slice(0, 10);
-  const body = hex.slice(10);
-  const words = body.length % 64 === 0 ? body.match(/.{64}/g) ?? [] : null;
-  const fn = (Object.keys(ERC20_SELECTORS) as Erc20Function[]).find((k) => ERC20_SELECTORS[k] === selector);
-  const arity = fn === 'transferFrom' ? 3 : 2;
-  if (fn && words && words.length === arity) {
-    const token = tokens.find((t) => t.asset.toLowerCase() === to.toLowerCase()) ?? null;
-    const addrs = words.slice(0, arity - 1).map(wordAddress);
-    const amount = BigInt(`0x${words[arity - 1]}`);
-    if (addrs.every((a) => a !== null)) {
-      const owner = fn === 'transferFrom' ? addrs[0] : null;
-      const counterparty = (fn === 'transferFrom' ? addrs[1] : addrs[0]) as string;
-      const grants = fn === 'approve' || fn === 'increaseAllowance';
-      return { kind: 'erc20', fn, token, counterparty, owner, amount, unlimited: grants && amount >= UNLIMITED_ALLOWANCE };
-    }
-  }
-  return { kind: 'contract', selector, bytes: (hex.length - 2) / 2 };
+  const args = erc20Args(hex);
+  const token = tokens.find((t) => t.asset.toLowerCase() === to.toLowerCase());
+  if (args && token) return { kind: 'erc20', token, ...args };
+  return { kind: 'contract', selector: hex.slice(0, 10), bytes: (hex.length - 2) / 2, erc20: args };
+}
+
+/**
+ * Whether the window must have the person tick the acknowledgement before this call: every call
+ * but a plain coin payment and a registry token's `transfer` — an allowance (any amount: it
+ * outlives the transaction), a `transferFrom` and any contract the wallet cannot read.
+ */
+export function callNeedsAck(call: CallReview): boolean {
+  if (call.kind === 'coin') return false;
+  if (call.kind === 'contract') return true;
+  return call.fn !== 'transfer';
+}
+
+/**
+ * Whether an allowance amounts to everything the signer holds: unlimited (2^128 or more), or at
+ * least the balance read for it (`balance`, null when it could not be read).
+ */
+export function allowanceCoversAll(amount: bigint, balance: bigint | null): boolean {
+  return amount >= UNLIMITED_ALLOWANCE || (balance !== null && amount >= balance);
 }
 
 /* ---------------------------------------------------------- personal_sign */
@@ -326,12 +369,44 @@ export function typedDataChainId(td: TypedData): number | null {
   return n ?? refuse('approve.evm.err.params', 'Invalid domain chainId.');
 }
 
-/** Whether a signature over this grants a spender (EIP-2612, Permit2, or a `spender` field). */
-export function isPermitLike(td: TypedData): boolean {
-  return PERMIT_PRIMARY_TYPES.includes(td.primaryType) || Object.hasOwn(td.message, 'spender');
+const baseType = (type: string): string => type.replace(/(\[\d*\])+$/, '');
+
+/**
+ * The fields of `td`'s primary type, at any depth (nested structs and arrays of them), whose name
+ * says someone may spend, receive or act for the signer, or that an amount moves — `Order.offer[].
+ * startAmount`, `ConsiderationItem.recipient`, `Permit.spender`. Read from the TYPES, so a field
+ * is found whether or not the message fills it.
+ */
+export function typedDataGrantFields(td: TypedData): string[] {
+  const found: string[] = [];
+  const seen = new Set<string>();
+  const walk = (type: string, path: string) => {
+    if (seen.has(type)) return;
+    seen.add(type);
+    for (const f of td.types[type] ?? []) {
+      const at = `${path}.${f.name}`;
+      if (TYPED_DATA_GRANT_FIELDS.includes(f.name.toLowerCase()) || TYPED_DATA_AMOUNT_RE.test(f.name)) found.push(at);
+      const inner = baseType(f.type);
+      if (td.types[inner]) walk(inner, f.type.endsWith(']') ? `${at}[]` : at);
+    }
+    seen.delete(type);
+  };
+  walk(td.primaryType, td.primaryType);
+  return found;
 }
 
-const baseType = (type: string): string => type.replace(/(\[\d*\])+$/, '');
+/**
+ * Whether a signature over `td` may grant something: a permit's primary type (EIP-2612, Permit2)
+ * or any grant-like field (`typedDataGrantFields`). The window paints it red and names the fields.
+ */
+export function typedDataGrants(td: TypedData): boolean {
+  return PERMIT_PRIMARY_TYPES.includes(td.primaryType) || typedDataGrantFields(td).length > 0;
+}
+
+/** Every typed signature needs the acknowledgement, unless its type is a known-safe one (none yet). */
+export function typedDataNeedsAck(td: TypedData): boolean {
+  return !KNOWN_SAFE_TYPED_DATA.includes(td.primaryType);
+}
 
 function dependencies(type: string, types: Record<string, TypedField[]>, found: Set<string>): Set<string> {
   const base = baseType(type);

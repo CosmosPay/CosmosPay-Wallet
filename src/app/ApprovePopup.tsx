@@ -3,20 +3,22 @@
 import '@/styles/app/approve-popup.css';
 import { useEffect, useMemo, useState } from 'react';
 import { Keypair } from '@stellar/stellar-sdk';
-import { DAPP_MIRROR_KEY, APPROVE_TITLE_KEYS, OP_LABEL_KEYS, type DappMethod } from '@/constants/dapp';
+import { APPROVE_TITLE_KEYS, OP_LABEL_KEYS, type DappMethod } from '@/constants/dapp';
 import type { ChainNet } from '@/constants/chains';
 import {
   ERC20_FN_KEYS,
   EVM_APPROVE_TITLE_KEYS,
   EVM_DAPP_METHOD,
   EVM_ERR,
+  type Erc20Function,
   type EvmApproveMethod,
 } from '@/constants/evmDapp';
 import {
   EvmDappRefused,
+  allowanceCoversAll,
+  callNeedsAck,
   evmDappChain,
   formatUnits,
-  isPermitLike,
   messagePreview,
   parseEvmDappRequest,
   personalSignDigest,
@@ -24,11 +26,15 @@ import {
   signEvmDigest,
   typedDataChainId,
   typedDataDigest,
+  typedDataGrantFields,
+  typedDataGrants,
+  typedDataNeedsAck,
   type CallReview,
   type EvmDappChain,
   type EvmDappRequest,
 } from '@/lib/evmDapp';
 import { sendDappTransaction } from '@/lib/evmDappSend';
+import { evmTokenBalanceAt } from '@/lib/chainRpc';
 import { networkDefOn, networkNameOn, sendFeeReserveOn } from '@/lib/testnets';
 import {
   awaitWebRequest,
@@ -37,7 +43,7 @@ import {
   type WebSignerNetwork,
   type WebSignerRequest,
 } from '@/lib/webSigner';
-import { grantApprovedOrigin, listApprovedOrigins } from '@/lib/dappOrigins';
+import { grantApprovedOrigin, listApprovedOrigins, updateMirror } from '@/lib/dappOrigins';
 import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type VaultSecret, type WalletEntry } from '@/lib/vault';
 import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
 import { WrongPasswordError } from '@/lib/crypto';
@@ -201,11 +207,12 @@ async function loadReq(): Promise<DappReq | null> {
  */
 async function writeMirror(patch: { entry: WalletEntry; cfg: NetConfig; addOrigin?: string }) {
   if (!hasChrome()) return;
-  const cur = (await chrome.storage.local.get(DAPP_MIRROR_KEY))[DAPP_MIRROR_KEY] || {};
-  const approvedOrigins: string[] = Array.isArray(cur.approvedOrigins) ? cur.approvedOrigins : [];
-  if (patch.addOrigin && !approvedOrigins.includes(patch.addOrigin)) approvedOrigins.push(patch.addOrigin);
-  await chrome.storage.local.set({
-    [DAPP_MIRROR_KEY]: {
+  // Under the mirror's lock, from a copy read inside it (`updateMirror`): a site's revoke in the
+  // worker, or one in Settings, is never undone by this window putting back an older list.
+  await updateMirror((cur) => {
+    const approvedOrigins: string[] = Array.isArray(cur.approvedOrigins) ? [...(cur.approvedOrigins as string[])] : [];
+    if (patch.addOrigin && !approvedOrigins.includes(patch.addOrigin)) approvedOrigins.push(patch.addOrigin);
+    return {
       address: patch.entry.publicKey,
       networkId: patch.cfg.id,
       networkPassphrase: patch.cfg.passphrase,
@@ -213,7 +220,7 @@ async function writeMirror(patch: { entry: WalletEntry; cfg: NetConfig; addOrigi
       evmAddress: evmAccountOf(patch.entry),
       mode: chainNetOf(patch.cfg),
       approvedOrigins,
-    },
+    };
   });
 }
 
@@ -267,6 +274,8 @@ export default function ApprovePopup() {
   const [netMismatch, setNetMismatch] = useState('');
   /** An EVM request (`evm`), read against the wallet; null for a Stellar one. */
   const [evm, setEvm] = useState<EvmView | null>(null);
+  /** The account's balance of the token an allowance is for; null until read, or when it cannot be. */
+  const [allowanceBalance, setAllowanceBalance] = useState<bigint | null>(null);
   const [loaded, setLoaded] = useState(false);
   const t = useMemo(() => makeT(savedLang()), []);
   // The window speaks the wallet's language, and its `<html lang>` says so.
@@ -334,6 +343,21 @@ export default function ApprovePopup() {
       }
     })();
   }, []);
+
+  // An allowance for a registry token: read the balance it would cover, so one that takes all of
+  // it says so (`allowanceCoversAll`). Unread, only the unlimited threshold applies; either way
+  // the allowance needs the acknowledgement.
+  useEffect(() => {
+    const call = evm?.call;
+    if (!evm?.chain || !evm.account || call?.kind !== 'erc20' || !call.grant) return;
+    let live = true;
+    evmTokenBalanceAt(evm.chain.rpc, call.token.asset, evm.account)
+      .then((b) => live && setAllowanceBalance(b))
+      .catch(() => live && setAllowanceBalance(null));
+    return () => {
+      live = false;
+    };
+  }, [evm]);
 
   if (!loaded) return <Frame><p className="approve-muted">{t('approve.loading')}</p></Frame>;
   if (!req) return <Frame><Title>{t('approve.notFound')}</Title><p className="approve-muted">{t('approve.notFoundBody')}</p></Frame>;
@@ -583,8 +607,10 @@ export default function ApprovePopup() {
     (isConnect || (isPay ? !!pay && hasProof : isSignTx ? !!review && hasProof : hasProof));
 
   /* An EVM request: the same frame, the same proof, its own rows. Nothing here can be approved
-     while `refusal` stands; a call the window cannot put in words, an unlimited allowance and a
-     permit signature each need the explicit acknowledgement. */
+     while `refusal` stands. Everything but a plain coin payment, a registry token's `transfer` and
+     a text message needs the explicit acknowledgement (`callNeedsAck`, `typedDataNeedsAck`): an
+     allowance outlives the transaction, a contract the wallet does not list may answer an ERC-20
+     selector with anything, and a typed signature may be an order redeemed later. */
   if (req.method === EVM_DAPP_METHOD) {
     const v = evm;
     if (!v) return <Frame><p className="approve-muted">{t('approve.loading')}</p></Frame>;
@@ -596,16 +622,19 @@ export default function ApprovePopup() {
     const typed = v.request?.kind === 'signTypedData' ? v.request.typed : null;
     const message = v.request?.kind === 'personalSign' ? messagePreview(v.request.message) : null;
     const call = v.call;
-    const unknownCall = call?.kind === 'contract';
-    const unlimited = call?.kind === 'erc20' && call.unlimited;
-    const permit = !!typed && isPermitLike(typed);
-    const evmNeedsAck = unknownCall || unlimited || permit;
+    const grant = call?.kind === 'erc20' && call.grant;
+    // An allowance that is unlimited, or at least the balance read for it: everything the
+    // account holds of that token. A contract's would-be allowance is red as a contract already.
+    const coversAll = call?.kind === 'erc20' && call.grant && allowanceCoversAll(call.amount, allowanceBalance);
+    const typedGrantFields = typed ? typedDataGrantFields(typed) : [];
+    const typedGrants = !!typed && typedDataGrants(typed);
+    const evmNeedsAck = (!!call && callNeedsAck(call)) || (!!typed && typedDataNeedsAck(typed));
     const evmConnect = kind === 'connect';
     const evmSend = kind === 'sendTransaction';
     const canApproveEvm = !v.refusal && !!v.request && (!evmNeedsAck || ack) && (evmConnect || hasProof);
-    const tokenLabel = (c: Extract<CallReview, { kind: 'erc20' }>) => c.token?.symbol ?? short(tx?.to ?? '', 8);
     const amountLabel = (c: Extract<CallReview, { kind: 'erc20' }>) =>
-      c.unlimited ? t('approve.evm.unlimited') : c.token ? `${formatUnits(c.amount, c.token.decimals)} ${c.token.symbol}` : t('approve.evm.rawUnits', { n: c.amount.toString() });
+      c.unlimited ? t('approve.evm.unlimited') : `${formatUnits(c.amount, c.token.decimals)} ${c.token.symbol}`;
+    const counterpartyLabel = (fn: Erc20Function) => t(fn === 'approve' || fn === 'increaseAllowance' ? 'approve.evm.rowSpender' : 'approve.evm.rowRecipient');
     const domainChain = typed ? typedDataChainId(typed) : null;
     const rejectEvm = () => respond(req, false, undefined, { code: EVM_ERR.rejected, message: 'User rejected the request.' });
 
@@ -631,15 +660,11 @@ export default function ApprovePopup() {
               <Row label={t('approve.evm.rowFeeCap')} value={`${formatUnits(sendFeeReserveOn(v.chain.network, v.env), decimals)} ${coin}`} />
               {call?.kind === 'erc20' && (
                 <div className="approve-ops">
-                  <div className={cx('approve-op', call.unlimited && 'is-critical')}>
+                  <div className={cx('approve-op', (call.grant || call.fn === 'transferFrom') && 'is-critical')}>
                     <div className="approve-op-type">{t(ERC20_FN_KEYS[call.fn])}</div>
-                    <Row label={t('approve.evm.rowToken')} value={tokenLabel(call)} mono={!call.token} />
+                    <Row label={t('approve.evm.rowToken')} value={call.token.symbol} />
                     {call.owner && <Row label={t('approve.evm.rowOwner')} value={short(call.owner)} mono />}
-                    <Row
-                      label={t(call.fn === 'approve' || call.fn === 'increaseAllowance' ? 'approve.evm.rowSpender' : 'approve.evm.rowRecipient')}
-                      value={short(call.counterparty)}
-                      mono
-                    />
+                    <Row label={counterpartyLabel(call.fn)} value={short(call.counterparty)} mono />
                     <Row label={t('approve.evm.rowAmount')} value={amountLabel(call)} />
                   </div>
                 </div>
@@ -650,6 +675,18 @@ export default function ApprovePopup() {
                     <div className="approve-op-type">{t('approve.evm.contractCall')}</div>
                     <Row label={t('approve.evm.rowSelector')} value={call.selector} mono />
                     <Row label={t('approve.evm.rowDataSize')} value={t('approve.evm.bytes', { n: String(call.bytes) })} />
+                    {/* What the arguments would mean for an honest ERC-20: a hint, the contract decides. */}
+                    {call.erc20 && (
+                      <>
+                        <Row label={t('approve.evm.looksLike')} value={t(ERC20_FN_KEYS[call.erc20.fn])} />
+                        {call.erc20.owner && <Row label={t('approve.evm.rowOwner')} value={short(call.erc20.owner)} mono />}
+                        <Row label={counterpartyLabel(call.erc20.fn)} value={short(call.erc20.counterparty)} mono />
+                        <Row
+                          label={t('approve.evm.rowAmount')}
+                          value={call.erc20.unlimited ? t('approve.evm.unlimited') : t('approve.evm.rawUnits', { n: call.erc20.amount.toString() })}
+                        />
+                      </>
+                    )}
                   </div>
                   <div className="approve-msg">{tx.data}</div>
                 </div>
@@ -682,9 +719,16 @@ export default function ApprovePopup() {
         </div>
 
         {v.refusal && <div className="approve-danger">⛔ {t(v.refusal)}</div>}
-        {unknownCall && <div className="approve-danger">⚠️ {t('approve.evm.warnContract')}</div>}
-        {unlimited && <div className="approve-danger">⚠️ {t('approve.evm.warnUnlimited')}</div>}
-        {permit && <div className="approve-danger">⚠️ {t('approve.evm.warnPermit')}</div>}
+        {call?.kind === 'contract' && (
+          <div className="approve-danger">⚠️ {t(call.erc20 ? 'approve.evm.warnUnknownToken' : 'approve.evm.warnContract')}</div>
+        )}
+        {grant && <div className="approve-danger">⚠️ {t(coversAll ? 'approve.evm.warnUnlimited' : 'approve.evm.warnAllowance')}</div>}
+        {call?.kind === 'erc20' && call.fn === 'transferFrom' && <div className="approve-danger">⚠️ {t('approve.evm.warnTransferFrom')}</div>}
+        {typed && (
+          <div className="approve-danger">
+            ⚠️ {typedGrants ? t('approve.evm.warnTypedGrant', { fields: typedGrantFields.join(', ') || typed.primaryType }) : t('approve.evm.warnTyped')}
+          </div>
+        )}
 
         {evmNeedsAck && !v.refusal && (
           <label className="approve-ack">
