@@ -109,6 +109,9 @@ export const KNOWN_SAFE_TYPED_DATA: readonly string[] = [];
  * (Seaport's `offerer` and `recipient` sit in nested items). `TYPED_DATA_AMOUNT_RE` adds the
  * amount-like names.
  */
+/** The most grant-like fields the window names for one typed signature; past it the list is cut (it is red anyway). */
+export const TYPED_DATA_MAX_GRANT_FIELDS = 24;
+
 export const TYPED_DATA_GRANT_FIELDS: readonly string[] = ['spender', 'operator', 'offerer', 'recipient', 'receiver', 'to', 'delegate', 'delegatee', 'approved'];
 export const TYPED_DATA_AMOUNT_RE = /amount|allowance|value/i;
 

@@ -23,6 +23,7 @@ import {
   PERMIT_PRIMARY_TYPES,
   TYPED_DATA_AMOUNT_RE,
   TYPED_DATA_GRANT_FIELDS,
+  TYPED_DATA_MAX_GRANT_FIELDS,
   UNLIMITED_ALLOWANCE,
   type Erc20Function,
 } from '@/constants/evmDapp';
@@ -379,17 +380,21 @@ const baseType = (type: string): string => type.replace(/(\[\d*\])+$/, '');
  */
 export function typedDataGrantFields(td: TypedData): string[] {
   const found: string[] = [];
+  // Each type is walked ONCE, wherever it first appears: a page controls the type graph, and
+  // walking every path through a graph of types that reuse each other is exponential (a few
+  // dozen types would hang the approval window). A type reused elsewhere is already reported
+  // under its first path, which is enough to paint the request red.
   const seen = new Set<string>();
   const walk = (type: string, path: string) => {
-    if (seen.has(type)) return;
+    if (seen.has(type) || found.length >= TYPED_DATA_MAX_GRANT_FIELDS) return;
     seen.add(type);
     for (const f of td.types[type] ?? []) {
+      if (found.length >= TYPED_DATA_MAX_GRANT_FIELDS) return;
       const at = `${path}.${f.name}`;
       if (TYPED_DATA_GRANT_FIELDS.includes(f.name.toLowerCase()) || TYPED_DATA_AMOUNT_RE.test(f.name)) found.push(at);
       const inner = baseType(f.type);
       if (td.types[inner]) walk(inner, f.type.endsWith(']') ? `${at}[]` : at);
     }
-    seen.delete(type);
   };
   walk(td.primaryType, td.primaryType);
   return found;

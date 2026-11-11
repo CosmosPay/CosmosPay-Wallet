@@ -445,3 +445,17 @@ test('every key the EVM window can show exists', () => {
   assert.ok(keys.size > 30);
   for (const k of keys) assert.ok(Object.hasOwn(T, k), `missing i18n key ${k}`);
 });
+
+test('a typed-data type graph that reuses its types is walked once per type, not once per path', () => {
+  // 40 levels, each type holding two fields of the next: 2^40 paths, 40 types.
+  const types: Record<string, { name: string; type: string }[]> = { EIP712Domain: [] };
+  for (let i = 0; i < 40; i++) types[`T${i}`] = [{ name: 'a', type: `T${i + 1}` }, { name: 'b', type: `T${i + 1}` }];
+  types.T40 = [{ name: 'spender', type: 'address' }];
+  const td = { types, primaryType: 'T0', domain: {}, message: {} } as unknown as Parameters<typeof typedDataGrantFields>[0];
+  const started = Date.now();
+  const fields = typedDataGrantFields(td);
+  assert.ok(Date.now() - started < 1000, 'the walk must not follow every path');
+  assert.equal(fields.length, 1);
+  assert.match(fields[0], /\.spender$/);
+  assert.equal(typedDataGrants(td), true);
+});
