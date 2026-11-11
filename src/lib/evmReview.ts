@@ -2,7 +2,7 @@
  * An EVM request a site made, read against the wallet as it is NOW — its mode, its account, the
  * chains it signs on — and what the person must be warned about before approving it. ONE reading
  * for both ways a site reaches the 0x account: the extension's approval window
- * (`src/app/ApprovePopup.tsx`) and WalletConnect (`src/features/walletconnect/WcRequestSheet.tsx`).
+ * (`src/app/ApprovePopup.tsx`) and WalletConnect (`src/features/walletconnect/WcHost.tsx`).
  * A check added here holds for both; a check added to one screen would be a check the other lacks.
  *
  * Pure, so `tests/unit/evmReview.test.ts` reaches it: the parsing and the decoding are
