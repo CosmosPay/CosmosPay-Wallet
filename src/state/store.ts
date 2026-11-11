@@ -5317,8 +5317,9 @@ export function useWalletStore() {
   /* ---------------- P2P: buying and selling with local money ---------------- */
 
   /**
-   * The key the ramp READS the market with: this account's, else the shared public key (the API
-   * admits it on the market and the token lists). No toast: the screen says what is missing.
+   * The key the ramp calls with: this account's, else the shared public key (the API admits it on
+   * the market, the token lists, the quote and opening an order; never on the orders list). No
+   * toast: the screen says what is missing.
    */
   const rampReadKey = useCallback(async (): Promise<string | null> => {
     const env = networkEnv(network);
@@ -5345,24 +5346,25 @@ export function useWalletStore() {
     [rampReadKey, t],
   );
 
-  /** The firm price of an order: the account's key only (a quote belongs to an account). */
+  /** The firm price of an order, with the account's key or the shared one. */
   const rampQuote = useCallback(
     async (side: RampSide, order: RampOrder): Promise<RampQuote> => {
-      const key = cosmosPay?.keys[networkEnv(network)] ?? null;
+      const key = await rampReadKey();
       if (!key) throw new Error(t('cosmospay.enableFirst'));
       return cpRampQuote(key, side, order);
     },
-    [cosmosPay, network, t],
+    [rampReadKey, t],
   );
 
   /**
    * Record the order and answer the session whose window takes it, once it is checked to be
    * the order confirmed, for this wallet's own account (`rampSessionProblem`). The address is
-   * read again here rather than trusted from the screen.
+   * read again here rather than trusted from the screen. With the shared key the order is not
+   * listed afterwards (`rampSessions` is the account's); the screen keeps it while it is open.
    */
   const openRampSession = useCallback(
     async (side: RampSide, order: RampOrder): Promise<RampSession> => {
-      const key = cosmosPay?.keys[networkEnv(network)] ?? null;
+      const key = await rampReadKey();
       if (!key) throw new Error(t('cosmospay.enableFirst'));
       const net = rampWalletNetwork(order.chainId, chainNet);
       const own = net ? addressOnNetwork(net) : null;
@@ -5371,7 +5373,7 @@ export function useWalletStore() {
       if (rampSessionProblem(session, side, order, chainNet)) throw new Error(t('ramp.sessionMismatch'));
       return session;
     },
-    [cosmosPay, network, chainNet, addressOnNetwork, t],
+    [rampReadKey, chainNet, addressOnNetwork, t],
   );
 
   /** The orders this account opened on `side`, newest first; none without an account. */
