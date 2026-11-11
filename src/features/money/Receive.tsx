@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { NetworkLogo } from '@/ui/AssetLogo';
 import { GhostButton, PrimaryButton } from '@/ui/Buttons';
-import { CheckIcon, ChevronRightIcon, CopyIcon, LinkIcon } from '@/ui/Icons';
+import { CheckIcon, ChevronRightIcon, CopyIcon, LinkIcon, ReceiveIcon } from '@/ui/Icons';
 import { Notice } from '@/ui/Notice';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Spinner } from '@/ui/Spinner';
@@ -11,8 +11,10 @@ import { SendSection } from '@/features/money/SendParts';
 import { qrDataUrl } from '@/lib/qr';
 import { buildSep7Pay } from '@/lib/sep7';
 import { shareText } from '@/lib/share';
+import { keepInput } from '@/lib/keptInputs';
 import { useCopied } from '@/hooks/useCopied';
 import { NETWORKS, NETWORK_GROUPS, NETWORK_IDS, type NetworkId } from '@/constants/networks';
+import { KEPT_INPUT } from '@/constants/keptInputs';
 import '@/styles/features/money/receive.css';
 
 /* ----------------------------- RECEIVE ------------------------------ */
@@ -126,6 +128,25 @@ export function Receive({ store }: { store: WalletStore }) {
               <ChevronRightIcon className="receive-link-chev" />
             </button>
           )}
+
+          {/* Money that is not crypto yet: buy it with local money (the ramp picks the network). */}
+          <button
+            type="button"
+            onClick={() => {
+              keepInput(KEPT_INPUT.rampSide, 'buy');
+              store.setScreen('ramp');
+            }}
+            className="receive-link-row"
+          >
+            <span className="receive-link-icon" aria-hidden="true">
+              <ReceiveIcon />
+            </span>
+            <span className="receive-link-text">
+              <span className="receive-link-title">{t('ramp.entryBuy')}</span>
+              <span className="receive-link-desc">{t('ramp.entryBuyDesc')}</span>
+            </span>
+            <ChevronRightIcon className="receive-link-chev" />
+          </button>
         </div>
       </div>
     </div>
