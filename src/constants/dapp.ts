@@ -27,9 +27,18 @@ export const DAPP_METHODS = ['getAddress', 'signTransaction', 'signMessage', 're
 export type DappMethod = (typeof DAPP_METHODS)[number];
 
 /** chrome.storage.local key for the service worker's read-only dapp mirror
- *  (public address + network + approved origins). The SW keeps its own copy of
- *  this literal (extension-src/sw.js `MIRROR_KEY`) — keep both in sync. */
+ *  (public address + network + the 0x address and mode + approved origins). The SW keeps
+ *  its own copy of this literal (extension-src/sw.js `MIRROR_KEY`) — keep both in sync. */
 export const DAPP_MIRROR_KEY = 'cosmos.dapp';
+
+/**
+ * The mirror is written from three places: the service worker (a site's
+ * `wallet_revokePermissions`), the approval window and Settings → Connected sites. Every
+ * read-modify-write holds this Web Lock — one lock manager per extension origin, shared by the
+ * worker and every page — and re-reads the mirror inside it, so no writer puts back a copy older
+ * than another's. The worker keeps its own copy of the name (extension-src/sw.js `MIRROR_LOCK`).
+ */
+export const DAPP_MIRROR_LOCK = 'cosmos.dapp.mirror';
 
 /**
  * Where the WEB build keeps the same grant list.
