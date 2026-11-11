@@ -631,6 +631,43 @@ reach the worker as method `evm` (`src/constants/evmDapp.ts`); the window is the
 discovery, chains, the connect, signatures recovered to the account, the acknowledgements, and a
 zero-value transaction to itself on Arbitrum Sepolia.
 
+## Every build reaches the EVM account by WalletConnect too
+
+The extension's provider only exists in a browser with the extension, so a site open anywhere
+else (the P2P sale in the OS browser, beside the desktop or Android app) reaches the 0x account by
+WalletConnect v2: the site shows a QR or a `wc:` link, the wallet scans it (the central scanner)
+or takes it pasted (Settings → "Connect a site", screen `wc-pair`), approves a session, and
+answers its requests in a sheet over any screen (`src/features/walletconnect/`). The rules are
+`src/lib/walletConnect.ts`, the state `src/state/useWalletConnect.ts`, the SDK — loaded on demand —
+`src/lib/walletConnectClient.ts`. Six rules:
+
+- **No project id, no feature.** `PUBLIC_WALLETCONNECT_PROJECT_ID` is a "Wallet" project of
+  Cosmos's on dashboard.walletconnect.com; without it nothing is shown and the SDK never loads.
+  Never ship someone else's id. With it, the SDK still loads only when a session exists or the
+  person pairs, so a wallet that never used it opens no relay socket.
+- **One reading of a request.** Every request goes through `reviewEvmRequest` /
+  `evmReviewNotes` (`src/lib/evmReview.ts`), the reading `ApprovePopup` makes: the same parsing,
+  refusals, warnings and acknowledgement. A check added for one transport lands in that file.
+  The acknowledgement is enforced in `wcApproveRequest` too, not only by the disabled button.
+- **A session is bound to the wallet, mode and account it was approved for** (`WcBinding`,
+  `cosmos.wc.bindings` in `lib/storage.ts`). It offers only the EVM chains the wallet signs on in
+  that mode, for that 0x account. After a wallet switch or a mode change it is kept but every
+  request is refused (`wcRouteRequest`, `wcBindingCurrent`: 5100 / 5103) until the person is back
+  there or disconnects it — a session never signs for whoever is active now. Each request is read
+  again when it is approved, against the wallet as it is then.
+- **Signing is the store's, behind the gate, always.** `signForSite` asks the password (`force`)
+  whatever the confirmation setting — a site, not the person, started it — derives the key with
+  `networkSigner`, checks it spells the account, checks the session epoch, and wipes the key. The
+  sheet is a modal dialog, so it closes while the gate's prompt is up and comes back after.
+- **The Verify API is read, never ignored.** A flagged scam (`isScam`) blocks; a mismatch and an
+  unverified domain are said in red; a verified one is stated. Proposals that arrive while the
+  wallet is locked are not kept (the SDK keeps no verdict for them); requests are, and shown on
+  unlock.
+- **The relay is a WebSocket**: the extension's and Tauri's `connect-src` name
+  `WC_RELAY_ORIGINS` (`tests/unit/walletConnect.test.ts` checks both); the web build sends no CSP.
+  WalletConnect sessions are their own grant: Settings lists and disconnects them apart from the
+  extension's lists.
+
 ## Unlocking with the phone, and answering the gate
 
 `src/lib/deviceAuth.ts` seals the session's **vault key** under a random 32-byte key and
