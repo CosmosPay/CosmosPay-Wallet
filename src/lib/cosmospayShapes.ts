@@ -379,3 +379,62 @@ export const VirtualAccountListShape = pageOf(VirtualAccountShape);
  * with the local table as the fallback when it does not recognise what came back.
  */
 export const RailsShape: Check<unknown> = unchecked;
+
+/* ------------------- P2P: buying and selling with local money ------------------- */
+
+/**
+ * `GET /v1/{onramp,offramp}/p2p/market`. The fields the form acts on: each currency's id,
+ * price and minimum (it computes the estimate and the floor from them) and its methods' ids
+ * (the order names one); each network's chain id; the default token's chain and address.
+ */
+const RampTokenRefShape = object({ chainId: num, address: str, symbol: str, decimals: num });
+export const RampMarketShape = object({
+  currencies: arrayOf(
+    object({
+      id: str,
+      name: str,
+      price: amount,
+      minAmount: amount,
+      paymentMethods: arrayOf(object({ id: str, name: str })),
+    }),
+  ),
+  networks: arrayOf(object({ chainId: num, name: str, tokenCount: num })),
+  defaultToken: RampTokenRefShape,
+});
+
+/** `GET .../p2p/tokens?chainId=`: a page of one chain's tokens. The order names the address. */
+export const RampTokenPageShape = object({
+  data: arrayOf(object({ chainId: num, address: str, symbol: str, decimals: num, priceUsd: optional(nullable(str)) })),
+  total: num,
+});
+
+/** `POST .../p2p/quotes`: the firm price shown before the window opens. */
+export const RampQuoteShape = object({
+  quoteId: str,
+  amountIn: amount,
+  amountOut: amount,
+  minAmountOut: amount,
+  fee: object({ amountInToken: amount, amountInFiat: amount }),
+  expiresAt: str,
+});
+
+/**
+ * One order the wallet opened. Every field the wallet compares with the order it sent
+ * (`rampSessionProblem` in `lib/p2pRamp.ts`) is checked here, and `widgetUrl`, which it opens.
+ */
+export const RampSessionShape = object({
+  id,
+  side: str,
+  currency: str,
+  paymentMethod: str,
+  amount,
+  token: str,
+  tokenAddress: str,
+  chainId: num,
+  address: str,
+  estimatedAmountOut: nullable(amount),
+  reference: str,
+  widgetUrl: str,
+  createdAt: str,
+});
+export const RampSessionListShape = pageOf(RampSessionShape);

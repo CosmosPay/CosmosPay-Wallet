@@ -94,7 +94,8 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   bankaccount: lazy(() => import('@/features/fiat/BankAccount').then((m) => ({ default: m.BankAccount }))),
   deposit: lazy(() => import('@/features/fiat/Deposit').then((m) => ({ default: m.Deposit }))),
   withdraw: lazy(() => import('@/features/fiat/Withdraw').then((m) => ({ default: m.Withdraw }))),
-  'p2p-buy': lazy(() => import('@/features/fiat/P2pBuy').then((m) => ({ default: m.P2pBuy }))),
+  ramp: lazy(() => import('@/features/fiat/Ramp').then((m) => ({ default: m.Ramp }))),
+  'wc-pair': lazy(() => import('@/features/walletconnect/WcPair').then((m) => ({ default: m.WcPair }))),
   cosmospay: lazy(() => import('@/features/cosmospay/CosmosPay').then((m) => ({ default: m.CosmosPay }))),
 
   // lazy — settings

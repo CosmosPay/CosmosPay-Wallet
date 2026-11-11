@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode, type UIEvent } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode, type UIEvent } from 'react';
 import type { WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
 import { BottomNav } from '@/app/BottomNav';
@@ -12,6 +12,9 @@ import { cx } from '@/lib/cx';
 import { forwardScrollKey, forwardWheel } from '@/lib/scrollForward';
 import '@/styles/app/shell.css';
 import '@/styles/app/auth-split.css';
+
+/** WalletConnect's approval sheets, loaded only when a site sends one (features/walletconnect). */
+const WcHost = lazy(() => import('@/features/walletconnect/WcHost').then((m) => ({ default: m.WcHost })));
 
 /** The frame that hosts the app: a phone column, or — past `--desk-min` — the whole screen.
  *
@@ -100,6 +103,13 @@ export function Shell({
             nothing left to render. A `hasSession` condition here would be a second
             place to keep that invariant, not a stronger one. */}
         {store && <ConfirmSign store={store} />}
+        {/* A site's WalletConnect proposal or request, over any screen, only inside a session and
+            only on a build that offers WalletConnect; loaded when there is one to show. */}
+        {store?.wcEnabled && store.hasSession && store.wcPending && (
+          <Suspense fallback={null}>
+            <WcHost store={store} />
+          </Suspense>
+        )}
       </div>
     </div>
   );

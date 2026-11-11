@@ -582,6 +582,95 @@ so every external contract rendered as the literal text `[object Object]`. Read 
 contract id through `Address`, and assert the row's VALUE when you test it: a test that
 counted rows passed throughout.
 
+## A dapp can also ask for the EVM account
+
+The extension also injects an EIP-1193 provider for the wallet's 0x account
+(`extension-src/inpage.js`), announced with EIP-6963 (rdns `lat.cosmospay.wallet`, the Cosmos
+mark written in by `scripts/build-extension.ts`) and set as `window.ethereum` only when no other
+wallet already is. It exists so a hosted widget that connects a wallet (the P2P sale) can be
+signed by this one. Extension only: the web transport carries Stellar requests alone. Its calls
+reach the worker as method `evm` (`src/constants/evmDapp.ts`); the window is the same
+`ApprovePopup`, and the pure logic is `src/lib/evmDapp.ts`. Seven rules:
+
+- **A site sees only the EVM networks the wallet signs on in its mode** (`evmDappChains`: a fee
+  cap, a public node, a test network in test mode; Monad keeps its own path). The worker keeps a
+  copy of that table, of the method lists and of the error codes; `tests/unit/evmDapp.test.ts`
+  fails when they drift and prints the line to paste. A chain switch inside that list needs no
+  window; anything else is 4902. The approval window re-checks the chain against the mode as it
+  is NOW — the worker's view of the mode is only as fresh as the last window.
+- **Each account has its own connect.** `eth_requestAccounts` grants the 0x account
+  (`evmApprovedOrigins`), `getAddress` the Stellar address (`approvedOrigins`;
+  `DAPP_GRANT_FIELDS`): connecting a site to one is not consent to show it the other. One Settings
+  screen lists both and revokes both; a site's `wallet_revokePermissions` drops only the EVM one.
+  `eth_accounts` answers `[]` to anyone not on the EVM list, and the three signing calls are 4100
+  until then. One window per site at a time (-32002).
+- **Typed data shows only what it signs.** `parseTypedData` refuses a domain or message key the
+  types do not declare, a declared field left out and a fixed array of the wrong length, so the
+  domain name, the chain and the message on screen are exactly what is hashed. A `personal_sign`
+  text with a control or format character (bidi, zero-width, C1, U+2028) is shown as hex.
+- **Reads go to the chain's public node from the worker**, never to a node the page names.
+- **Decode before signing, and the acknowledgement for anything that outlives the click.** Only
+  a plain coin payment, a registry token's `transfer` and a `personal_sign` text go without it
+  (`callNeedsAck`, `typedDataNeedsAck`). An ERC-20 selector on a contract the registry does not
+  list is a CONTRACT call — the decoded arguments are a hint, the contract decides what it does.
+  Every allowance is acknowledged; one of 2^128 or more, or covering the balance the window reads,
+  is "everything". Every typed signature is acknowledged (`KNOWN_SAFE_TYPED_DATA` is empty), and
+  is red when a field anywhere in its types names a spender, operator, offerer, recipient or an
+  amount (Seaport nests them), or its type is a permit.
+- **The site proposes, the wallet bounds.** `to`, `value`, `data` and a gas floor come from the
+  site; nonce and fees from the node; the node's chain id is checked before signing; the key must
+  spell the granted account; the worst case must fit `SEND_FEE_RESERVE`. Contract creation is
+  refused. A transaction or typed data naming another chain than the site's is refused.
+- **Errors are EIP-1193 `{ code, message }`** (4001 rejected or window closed, 4100, 4200, 4902,
+  -32602, -32603), with English messages; the window shows the i18n key of an `EvmDappRefused`.
+- **The mirror has one lock.** The worker (`wallet_revokePermissions`), the approval window and
+  Settings write `chrome.storage.local`'s mirror under the Web Lock `DAPP_MIRROR_LOCK`, re-reading
+  it inside (`updateMirror`), so no writer puts back an older copy.
+
+`npm run build:ext && npm run test:e2e:extension-evm` drives it in a real Chromium: EIP-6963
+discovery, chains, the connect, signatures recovered to the account, the acknowledgements, and a
+zero-value transaction to itself on Arbitrum Sepolia.
+
+## Every build reaches the EVM account by WalletConnect too
+
+The extension's provider only exists in a browser with the extension, so a site open anywhere
+else (the P2P sale in the OS browser, beside the desktop or Android app) reaches the 0x account by
+WalletConnect v2: the site shows a QR or a `wc:` link, the wallet scans it (the central scanner)
+or takes it pasted (Settings → "Connect a site", screen `wc-pair`), approves a session, and
+answers its requests in a sheet over any screen (`src/features/walletconnect/`). The rules are
+`src/lib/walletConnect.ts`, the state `src/state/useWalletConnect.ts`, the SDK — loaded on demand —
+`src/lib/walletConnectClient.ts`. Six rules:
+
+- **Cosmos's project id is compiled in.** `WC_DEFAULT_PROJECT_ID` (`src/constants/walletConnect.ts`)
+  is Cosmos's "Wallet" project on dashboard.walletconnect.com; `PUBLIC_WALLETCONNECT_PROJECT_ID`
+  overrides it (a self-hosted build's own id) and `off` hides the feature — then nothing is shown
+  and the SDK never loads. Never ship someone else's id. Even with one, the SDK loads only when a
+  session exists or the person pairs, so a wallet that never used it opens no relay socket.
+  `npm run test:e2e:walletconnect` (a dev server in `E2E_URL`) pairs a Node site with the wallet
+  over the public relay and checks a recovered `personal_sign`, a typed signature and a rejection.
+- **One reading of a request.** Every request goes through `reviewEvmRequest` /
+  `evmReviewNotes` (`src/lib/evmReview.ts`), the reading `ApprovePopup` makes: the same parsing,
+  refusals, warnings and acknowledgement. A check added for one transport lands in that file.
+  The acknowledgement is enforced in `wcApproveRequest` too, not only by the disabled button.
+- **A session is bound to the wallet, mode and account it was approved for** (`WcBinding`,
+  `cosmos.wc.bindings` in `lib/storage.ts`). It offers only the EVM chains the wallet signs on in
+  that mode, for that 0x account. After a wallet switch or a mode change it is kept but every
+  request is refused (`wcRouteRequest`, `wcBindingCurrent`: 5100 / 5103) until the person is back
+  there or disconnects it — a session never signs for whoever is active now. Each request is read
+  again when it is approved, against the wallet as it is then.
+- **Signing is the store's, behind the gate, always.** `signForSite` asks the password (`force`)
+  whatever the confirmation setting — a site, not the person, started it — derives the key with
+  `networkSigner`, checks it spells the account, checks the session epoch, and wipes the key. The
+  sheet is a modal dialog, so it closes while the gate's prompt is up and comes back after.
+- **The Verify API is read, never ignored.** A flagged scam (`isScam`) blocks; a mismatch and an
+  unverified domain are said in red; a verified one is stated. Proposals that arrive while the
+  wallet is locked are not kept (the SDK keeps no verdict for them); requests are, and shown on
+  unlock.
+- **The relay is a WebSocket**: the extension's and Tauri's `connect-src` name
+  `WC_RELAY_ORIGINS` (`tests/unit/walletConnect.test.ts` checks both); the web build sends no CSP.
+  WalletConnect sessions are their own grant: Settings lists and disconnects them apart from the
+  extension's lists.
+
 ## Unlocking with the phone, and answering the gate
 
 `src/lib/deviceAuth.ts` seals the session's **vault key** under a random 32-byte key and
@@ -1257,32 +1346,33 @@ when the account only ever changed the commission: 150 bps on the public key, th
 rate with one. `store.publicAccess` is what a screen reads to show that difference — the
 percentage displayed in a quote is always the gateway's own number, never this flag.
 
-## Buying with local money is a widget, opened with the wallet's address fixed
+## Buying and selling with local money goes through the Cosmos Pay API
 
-Fiat → "Comprar con tu moneda local (P2P)" (`features/fiat/P2pBuy.tsx`, screen `p2p-buy`) sells
-stablecoins from P2P sellers through El Dorado (`lib/eldorado.ts`, `constants/eldorado.ts`). It
-needs no BlindPay receiver, so both fiat entry screens offer it, before the KYC form too. Five
-rules:
+Fiat → "Comprar con moneda local" / "Vender por moneda local" (`features/fiat/RampEntries.tsx`) open
+screen `ramp` (`features/fiat/Ramp.tsx`): the developer platform's Fiat → On-ramp / Off-ramp, over the
+same API (`/v1/onramp/p2p` buys, `/v1/offramp/p2p` sells; calls in `lib/cosmospay.ts`, rules in
+`lib/p2pRamp.ts`), drawn like the Swap (`styles/ui/swap-widget.css` is the look both share). The user's
+call (2026-11-11): "tiene que usar la api de cosmos" — the wallet never calls the P2P marketplace
+directly. Neither side needs the BlindPay receiver, so both fiat entry screens offer it first. Six rules:
 
-- **The wallet fills the order in; the widget takes it.** Currencies, payment methods and BUY
-  prices are public, keyless and CORS-open, so the screen reads them and shows an ESTIMATE
-  (price division, rounded down). A firm quote (`/quote/buy`) needs Cosmos's ClientID and
-  ReferralID, which we do not have yet; the widget shows the quote, fees included, before
-  anything is paid. `PUBLIC_ELDORADO_CLIENT_ID` / `_REFERRAL_ID` are optional: with them the URL
-  also carries an `externalReferenceId` and El Dorado attributes the order to Cosmos.
-- **The recipient is fixed, or nothing opens.** The widget's undocumented `address` parameter
-  (found in its bundle on 2026-11-05) makes it treat that 0x account as the connected wallet;
-  without it the person is asked to connect some other wallet, and what they bought lands
-  there. `p2pWidgetUrl` returns null unless the address is the wallet's own EVM one
-  (`store.addressOn('arb')`). If El Dorado ever drops that parameter, stop offering the screen
-  rather than open a widget that asks for a wallet.
-- **It opens outside the wallet** (`lib/openExternal.ts`), never in an iframe: the widget is an
-  app with its own login, a camera KYC and a payment step that outlives the popup.
-- **Test mode is the sandbox.** `widget-testnet` / `api-testnet`, and only El Dorado's test USDT
-  on Arbitrum Sepolia: any other token or chain fails the order there. Completing a sandbox order
-  needs a market maker ad on El Dorado's DEV app, which is Cosmos's to run.
-- **The provider is never named in the copy** (the developer platform's rule); the widget
-  carries its own brand. Code and comments keep the real name.
+- **The market is read with any key; an order needs the account.** `rampMarket` / `rampTokens` use the
+  account's key or the shared public key (the API marks those routes `@AllowPublicKey()`; if the
+  deployment has not given the public consumer `onramp:read` / `offramp:read`, the screen asks to
+  connect Cosmos Pay instead of showing an error). `rampQuote`, `openRampSession` and the orders list are
+  the account's key only.
+- **Only networks the wallet holds.** An order names a chain the market lists AND the wallet has in the
+  mode with an address (`rampWalletNetwork` / `rampNetworks`): a purchase on a chain the wallet does not
+  read would be money it cannot see. The address is always the wallet's own EVM account.
+- **A session is checked before it opens** (`rampSessionProblem`): same side, currency, method, chain,
+  token and amount as the order sent, this wallet's address, an https window, and for a purchase the
+  window's `address` parameter (the recipient it fixes) equal to ours. Anything else is refused.
+- **The firm quote follows the order** (debounced, an answer for a changed order dropped); a 503 means
+  the deployment has no integrator ids, so the form keeps the market estimate and stops asking. Quote
+  errors show under the button, never as toasts.
+- **A sale is signed in the hosted window.** The window asks a connected wallet to send the token; the
+  browser extension's EVM provider answers as Cosmos Wallet. The screen says so (`ramp.sellConnect*`).
+- **The marketplace is never named in the copy, and test mode is its sandbox** (test USDT on Arbitrum
+  Sepolia only). Code and comments may name it.
 
 ## Validation lives in `src/lib/`, never in a component
 
