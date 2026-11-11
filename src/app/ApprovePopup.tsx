@@ -4,6 +4,32 @@ import '@/styles/app/approve-popup.css';
 import { useEffect, useMemo, useState } from 'react';
 import { Keypair } from '@stellar/stellar-sdk';
 import { DAPP_MIRROR_KEY, APPROVE_TITLE_KEYS, OP_LABEL_KEYS, type DappMethod } from '@/constants/dapp';
+import type { ChainNet } from '@/constants/chains';
+import {
+  ERC20_FN_KEYS,
+  EVM_APPROVE_TITLE_KEYS,
+  EVM_DAPP_METHOD,
+  EVM_ERR,
+  type EvmApproveMethod,
+} from '@/constants/evmDapp';
+import {
+  EvmDappRefused,
+  evmDappChain,
+  formatUnits,
+  isPermitLike,
+  messagePreview,
+  parseEvmDappRequest,
+  personalSignDigest,
+  reviewCall,
+  signEvmDigest,
+  typedDataChainId,
+  typedDataDigest,
+  type CallReview,
+  type EvmDappChain,
+  type EvmDappRequest,
+} from '@/lib/evmDapp';
+import { sendDappTransaction } from '@/lib/evmDappSend';
+import { networkDefOn, networkNameOn, sendFeeReserveOn } from '@/lib/testnets';
 import {
   awaitWebRequest,
   replyWebRequest,
@@ -12,12 +38,12 @@ import {
   type WebSignerRequest,
 } from '@/lib/webSigner';
 import { grantApprovedOrigin, listApprovedOrigins } from '@/lib/dappOrigins';
-import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type WalletEntry } from '@/lib/vault';
+import { getActiveEntry, getNetworkId, getCustomNetworks, unlockWallet, type VaultSecret, type WalletEntry } from '@/lib/vault';
 import { beginAttempt, blockSeconds, noteAttemptSuccess, releaseAttempt } from '@/lib/attempts';
 import { WrongPasswordError } from '@/lib/crypto';
 import { PasskeyError, wipePasskeySecrets } from '@/lib/passkey';
 import { PasskeyUnlockStaleError, passkeyUnlockCredential, unlockWithPasskey } from '@/lib/passkeyUnlock';
-import { resolveNetwork, signXdr, sendPayment, type NetConfig } from '@/lib/stellar';
+import { networkEnv, resolveNetwork, signXdr, sendPayment, type NetConfig } from '@/lib/stellar';
 import { parseStellarQr, type ParsedQr } from '@/lib/sep7';
 import { reviewTx, type TxReview } from '@/lib/txGuard';
 import { signMessagePayload, SIGN_MESSAGE_DOMAIN } from '@/lib/signMessage';
@@ -59,8 +85,85 @@ declare const chrome: any;
 interface DappReq {
   id: string;
   origin: string;
-  method: DappMethod;
-  params: { xdr?: string; message?: string; uri?: string; networkPassphrase?: string };
+  /** A Stellar method, or `evm` with the JSON-RPC call in `params` (extension-src/sw.js). */
+  method: DappMethod | typeof EVM_DAPP_METHOD;
+  params: {
+    xdr?: string;
+    message?: string;
+    uri?: string;
+    networkPassphrase?: string;
+    /** EVM: the JSON-RPC method, its params and the chain the site had selected. */
+    method?: string;
+    params?: unknown;
+    chainId?: number;
+  };
+}
+
+/** An EIP-1193 error, what an EVM request is refused with (the Stellar ones are strings). */
+interface RpcError {
+  code: number;
+  message: string;
+}
+
+/**
+ * An EVM request as the window read it: the request itself, the chain it is for, the account it
+ * must be signed by, and — when it cannot be approved — why (`refusal`, an i18n key, and the
+ * English `refusalMessage` the site gets).
+ */
+interface EvmView {
+  method: EvmApproveMethod;
+  env: ChainNet;
+  account: string | null;
+  chain: EvmDappChain | null;
+  request: EvmDappRequest | null;
+  call: CallReview | null;
+  refusal: string | null;
+  refusalMessage: string;
+  refusalCode: number;
+}
+
+/** The wallet's 0x address, kept on the entry since the multi-network release (lib/vault.ts). */
+const evmAccountOf = (e: WalletEntry | null): string | null => e?.networkAddresses?.byKind.evm ?? null;
+
+const chainNetOf = (cfg: NetConfig): ChainNet => (networkEnv(cfg) === 'prod' ? 'mainnet' : 'testnet');
+
+/** Read an EVM request against the wallet as it is now: its mode, its account, its chains. */
+function readEvmRequest(req: DappReq, entry: WalletEntry | null, cfg: NetConfig): EvmView {
+  const method = String(req.params.method || '') as EvmApproveMethod;
+  const env = chainNetOf(cfg);
+  const account = evmAccountOf(entry);
+  const chain = evmDappChain(env, Number(req.params.chainId));
+  const view: EvmView = { method, env, account, chain, request: null, call: null, refusal: null, refusalMessage: '', refusalCode: EVM_ERR.invalidParams };
+  const refused = (key: string, message: string, code: number = EVM_ERR.invalidParams): EvmView => ({
+    ...view,
+    refusal: key,
+    refusalMessage: message,
+    refusalCode: code,
+  });
+  if (!Object.hasOwn(EVM_APPROVE_TITLE_KEYS, method)) return refused('approve.evm.err.method', `Unsupported method: ${method}`, EVM_ERR.unsupported);
+  if (!account) return refused('approve.evm.err.noAccount', 'This wallet has no EVM account yet.', EVM_ERR.unauthorized);
+  // The site's chain must be one the wallet signs on in the mode it is in NOW; the worker's view
+  // of the mode can be older than the person's last switch.
+  if (!chain) return refused('approve.evm.err.chain', 'The selected chain is not available in the wallet mode.', EVM_ERR.unknownChain);
+  try {
+    const request = parseEvmDappRequest(method, req.params.params, chain.chainId);
+    const signer = request.kind === 'connect' ? account : request.kind === 'sendTransaction' ? request.tx.from : request.address;
+    if (signer.toLowerCase() !== account.toLowerCase()) {
+      return refused('approve.evm.err.from', 'The request names another account than the connected one.', EVM_ERR.unauthorized);
+    }
+    const tokens = networkDefOn(chain.network, env)?.tokens ?? [];
+    const call = request.kind === 'sendTransaction' ? reviewCall(request.tx.to, request.tx.data, tokens) : null;
+    return { ...view, request, call };
+  } catch (e) {
+    if (e instanceof EvmDappRefused) return refused(e.key, e.message, e.code);
+    return refused('approve.evm.err.params', e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** What a failed EVM approval tells the site. */
+function evmFailure(e: unknown): RpcError {
+  if (e instanceof EvmDappRefused) return { code: e.code, message: e.message };
+  return { code: EVM_ERR.internal, message: e instanceof Error ? e.message : String(e) };
 }
 
 /**
@@ -91,18 +194,24 @@ async function loadReq(): Promise<DappReq | null> {
   return (o[key] as DappReq) || null;
 }
 
-/** Keep the SW's read-only mirror in sync (public address + network + approved origins). */
-async function writeMirror(patch: { address: string; cfg: NetConfig; addOrigin?: string }) {
+/**
+ * Keep the SW's read-only mirror in sync: the public Stellar address, the network, the wallet's
+ * 0x address and its mode (what the EVM provider answers `eth_accounts` and picks chains with),
+ * and the approved origins.
+ */
+async function writeMirror(patch: { entry: WalletEntry; cfg: NetConfig; addOrigin?: string }) {
   if (!hasChrome()) return;
   const cur = (await chrome.storage.local.get(DAPP_MIRROR_KEY))[DAPP_MIRROR_KEY] || {};
   const approvedOrigins: string[] = Array.isArray(cur.approvedOrigins) ? cur.approvedOrigins : [];
   if (patch.addOrigin && !approvedOrigins.includes(patch.addOrigin)) approvedOrigins.push(patch.addOrigin);
   await chrome.storage.local.set({
     [DAPP_MIRROR_KEY]: {
-      address: patch.address,
+      address: patch.entry.publicKey,
       networkId: patch.cfg.id,
       networkPassphrase: patch.cfg.passphrase,
       networkUrl: patch.cfg.horizon,
+      evmAddress: evmAccountOf(patch.entry),
+      mode: chainNetOf(patch.cfg),
       approvedOrigins,
     },
   });
@@ -117,10 +226,12 @@ async function writeMirror(patch: { address: string; cfg: NetConfig; addOrigin?:
  * extension's replies are left byte-for-byte as they were, because those travel to
  * pages built against them.
  */
-function respond(req: DappReq, ok: boolean, result?: unknown, error?: string, keepOpen = false, net?: WebSignerNetwork) {
+function respond(req: DappReq, ok: boolean, result?: unknown, error?: string | RpcError, keepOpen = false, net?: WebSignerNetwork) {
   if (WEB_CTX) {
+    // The web transport carries Stellar requests only, whose errors are strings.
+    if (req.method === EVM_DAPP_METHOD) return;
     const payload = ok && net && result && typeof result === 'object' ? { ...(result as object), ...net } : result;
-    replyWebRequest(req, ok, payload, error);
+    replyWebRequest({ ...req, method: req.method }, ok, payload, typeof error === 'string' ? error : error?.message);
     if (!keepOpen) window.close();
     return;
   }
@@ -154,6 +265,8 @@ export default function ApprovePopup() {
   // Set when the dapp asks to sign against a different network than the wallet's.
   // Nothing can be approved in that state; only Reject stays available.
   const [netMismatch, setNetMismatch] = useState('');
+  /** An EVM request (`evm`), read against the wallet; null for a Stellar one. */
+  const [evm, setEvm] = useState<EvmView | null>(null);
   const [loaded, setLoaded] = useState(false);
   const t = useMemo(() => makeT(savedLang()), []);
   // The window speaks the wallet's language, and its `<html lang>` says so.
@@ -193,6 +306,7 @@ export default function ApprovePopup() {
           respond(r, true, { address: e.publicKey }, undefined, false, netInfo(c));
           return;
         }
+        if (r && r.method === EVM_DAPP_METHOD) setEvm(readEvmRequest(r, e, c));
         if (r && r.method === 'requestPayment') {
           const parsed = parseStellarQr(String(r.params.uri || ''));
           if (parsed) setPay(parsed);
@@ -214,7 +328,7 @@ export default function ApprovePopup() {
             }
           }
         }
-        if (e) await writeMirror({ address: e.publicKey, cfg: c }); // keep the SW mirror fresh
+        if (e) await writeMirror({ entry: e, cfg: c }); // keep the SW mirror fresh
       } finally {
         setLoaded(true);
       }
@@ -228,7 +342,14 @@ export default function ApprovePopup() {
       <Frame>
         <Title>{t('approve.noWallet')}</Title>
         <p className="approve-muted">{t('approve.noWalletBody')}</p>
-        <Btn kind="reject" onClick={() => respond(req, false, undefined, 'No wallet on this device.')}>{t('approve.close')}</Btn>
+        <Btn
+          kind="reject"
+          onClick={() =>
+            respond(req, false, undefined, req.method === EVM_DAPP_METHOD ? { code: EVM_ERR.unauthorized, message: 'No wallet on this device.' } : 'No wallet on this device.')
+          }
+        >
+          {t('approve.close')}
+        </Btn>
       </Frame>
     );
   }
@@ -255,6 +376,77 @@ export default function ApprovePopup() {
 
   const usePasskey = passkeyDevice && !pwdForm;
 
+  /**
+   * Open the vault for one signature — and THAT is a password guess like any other. This window
+   * was the one path that derived a key from a typed string with no backoff at all: same vault,
+   * same PBKDF2 cost, same localStorage, opened on demand by any page calling
+   * window.cosmosWallet.* — an unmetered oracle sitting beside the metered ones. `beginAttempt`
+   * reserves the guess before the derivation, so concurrent windows cannot all read a clean
+   * record.
+   *
+   * On a passkey device the password comes out of the passkey door first. A dismissed sheet or a
+   * stale door is retryable, like a typo — see the catch in `approve`.
+   */
+  const openVaultSecret = async (): Promise<VaultSecret> => {
+    let password = pwd;
+    if (usePasskey) {
+      const opened = await unlockWithPasskey();
+      wipePasskeySecrets(opened.secrets);
+      password = opened.password;
+    }
+    const wait = await beginAttempt();
+    if (wait > 0) throw new Error(t('pwd.tooManyAttempts', { secs: String(blockSeconds(wait)) }));
+    const vault = await unlockWallet(entry.id, password).catch(async (e: unknown) => {
+      // Only a failed GCM tag is a guess. A missing or unparseable vault blob must not
+      // walk the owner up the ladder while the screen blames their password.
+      if (!(e instanceof WrongPasswordError)) await releaseAttempt();
+      throw e;
+    });
+    await noteAttemptSuccess();
+    // Refresh the public mirror, but do NOT grant the origin here: signing once is
+    // not consent to be recognised forever. Only the explicit connect approval
+    // (getAddress / eth_requestAccounts) writes to approvedOrigins.
+    await writeMirror({ entry, cfg });
+    return vault;
+  };
+
+  /**
+   * An EVM request, approved: the connect grants the origin (the same list as the Stellar one);
+   * everything else opens the vault, derives the 0x key — refused unless it spells the account
+   * the site was granted — and signs or sends. The key is wiped whatever happens.
+   */
+  const approveEvm = async (v: EvmView) => {
+    const { request, chain, account } = v;
+    if (v.refusal || !request || !chain || !account) {
+      throw new EvmDappRefused(v.refusal ?? 'approve.evm.err.params', v.refusalMessage || 'Refused.', v.refusalCode);
+    }
+    if (request.kind === 'connect') {
+      await writeMirror({ entry, cfg, addOrigin: req.origin });
+      await grantApprovedOrigin(req.origin);
+      respond(req, true, [account]);
+      return;
+    }
+    const vault = await openVaultSecret();
+    const [{ networksPhraseFromSecret }, { networkSecret }] = await Promise.all([import('@/lib/chainAddresses'), import('@/lib/chainKeys')]);
+    const secret = await networkSecret(vault.mnemonic ?? networksPhraseFromSecret(vault.secret), chain.network, account, v.env).catch(() => {
+      throw new EvmDappRefused('approve.evm.err.key', 'The key does not match the account.', EVM_ERR.unauthorized);
+    });
+    try {
+      if (request.kind === 'personalSign') {
+        respond(req, true, signEvmDigest(personalSignDigest(request.message), secret));
+        return;
+      }
+      if (request.kind === 'signTypedData') {
+        respond(req, true, signEvmDigest(typedDataDigest(request.typed), secret));
+        return;
+      }
+      const hash = await sendDappTransaction({ chain, env: v.env, secret, tx: request.tx });
+      respond(req, true, hash);
+    } finally {
+      secret.fill(0);
+    }
+  };
+
   // Arrow (not a hoisted function declaration) so TS carries the null-narrowing of
   // req/entry/cfg from the early returns above into this closure.
   const approve = async () => {
@@ -262,45 +454,23 @@ export default function ApprovePopup() {
     setBusy(true);
     setErr('');
     try {
+      if (evm) {
+        await approveEvm(evm);
+        return;
+      }
       if (req.method === 'getAddress') {
         // Two stores, one meaning: the extension's grant lives in the service worker's
         // mirror (which is also how it answers a read without opening a window), the
         // web's in this build's own storage. `grantApprovedOrigin` picks; both are what
         // Settings → Connected sites lists and revokes.
-        await writeMirror({ address: entry.publicKey, cfg, addOrigin: req.origin });
+        await writeMirror({ entry, cfg, addOrigin: req.origin });
         await grantApprovedOrigin(req.origin);
         respond(req, true, { address: entry.publicKey }, undefined, false, netInfo(cfg));
         return;
       }
 
-      // Everything below needs the secret -> unlock first, and THAT is a password guess
-      // like any other. This window was the one path that derived a key from a typed
-      // string with no backoff at all: same vault, same PBKDF2 cost, same
-      // localStorage, opened on demand by any page calling window.cosmosWallet.* — an
-      // unmetered oracle sitting beside the metered ones. `beginAttempt` reserves the
-      // guess before the derivation, so concurrent windows cannot all read a clean record.
-      //
-      // On a passkey device the password comes out of the passkey door first. A dismissed
-      // sheet or a stale door is retryable, like a typo — see the catch below.
-      let password = pwd;
-      if (usePasskey) {
-        const opened = await unlockWithPasskey();
-        wipePasskeySecrets(opened.secrets);
-        password = opened.password;
-      }
-      const wait = await beginAttempt();
-      if (wait > 0) throw new Error(t('pwd.tooManyAttempts', { secs: String(blockSeconds(wait)) }));
-      const { secret } = await unlockWallet(entry.id, password).catch(async (e: unknown) => {
-        // Only a failed GCM tag is a guess. A missing or unparseable vault blob must not
-        // walk the owner up the ladder while the screen blames their password.
-        if (!(e instanceof WrongPasswordError)) await releaseAttempt();
-        throw e;
-      });
-      await noteAttemptSuccess();
-      // Refresh the public mirror, but do NOT grant the origin here: signing once is
-      // not consent to be recognised forever. Only the explicit connect approval
-      // (getAddress, above) writes to approvedOrigins.
-      await writeMirror({ address: entry.publicKey, cfg });
+      // Everything below needs the secret -> unlock first.
+      const { secret } = await openVaultSecret();
 
       if (req.method === 'signTransaction') {
         if (netMismatch) throw new Error(netMismatch);
@@ -363,9 +533,11 @@ export default function ApprovePopup() {
             ? t('passkey.err.stale')
             : e instanceof WrongPasswordError
               ? t('confirmSig.wrongPwd')
-              : e instanceof Error
-                ? e.message
-                : String(e);
+              : e instanceof EvmDappRefused
+                ? t(e.key)
+                : e instanceof Error
+                  ? e.message
+                  : String(e);
       setErr(message);
       setBusy(false);
       // A wrong password is retryable — leave the request pending so the user can just
@@ -378,7 +550,7 @@ export default function ApprovePopup() {
       // against Spanish UI copy, deciding retryable-vs-terminal. One i18n pass and every
       // mistyped password here became a terminal rejection — and that pass has now
       // happened. `WrongPasswordError` is imported two lines above and exists for this.
-      if (!wrongPwd) respond(req, false, undefined, message, true);
+      if (!wrongPwd) respond(req, false, undefined, evm ? evmFailure(e) : message, true);
     }
   };
 
@@ -409,6 +581,151 @@ export default function ApprovePopup() {
     !reviewErr &&
     (!needsAck || ack) &&
     (isConnect || (isPay ? !!pay && hasProof : isSignTx ? !!review && hasProof : hasProof));
+
+  /* An EVM request: the same frame, the same proof, its own rows. Nothing here can be approved
+     while `refusal` stands; a call the window cannot put in words, an unlimited allowance and a
+     permit signature each need the explicit acknowledgement. */
+  if (req.method === EVM_DAPP_METHOD) {
+    const v = evm;
+    if (!v) return <Frame><p className="approve-muted">{t('approve.loading')}</p></Frame>;
+    const def = v.chain ? networkDefOn(v.chain.network, v.env) : null;
+    const coin = def?.coin ?? '';
+    const decimals = def?.decimals ?? 18;
+    const kind = v.request?.kind ?? null;
+    const tx = v.request?.kind === 'sendTransaction' ? v.request.tx : null;
+    const typed = v.request?.kind === 'signTypedData' ? v.request.typed : null;
+    const message = v.request?.kind === 'personalSign' ? messagePreview(v.request.message) : null;
+    const call = v.call;
+    const unknownCall = call?.kind === 'contract';
+    const unlimited = call?.kind === 'erc20' && call.unlimited;
+    const permit = !!typed && isPermitLike(typed);
+    const evmNeedsAck = unknownCall || unlimited || permit;
+    const evmConnect = kind === 'connect';
+    const evmSend = kind === 'sendTransaction';
+    const canApproveEvm = !v.refusal && !!v.request && (!evmNeedsAck || ack) && (evmConnect || hasProof);
+    const tokenLabel = (c: Extract<CallReview, { kind: 'erc20' }>) => c.token?.symbol ?? short(tx?.to ?? '', 8);
+    const amountLabel = (c: Extract<CallReview, { kind: 'erc20' }>) =>
+      c.unlimited ? t('approve.evm.unlimited') : c.token ? `${formatUnits(c.amount, c.token.decimals)} ${c.token.symbol}` : t('approve.evm.rawUnits', { n: c.amount.toString() });
+    const domainChain = typed ? typedDataChainId(typed) : null;
+    const rejectEvm = () => respond(req, false, undefined, { code: EVM_ERR.rejected, message: 'User rejected the request.' });
+
+    return (
+      <Frame>
+        <div className="approve-origin">
+          <div className="approve-origin-label">{t('approve.requestFrom')}</div>
+          <div className="approve-origin-host">{originLabel}</div>
+        </div>
+
+        <Title>{t(EVM_APPROVE_TITLE_KEYS[v.method] ?? 'approve.evm.title.unknown')}</Title>
+
+        <div className="approve-card">
+          <Row label={t('approve.rowWallet')} value={entry.name || t('approve.defaultWalletName')} />
+          <Row label={t('approve.evm.rowAccount')} value={v.account ? short(v.account) : '—'} mono />
+          <Row label={t('approve.rowNetwork')} value={v.chain ? networkNameOn(v.chain.network, v.env) : '—'} />
+
+          {tx && v.chain && (
+            <>
+              <div className="approve-divider" />
+              <Row label={t('approve.evm.rowTo')} value={short(tx.to)} mono />
+              <Row label={t('approve.evm.rowValue')} value={`${formatUnits(tx.value, decimals)} ${coin}`} />
+              <Row label={t('approve.evm.rowFeeCap')} value={`${formatUnits(sendFeeReserveOn(v.chain.network, v.env), decimals)} ${coin}`} />
+              {call?.kind === 'erc20' && (
+                <div className="approve-ops">
+                  <div className={cx('approve-op', call.unlimited && 'is-critical')}>
+                    <div className="approve-op-type">{t(ERC20_FN_KEYS[call.fn])}</div>
+                    <Row label={t('approve.evm.rowToken')} value={tokenLabel(call)} mono={!call.token} />
+                    {call.owner && <Row label={t('approve.evm.rowOwner')} value={short(call.owner)} mono />}
+                    <Row
+                      label={t(call.fn === 'approve' || call.fn === 'increaseAllowance' ? 'approve.evm.rowSpender' : 'approve.evm.rowRecipient')}
+                      value={short(call.counterparty)}
+                      mono
+                    />
+                    <Row label={t('approve.evm.rowAmount')} value={amountLabel(call)} />
+                  </div>
+                </div>
+              )}
+              {call?.kind === 'contract' && (
+                <div className="approve-ops">
+                  <div className="approve-op is-critical">
+                    <div className="approve-op-type">{t('approve.evm.contractCall')}</div>
+                    <Row label={t('approve.evm.rowSelector')} value={call.selector} mono />
+                    <Row label={t('approve.evm.rowDataSize')} value={t('approve.evm.bytes', { n: String(call.bytes) })} />
+                  </div>
+                  <div className="approve-msg">{tx.data}</div>
+                </div>
+              )}
+            </>
+          )}
+
+          {message && (
+            <>
+              <div className="approve-divider" />
+              <div className="approve-row-label">{t(message.hex ? 'approve.evm.messageHex' : 'approve.messageToSign')}</div>
+              <div className="approve-msg">{message.text}</div>
+            </>
+          )}
+
+          {typed && (
+            <>
+              <div className="approve-divider" />
+              {typeof typed.domain.name === 'string' && <Row label={t('approve.evm.rowDomain')} value={typed.domain.name} />}
+              {typeof typed.domain.version === 'string' && <Row label={t('approve.evm.rowVersion')} value={typed.domain.version} />}
+              {domainChain !== null && <Row label={t('approve.evm.rowChainId')} value={String(domainChain)} />}
+              {typeof typed.domain.verifyingContract === 'string' && (
+                <Row label={t('approve.evm.rowContract')} value={short(typed.domain.verifyingContract)} mono />
+              )}
+              <Row label={t('approve.evm.rowPrimaryType')} value={typed.primaryType} mono />
+              <div className="approve-row-label">{t('approve.evm.typedMessage')}</div>
+              <div className="approve-msg">{JSON.stringify(typed.message, null, 2)}</div>
+            </>
+          )}
+        </div>
+
+        {v.refusal && <div className="approve-danger">⛔ {t(v.refusal)}</div>}
+        {unknownCall && <div className="approve-danger">⚠️ {t('approve.evm.warnContract')}</div>}
+        {unlimited && <div className="approve-danger">⚠️ {t('approve.evm.warnUnlimited')}</div>}
+        {permit && <div className="approve-danger">⚠️ {t('approve.evm.warnPermit')}</div>}
+
+        {evmNeedsAck && !v.refusal && (
+          <label className="approve-ack">
+            <input type="checkbox" checked={ack} onChange={(e) => setAck((e.target as HTMLInputElement).checked)} className="approve-ack-box" />
+            <span className="approve-ack-text">{t('approve.evm.ack')}</span>
+          </label>
+        )}
+
+        <p className="approve-note">{t(evmConnect ? 'approve.evm.noteConnect' : evmSend ? 'approve.evm.noteSend' : 'approve.noteSign')}</p>
+
+        {!evmConnect && !v.refusal && usePasskey && (
+          <p className="approve-muted">
+            {t('passkey.approveNote')}{' '}
+            <button type="button" className="approve-link" onClick={() => setPwdForm(true)}>
+              {t('passkey.usePassword')}
+            </button>
+          </p>
+        )}
+        {!evmConnect && !v.refusal && !usePasskey && (
+          <input
+            type="password"
+            value={pwd}
+            autoFocus
+            placeholder={t('approve.pwdPlaceholder')}
+            onChange={(e) => setPwd((e.target as HTMLInputElement).value)}
+            onKeyDown={(e) => e.key === 'Enter' && canApproveEvm && approve()}
+            className="approve-input"
+          />
+        )}
+
+        {err && <div className="approve-error">{err}</div>}
+
+        <div className="approve-actions">
+          <Btn kind="reject" onClick={rejectEvm}>{t('approve.reject')}</Btn>
+          <Btn kind="approve" onClick={approve} disabled={busy || !canApproveEvm}>
+            {busy ? t(evmSend ? 'approve.sending' : 'approve.signing') : t(evmConnect ? 'approve.connect' : evmSend ? 'approve.send' : 'approve.approve')}
+          </Btn>
+        </div>
+      </Frame>
+    );
+  }
 
   return (
     <Frame>
