@@ -246,6 +246,11 @@ import {
   offrampQuote as cpOfframpQuote,
   onrampQuote as cpOnrampQuote,
   quoteSwap as cpQuoteSwap,
+  rampMarket as cpRampMarket,
+  rampTokens as cpRampTokens,
+  rampQuote as cpRampQuote,
+  createRampSession as cpCreateRampSession,
+  listRampSessions as cpListRampSessions,
   listCrossChainAssets as cpListCrossChainAssets,
   quoteCrossChainSwap as cpQuoteCrossChainSwap,
   createCrossChainSwap as cpCreateCrossChainSwap,
@@ -291,6 +296,12 @@ import { useSigningGate } from '@/state/useSigningGate';
 import { parseStellarQr } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
 import { cachedPublicKey, warmPublicKey } from '@/lib/publicKey';
+import { useWalletConnect, type WcPeer } from '@/state/useWalletConnect';
+import { wcEnabled } from '@/lib/walletConnectClient';
+import type { EvmReview } from '@/lib/evmReview';
+import { EVM_ERR } from '@/constants/evmDapp';
+import { rampSessionProblem, rampWalletNetwork, type RampMarket, type RampOrder, type RampQuote, type RampSession, type RampTokenPage } from '@/lib/p2pRamp';
+import { RAMP_SESSIONS_PAGE, RAMP_TOKENS_PAGE, type RampSide } from '@/constants/ramp';
 import {
   configureTelemetry,
   hasFreshOwnership,
@@ -3550,6 +3561,64 @@ export function useWalletStore() {
     },
     [refreshAfterOperation, session, chainNet, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, submitChainSend, loadNetworkHoldings, t],
   );
+
+  /* ------------------------------ WalletConnect ------------------------------ */
+
+  /**
+   * Sign or send what a site asked through WalletConnect (`state/useWalletConnect.ts`), once the
+   * person approved it on its sheet and the request was read again against the wallet as it is
+   * now (`lib/evmReview.ts`). Behind the signing gate ALWAYS — a site, not the person, started it
+   * — with the key of the account the request was checked for, wiped after. Null when the gate
+   * was not passed: the request keeps waiting.
+   */
+  const signForSite = useCallback(
+    async (review: EvmReview, peer: WcPeer): Promise<string | null> => {
+      const { request, chain, account } = review;
+      const [evm, { sendDappTransaction }] = await Promise.all([import('@/lib/evmDapp'), import('@/lib/evmDappSend')]);
+      if (review.refusal || !request || !chain || !account || request.kind === 'connect') {
+        throw new evm.EvmDappRefused(review.refusal ?? 'approve.evm.err.params', review.refusalMessage || 'Refused.', review.refusalCode);
+      }
+      const res = await exclusive.run('send', async () => {
+        const epoch = sessionEpochRef.current;
+        const ok = await requestSignature(
+          { title: t(request.kind === 'sendTransaction' ? 'wc.confirmSendTitle' : 'wc.confirmSignTitle'), message: t('wc.confirmMsg', { site: peer.host || peer.name }) },
+          true,
+        );
+        if (!ok) return null;
+        const { owner, secret } = await networkSigner(chain.network);
+        try {
+          if (owner.toLowerCase() !== account.toLowerCase()) {
+            throw new evm.EvmDappRefused('approve.evm.err.key', 'The key does not match the account.', EVM_ERR.unauthorized);
+          }
+          guardSession(epoch);
+          if (request.kind === 'personalSign') return evm.signEvmDigest(evm.personalSignDigest(request.message), secret);
+          if (request.kind === 'signTypedData') return evm.signEvmDigest(evm.typedDataDigest(request.typed), secret);
+          const hash = await sendDappTransaction({ chain, env: review.env, secret, tx: request.tx });
+          refreshAfterOperation();
+          return hash;
+        } finally {
+          secret.fill(0);
+        }
+      });
+      if (!res.ran) {
+        flash(t('wc.err.busySigning'), 'info');
+        return null;
+      }
+      return res.value;
+    },
+    [exclusive, requestSignature, networkSigner, guardSession, refreshAfterOperation, flash, t],
+  );
+
+  const walletConnect = useWalletConnect({
+    enabled: wcEnabled(),
+    active: !!session,
+    walletId: meta?.id ?? null,
+    env: chainNet,
+    account: addressOnNetwork('eth'),
+    t,
+    flash,
+    sign: signForSite,
+  });
   const quoteChainSwap = useCallback(
     async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, slippageBps: number = CHAIN_SWAP_SLIPPAGE_BPS): Promise<SwapQuote | null> => {
       const apiKey = openAccessKey();
@@ -5243,6 +5312,76 @@ export function useWalletStore() {
       }
     },
     [cosmosPay, network, meta, t, flash],
+  );
+
+  /* ---------------- P2P: buying and selling with local money ---------------- */
+
+  /**
+   * The key the ramp READS the market with: this account's, else the shared public key (the API
+   * admits it on the market and the token lists). No toast: the screen says what is missing.
+   */
+  const rampReadKey = useCallback(async (): Promise<string | null> => {
+    const env = networkEnv(network);
+    return cosmosPay?.keys[env] ?? cachedPublicKey(env) ?? ((await warmPublicKey(env)) || null);
+  }, [cosmosPay, network]);
+
+  /** What can be bought or sold right now. Throws (an ApiRequestError on a refusal) for the screen to say. */
+  const rampMarket = useCallback(
+    async (side: RampSide): Promise<RampMarket> => {
+      const key = await rampReadKey();
+      if (!key) throw new Error(t('cosmospay.enableFirst'));
+      return cpRampMarket(key, side);
+    },
+    [rampReadKey, t],
+  );
+
+  /** One network's tokens, a page at a time; `q` searches a symbol or an address. */
+  const rampTokens = useCallback(
+    async (side: RampSide, chainId: number, q: string, skip = 0): Promise<RampTokenPage> => {
+      const key = await rampReadKey();
+      if (!key) throw new Error(t('cosmospay.enableFirst'));
+      return cpRampTokens(key, side, { chainId, q: q.trim() || undefined, take: RAMP_TOKENS_PAGE, skip: skip || undefined });
+    },
+    [rampReadKey, t],
+  );
+
+  /** The firm price of an order: the account's key only (a quote belongs to an account). */
+  const rampQuote = useCallback(
+    async (side: RampSide, order: RampOrder): Promise<RampQuote> => {
+      const key = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!key) throw new Error(t('cosmospay.enableFirst'));
+      return cpRampQuote(key, side, order);
+    },
+    [cosmosPay, network, t],
+  );
+
+  /**
+   * Record the order and answer the session whose window takes it, once it is checked to be
+   * the order confirmed, for this wallet's own account (`rampSessionProblem`). The address is
+   * read again here rather than trusted from the screen.
+   */
+  const openRampSession = useCallback(
+    async (side: RampSide, order: RampOrder): Promise<RampSession> => {
+      const key = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!key) throw new Error(t('cosmospay.enableFirst'));
+      const net = rampWalletNetwork(order.chainId, chainNet);
+      const own = net ? addressOnNetwork(net) : null;
+      if (!own || own.toLowerCase() !== order.address.toLowerCase()) throw new Error(t('ramp.addressMismatch'));
+      const session = await cpCreateRampSession(key, side, order);
+      if (rampSessionProblem(session, side, order, chainNet)) throw new Error(t('ramp.sessionMismatch'));
+      return session;
+    },
+    [cosmosPay, network, chainNet, addressOnNetwork, t],
+  );
+
+  /** The orders this account opened on `side`, newest first; none without an account. */
+  const rampSessions = useCallback(
+    async (side: RampSide): Promise<RampSession[]> => {
+      const key = cosmosPay?.keys[networkEnv(network)] ?? null;
+      if (!key) return [];
+      return (await cpListRampSessions(key, side, RAMP_SESSIONS_PAGE)).items;
+    },
+    [cosmosPay, network],
   );
 
   /** Onramp step 1: price a deposit. `blockchain_wallet_id` comes from ensureBlockchainWallet. */
@@ -7239,6 +7378,7 @@ export function useWalletStore() {
     diagnostics,
     setDiagnostics,
     confirmReq,
+    ...walletConnect,
     requestSignature,
     resolveConfirm,
     setWalletAvatar,
@@ -7411,6 +7551,11 @@ export function useWalletStore() {
     addFiatBankAccount,
     removeFiatBankAccount,
     ensureBlockchainWallet,
+    rampMarket,
+    rampTokens,
+    rampQuote,
+    openRampSession,
+    rampSessions,
     quoteDeposit,
     confirmDeposit,
     quoteWithdraw,

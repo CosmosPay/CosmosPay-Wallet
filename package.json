@@ -39,12 +39,15 @@
     "test:e2e:passkey": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/passkey.e2e.ts",
     "test:e2e:easy-recovery": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/easyRecovery.e2e.ts",
     "test:e2e:signin-binding": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/signInBinding.e2e.ts",
-    "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts"
+    "test:e2e:extension-evm": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/extensionEvm.e2e.ts",
+    "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts",
+    "test:e2e:walletconnect": "node --disable-warning=ExperimentalWarning --experimental-strip-types --import ./tests/setup.mjs tests/walletConnectRelay.e2e.mjs"
   },
   "dependencies": {
     "@astrojs/react": "^7.1.2",
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
+    "@reown/walletkit": "1.6.0",
     "@scure/base": "^2.4.0",
     "@scure/bip32": "^2.4.0",
     "@scure/starknet": "^2.4.0",
@@ -53,6 +56,8 @@
     "@tauri-apps/plugin-clipboard-manager": "^2.5.0",
     "@tauri-apps/plugin-opener": "^2.7.2",
     "@tauri-apps/plugin-store": "^2.5.0",
+    "@walletconnect/core": "2.25.0",
+    "@walletconnect/utils": "2.25.0",
     "astro": "^7.4.5",
     "bip39": "^3.1.2",
     "buffer": "^6.0.3",
@@ -69,6 +74,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@walletconnect/sign-client": "2.25.0",
     "esbuild": "^0.28.2",
     "playwright": "^1.64.1",
     "sharp": "^0.35.5",

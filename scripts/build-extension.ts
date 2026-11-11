@@ -33,6 +33,7 @@ import { CARDANO_ENDPOINTS } from '../src/constants/cardanoSend.ts';
 import { HYPERCORE_API } from '../src/constants/hypercoreSend.ts';
 import { ZCASH_INSIGHT_API, ZCASH_NODE_RPC } from '../src/constants/zcashSend.ts';
 import { LANG_CODES } from '../src/constants/i18n.ts';
+import { WC_RELAY_ORIGINS } from '../src/constants/walletConnect.ts';
 import { cosmosHostPermissions, hostPattern } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
@@ -151,9 +152,17 @@ if (await exists(approvePath)) {
 
 // Provider plumbing: page-injected provider (window.cosmosWallet) + content-script
 // bridge + background service worker. Copied verbatim from extension-src/.
-for (const f of ['inpage.js', 'content.js', 'sw.js']) {
+for (const f of ['content.js', 'sw.js']) {
   await cp(join('extension-src', f), join(OUT, f));
 }
+// The EVM provider announces itself with the Cosmos mark (EIP-6963 wants a data: URI); it is
+// written in here from the favicon rather than kept as a second copy in the source.
+const ICON_PLACEHOLDER = '__COSMOS_WALLET_ICON__';
+const inpage = await readFile(join('extension-src', 'inpage.js'), 'utf8');
+if (!inpage.includes(ICON_PLACEHOLDER)) throw new Error(`extension-src/inpage.js: ${ICON_PLACEHOLDER} not found`);
+const favicon = (await readFile(join('public', 'favicon.svg'), 'utf8')).replace(/\s+/g, ' ').trim();
+const iconUri = `data:image/svg+xml;base64,${Buffer.from(favicon, 'utf8').toString('base64')}`;
+await writeFile(join(OUT, 'inpage.js'), inpage.replace(ICON_PLACEHOLDER, iconUri), 'utf8');
 
 // Camera-permission helper page. Extension POPUPS often can't display the camera
 // prompt (the popup closes on focus loss), so the scanner offers a button that opens
@@ -381,8 +390,9 @@ const manifest = {
       // developer-mode endpoint overrides, so the set of hosts is not knowable at
       // build time. The named hosts that used to follow it were decorative — the
       // wildcard already admits them — and reading them as an allowlist is exactly
-      // the false guarantee worth removing. Scripts stay locked to 'self'.
-      "connect-src 'self' https:",
+      // the false guarantee worth removing. Scripts stay locked to 'self'. The WalletConnect
+      // relay is a WebSocket, which `https:` does not admit: its origins are named.
+      `connect-src 'self' https: ${WC_RELAY_ORIGINS.join(' ')}`,
     ].join('; '),
   },
   // Firefox-only keys. On Chrome these trigger "unrecognised key" warnings and

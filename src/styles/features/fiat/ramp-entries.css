@@ -1,0 +1,4 @@
+/* src/features/fiat/RampEntries.tsx — the two ways into the P2P ramp on the fiat screens. */
+.ramp-entries {
+  margin-block: 4px 16px;
+}

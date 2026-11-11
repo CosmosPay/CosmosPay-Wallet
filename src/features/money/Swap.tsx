@@ -18,6 +18,7 @@ import { SwapTokenPicker, TokenMark } from '@/features/money/SwapTokenPicker';
 import { CHAIN_SWAP_SLIPPAGE_BPS, CHAIN_TOKENS_BY_NET, NATIVE_RESERVE, type ChainToken } from '@/constants/chains';
 import { CROSS_CHAIN_SLIPPAGE_BPS, QUOTE_DEBOUNCE_MS, QUOTE_REFRESH_MS } from '@/constants/swap';
 import { NETWORKS, SEND_FEE_RESERVE, type NetworkId, type NetworkToken } from '@/constants/networks';
+import '@/styles/ui/swap-widget.css';
 import '@/styles/features/money/swap.css';
 
 /** Slippage choices in basis points; '' is the route's own default (Auto). */

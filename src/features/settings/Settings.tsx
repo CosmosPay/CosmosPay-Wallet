@@ -6,6 +6,7 @@ import { GhostButton } from '@/ui/Buttons';
 import { CheckIcon, CopyIcon } from '@/ui/Icons';
 import { LangFlag } from '@/ui/LangFlag';
 import { SettingsSection } from '@/features/settings/SettingsSection';
+import { WcSessions } from '@/features/walletconnect/WcSessions';
 import { ThemeSelector } from '@/features/settings/ThemeSelector';
 import { SettingsRow } from '@/features/settings/SettingsRow';
 import { ToggleRow } from '@/features/settings/ToggleRow';
@@ -178,6 +179,7 @@ export function Settings({ store }: { store: WalletStore }) {
       </div>
 
       <ConnectedSites store={store} />
+      <WcSessions store={store} />
 
       <DevModeSection store={store} />
 

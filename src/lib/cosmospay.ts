@@ -138,6 +138,8 @@ import { parseShape, type Check } from '@/lib/apiShape';
 import { ApiRequestError, apiError } from '@/lib/apiError';
 import { PAGE_SIZE, RECORD_TOKEN_HEADER, RETRY_AFTER_CAP_S } from '@/constants/api';
 import type { Usdt0Route } from '@/lib/usdt0';
+import type { RampMarket, RampOrder, RampQuote, RampSession, RampTokenPage } from '@/lib/p2pRamp';
+import type { RampSide } from '@/constants/ramp';
 import {
   AuthorizePayoutShape,
   BankAccountListShape,
@@ -156,6 +158,11 @@ import {
   PayoutQuoteShape,
   PayoutShape,
   RailsShape,
+  RampMarketShape,
+  RampQuoteShape,
+  RampSessionListShape,
+  RampSessionShape,
+  RampTokenPageShape,
   ReceiverListShape,
   ReceiverShape,
   RegisteredWalletListShape,
@@ -1899,4 +1906,47 @@ export async function listRails(apiKey: string): Promise<unknown> {
 
 export async function railBankDetails(apiKey: string, rail: string): Promise<unknown> {
   return getJson<unknown>(withQuery(`${gatewayApi()}/v1/kyc/bank-details`, { rail }), apiKey, RailsShape);
+}
+
+/* ============== P2P: buying and selling with local money ============== */
+
+/**
+ * `/v1/onramp/p2p` buys a token with local money paid to P2P sellers; `/v1/offramp/p2p` sells
+ * one for local money paid by P2P buyers (the shapes and the checks are `lib/p2pRamp.ts`). The
+ * market and the token lists are the same for every caller, so the API admits the shared
+ * public key there; a quote and a session belong to an account and need its key. The key's
+ * environment picks the market: a `dev` key reads the sandbox, a `prod` key the real one.
+ */
+const rampBase = (side: RampSide): string => `${gatewayApi()}/v1/${side === 'buy' ? 'onramp' : 'offramp'}/p2p`;
+
+/** What can be bought or sold right now: currencies with their methods, the networks, a token to start from. */
+export async function rampMarket(apiKey: string, side: RampSide): Promise<RampMarket> {
+  return getJson<RampMarket>(`${rampBase(side)}/market`, apiKey, RampMarketShape);
+}
+
+/** One network's tokens, main assets first; `q` searches a symbol fragment or an exact address. */
+export async function rampTokens(
+  apiKey: string,
+  side: RampSide,
+  input: { chainId: number; q?: string; take?: number; skip?: number },
+): Promise<RampTokenPage> {
+  return getJson<RampTokenPage>(withQuery(`${rampBase(side)}/tokens`, { ...input }), apiKey, RampTokenPageShape);
+}
+
+/**
+ * The firm price of an order. A deployment the marketplace has not issued integrator ids to
+ * answers 503: the form then keeps the market estimate and stops asking.
+ */
+export async function rampQuote(apiKey: string, side: RampSide, order: RampOrder): Promise<RampQuote> {
+  return postJson<RampQuote>(`${rampBase(side)}/quotes`, order, authHeaders(apiKey), false, RampQuoteShape);
+}
+
+/** Record the order and get the hosted window that takes it. */
+export async function createRampSession(apiKey: string, side: RampSide, order: RampOrder): Promise<RampSession> {
+  return postJson<RampSession>(`${rampBase(side)}/sessions`, order, authHeaders(apiKey), false, RampSessionShape);
+}
+
+/** The orders this account opened on this side, newest first. */
+export async function listRampSessions(apiKey: string, side: RampSide, take: number): Promise<{ items: RampSession[]; total: number }> {
+  return getPage<RampSession>(`${rampBase(side)}/sessions`, apiKey, RampSessionListShape, take);
 }

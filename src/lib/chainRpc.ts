@@ -215,6 +215,12 @@ export async function evmEstimateGasAt(url: string, call: { from: string; to: st
   return BigInt(await rpc<string>(url, 'eth_estimateGas', [{ ...call, value: hexQty(call.value) }]));
 }
 
+/** An ERC-20 balance (`balanceOf`) read from the node at `url`. */
+export async function evmTokenBalanceAt(url: string, token: string, owner: string): Promise<bigint> {
+  const out = await rpc<string>(url, 'eth_call', [{ to: token, data: balanceOfCalldata(owner) }, 'latest']);
+  return out && out !== '0x' ? BigInt(out) : 0n;
+}
+
 export async function evmSendAt(url: string, raw: string): Promise<string> {
   return rpc<string>(url, 'eth_sendRawTransaction', [raw]);
 }

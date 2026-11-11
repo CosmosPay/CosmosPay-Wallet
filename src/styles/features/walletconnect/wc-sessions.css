@@ -1,0 +1,61 @@
+/* src/features/walletconnect/WcSessions.tsx — the sites connected with WalletConnect, in
+   Settings: the same tile metrics as the connected-sites list beside it. */
+.wc-sessions-desc {
+  margin: 0 0 10px;
+}
+.wc-sessions-empty {
+  padding: 14px 0;
+  color: var(--text-soft);
+  font-size: 13.5px;
+}
+.wc-sessions-row {
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 6px !important;
+}
+.wc-sessions-text {
+  gap: 2px;
+}
+.wc-sessions-name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wc-sessions-sub {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wc-sessions-revoke {
+  flex: none;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: none;
+  border-radius: 6px !important;
+  background: transparent;
+  color: var(--danger);
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
+}
+.wc-sessions-revoke:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .wc-sessions-revoke:hover:not(:disabled) {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+}
+.wc-sessions-add {
+  width: 100%;
+  margin-top: 12px;
+}
