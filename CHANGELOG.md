@@ -2,6 +2,48 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.20.0] - 2026-11-11
+
+### Features
+- Buy and sell with local money through the Cosmos Pay API (577ba53)
+- Read and check what a site asks of the 0x account (a0f6218)
+- An EIP-1193 provider for the EVM account (0a23e58)
+- Approve EVM connects, transactions and signatures (822eb78)
+- Pairing URIs, session namespaces, Verify and request routing (5ded6e3)
+- Sessions and requests as a store slice, signed behind the gate (5463333)
+- Pair by QR or link, approve sessions and requests in the app (d04376d)
+- Compile Cosmos's project id in as the default (21cda9e)
+
+### Bug Fixes
+- Write the extension's mirror under one lock, from a fresh read (3d093bc)
+- Acknowledge every allowance, unknown token and typed signature (7c07d8c)
+- Walk a typed-data type graph once per type (a495240)
+- Open a ramp window only on the marketplace origin, for us (ba17ccf)
+- Separate grants, typed data shown as signed, no hidden text (4f2a6c3)
+- Keep the warnings and the answer in view on the request sheet (2566b6d)
+
+### Miscellaneous
+- Keep sw.js a text file (0093400)
+- Sync the community server contract (ac9371f)
+
+### Performance
+- Keep the secp256k1 curve out of the boot chunk (7462d5e)
+
+### Refactor
+- Move the swap widget's look into styles/ui (f0cbcdb)
+- Read a site's EVM request in one shared module (8c4d88e)
+
+### Documentation
+- The fiat ramp goes through the Cosmos Pay API (7203e7a)
+- Every build reaches the EVM account by WalletConnect too (8e5a530)
+
+### Testing
+- Drive the EVM provider end to end; document its rules (935a121)
+- A real round trip over the public relay (0a48652)
+
+### Build System
+- Admit the relay in the extension and Tauri CSPs (cfd3579)
+
 ## [1.19.1] - 2026-11-09
 
 ### Bug Fixes
