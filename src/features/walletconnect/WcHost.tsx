@@ -146,8 +146,14 @@ function RequestBody({ store, pending, titleId, onReject }: { store: WalletStore
       <Head store={store} titleId={titleId} title={t(EVM_APPROVE_TITLE_KEYS[review.method] ?? 'approve.evm.title.unknown')} peer={pending.peer} onReject={onReject} />
       <VerifyNotice verify={pending.verify} t={t} />
       <div className="wc-scroll">
-        <WcReview review={review} notes={notes} t={t} />
+        <WcReview review={review} t={t} />
       </div>
+      {review.refusal && <Notice tone="danger">{t(review.refusal)}</Notice>}
+      {notes.warnings.map((w) => (
+        <Notice key={w.key} tone="danger">
+          {t(w.key, w.params)}
+        </Notice>
+      ))}
       {notes.needsAck && !blocked && (
         <CheckRow on={ack} onToggle={() => setAck((a) => !a)} className="wc-ack">
           {t('approve.evm.ack')}

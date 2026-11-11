@@ -1,11 +1,10 @@
 import { ERC20_FN_KEYS, type Erc20Function } from '@/constants/evmDapp';
 import { formatUnits, messagePreview, typedDataChainId, type CallReview } from '@/lib/evmDapp';
-import type { EvmReview, EvmReviewNotes } from '@/lib/evmReview';
+import type { EvmReview } from '@/lib/evmReview';
 import { networkDefOn, networkNameOn, sendFeeReserveOn } from '@/lib/testnets';
 import { shortAddr } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import { KVRow } from '@/ui/KVRow';
-import { Notice } from '@/ui/Notice';
 import '@/styles/features/walletconnect/wc-review.css';
 
 type TFn = (key: string, params?: Record<string, string | number>) => string;
@@ -15,9 +14,10 @@ type TFn = (key: string, params?: Record<string, string | number>) => string;
  * transaction (recipient, value, the fee cap, the call decoded into words where it is a registry
  * token's ERC-20 call, otherwise the raw selector and data), the message, or the typed data as it
  * will be signed (domain, primary type, the parsed message — never the raw params). The reading
- * and the warnings are `lib/evmReview.ts`, the same as the extension's approval window.
+ * is `lib/evmReview.ts`, the same as the extension's approval window; its warnings are shown by
+ * the sheet, outside the scrolling rows, where they cannot be missed.
  */
-export function WcReview({ review, notes, t }: { review: EvmReview; notes: EvmReviewNotes; t: TFn }) {
+export function WcReview({ review, t }: { review: EvmReview; t: TFn }) {
   const { request, chain, env, call } = review;
   const def = chain ? networkDefOn(chain.network, env) : null;
   const coin = def?.coin ?? '';
@@ -98,12 +98,6 @@ export function WcReview({ review, notes, t }: { review: EvmReview; notes: EvmRe
         </div>
       )}
 
-      {review.refusal && <Notice tone="danger">{t(review.refusal)}</Notice>}
-      {notes.warnings.map((w) => (
-        <Notice key={w.key} tone="danger">
-          {t(w.key, w.params)}
-        </Notice>
-      ))}
     </div>
   );
 }

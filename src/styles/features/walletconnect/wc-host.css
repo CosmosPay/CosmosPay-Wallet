@@ -68,9 +68,10 @@
   border-radius: 14px;
 }
 
-/* A long request scrolls inside the sheet; the answer stays under it. */
+/* A long request scrolls inside the sheet, short enough that the acknowledgement and the answer
+   stay in view under it on a phone and in the PC window's dialog alike. */
 .wc-scroll {
-  max-height: min(48vh, 460px);
+  max-height: min(28vh, 320px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
