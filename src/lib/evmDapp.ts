@@ -11,8 +11,7 @@
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { concatBytes, utf8ToBytes } from '@noble/hashes/utils.js';
-import type { ChainNet } from '@/constants/chains';
-import { NETWORKS, type NetworkId, type NetworkToken } from '@/constants/networks';
+import type { NetworkToken } from '@/constants/networks';
 import {
   ERC20_SELECTORS,
   EVM_ERR,
@@ -30,37 +29,13 @@ import {
 } from '@/constants/evmDapp';
 import { fromMinorUnits } from '@/lib/amount';
 import { bytesToHex, hexToBytes, isEvmAddress } from '@/lib/evmTx';
-import { networkDefOn, sendFeeReserveOn } from '@/lib/testnets';
+import { parseChainId, parseQuantity } from '@/lib/evmDappChains';
 
 /* ------------------------------------------------------------------ chains */
 
-/** A chain a site may use: the wallet network behind it and the public node the worker asks. */
-export interface EvmDappChain {
-  chainId: number;
-  network: NetworkId;
-  rpc: string;
-}
-
-/**
- * Every EVM network the wallet signs on in `env`, as a site sees it. A network the wallet only
- * reads, one without a test network here, or one without a fee cap (Monad keeps its own path,
- * `lib/chainSwap.ts`) is absent: a site cannot pick a chain the wallet would then refuse to sign
- * for. `extension-src/sw.js` keeps a copy (EVM_CHAINS).
- */
-export function evmDappChains(env: ChainNet): EvmDappChain[] {
-  const out: EvmDappChain[] = [];
-  for (const id of Object.keys(NETWORKS) as NetworkId[]) {
-    if (NETWORKS[id].address !== 'evm' || sendFeeReserveOn(id, env) <= 0n) continue;
-    const def = networkDefOn(id, env);
-    if (!def || !def.send || def.evmChainId === undefined || def.balance?.kind !== 'evm') continue;
-    out.push({ chainId: def.evmChainId, network: id, rpc: def.balance.rpc });
-  }
-  return out;
-}
-
-export function evmDappChain(env: ChainNet, chainId: number): EvmDappChain | null {
-  return evmDappChains(env).find((c) => c.chainId === chainId) ?? null;
-}
+// The chains and the chain-id and quantity readers live in a module with no cryptography in it,
+// so boot-time code can use them without the curve (`src/lib/evmDappChains.ts`).
+export { evmDappChains, evmDappChain, parseChainId, parseQuantity, type EvmDappChain } from '@/lib/evmDappChains';
 
 /* ---------------------------------------------------------------- refusals */
 
@@ -86,22 +61,6 @@ const refuse = (key: string, message: string, code?: number): never => {
 /* ------------------------------------------------------------------ values */
 
 const HEX_DATA = /^0x([0-9a-fA-F]{2})*$/;
-const HEX_QUANTITY = /^0x[0-9a-fA-F]{1,64}$/;
-
-/** A JSON-RPC quantity (hex) as a bigint, or null when it is not one. */
-export function parseQuantity(raw: unknown): bigint | null {
-  if (typeof raw !== 'string' || !HEX_QUANTITY.test(raw)) return null;
-  return BigInt(raw);
-}
-
-/** A chain id as a site may spell it: a number, a hex quantity or a decimal string. */
-export function parseChainId(raw: unknown): number | null {
-  if (typeof raw === 'number') return Number.isSafeInteger(raw) && raw > 0 ? raw : null;
-  if (typeof raw !== 'string') return null;
-  const n = HEX_QUANTITY.test(raw) ? BigInt(raw) : /^[1-9]\d{0,15}$/.test(raw) ? BigInt(raw) : null;
-  return n !== null && n > 0n && n <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(n) : null;
-}
-
 /** `value` base units as a decimal string without trailing zeros (1.5, not 1.500000000000000000). */
 export function formatUnits(value: bigint, decimals: number): string {
   const s = fromMinorUnits(value, decimals) ?? value.toString();

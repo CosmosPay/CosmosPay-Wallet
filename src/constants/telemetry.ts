@@ -161,6 +161,8 @@ export const EVENT = {
   liquidityFailed: 'liquidity.failed',
   payLinkCreated: 'paylink.created',
   payLinkFailed: 'paylink.failed',
+  // WalletConnect: a session or a request a site sent that the wallet could not handle.
+  walletConnectError: 'walletconnect.error',
   // gateway
   apiError: 'api.error',
   apiSlow: 'api.slow',

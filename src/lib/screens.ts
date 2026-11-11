@@ -68,6 +68,7 @@ export const SCREEN_IDS = [
   'deposit',
   'withdraw',
   'ramp',
+  'wc-pair',
   'sign-tx',
   'add-network',
   'add-asset',
@@ -204,6 +205,8 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   deposit: { back: 'fiat' },
   withdraw: { back: 'fiat' },
   ramp: { back: 'fiat' },
+  // WalletConnect: pair with a site by its `wc:` link (features/walletconnect).
+  'wc-pair': { back: 'settings' },
 
   // settings
   settings: { back: profileOrHome },

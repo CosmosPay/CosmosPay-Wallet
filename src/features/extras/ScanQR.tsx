@@ -9,6 +9,7 @@ import { canReadClipboardImage } from '@/lib/clipboard';
 import { SCAN_DECODE_MAX_PX } from '@/constants/extras';
 import '@/styles/features/extras/scan-qr.css';
 import { cx } from '@/lib/cx';
+import { parseWcUri } from '@/lib/walletConnect';
 
 /* ----------------------------- SCAN QR ------------------------------ */
 export function ScanQR({ store }: { store: WalletStore }) {
@@ -33,6 +34,12 @@ export function ScanQR({ store }: { store: WalletStore }) {
    * scanned "10 USDC / MEMO_ID" request prefilled 10 XLM with a text memo.
    */
   const applyScan = (text: string): boolean => {
+    // A site's WalletConnect QR: pair with it, and its proposal opens over the pairing screen.
+    if (store.wcEnabled && parseWcUri(text)) {
+      void store.wcPair(text);
+      store.setScreen('wc-pair');
+      return true;
+    }
     if (!store.applySep7(text)) return false;
     store.setScreen('send');
     return true;

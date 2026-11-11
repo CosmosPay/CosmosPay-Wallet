@@ -1,0 +1,43 @@
+/* src/features/walletconnect/WcReview.tsx — what a site asked, in rows between lines: the
+   transaction, the decoded call, the message or the typed data as it will be signed. */
+.wc-review {
+  gap: 12px;
+}
+.wc-review-card,
+.wc-review-op {
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.wc-review-op.is-critical {
+  border-color: var(--danger);
+}
+.wc-review-op-type {
+  padding: 12px 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.wc-review-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.wc-review-label {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+/* Raw data and text, whole: what is signed is never cut. */
+.wc-review-raw {
+  max-height: 220px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

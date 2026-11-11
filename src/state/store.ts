@@ -296,6 +296,10 @@ import { useSigningGate } from '@/state/useSigningGate';
 import { parseStellarQr } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
 import { cachedPublicKey, warmPublicKey } from '@/lib/publicKey';
+import { useWalletConnect, type WcPeer } from '@/state/useWalletConnect';
+import { wcEnabled } from '@/lib/walletConnectClient';
+import type { EvmReview } from '@/lib/evmReview';
+import { EVM_ERR } from '@/constants/evmDapp';
 import { rampSessionProblem, rampWalletNetwork, type RampMarket, type RampOrder, type RampQuote, type RampSession, type RampTokenPage } from '@/lib/p2pRamp';
 import { RAMP_SESSIONS_PAGE, RAMP_TOKENS_PAGE, type RampSide } from '@/constants/ramp';
 import {
@@ -3557,6 +3561,64 @@ export function useWalletStore() {
     },
     [refreshAfterOperation, session, chainNet, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, submitChainSend, loadNetworkHoldings, t],
   );
+
+  /* ------------------------------ WalletConnect ------------------------------ */
+
+  /**
+   * Sign or send what a site asked through WalletConnect (`state/useWalletConnect.ts`), once the
+   * person approved it on its sheet and the request was read again against the wallet as it is
+   * now (`lib/evmReview.ts`). Behind the signing gate ALWAYS — a site, not the person, started it
+   * — with the key of the account the request was checked for, wiped after. Null when the gate
+   * was not passed: the request keeps waiting.
+   */
+  const signForSite = useCallback(
+    async (review: EvmReview, peer: WcPeer): Promise<string | null> => {
+      const { request, chain, account } = review;
+      const [evm, { sendDappTransaction }] = await Promise.all([import('@/lib/evmDapp'), import('@/lib/evmDappSend')]);
+      if (review.refusal || !request || !chain || !account || request.kind === 'connect') {
+        throw new evm.EvmDappRefused(review.refusal ?? 'approve.evm.err.params', review.refusalMessage || 'Refused.', review.refusalCode);
+      }
+      const res = await exclusive.run('send', async () => {
+        const epoch = sessionEpochRef.current;
+        const ok = await requestSignature(
+          { title: t(request.kind === 'sendTransaction' ? 'wc.confirmSendTitle' : 'wc.confirmSignTitle'), message: t('wc.confirmMsg', { site: peer.host || peer.name }) },
+          true,
+        );
+        if (!ok) return null;
+        const { owner, secret } = await networkSigner(chain.network);
+        try {
+          if (owner.toLowerCase() !== account.toLowerCase()) {
+            throw new evm.EvmDappRefused('approve.evm.err.key', 'The key does not match the account.', EVM_ERR.unauthorized);
+          }
+          guardSession(epoch);
+          if (request.kind === 'personalSign') return evm.signEvmDigest(evm.personalSignDigest(request.message), secret);
+          if (request.kind === 'signTypedData') return evm.signEvmDigest(evm.typedDataDigest(request.typed), secret);
+          const hash = await sendDappTransaction({ chain, env: review.env, secret, tx: request.tx });
+          refreshAfterOperation();
+          return hash;
+        } finally {
+          secret.fill(0);
+        }
+      });
+      if (!res.ran) {
+        flash(t('wc.err.busySigning'), 'info');
+        return null;
+      }
+      return res.value;
+    },
+    [exclusive, requestSignature, networkSigner, guardSession, refreshAfterOperation, flash, t],
+  );
+
+  const walletConnect = useWalletConnect({
+    enabled: wcEnabled(),
+    active: !!session,
+    walletId: meta?.id ?? null,
+    env: chainNet,
+    account: addressOnNetwork('eth'),
+    t,
+    flash,
+    sign: signForSite,
+  });
   const quoteChainSwap = useCallback(
     async (chain: OtherChain, amount: string, from: ChainToken, to: ChainToken, slippageBps: number = CHAIN_SWAP_SLIPPAGE_BPS): Promise<SwapQuote | null> => {
       const apiKey = openAccessKey();
@@ -7316,6 +7378,7 @@ export function useWalletStore() {
     diagnostics,
     setDiagnostics,
     confirmReq,
+    ...walletConnect,
     requestSignature,
     resolveConfirm,
     setWalletAvatar,

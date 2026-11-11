@@ -5,34 +5,18 @@ import { useEffect, useMemo, useState } from 'react';
 import { Keypair } from '@stellar/stellar-sdk';
 import { APPROVE_TITLE_KEYS, OP_LABEL_KEYS, type DappMethod } from '@/constants/dapp';
 import type { ChainNet } from '@/constants/chains';
-import {
-  ERC20_FN_KEYS,
-  EVM_APPROVE_TITLE_KEYS,
-  EVM_DAPP_METHOD,
-  EVM_ERR,
-  type Erc20Function,
-  type EvmApproveMethod,
-} from '@/constants/evmDapp';
+import { ERC20_FN_KEYS, EVM_APPROVE_TITLE_KEYS, EVM_DAPP_METHOD, EVM_ERR, type Erc20Function } from '@/constants/evmDapp';
 import {
   EvmDappRefused,
-  allowanceCoversAll,
-  callNeedsAck,
-  evmDappChain,
   formatUnits,
   messagePreview,
-  parseEvmDappRequest,
   personalSignDigest,
-  reviewCall,
   signEvmDigest,
   typedDataChainId,
   typedDataDigest,
-  typedDataGrantFields,
-  typedDataGrants,
-  typedDataNeedsAck,
   type CallReview,
-  type EvmDappChain,
-  type EvmDappRequest,
 } from '@/lib/evmDapp';
+import { evmFailure, evmReviewNotes, reviewEvmRequest, type EvmReview } from '@/lib/evmReview';
 import { sendDappTransaction } from '@/lib/evmDappSend';
 import { evmTokenBalanceAt } from '@/lib/chainRpc';
 import { networkDefOn, networkNameOn, sendFeeReserveOn } from '@/lib/testnets';
@@ -111,22 +95,8 @@ interface RpcError {
   message: string;
 }
 
-/**
- * An EVM request as the window read it: the request itself, the chain it is for, the account it
- * must be signed by, and — when it cannot be approved — why (`refusal`, an i18n key, and the
- * English `refusalMessage` the site gets).
- */
-interface EvmView {
-  method: EvmApproveMethod;
-  env: ChainNet;
-  account: string | null;
-  chain: EvmDappChain | null;
-  request: EvmDappRequest | null;
-  call: CallReview | null;
-  refusal: string | null;
-  refusalMessage: string;
-  refusalCode: number;
-}
+/** An EVM request as the window read it (`src/lib/evmReview.ts`, shared with WalletConnect). */
+type EvmView = EvmReview;
 
 /** The wallet's 0x address, kept on the entry since the multi-network release (lib/vault.ts). */
 const evmAccountOf = (e: WalletEntry | null): string | null => e?.networkAddresses?.byKind.evm ?? null;
@@ -135,41 +105,13 @@ const chainNetOf = (cfg: NetConfig): ChainNet => (networkEnv(cfg) === 'prod' ? '
 
 /** Read an EVM request against the wallet as it is now: its mode, its account, its chains. */
 function readEvmRequest(req: DappReq, entry: WalletEntry | null, cfg: NetConfig): EvmView {
-  const method = String(req.params.method || '') as EvmApproveMethod;
-  const env = chainNetOf(cfg);
-  const account = evmAccountOf(entry);
-  const chain = evmDappChain(env, Number(req.params.chainId));
-  const view: EvmView = { method, env, account, chain, request: null, call: null, refusal: null, refusalMessage: '', refusalCode: EVM_ERR.invalidParams };
-  const refused = (key: string, message: string, code: number = EVM_ERR.invalidParams): EvmView => ({
-    ...view,
-    refusal: key,
-    refusalMessage: message,
-    refusalCode: code,
+  return reviewEvmRequest({
+    method: String(req.params.method || ''),
+    params: req.params.params,
+    chainId: Number(req.params.chainId),
+    account: evmAccountOf(entry),
+    env: chainNetOf(cfg),
   });
-  if (!Object.hasOwn(EVM_APPROVE_TITLE_KEYS, method)) return refused('approve.evm.err.method', `Unsupported method: ${method}`, EVM_ERR.unsupported);
-  if (!account) return refused('approve.evm.err.noAccount', 'This wallet has no EVM account yet.', EVM_ERR.unauthorized);
-  // The site's chain must be one the wallet signs on in the mode it is in NOW; the worker's view
-  // of the mode can be older than the person's last switch.
-  if (!chain) return refused('approve.evm.err.chain', 'The selected chain is not available in the wallet mode.', EVM_ERR.unknownChain);
-  try {
-    const request = parseEvmDappRequest(method, req.params.params, chain.chainId);
-    const signer = request.kind === 'connect' ? account : request.kind === 'sendTransaction' ? request.tx.from : request.address;
-    if (signer.toLowerCase() !== account.toLowerCase()) {
-      return refused('approve.evm.err.from', 'The request names another account than the connected one.', EVM_ERR.unauthorized);
-    }
-    const tokens = networkDefOn(chain.network, env)?.tokens ?? [];
-    const call = request.kind === 'sendTransaction' ? reviewCall(request.tx.to, request.tx.data, tokens) : null;
-    return { ...view, request, call };
-  } catch (e) {
-    if (e instanceof EvmDappRefused) return refused(e.key, e.message, e.code);
-    return refused('approve.evm.err.params', e instanceof Error ? e.message : String(e));
-  }
-}
-
-/** What a failed EVM approval tells the site. */
-function evmFailure(e: unknown): RpcError {
-  if (e instanceof EvmDappRefused) return { code: e.code, message: e.message };
-  return { code: EVM_ERR.internal, message: e instanceof Error ? e.message : String(e) };
 }
 
 /**
@@ -622,13 +564,10 @@ export default function ApprovePopup() {
     const typed = v.request?.kind === 'signTypedData' ? v.request.typed : null;
     const message = v.request?.kind === 'personalSign' ? messagePreview(v.request.message) : null;
     const call = v.call;
-    const grant = call?.kind === 'erc20' && call.grant;
-    // An allowance that is unlimited, or at least the balance read for it: everything the
-    // account holds of that token. A contract's would-be allowance is red as a contract already.
-    const coversAll = call?.kind === 'erc20' && call.grant && allowanceCoversAll(call.amount, allowanceBalance);
-    const typedGrantFields = typed ? typedDataGrantFields(typed) : [];
-    const typedGrants = !!typed && typedDataGrants(typed);
-    const evmNeedsAck = (!!call && callNeedsAck(call)) || (!!typed && typedDataNeedsAck(typed));
+    // The warnings and whether the acknowledgement is needed: the same reading WalletConnect's
+    // approval makes (`evmReviewNotes`).
+    const notes = evmReviewNotes(v, allowanceBalance);
+    const evmNeedsAck = notes.needsAck;
     const evmConnect = kind === 'connect';
     const evmSend = kind === 'sendTransaction';
     const canApproveEvm = !v.refusal && !!v.request && (!evmNeedsAck || ack) && (evmConnect || hasProof);
@@ -719,16 +658,11 @@ export default function ApprovePopup() {
         </div>
 
         {v.refusal && <div className="approve-danger">⛔ {t(v.refusal)}</div>}
-        {call?.kind === 'contract' && (
-          <div className="approve-danger">⚠️ {t(call.erc20 ? 'approve.evm.warnUnknownToken' : 'approve.evm.warnContract')}</div>
-        )}
-        {grant && <div className="approve-danger">⚠️ {t(coversAll ? 'approve.evm.warnUnlimited' : 'approve.evm.warnAllowance')}</div>}
-        {call?.kind === 'erc20' && call.fn === 'transferFrom' && <div className="approve-danger">⚠️ {t('approve.evm.warnTransferFrom')}</div>}
-        {typed && (
-          <div className="approve-danger">
-            ⚠️ {typedGrants ? t('approve.evm.warnTypedGrant', { fields: typedGrantFields.join(', ') || typed.primaryType }) : t('approve.evm.warnTyped')}
+        {notes.warnings.map((w) => (
+          <div key={w.key} className="approve-danger">
+            ⚠️ {t(w.key, w.params)}
           </div>
-        )}
+        ))}
 
         {evmNeedsAck && !v.refusal && (
           <label className="approve-ack">

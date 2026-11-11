@@ -33,6 +33,7 @@ import { CARDANO_ENDPOINTS } from '../src/constants/cardanoSend.ts';
 import { HYPERCORE_API } from '../src/constants/hypercoreSend.ts';
 import { ZCASH_INSIGHT_API, ZCASH_NODE_RPC } from '../src/constants/zcashSend.ts';
 import { LANG_CODES } from '../src/constants/i18n.ts';
+import { WC_RELAY_ORIGINS } from '../src/constants/walletConnect.ts';
 import { cosmosHostPermissions, hostPattern } from './hostPermissions.ts';
 
 const DIST = 'dist/web';
@@ -389,8 +390,9 @@ const manifest = {
       // developer-mode endpoint overrides, so the set of hosts is not knowable at
       // build time. The named hosts that used to follow it were decorative — the
       // wildcard already admits them — and reading them as an allowlist is exactly
-      // the false guarantee worth removing. Scripts stay locked to 'self'.
-      "connect-src 'self' https:",
+      // the false guarantee worth removing. Scripts stay locked to 'self'. The WalletConnect
+      // relay is a WebSocket, which `https:` does not admit: its origins are named.
+      `connect-src 'self' https: ${WC_RELAY_ORIGINS.join(' ')}`,
     ].join('; '),
   },
   // Firefox-only keys. On Chrome these trigger "unrecognised key" warnings and
