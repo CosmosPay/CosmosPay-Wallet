@@ -151,9 +151,17 @@ if (await exists(approvePath)) {
 
 // Provider plumbing: page-injected provider (window.cosmosWallet) + content-script
 // bridge + background service worker. Copied verbatim from extension-src/.
-for (const f of ['inpage.js', 'content.js', 'sw.js']) {
+for (const f of ['content.js', 'sw.js']) {
   await cp(join('extension-src', f), join(OUT, f));
 }
+// The EVM provider announces itself with the Cosmos mark (EIP-6963 wants a data: URI); it is
+// written in here from the favicon rather than kept as a second copy in the source.
+const ICON_PLACEHOLDER = '__COSMOS_WALLET_ICON__';
+const inpage = await readFile(join('extension-src', 'inpage.js'), 'utf8');
+if (!inpage.includes(ICON_PLACEHOLDER)) throw new Error(`extension-src/inpage.js: ${ICON_PLACEHOLDER} not found`);
+const favicon = (await readFile(join('public', 'favicon.svg'), 'utf8')).replace(/\s+/g, ' ').trim();
+const iconUri = `data:image/svg+xml;base64,${Buffer.from(favicon, 'utf8').toString('base64')}`;
+await writeFile(join(OUT, 'inpage.js'), inpage.replace(ICON_PLACEHOLDER, iconUri), 'utf8');
 
 // Camera-permission helper page. Extension POPUPS often can't display the camera
 // prompt (the popup closes on focus loss), so the scanner offers a button that opens
