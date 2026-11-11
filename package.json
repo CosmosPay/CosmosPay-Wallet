@@ -39,6 +39,7 @@
     "test:e2e:passkey": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/passkey.e2e.ts",
     "test:e2e:easy-recovery": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/easyRecovery.e2e.ts",
     "test:e2e:signin-binding": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/signInBinding.e2e.ts",
+    "test:e2e:extension-evm": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/extensionEvm.e2e.ts",
     "test:responsive": "node --disable-warning=ExperimentalWarning --experimental-strip-types tests/responsive.e2e.ts"
   },
   "dependencies": {

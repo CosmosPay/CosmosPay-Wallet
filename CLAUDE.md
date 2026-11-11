@@ -582,6 +582,48 @@ so every external contract rendered as the literal text `[object Object]`. Read 
 contract id through `Address`, and assert the row's VALUE when you test it: a test that
 counted rows passed throughout.
 
+## A dapp can also ask for the EVM account
+
+The extension also injects an EIP-1193 provider for the wallet's 0x account
+(`extension-src/inpage.js`), announced with EIP-6963 (rdns `lat.cosmospay.wallet`, the Cosmos
+mark written in by `scripts/build-extension.ts`) and set as `window.ethereum` only when no other
+wallet already is. It exists so a hosted widget that connects a wallet (the P2P sale) can be
+signed by this one. Extension only: the web transport carries Stellar requests alone. Its calls
+reach the worker as method `evm` (`src/constants/evmDapp.ts`); the window is the same
+`ApprovePopup`, and the pure logic is `src/lib/evmDapp.ts`. Seven rules:
+
+- **A site sees only the EVM networks the wallet signs on in its mode** (`evmDappChains`: a fee
+  cap, a public node, a test network in test mode; Monad keeps its own path). The worker keeps a
+  copy of that table, of the method lists and of the error codes; `tests/unit/evmDapp.test.ts`
+  fails when they drift and prints the line to paste. A chain switch inside that list needs no
+  window; anything else is 4902. The approval window re-checks the chain against the mode as it
+  is NOW — the worker's view of the mode is only as fresh as the last window.
+- **The connect is the Stellar connect.** One grant list, one Settings screen; `eth_accounts`
+  answers `[]` to anyone not on it, and the three signing calls are 4100 until then. One window
+  per site at a time (-32002).
+- **Reads go to the chain's public node from the worker**, never to a node the page names.
+- **Decode before signing, and the acknowledgement for anything that outlives the click.** Only
+  a plain coin payment, a registry token's `transfer` and a `personal_sign` text go without it
+  (`callNeedsAck`, `typedDataNeedsAck`). An ERC-20 selector on a contract the registry does not
+  list is a CONTRACT call — the decoded arguments are a hint, the contract decides what it does.
+  Every allowance is acknowledged; one of 2^128 or more, or covering the balance the window reads,
+  is "everything". Every typed signature is acknowledged (`KNOWN_SAFE_TYPED_DATA` is empty), and
+  is red when a field anywhere in its types names a spender, operator, offerer, recipient or an
+  amount (Seaport nests them), or its type is a permit.
+- **The site proposes, the wallet bounds.** `to`, `value`, `data` and a gas floor come from the
+  site; nonce and fees from the node; the node's chain id is checked before signing; the key must
+  spell the granted account; the worst case must fit `SEND_FEE_RESERVE`. Contract creation is
+  refused. A transaction or typed data naming another chain than the site's is refused.
+- **Errors are EIP-1193 `{ code, message }`** (4001 rejected or window closed, 4100, 4200, 4902,
+  -32602, -32603), with English messages; the window shows the i18n key of an `EvmDappRefused`.
+- **The mirror has one lock.** The worker (`wallet_revokePermissions`), the approval window and
+  Settings write `chrome.storage.local`'s mirror under the Web Lock `DAPP_MIRROR_LOCK`, re-reading
+  it inside (`updateMirror`), so no writer puts back an older copy.
+
+`npm run build:ext && npm run test:e2e:extension-evm` drives it in a real Chromium: EIP-6963
+discovery, chains, the connect, signatures recovered to the account, the acknowledgements, and a
+zero-value transaction to itself on Arbitrum Sepolia.
+
 ## Unlocking with the phone, and answering the gate
 
 `src/lib/deviceAuth.ts` seals the session's **vault key** under a random 32-byte key and
