@@ -11,13 +11,26 @@ name: Release (extension + apps)
 #   2. Bumps the version accordingly (package.json is the single source of truth;
 #      build-extension.ts copies it into the manifest).
 #        - main: stable version X.Y.Z, committed back to the repo + tagged.
-#        - dev:  prerelease X.Y.Z-dev.<run_number> (NOT committed — ephemeral).
+#        - dev:  X.Y.Z-dev.<run_number>, stamped into the build only (never committed,
+#                never tagged, never published).
 #   3. Builds both the Chrome and Firefox MV3 extensions.
-#   4. Zips each one (manifest at the zip root, ready to load/upload).
-#   5. Publishes a GitHub Release with the .zip files attached, so testers just
+#   4. Zips each one (manifest at the zip root, ready to load/upload) and keeps them as
+#      this run's `extensions` artifact.
+#   5. main only: publishes a GitHub Release with the .zip files attached, so testers just
 #      download the package and load it — no build step on their side.
-#   6. Runs .github/workflows/native.yml against the tag it just pushed and appends the
-#      Android and iOS binaries to that same release.
+#   6. main only: runs .github/workflows/native.yml against the tag it just pushed and
+#      appends the desktop, Android and iOS binaries to that same release.
+#   7. main only: writes SHA256SUMS for every file on the release, attests their build
+#      provenance (Sigstore, keyless) and attaches SHA256SUMS, so anyone can check a
+#      download came from this workflow: `gh attestation verify <file> -R <this repo>`.
+#
+# WHY DEV PUBLISHES NOTHING. Every dev push used to tag `vX.Y.Z-dev.N` and publish a GitHub
+# prerelease of unsigned, unreviewed integration builds beside the stable ones (83 of them
+# against 32 releases by v1.20.0). Nothing reads them: the web wallet deploys stable
+# `vX.Y.Z` tags only (deploy/update-wallet-web.sh), the developer platform links a stable
+# release's files, and there is no in-app updater. ci.yml already builds every dev push's
+# binaries as workflow artifacts, and this run keeps the dev extension zips as one too, so
+# a tester still has them without a public download that looks like a release.
 #
 # Step 6 runs AFTER the release is published rather than gating it, so the release exists
 # with its extensions for the few minutes the native builds take. That order is deliberate:
@@ -256,8 +269,12 @@ jobs:
           - **macOS:** `cosmos-pay-v${{ steps.ver.outputs.version }}-macos-arm64.dmg`. Gatekeeper blocks it on first open → right-click the app → *Open*.
 
           **Phone apps** (same schedule as the desktop builds above):
-          - **Android:** `cosmos-pay-v${{ steps.ver.outputs.version }}-debug.apk` installs on any device with *Install unknown apps* enabled. `cosmos-pay-v${{ steps.ver.outputs.version }}.apk` (release-signed) and the matching `.aab` for Play Console appear only when the repository has the release keystore configured.
+          - **Android:** `cosmos-pay-${{ steps.ver.outputs.version }}.apk` (release-signed) installs on any device with *Install unknown apps* enabled, and the matching `.aab` is for Play Console. A debug-signed build is never attached: anyone can sign a debug build, so it proves nothing about who made it.
           - **iOS:** no download yet. A Tauri iOS app can only be built through `tauri ios build`, whose export step needs an Apple signing identity this repository has no secrets for, so CI compiles both halves of the app to catch breakage but cannot package one. Build it yourself from the tag with `npm run ios:build` on a Mac with an Apple ID configured in Xcode.
+
+          **Verify your download** (`SHA256SUMS` is attached once every build above is in):
+          - **Checksum:** download `SHA256SUMS` next to the file, then run `sha256sum --ignore-missing -c SHA256SUMS` (Linux), `shasum -a 256 --ignore-missing -c SHA256SUMS` (macOS) or `Get-FileHash <file> -Algorithm SHA256` (Windows PowerShell) and compare it with the file's line.
+          - **Provenance:** `gh attestation verify <file> -R ${{ github.repository }}` checks that the file was built by this repository's release workflow from the tagged commit (GitHub artifact attestations, signed with Sigstore). A file that fails either check did not come from this release: do not install it.
           MD
           echo "=== RELEASE_NOTES.md ===" && cat RELEASE_NOTES.md
 
@@ -299,17 +316,20 @@ jobs:
           git push origin "HEAD:${{ github.ref_name }}"
           git push origin "v${{ steps.ver.outputs.version }}"
 
-      # ---- 5b. On dev: tag the current commit (no bump commit, ephemeral prerelease) ----
-      - name: Tag prerelease (dev)
-        if: github.ref_name == 'dev'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git tag "v${{ steps.ver.outputs.version }}"
-          git push origin "v${{ steps.ver.outputs.version }}"
+      # ---- 5b. Keep the zips as this run's artifact, on every branch ----
+      # On dev this is the only place they go (see "WHY DEV PUBLISHES NOTHING" above). On main
+      # it is also where the checksum job reads them from: the files this job built, not
+      # whatever the release holds by the time that job runs.
+      - name: Upload extension zips (artifact)
+        uses: actions/upload-artifact@v7
+        with:
+          name: extensions
+          path: dist/release/*.zip
+          if-no-files-found: error
 
-      # ---- 5c. Publish the release with the .zip files attached ----
+      # ---- 5c. main only: publish the release with the .zip files attached ----
       - name: Create GitHub Release
+        if: github.ref_name == 'main'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ steps.ver.outputs.version }}
@@ -327,9 +347,13 @@ jobs:
   # tree underneath the APK. On `main` that tag already carries the bumped package.json; on
   # `dev` it does not — the bump lives only in the release job's workspace — which is why
   # `version` is passed explicitly and re-stamped inside the native workflow.
+  #
+  # main only: a dev run has no tag to build or attach to, and ci.yml already builds every dev
+  # push's binaries as artifacts.
   native:
     name: Native binaries
     needs: release
+    if: github.ref_name == 'main'
     permissions:
       contents: write # `gh release upload` onto the release the job above published
     uses: ./.github/workflows/native.yml
@@ -338,3 +362,76 @@ jobs:
       release-tag: v${{ needs.release.outputs.version }}
       ref: v${{ needs.release.outputs.version }}
     secrets: inherit
+
+  # ---- 7. Checksums and build provenance for every file the release carries ----
+  #
+  # Nothing on a release was verifiable before this: no checksum, no signature on the desktop
+  # bundles, so a download could not be told apart from a copy someone re-hosted with a change.
+  # SHA256SUMS answers "is this the file the release published", and the attestation answers
+  # "was this file built by this repository's workflow, from which commit", signed through
+  # Sigstore with the run's own OIDC identity, so there is no key to keep or leak. Anyone checks
+  # one with `gh attestation verify <file> -R CosmosPay/CosmosPay-Wallet`.
+  #
+  # The digests come from THIS run's artifacts (the files the build jobs produced), and the
+  # release's files are then checked against them: a file on the release that does not match
+  # what was built, or that the list does not cover, fails the job instead of being vouched for.
+  #
+  # Runs when a native leg failed too (`!cancelled()`), so whatever did reach the release still
+  # gets its checksum; the failed leg is already red next to it. The list is the release's own
+  # files, so the debug APK (in the android artifact, never attached: native.yml) is not in it.
+  checksums:
+    name: Checksums & provenance
+    needs: [release, native]
+    if: ${{ !cancelled() && github.ref_name == 'main' && needs.release.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # attach SHA256SUMS to the release
+      id-token: write # the Sigstore signing identity of this run
+      attestations: write # store the attestation on the repository
+    steps:
+      - name: Download this run's build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: built
+          merge-multiple: true
+
+      # One line per file ON THE RELEASE, each digest taken from the file this run built. A
+      # release file this run did not build, or one whose bytes differ from the build, stops the
+      # job: neither gets a checksum or an attestation.
+      - name: Write SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir released
+          gh release download "$TAG" -R "${{ github.repository }}" -D released
+          rm -f released/SHA256SUMS
+          [ -n "$(ls -A released)" ] || { echo "the release has no files"; exit 1; }
+          : > SHA256SUMS
+          for path in released/*; do
+            name=$(basename "$path")
+            if [ ! -f "built/$name" ]; then
+              echo "$name is on the release but this run did not build it"
+              exit 1
+            fi
+            built=$(sha256sum "built/$name" | cut -d' ' -f1)
+            released=$(sha256sum "$path" | cut -d' ' -f1)
+            if [ "$built" != "$released" ]; then
+              echo "$name on the release does not match the file this run built"
+              exit 1
+            fi
+            printf '%s  %s\n' "$built" "$name" >> SHA256SUMS
+          done
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-checksums: SHA256SUMS
+
+      - name: Attach SHA256SUMS to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ needs.release.outputs.version }}
+        run: gh release upload "$TAG" SHA256SUMS --clobber -R "${{ github.repository }}"

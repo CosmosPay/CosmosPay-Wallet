@@ -1348,18 +1348,21 @@ percentage displayed in a quote is always the gateway's own number, never this f
 
 ## Buying and selling with local money goes through the Cosmos Pay API
 
-Fiat → "Comprar con moneda local" / "Vender por moneda local" (`features/fiat/RampEntries.tsx`) open
-screen `ramp` (`features/fiat/Ramp.tsx`): the developer platform's Fiat → On-ramp / Off-ramp, over the
+Fiat → "Comprar con moneda local" / "Vender por moneda local" (`features/fiat/RampEntries.tsx`), the
+same two rows at the top of Home → More (`features/extras/Operations.tsx`) and "Comprar" under
+Receive's address (`features/money/Receive.tsx`) open screen `ramp` (`features/fiat/Ramp.tsx`): the developer platform's Fiat → On-ramp / Off-ramp, over the
 same API (`/v1/onramp/p2p` buys, `/v1/offramp/p2p` sells; calls in `lib/cosmospay.ts`, rules in
 `lib/p2pRamp.ts`), drawn like the Swap (`styles/ui/swap-widget.css` is the look both share). The user's
 call (2026-11-11): "tiene que usar la api de cosmos" — the wallet never calls the P2P marketplace
 directly. Neither side needs the BlindPay receiver, so both fiat entry screens offer it first. Six rules:
 
-- **The market is read with any key; an order needs the account.** `rampMarket` / `rampTokens` use the
-  account's key or the shared public key (the API marks those routes `@AllowPublicKey()`; if the
-  deployment has not given the public consumer `onramp:read` / `offramp:read`, the screen asks to
-  connect Cosmos Pay instead of showing an error). `rampQuote`, `openRampSession` and the orders list are
-  the account's key only.
+- **No account needed, except for the orders list.** `rampMarket`, `rampTokens`, `rampQuote` and
+  `openRampSession` use the account's key or the shared public key (`rampReadKey`; the API admits it on
+  those routes, CS #155, and its orders carry the referral id priced at the highest commission). A
+  deployment that refuses the shared key there (401/403) asks to connect Cosmos Pay: on the market as a
+  screen, on the quote by keeping the estimate, on opening as the error under the button. The orders list
+  (`rampSessions`, `RampOrders`) is the account's key only: every wallet without one is the same API
+  consumer, which may never list.
 - **Only networks the wallet holds.** An order names a chain the market lists AND the wallet has in the
   mode with an address (`rampWalletNetwork` / `rampNetworks`): a purchase on a chain the wallet does not
   read would be money it cannot see. The address is always the wallet's own EVM account.

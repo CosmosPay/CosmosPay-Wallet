@@ -20,7 +20,8 @@ name: Native builds
 #   Android — a debug-signed APK, always. Plus a signed release APK *and* an AAB when the
 #             keystore secrets below are configured. There is no unsigned release APK in
 #             the outputs on purpose: nothing can install one, so shipping it would be a
-#             download that only ever fails.
+#             download that only ever fails. A GitHub Release gets the release-signed pair
+#             only: the debug APK stays a workflow artifact (see the Android attach step).
 #   iOS     — a signed .ipa when the Apple secrets below are configured; otherwise NO
 #             INSTALLABLE ARTEFACT, and the job says so rather than pretending. There is no
 #             unsigned fallback for the same reason there is no unsigned release APK:
@@ -415,11 +416,29 @@ jobs:
           path: out
           if-no-files-found: error
 
+      # The release-signed APK and AAB only, never the debug APK. A debug build is signed with
+      # a key every Android SDK generates for itself, so it says nothing about who built it, and
+      # a release that offers one next to the signed build is a release whose Android download
+      # cannot be told from anybody's. It stays in the `android` artifact above for testing.
+      # Without the keystore secrets (a fork) there is nothing to attach, and the step says so.
       - name: Attach to GitHub Release
         if: inputs.release-tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ inputs.release-tag }}" out/* --clobber
+        run: |
+          set -euo pipefail
+          files=()
+          for f in out/*; do
+            case "$f" in
+              *-debug.apk) ;;
+              *) files+=("$f") ;;
+            esac
+          done
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no release-signed Android build (keystore secrets absent): nothing to attach."
+            exit 0
+          fi
+          gh release upload "${{ inputs.release-tag }}" "${files[@]}" --clobber
 
   # ------------------------------------------------------------------- ios
 
