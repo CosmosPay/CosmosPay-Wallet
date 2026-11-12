@@ -8,6 +8,7 @@ import { Spinner } from '@/ui/Spinner';
 import { ArrowDownIcon, CheckIcon, ChevronDownIcon } from '@/ui/Icons';
 import { EnableReceivingCard } from '@/features/cosmospay/EnableReceivingCard';
 import { CurrencyFlag, CurrencySheet, RampTokenMark, TokenSheet, type RampSheetNetwork } from '@/features/fiat/RampPickers';
+import { TransferAccountCard } from '@/features/fiat/TransferAccountCard';
 import { useKeptState } from '@/hooks/useKeptState';
 import { useCopied } from '@/hooks/useCopied';
 import { KEPT_INPUT } from '@/constants/keptInputs';
@@ -35,7 +36,11 @@ import {
 } from '@/lib/p2pRamp';
 import {
   chargeAmountProblem,
+  chargeCancellable,
   chargeDescription,
+  chargeMethodsKey,
+  chargePaidMethodKey,
+  chargePaidVia,
   chargeStatus,
   chargeTimeLeft,
   chargeUrlOk,
@@ -80,16 +85,19 @@ function usePageVisible(): boolean {
 
 /**
  * Charge with QR (screen `charge`): the seller asks for an amount of local money and shows the QR
- * of a hosted page; whoever scans it pays with a bank transfer or a local method, through the same
- * P2P purchase the ramp opens, and the token arrives in this wallet's own EVM account. Rules in
- * `lib/qrCharge.ts`, the charge and its calls in `state/useQrCharge.ts`.
+ * of a hosted page; whoever scans it pays the ways the request lists — a bank transfer, or a
+ * local method through the same P2P purchase the ramp opens — and the token arrives in this
+ * wallet's own EVM account. Rules in `lib/qrCharge.ts`, the charge and its calls in
+ * `state/useQrCharge.ts`.
  *
  * Step one is the form, drawn like the ramp's purchase: the local money with its flag, the amount,
  * the token and network it arrives as (only networks this wallet holds, the ramp's defaults), an
  * optional one-line description and the estimate at the market price. Step two is the QR, the
- * amount, the estimate, the countdown, share and cancel, and it watches for the payment two ways —
- * the API's answer about the request, and this wallet's own balance of the token — whichever
- * says so first turns it into "payment received".
+ * amount, the estimate, how the customer can pay, the countdown, share and cancel, and it watches
+ * for the payment two ways — the API's answer about the request, and this wallet's own balance of
+ * the token — whichever says so first turns it into "payment received". A bank transfer the API
+ * has received but not yet credited reads "processing" in between: no QR, no cancel, still
+ * watched.
  */
 export function Charge({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -104,7 +112,11 @@ export function Charge({ store }: { store: WalletStore }) {
       ) : qrCharge ? (
         <ChargeShown key={qrCharge.request.id} store={store} charge={qrCharge} />
       ) : (
-        <ChargeForm key={store.chainNet} store={store} />
+        <>
+          <ChargeForm key={store.chainNet} store={store} />
+          {/* Beside the form, never in it: its activation sheet holds a form of its own. */}
+          <TransferAccountCard key={`transfer-${store.chainNet}`} store={store} />
+        </>
       )}
     </div>
   );
@@ -519,9 +531,15 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
     </PrimaryButton>
   );
   const forLine = [t('charge.paidFor', { amount: fiat }), req.description].filter(Boolean).join(' · ');
+  const getsLine =
+    estimate !== null && Number.isFinite(estimate)
+      ? t('charge.getsAbout', { amount: units(estimate), token: req.token, network: netName })
+      : t('charge.getsOn', { token: req.token, network: netName });
+  const methodsKey = chargeMethodsKey(req.methods);
 
   if (status === 'paid') {
     const got = charge.paid?.amount ?? null;
+    const viaKey = chargePaidMethodKey(chargePaidVia(charge, now));
     return (
       <div className="charge-result is-paid" role="status">
         <span className="charge-result-mark" aria-hidden="true">
@@ -533,11 +551,32 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
             +{units(Number(got))} {req.token}
           </p>
         )}
+        {viaKey && <p className="charge-result-line">{t(viaKey)}</p>}
         <p className="charge-result-line">{t('charge.paidOn', { network: netName })}</p>
         <p className="charge-result-line">{forLine}</p>
         <div className="charge-result-actions">
           {newCharge}
           <GhostButton onClick={store.goBack}>{t('common.done')}</GhostButton>
+        </div>
+      </div>
+    );
+  }
+
+  // The API received a bank transfer and is sending the token: nothing left to pay or cancel,
+  // and still watched (`chargeWatched`) until the API or the balance says it arrived.
+  if (status === 'processing') {
+    return (
+      <div className="charge-result is-processing">
+        <span className="charge-result-mark is-pending" aria-hidden="true" />
+        <h2 className="charge-result-title">{t('charge.processingTitle')}</h2>
+        <p className="charge-result-line is-strong" role="status">
+          {t('charge.processingBody')}
+        </p>
+        <p className="charge-result-line">{getsLine}</p>
+        <p className="charge-result-line">{forLine}</p>
+        <Notice className="charge-note">{t('charge.processingHint')}</Notice>
+        <div className="charge-result-actions">
+          <GhostButton onClick={clearQrCharge}>{t('charge.new')}</GhostButton>
         </div>
       </div>
     );
@@ -567,12 +606,9 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
       <div className="charge-details">
         <div className="charge-figures">
           <p className="charge-fiat">{fiat}</p>
-          <p className="charge-gets">
-            {estimate !== null && Number.isFinite(estimate)
-              ? t('charge.getsAbout', { amount: units(estimate), token: req.token, network: netName })
-              : t('charge.getsOn', { token: req.token, network: netName })}
-          </p>
+          <p className="charge-gets">{getsLine}</p>
           {req.description && <p className="charge-what">{req.description}</p>}
+          {methodsKey && <p className="charge-methods">{t(methodsKey)}</p>}
         </div>
 
         <p className="charge-expiry">{t('charge.expiresIn', { time: formatCountdown(chargeTimeLeft(charge, now)) })}</p>
@@ -604,9 +640,11 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
             </span>
           </Notice>
         ) : (
-          <button type="button" className="link-btn charge-cancel" onClick={() => setAsking(true)}>
-            {t('charge.cancel')}
-          </button>
+          chargeCancellable(charge, now) && (
+            <button type="button" className="link-btn charge-cancel" onClick={() => setAsking(true)}>
+              {t('charge.cancel')}
+            </button>
+          )
         )}
         {error && (
           <p className="swapw-error" role="alert">

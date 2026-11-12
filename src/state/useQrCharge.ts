@@ -5,6 +5,7 @@ import { ApiRequestError } from '@/lib/apiError';
 import { cancelPaymentRequest, createPaymentRequest, getPaymentRequest } from '@/lib/cosmospay';
 import type { TFn } from '@/lib/i18n';
 import {
+  chargeCancellable,
   chargeRequestProblem,
   chargeStorageKey,
   newCharge,
@@ -156,12 +157,14 @@ export function useQrCharge({ walletId, chainNet, accountKey, sharedKey, ownAddr
   }, [tokenBalance, save]);
 
   /**
-   * Stop the charge from being paid. One that closed meanwhile (409: paid or expired) is read
-   * again instead, so the screen shows what it is. Throws for the screen to say.
+   * Stop the charge from being paid. One that is no longer open — here (`chargeCancellable`: a
+   * transfer being credited, paid, expired) or at the API (409) — is read again instead, so the
+   * screen shows what it is. Throws for the screen to say.
    */
   const cancelQrCharge = useCallback(async (): Promise<void> => {
     const { key, charge } = live.current;
     if (!charge) return;
+    if (!chargeCancellable(charge, Date.now())) return refreshQrCharge();
     const apiKey = await keyFor(charge);
     if (!apiKey) throw new Error(t('charge.cancelFailed'));
     let req: PaymentRequest;

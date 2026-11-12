@@ -141,6 +141,7 @@ import type { Usdt0Route } from '@/lib/usdt0';
 import type { RampMarket, RampOrder, RampQuote, RampSession, RampTokenPage } from '@/lib/p2pRamp';
 import type { RampSide } from '@/constants/ramp';
 import type { PaymentRequest, PaymentRequestInput } from '@/lib/qrCharge';
+import type { TransferAccountInput, TransferAccountWire } from '@/lib/transferAccount';
 import {
   AuthorizePayoutShape,
   BankAccountListShape,
@@ -174,6 +175,7 @@ import {
   SwapListShape,
   SwapQuoteShape,
   SwapShape,
+  TransferAccountShape,
   CrossChainAssetListShape,
   CrossChainQuoteShape,
   CrossChainSwapShape,
@@ -1988,4 +1990,20 @@ export async function cancelPaymentRequest(apiKey: string, id: string, recordTok
     false,
     PaymentRequestShape,
   );
+}
+
+/* ============ Bank transfers: the seller's own receiving account ============ */
+
+/**
+ * The seller's bank transfer account (`lib/transferAccount.ts`): a receiving account in their own
+ * name, verified on a hosted page, whose alias and CVU their QR charges are paid to by bank
+ * transfer. An account's key only: the shared public key is answered 403 `account_required`.
+ */
+export async function getTransferAccount(apiKey: string): Promise<TransferAccountWire> {
+  return getJson<TransferAccountWire>(`${gatewayApi()}/v1/onramp/transfer/account`, apiKey, TransferAccountShape);
+}
+
+/** Activate it (or try again after a rejection): 201 with the account, 409 `account_exists` when one is already under way. */
+export async function createTransferAccount(apiKey: string, input: TransferAccountInput): Promise<TransferAccountWire> {
+  return postJson<TransferAccountWire>(`${gatewayApi()}/v1/onramp/transfer/account`, input, authHeaders(apiKey), false, TransferAccountShape);
 }

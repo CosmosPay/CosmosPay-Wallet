@@ -2,10 +2,11 @@
    src/features/fiat/Charge.tsx — charge with QR. The form is drawn like the ramp's purchase:
    the panels, the asset buttons and the error line are styles/ui/swap-widget.css; only the
    screen's own blocks are here. Then the QR on the canvas (no box), the amount, the estimate,
-   the countdown and the actions; on a PC window the QR stands beside them. Prefix: .charge-
+   how the customer can pay, the countdown and the actions; on a PC window the QR stands beside
+   them. Then processing (a transfer being credited), paid, expired or cancelled. Prefix: .charge-
    ===================================================================== */
 
-.charge > :is(.screen-header, form, .charge-state, .charge-body, .charge-result) {
+.charge > :is(.screen-header, form, .charge-state, .charge-body, .charge-result, .transfer-card, .transfer-signin) {
   width: 100%;
   max-width: 560px;
   margin-inline: auto;
@@ -133,6 +134,14 @@
   overflow-wrap: anywhere;
 }
 
+/* How the customer can pay (the request's `methods`): a quiet line under the figures. */
+.charge-methods {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .charge-expiry {
   margin: 0;
   padding-top: 16px;
@@ -217,7 +226,7 @@
   outline-offset: 2px;
 }
 
-/* ------------------------- paid, expired, cancelled ------------------------- */
+/* -------------------- processing, paid, expired, cancelled -------------------- */
 
 .charge-result {
   display: flex;
@@ -246,6 +255,13 @@
   height: 34px;
 }
 
+/* A bank transfer received, the token on its way: the same ring, turning, one arc in green. */
+.charge-result-mark.is-pending {
+  border-color: var(--line);
+  border-top-color: var(--up);
+  animation: spin 1.1s linear infinite;
+}
+
 .charge-result-title {
   margin: 0;
   color: var(--text);
@@ -270,6 +286,13 @@
   font-size: 14px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* "Crediting your wallet…": the line that says what is happening reads in the text colour. */
+.charge-result-line.is-strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
 }
 
 .charge-result .charge-note {
