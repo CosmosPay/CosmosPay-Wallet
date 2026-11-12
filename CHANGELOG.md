@@ -2,6 +2,18 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.21.0] - 2026-11-12
+
+### Features
+- Buy and sell with local money without a Cosmos Pay account (304fed8)
+- Buy and sell with local money from More and from Receive (b245388)
+
+### Bug Fixes
+- Point the terms and privacy links at pages that answer (816ad15)
+
+### CI/CD
+- Checksums and provenance on every release, no debug APK, no dev prereleases (de59050)
+
 ## [1.20.0] - 2026-11-11
 
 ### Features
