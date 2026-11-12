@@ -1,14 +1,29 @@
 /**
  * Charging with a QR in local money (screen `charge`, `src/features/fiat/Charge.tsx`; rules in
  * `src/lib/qrCharge.ts`). The seller shows a QR for an amount in local money; whoever scans it
- * pays with a local method through the same P2P purchase the ramp opens, and the token lands in
- * this wallet's own EVM account. The API keeps the request (`/v1/onramp/p2p/payment-requests`);
- * the marketplace is never named in the wallet's copy.
+ * pays by bank transfer or with a local method through the same P2P purchase the ramp opens, and
+ * the token lands in this wallet's own EVM account. The API keeps the request
+ * (`/v1/onramp/p2p/payment-requests`); no provider is ever named in the wallet's copy.
  */
 
-/** What the API says of a request. An open request past its expiry reads as `expired`. */
-export const CHARGE_STATUSES = ['open', 'paid', 'expired', 'cancelled'] as const;
+/**
+ * What the API says of a request. An open request past its expiry reads as `expired`;
+ * `processing` is a bank transfer received whose token is on its way to the seller: it never
+ * expires and can no longer be cancelled.
+ */
+export const CHARGE_STATUSES = ['open', 'processing', 'paid', 'expired', 'cancelled'] as const;
 export type ChargeStatus = (typeof CHARGE_STATUSES)[number];
+
+/**
+ * How a payer can settle a request, in the API's own words: `transfer` is a bank transfer to
+ * the deposit account the payer's page shows, `p2p` the purchase the ramp opens ("other
+ * payment methods" in the copy). The API lists them in its order of preference.
+ */
+export const CHARGE_METHODS = ['transfer', 'p2p'] as const;
+export type ChargeMethod = (typeof CHARGE_METHODS)[number];
+
+/** What a server that predates `methods` offers: the purchase, the only way there was. */
+export const CHARGE_LEGACY_METHODS: readonly ChargeMethod[] = ['p2p'];
 
 /** The description the payer sees: one line, at most this many characters (the API's cap). */
 export const CHARGE_DESCRIPTION_MAX = 140;

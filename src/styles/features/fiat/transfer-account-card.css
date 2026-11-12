@@ -1,0 +1,193 @@
+/* =====================================================================
+   src/features/fiat/TransferAccountCard.tsx — "Bank transfers" on the Charge with QR screen:
+   the seller's own receiving account, by status, and the sheet that activates it. The
+   redesign's card: a line on the canvas, never a fill; the actions are the shared buttons.
+   Prefix: .transfer-
+   ===================================================================== */
+
+.transfer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 24px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+.transfer-card.is-loading {
+  align-items: center;
+  justify-content: center;
+  min-height: 96px;
+}
+
+.transfer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.transfer-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* The status: a pill outlined in its tone (waiting, active, not approved). */
+.transfer-badge {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.transfer-badge.is-ok {
+  border-color: var(--up);
+  color: var(--up);
+}
+.transfer-badge.is-bad {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.transfer-desc,
+.transfer-hint,
+.transfer-reason {
+  margin: 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.transfer-desc {
+  color: var(--muted);
+}
+.transfer-hint {
+  color: var(--dim);
+}
+.transfer-reason {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.transfer-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* Approved: the holder, the alias and the CVU, each copyable. */
+.transfer-rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.transfer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  border-top: 1px solid var(--line);
+}
+
+.transfer-row dt {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.transfer-row dd {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.transfer-row dd.transfer-mono {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.2px;
+}
+
+.transfer-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.transfer-copy {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.transfer-copy svg {
+  width: 18px;
+  height: 18px;
+}
+.transfer-copy:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.transfer-copied {
+  color: var(--up);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The shared key: one line asking to sign in, where the card would be. */
+.transfer-signin {
+  margin-top: 24px;
+}
+
+/* ------------------------------ the sheet's form ------------------------------ */
+
+.transfer-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 8px;
+}
+
+.transfer-type {
+  align-self: stretch;
+}
+
+.transfer-field {
+  margin: 0;
+}
+
+.transfer-submit {
+  margin-top: 4px;
+}
+
+.transfer-error {
+  margin: 0;
+  text-align: center;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .transfer-copy:hover {
+    color: var(--text);
+  }
+}

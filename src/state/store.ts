@@ -303,6 +303,7 @@ import { EVM_ERR } from '@/constants/evmDapp';
 import { rampSessionProblem, rampWalletNetwork, type RampMarket, type RampOrder, type RampQuote, type RampSession, type RampTokenPage } from '@/lib/p2pRamp';
 import { RAMP_NATIVE_TOKEN, RAMP_SESSIONS_PAGE, RAMP_TOKENS_PAGE, type RampSide } from '@/constants/ramp';
 import { useQrCharge } from '@/state/useQrCharge';
+import { useTransferAccount } from '@/state/useTransferAccount';
 import {
   configureTelemetry,
   hasFreshOwnership,
@@ -5432,6 +5433,13 @@ export function useWalletStore() {
     t,
   });
 
+  /** The seller's bank transfer account and its calls: `state/useTransferAccount.ts`, rules in `lib/transferAccount.ts`. */
+  const transferAccounts = useTransferAccount({
+    accountKey: cosmosPay?.keys[networkEnv(network)] ?? null,
+    sharedKey: sharedRampKey,
+    t,
+  });
+
   /** Onramp step 1: price a deposit. `blockchain_wallet_id` comes from ensureBlockchainWallet. */
   const quoteDeposit = useCallback(
     async (input: PayinQuoteInput): Promise<PayinQuote | null> => {
@@ -7605,6 +7613,7 @@ export function useWalletStore() {
     openRampSession,
     rampSessions,
     ...qrCharges,
+    ...transferAccounts,
     quoteDeposit,
     confirmDeposit,
     quoteWithdraw,

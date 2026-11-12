@@ -1,7 +1,8 @@
 /**
  * Charging with a QR in local money (`src/lib/qrCharge.ts`): what a charge may ask for, the
- * response contract, the check that the request the API answered is the one asked for and pays
- * this wallet, how a charge reads over time, the rule that reads a payment off the wallet's own
+ * response contract, the ways a customer can pay and how they paid, the check that the request
+ * the API answered is the one asked for and pays this wallet, how a charge reads over time (a
+ * bank transfer being processed included), the rule that reads a payment off the wallet's own
  * balance, and what comes back from storage.
  */
 import { test } from 'node:test';
@@ -9,11 +10,18 @@ import assert from 'node:assert/strict';
 import { ApiShapeError, parseShape } from '@/lib/apiShape';
 import { PaymentRequestShape } from '@/lib/cosmospayShapes';
 import { CHARGE_DESCRIPTION_MAX, CHARGE_LATE_WATCH_MS } from '@/constants/qrCharge';
+import { T } from '@/lib/i18n';
 import type { RampCurrency } from '@/lib/p2pRamp';
 import {
   chargeAmountProblem,
+  chargeCancellable,
   chargeDescription,
+  chargeMethods,
+  chargeMethodsKey,
   chargePaidByBalance,
+  chargePaidMethod,
+  chargePaidMethodKey,
+  chargePaidVia,
   chargeRequestProblem,
   chargeStatus,
   chargeStorageKey,
@@ -117,7 +125,7 @@ test('a description is one line, at most 140 characters, never cut through a cha
 /* ------------------------------- the contract ------------------------------- */
 
 test('the response contract reads every status and refuses one it does not know', () => {
-  for (const status of ['open', 'paid', 'expired', 'cancelled']) {
+  for (const status of ['open', 'processing', 'paid', 'expired', 'cancelled']) {
     assert.doesNotThrow(() => parseShape('u', PaymentRequestShape, answer({ status } as never)));
   }
   assert.throws(() => parseShape('u', PaymentRequestShape, answer({ status: 'pending' } as never)), ApiShapeError);
@@ -142,6 +150,76 @@ test('the response contract asserts what the wallet acts on, and lets the rest t
   ]) {
     assert.throws(() => parseShape('u', PaymentRequestShape, answer(broken as never)), ApiShapeError, JSON.stringify(broken));
   }
+});
+
+test('the ways to pay pass the contract unasserted: a new or unknown one never hides a charge', () => {
+  // A server that predates them, the contract's own lists, and words this release does not know.
+  for (const over of [
+    {},
+    { methods: ['transfer', 'p2p'], paidMethod: null },
+    { methods: ['card'], paidMethod: 'card' },
+    { methods: 'transfer', paidMethod: 7 },
+    { status: 'processing', methods: ['transfer'] },
+    { status: 'paid', paidAmount: '8.91', paidMethod: 'transfer' },
+  ]) {
+    assert.doesNotThrow(() => parseShape('u', PaymentRequestShape, answer(over as never)), JSON.stringify(over));
+  }
+});
+
+/* -------------------------------- ways to pay -------------------------------- */
+
+test('the ways to pay are read in the API\'s order; a server without them offers the purchase', () => {
+  assert.deepEqual(chargeMethods(['transfer', 'p2p']), ['transfer', 'p2p']);
+  assert.deepEqual(chargeMethods(['p2p', 'transfer']), ['p2p', 'transfer']);
+  assert.deepEqual(chargeMethods(['transfer']), ['transfer']);
+  assert.deepEqual(chargeMethods(['p2p']), ['p2p']);
+  // Older servers leave the field out (or null): the purchase was the only way.
+  assert.deepEqual(chargeMethods(undefined), ['p2p']);
+  assert.deepEqual(chargeMethods(null), ['p2p']);
+  // A way this release does not know is left out, and so is a repeat.
+  assert.deepEqual(chargeMethods(['card', 'transfer', 'TRANSFER', 'transfer', 'p2p', 3]), ['transfer', 'p2p']);
+  assert.deepEqual(chargeMethods(['card']), []);
+  assert.deepEqual(chargeMethods([]), []);
+  // Something that is not a list says nothing.
+  assert.deepEqual(chargeMethods('transfer'), []);
+  assert.deepEqual(chargeMethods({ transfer: true }), []);
+});
+
+test('how a request was paid is read only in words this release knows', () => {
+  assert.equal(chargePaidMethod('transfer'), 'transfer');
+  assert.equal(chargePaidMethod('p2p'), 'p2p');
+  for (const raw of [null, undefined, '', 'card', 'Transfer', 1, ['transfer'], {}]) {
+    assert.equal(chargePaidMethod(raw), null, JSON.stringify(raw));
+  }
+});
+
+test('the seller is told how the customer can pay, and how they paid, in keys every language has', () => {
+  assert.equal(chargeMethodsKey(['transfer', 'p2p']), 'charge.methodsBoth');
+  assert.equal(chargeMethodsKey(['p2p', 'transfer']), 'charge.methodsBoth');
+  assert.equal(chargeMethodsKey(['transfer']), 'charge.methodsTransfer');
+  assert.equal(chargeMethodsKey(['p2p']), 'charge.methodsOther');
+  assert.equal(chargeMethodsKey([]), null);
+  assert.equal(chargePaidMethodKey('transfer'), 'charge.paidByTransfer');
+  assert.equal(chargePaidMethodKey('p2p'), 'charge.paidByOther');
+  assert.equal(chargePaidMethodKey(null), null);
+  const keys = [
+    chargeMethodsKey(['transfer', 'p2p']),
+    chargeMethodsKey(['transfer']),
+    chargeMethodsKey(['p2p']),
+    chargePaidMethodKey('transfer'),
+    chargePaidMethodKey('p2p'),
+  ];
+  for (const key of keys) assert.ok(key && T[key], `${key} is an i18n key`);
+});
+
+test('a charge keeps the ways to pay as read, never the raw answer', () => {
+  assert.deepEqual(newCharge(answer(), false, null).request.methods, ['p2p']);
+  const both = newCharge(answer({ methods: ['transfer', 'card', 'p2p'] }), false, null);
+  assert.deepEqual(both.request.methods, ['transfer', 'p2p']);
+  assert.equal(both.request.paidMethod, null);
+  const paid = newCharge(answer({ status: 'paid', paidAmount: '8.91', paidMethod: 'transfer' }), false, null);
+  assert.equal(paid.request.paidMethod, 'transfer');
+  assert.equal(newCharge(answer({ status: 'paid', paidAmount: '8.91', paidMethod: 'card' }), false, null).request.paidMethod, null);
 });
 
 /* ------------------------- the request the API answered ------------------------- */
@@ -237,6 +315,57 @@ test('the API saying paid settles the charge with what it delivered', () => {
   assert.equal(paid.publicToken, c.publicToken);
 });
 
+test('only an open charge can be cancelled', () => {
+  const c = newCharge(answer(), false, 0n);
+  assert.equal(chargeCancellable(c, T0), true);
+  assert.equal(chargeCancellable(c, T0 + 24 * HOUR), false);
+  assert.equal(chargeCancellable(withRequest(c, answer({ status: 'processing' }), T0), T0), false);
+  assert.equal(chargeCancellable(withRequest(c, answer({ status: 'cancelled' }), T0), T0), false);
+  assert.equal(chargeCancellable(withRequest(c, answer({ status: 'paid', paidAmount: '8.91' }), T0), T0), false);
+});
+
+test('a bank transfer received reads processing until paid: never expired, never cancellable, always watched', () => {
+  const methods = ['transfer', 'p2p'];
+  let c = newCharge(answer({ methods }), false, 0n);
+  c = withRequest(c, answer({ methods, status: 'processing' }), T0 + HOUR);
+  assert.equal(chargeStatus(c, T0 + HOUR), 'processing');
+  assert.equal(c.closedAt, null);
+  assert.equal(c.paid, null);
+  // Past the request's expiry, and long after: still processing, still watched.
+  for (const at of [T0 + 24 * HOUR, T0 + 24 * HOUR + CHARGE_LATE_WATCH_MS, T0 + 72 * HOUR]) {
+    assert.equal(chargeStatus(c, at), 'processing');
+    assert.equal(chargeWatched(c, at), true);
+    assert.equal(chargeCancellable(c, at), false);
+  }
+  assert.equal(chargePaidVia(c, T0 + HOUR), null);
+  // Then the API says paid, and how.
+  const paid = withRequest(c, answer({ methods, status: 'paid', paidAt: new Date(T0 + 2 * HOUR).toISOString(), paidAmount: '9.02', paidMethod: 'transfer' }), T0 + 2 * HOUR);
+  assert.equal(chargeStatus(paid, T0 + 2 * HOUR), 'paid');
+  assert.deepEqual(paid.paid, { by: 'api', amount: '9.02', at: T0 + 2 * HOUR });
+  assert.equal(chargePaidVia(paid, T0 + 2 * HOUR), 'transfer');
+  assert.equal(chargeWatched(paid, T0 + 2 * HOUR), false);
+});
+
+test('the balance still settles a charge, also one being processed, and says nothing of how', () => {
+  let c = newCharge(answer({ methods: ['transfer'] }), false, 1_000_000n);
+  c = withRequest(c, answer({ methods: ['transfer'], status: 'processing' }), T0 + HOUR);
+  c = withBalance(c, 1_000_000n + 8_940_000n, T0 + HOUR + 60_000);
+  assert.equal(chargeStatus(c, T0 + HOUR + 60_000), 'paid');
+  assert.equal(c.paid?.by, 'balance');
+  assert.equal(chargePaidVia(c, T0 + HOUR + 60_000), null);
+  // An answer that lands after it may still say how; the balance stays the signal that won.
+  const told = withRequest(c, answer({ methods: ['transfer'], status: 'paid', paidAmount: '8.94', paidMethod: 'transfer' }), T0 + 2 * HOUR);
+  assert.equal(told.paid?.by, 'balance');
+  assert.equal(chargePaidVia(told, T0 + 2 * HOUR), 'transfer');
+});
+
+test('a purchase paid while a transfer was being processed is paid with the other method', () => {
+  const c = withRequest(newCharge(answer({ methods: ['transfer', 'p2p'] }), false, 0n), answer({ status: 'processing' }), T0);
+  const paid = withRequest(c, answer({ status: 'paid', paidAmount: '8.9', paidMethod: 'p2p' }), T0 + HOUR);
+  assert.equal(chargePaidVia(paid, T0 + HOUR), 'p2p');
+  assert.equal(chargePaidMethodKey(chargePaidVia(paid, T0 + HOUR)), 'charge.paidByOther');
+});
+
 /* ------------------------- the balance as the signal ------------------------- */
 
 test('a rise of at least 95% of the estimate is the payment', () => {
@@ -286,6 +415,27 @@ test('a charge is kept per wallet and mode, and read back checked', () => {
   assert.deepEqual(parseStoredCharge(JSON.parse(JSON.stringify(c))), c);
   const paid = withRequest(c, answer({ status: 'paid', paidAmount: '8.91' }), T0);
   assert.deepEqual(parseStoredCharge(JSON.parse(JSON.stringify(paid))), paid);
+  // The ways to pay and the status in between survive a reload.
+  const processing = withRequest(newCharge(answer({ methods: ['transfer', 'p2p'] }), true, 7n), answer({ methods: ['transfer', 'p2p'], status: 'processing' }), T0);
+  const back = parseStoredCharge(JSON.parse(JSON.stringify(processing)));
+  assert.deepEqual(back, processing);
+  assert.equal(back && chargeStatus(back, T0 + 48 * HOUR), 'processing');
+  const viaTransfer = withRequest(processing, answer({ methods: ['transfer', 'p2p'], status: 'paid', paidAmount: '8.91', paidMethod: 'transfer' }), T0);
+  assert.equal(parseStoredCharge(JSON.parse(JSON.stringify(viaTransfer)))?.request.paidMethod, 'transfer');
+});
+
+test('a charge kept by a build before the ways to pay reads as the purchase, paid how nobody said', () => {
+  const c = newCharge(answer(), true, 7n);
+  const older: Record<string, unknown> = { ...c.request };
+  delete older.methods;
+  delete older.paidMethod;
+  const back = parseStoredCharge({ ...c, request: older });
+  assert.deepEqual(back?.request.methods, ['p2p']);
+  assert.equal(back?.request.paidMethod, null);
+  // And one kept with words this release does not know keeps only the ones it does.
+  const odd = parseStoredCharge({ ...c, request: { ...c.request, methods: ['card', 'transfer'], paidMethod: 'card' } });
+  assert.deepEqual(odd?.request.methods, ['transfer']);
+  assert.equal(odd?.request.paidMethod, null);
 });
 
 test('a stored charge that does not read is dropped, never guessed', () => {
