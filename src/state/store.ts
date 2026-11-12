@@ -301,7 +301,8 @@ import { wcEnabled } from '@/lib/walletConnectClient';
 import type { EvmReview } from '@/lib/evmReview';
 import { EVM_ERR } from '@/constants/evmDapp';
 import { rampSessionProblem, rampWalletNetwork, type RampMarket, type RampOrder, type RampQuote, type RampSession, type RampTokenPage } from '@/lib/p2pRamp';
-import { RAMP_SESSIONS_PAGE, RAMP_TOKENS_PAGE, type RampSide } from '@/constants/ramp';
+import { RAMP_NATIVE_TOKEN, RAMP_SESSIONS_PAGE, RAMP_TOKENS_PAGE, type RampSide } from '@/constants/ramp';
+import { useQrCharge } from '@/state/useQrCharge';
 import {
   configureTelemetry,
   hasFreshOwnership,
@@ -5386,6 +5387,51 @@ export function useWalletStore() {
     [cosmosPay, network],
   );
 
+  /* ------------------- QR charges: getting paid in local money ------------------- */
+
+  /** The shared public key in this mode, awaited on a first run (a charge made with it is read back with it). */
+  const sharedRampKey = useCallback(async (): Promise<string | null> => {
+    const env = networkEnv(network);
+    return cachedPublicKey(env) ?? ((await warmPublicKey(env)) || null);
+  }, [network]);
+
+  /** This wallet's own account on the EVM network with `chainId` in the mode, or null. */
+  const evmAddressFor = useCallback(
+    (chainId: number): string | null => {
+      const net = rampWalletNetwork(chainId, chainNet);
+      return net ? addressOnNetwork(net) : null;
+    },
+    [chainNet, addressOnNetwork],
+  );
+
+  /** This wallet's balance of one token (or the coin, the zero address) on that network, in base units; null when unread. */
+  const evmTokenBalance = useCallback(
+    async (chainId: number, token: string, decimals: number): Promise<bigint | null> => {
+      const net = rampWalletNetwork(chainId, chainNet);
+      const owner = net ? addressOnNetwork(net) : null;
+      if (!net || !owner) return null;
+      const coin = token.toLowerCase() === RAMP_NATIVE_TOKEN;
+      try {
+        const read = await (await networkBalancesLib()).readNetworkBalances(net, owner, coin ? [] : [{ symbol: '', asset: token, decimals }], chainNet);
+        return (coin ? read.native : read[token]) ?? null;
+      } catch {
+        return null;
+      }
+    },
+    [chainNet, addressOnNetwork],
+  );
+
+  /** The charge on screen and its calls: `state/useQrCharge.ts`, rules in `lib/qrCharge.ts`. */
+  const qrCharges = useQrCharge({
+    walletId: activeWalletId,
+    chainNet,
+    accountKey: cosmosPay?.keys[networkEnv(network)] ?? null,
+    sharedKey: sharedRampKey,
+    ownAddress: evmAddressFor,
+    tokenBalance: evmTokenBalance,
+    t,
+  });
+
   /** Onramp step 1: price a deposit. `blockchain_wallet_id` comes from ensureBlockchainWallet. */
   const quoteDeposit = useCallback(
     async (input: PayinQuoteInput): Promise<PayinQuote | null> => {
@@ -7558,6 +7604,7 @@ export function useWalletStore() {
     rampQuote,
     openRampSession,
     rampSessions,
+    ...qrCharges,
     quoteDeposit,
     confirmDeposit,
     quoteWithdraw,

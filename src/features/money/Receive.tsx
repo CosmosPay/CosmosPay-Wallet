@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { NetworkLogo } from '@/ui/AssetLogo';
 import { GhostButton, PrimaryButton } from '@/ui/Buttons';
-import { CheckIcon, ChevronRightIcon, CopyIcon, LinkIcon, ReceiveIcon } from '@/ui/Icons';
+import { CheckIcon, ChevronRightIcon, CopyIcon, LinkIcon, QrIcon, ReceiveIcon } from '@/ui/Icons';
 import { Notice } from '@/ui/Notice';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { Spinner } from '@/ui/Spinner';
@@ -144,6 +144,18 @@ export function Receive({ store }: { store: WalletStore }) {
             <span className="receive-link-text">
               <span className="receive-link-title">{t('ramp.entryBuy')}</span>
               <span className="receive-link-desc">{t('ramp.entryBuyDesc')}</span>
+            </span>
+            <ChevronRightIcon className="receive-link-chev" />
+          </button>
+
+          {/* Getting paid in local money: a QR for an amount, paid to this wallet (screen `charge`). */}
+          <button type="button" onClick={() => store.setScreen('charge')} className="receive-link-row">
+            <span className="receive-link-icon" aria-hidden="true">
+              <QrIcon />
+            </span>
+            <span className="receive-link-text">
+              <span className="receive-link-title">{t('charge.title')}</span>
+              <span className="receive-link-desc">{t('charge.entryDesc')}</span>
             </span>
             <ChevronRightIcon className="receive-link-chev" />
           </button>

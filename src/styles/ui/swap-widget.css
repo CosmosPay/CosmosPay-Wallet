@@ -4,7 +4,8 @@
    marks and the searchable list of the picker sheet.
 
    Shared by src/features/money/Swap.tsx (with src/features/money/SwapTokenPicker.tsx) and
-   src/features/fiat/Ramp.tsx, the fiat ramp drawn the swap's way (the user's call). Used by
+   src/features/fiat/Ramp.tsx, the fiat ramp drawn the swap's way (the user's call), whose
+   purchase src/features/fiat/Charge.tsx (charge with QR) follows. Used by
    two features, so it lives in ui/; what only the swap has (the flip, the slippage, the
    balance shortcuts) stays in its own sheet.
    ===================================================================== */

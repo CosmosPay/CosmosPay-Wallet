@@ -1377,6 +1377,25 @@ directly. Neither side needs the BlindPay receiver, so both fiat entry screens o
 - **The marketplace is never named in the copy, and test mode is its sandbox** (test USDT on Arbitrum
   Sepolia only). Code and comments may name it.
 
+**Charging with a QR in local money is that purchase, paid by someone else** (screen `charge`,
+`features/fiat/Charge.tsx`, from Receive and Home → More; rules `lib/qrCharge.ts`, state
+`state/useQrCharge.ts`). The seller asks for an amount of local money; the API
+(`/v1/onramp/p2p/payment-requests`) answers a page `url` whose QR the wallet draws itself, and whoever
+opens it pays through a P2P purchase that delivers to this wallet's own EVM address. Four rules:
+
+- **A request is checked before it is shown** (`chargeRequestProblem`): the currency, amount, network and
+  token sent, this wallet's own address, an https page on the request's own `/fiat/<id>` path.
+- **The ramp's key choice, and the record token kept.** The account's key, else the shared public key;
+  a charge made with the shared key keeps its `publicToken` in storage with it (one charge per wallet and
+  mode, so a reload comes back to the same QR) and sends it as `X-Record-Token` to read or cancel it.
+- **Paid is whichever signal comes first**: the API's `paid`, or this wallet's own balance of the token
+  rising by 95% of the estimate since the QR was shown (`chargePaidByBalance`; any rise without an
+  estimate). Until the marketplace's webhook reaches the API the balance is the only signal, and it
+  cannot tell whose money arrived. Both are asked only while the page is in view, and for half an hour
+  after a charge expires or is cancelled (a payment already under way still lands).
+- **The ramp's copy rules**: the marketplace is never named; the payer "pays with bank transfer or their
+  local methods".
+
 ## Validation lives in `src/lib/`, never in a component
 
 **No `.tsx` file computes validity from a regex or a length literal.** Import a named

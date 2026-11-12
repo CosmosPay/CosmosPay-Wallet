@@ -1,0 +1,343 @@
+/* =====================================================================
+   src/features/fiat/Charge.tsx — charge with QR. The form is drawn like the ramp's purchase:
+   the panels, the asset buttons and the error line are styles/ui/swap-widget.css; only the
+   screen's own blocks are here. Then the QR on the canvas (no box), the amount, the estimate,
+   the countdown and the actions; on a PC window the QR stands beside them. Prefix: .charge-
+   ===================================================================== */
+
+.charge > :is(.screen-header, form, .charge-state, .charge-body, .charge-result) {
+  width: 100%;
+  max-width: 560px;
+  margin-inline: auto;
+}
+
+/* While the market or the kept charge loads, or what stops it: room where the form will be. */
+.charge-state {
+  min-height: 180px;
+  margin-top: 4px;
+}
+
+/* ------------------------------- the form ------------------------------- */
+
+/* The seam between the panels: an arrow — the local money asked for becomes the token received. */
+.charge-seam {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  margin-block: -18px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--bg);
+  color: var(--text);
+}
+.charge-seam svg {
+  width: 20px;
+  height: 20px;
+}
+
+.charge-desc {
+  margin: 16px 0 0;
+}
+
+.charge-note {
+  margin-top: 12px;
+}
+
+.charge-foot {
+  padding-top: 24px;
+}
+
+/* ---------------------------- the QR on screen ---------------------------- */
+
+.charge-body {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  margin-top: 4px;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+.charge-qr-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.charge-scan {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+/* The QR stands on the canvas as itself, like Receive's: dark modules on white, so in the dark
+   theme it carries its own white quiet zone. */
+.charge-qr {
+  display: grid;
+  place-items: center;
+  width: 264px;
+  height: 264px;
+}
+
+.charge-qr-img {
+  width: 264px;
+  height: 264px;
+  image-rendering: pixelated;
+  border-radius: 4px;
+}
+
+.charge-details {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.charge-figures {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.charge-fiat {
+  margin: 0;
+  color: var(--text);
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.8px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.charge-gets {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.charge-what {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.charge-expiry {
+  margin: 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.charge-waiting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.charge-wait {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.charge-wait .spinner {
+  flex-shrink: 0;
+}
+
+.charge-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.charge-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.charge-cancel {
+  align-self: center;
+}
+
+/* "Cancel this charge?": the question and its two answers inside a danger notice. */
+.charge-confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+/* The ghost button's metrics, in the danger colour: the canvas on the red reads AA in both themes
+   (as Settings' delete). base.css pills every button, so the radius needs its !important. */
+.charge-danger-btn {
+  display: grid;
+  place-items: center;
+  min-height: var(--button-height);
+  padding: 12px 20px;
+  border: 1px solid var(--danger);
+  border-radius: var(--button-radius) !important;
+  background: var(--danger);
+  color: var(--bg);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+  cursor: pointer;
+  transition: opacity var(--dur-quick) var(--ease-out), transform var(--dur-quick) var(--ease-out);
+}
+.charge-danger-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.charge-danger-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* ------------------------- paid, expired, cancelled ------------------------- */
+
+.charge-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  text-align: center;
+  animation: fadeIn var(--dur-base) var(--ease-out);
+}
+
+/* The money received is green, as on Home's activity: a ringed check. */
+.charge-result-mark {
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 12px;
+  border: 1.5px solid var(--up);
+  border-radius: 50%;
+  color: var(--up);
+  animation: pop var(--dur-slow) var(--ease-out);
+}
+.charge-result-mark svg {
+  width: 34px;
+  height: 34px;
+}
+
+.charge-result-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+
+.charge-result-amount {
+  margin: 4px 0 0;
+  color: var(--up);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.6px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.charge-result-line {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.charge-result .charge-note {
+  align-self: stretch;
+  margin-top: 12px;
+  text-align: left;
+}
+
+.charge-result-actions {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+/* A PC window: the QR on the left, what goes with it on the right. The 1024px is --desk-min. */
+@media (min-width: 1024px) {
+  .has-desktop-mode .charge-body {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 32px;
+  }
+
+  .has-desktop-mode .charge-qr-col {
+    flex-shrink: 0;
+  }
+
+  .has-desktop-mode .charge-details {
+    flex: 1;
+    padding-top: 28px;
+  }
+
+  .has-desktop-mode .charge-figures {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  .has-desktop-mode .charge-expiry,
+  .has-desktop-mode .charge-wait,
+  .has-desktop-mode .charge-hint {
+    justify-content: flex-start;
+    text-align: left;
+  }
+
+  .has-desktop-mode .charge-waiting {
+    align-items: flex-start;
+  }
+
+  /* Beside the QR the column is narrow: one action per line. */
+  .has-desktop-mode .charge-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .has-desktop-mode .charge-cancel {
+    align-self: flex-start;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .charge-danger-btn:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .charge * {
+    transition: none;
+    animation: none;
+  }
+}

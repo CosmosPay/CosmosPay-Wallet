@@ -32,6 +32,7 @@ import {
   xdr,
   type Check,
 } from '@/lib/apiShape';
+import { CHARGE_STATUSES } from '@/constants/qrCharge';
 
 /* ------------------------------- swaps --------------------------------- */
 
@@ -438,3 +439,35 @@ export const RampSessionShape = object({
   createdAt: str,
 });
 export const RampSessionListShape = pageOf(RampSessionShape);
+
+/**
+ * A QR charge in local money (`/v1/onramp/p2p/payment-requests`: create, read, cancel). The screen
+ * branches on `status`, so one it does not know is refused rather than read as open; it compares
+ * the order fields and `address` with what it sent (`chargeRequestProblem` in `lib/qrCharge.ts`),
+ * draws the QR of `url`, watches its own balance of `tokenAddress` in `tokenDecimals` against
+ * `estimatedAmountOut`, and says what arrived from `paidAmount`. `publicToken` comes only to the
+ * shared public key: reading or cancelling the request again needs it. `qr` is not read: the
+ * wallet draws the code of the `url` it checked.
+ */
+const PaymentRequestFields = object({
+  id,
+  currency: str,
+  amount,
+  chainId: num,
+  token: str,
+  tokenAddress: str,
+  tokenDecimals: num,
+  address: str,
+  description: nullable(str),
+  estimatedAmountOut: nullable(amount),
+  url: str,
+  expiresAt: str,
+  createdAt: str,
+  paidAt: nullable(str),
+  paidAmount: nullable(amount),
+  publicToken: optional(str),
+});
+export const PaymentRequestShape: Check<unknown> = variant(
+  'status',
+  Object.fromEntries(CHARGE_STATUSES.map((status) => [status, PaymentRequestFields])),
+);

@@ -68,6 +68,7 @@ export const SCREEN_IDS = [
   'deposit',
   'withdraw',
   'ramp',
+  'charge',
   'wc-pair',
   'sign-tx',
   'add-network',
@@ -205,6 +206,8 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   deposit: { back: 'fiat' },
   withdraw: { back: 'fiat' },
   ramp: { back: 'fiat' },
+  // Charge with QR (features/fiat/Charge.tsx): opened from Receive and from Home → More.
+  charge: { back: 'home' },
   // WalletConnect: pair with a site by its `wc:` link (features/walletconnect).
   'wc-pair': { back: 'settings' },
 
