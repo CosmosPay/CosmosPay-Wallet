@@ -152,17 +152,17 @@ export type TransferAccountField = Exclude<keyof TransferAccountDraft, 'type'>;
  */
 export type TransferFieldProblem = 'required' | 'format' | 'check' | 'kind' | 'age';
 
-/** What `POST /v1/onramp/transfer/account` takes. */
+/** What `POST /v1/onramp/transfer/account` takes (`CreateTransferAccountDto`): the phone, city and postal code are optional there. */
 export interface TransferAccountInput {
   type: TransferAccountType;
   name: string;
   /** `XX-XXXXXXXX-X`. */
   taxId: string;
   email: string;
-  phone: string;
+  phone?: string;
   address: string;
-  city: string;
-  postalCode: string;
+  city?: string;
+  postalCode?: string;
   /** Persons only. */
   dateOfBirth?: string;
 }
@@ -240,6 +240,9 @@ function lengthProblem(raw: string, min: number, max: number): TransferFieldProb
   return s.length < min || s.length > max ? 'format' : null;
 }
 
+/** An optional field says nothing while empty; once typed, it is held to its rule. */
+const optional = (raw: string, problem: () => TransferFieldProblem | null): TransferFieldProblem | null => (raw.trim() ? problem() : null);
+
 /** The most a field keeps of a keystroke or a paste: the text fields their length, a tax id its digits and separators. */
 const FIELD_CAP: Record<TransferAccountField, number> = {
   name: TRANSFER_NAME_MAX,
@@ -258,7 +261,11 @@ export function transferFieldInput(field: TransferAccountField, raw: string): st
   return [...s].slice(0, FIELD_CAP[field]).join('');
 }
 
-/** Every field that cannot be sent, and why; empty when the form can go. The date of birth counts for persons only. */
+/**
+ * Every field that cannot be sent, and why; empty when the form can go. The phone, city and postal
+ * code are optional (the API's own rule) but checked once typed; the date of birth counts for
+ * persons only.
+ */
 export function transferAccountProblems(draft: TransferAccountDraft, now: number): Partial<Record<TransferAccountField, TransferFieldProblem>> {
   const out: Partial<Record<TransferAccountField, TransferFieldProblem>> = {};
   const put = (field: TransferAccountField, problem: TransferFieldProblem | null) => {
@@ -267,15 +274,15 @@ export function transferAccountProblems(draft: TransferAccountDraft, now: number
   put('name', lengthProblem(draft.name, TRANSFER_NAME_MIN, TRANSFER_NAME_MAX));
   put('taxId', taxIdProblem(draft.taxId, draft.type));
   put('email', !draft.email.trim() ? 'required' : isEmail(draft.email.trim()) ? null : 'format');
-  put('phone', !draft.phone.trim() ? 'required' : normalizePhone(draft.phone) ? null : 'format');
+  put('phone', optional(draft.phone, () => (normalizePhone(draft.phone) ? null : 'format')));
   put('address', lengthProblem(draft.address, TRANSFER_ADDRESS_MIN, TRANSFER_ADDRESS_MAX));
-  put('city', lengthProblem(draft.city, TRANSFER_CITY_MIN, TRANSFER_CITY_MAX));
-  put('postalCode', !draft.postalCode.trim() ? 'required' : normalizePostalCode(draft.postalCode) ? null : 'format');
+  put('city', optional(draft.city, () => lengthProblem(draft.city, TRANSFER_CITY_MIN, TRANSFER_CITY_MAX)));
+  put('postalCode', optional(draft.postalCode, () => (normalizePostalCode(draft.postalCode) ? null : 'format')));
   if (draft.type === 'person') put('dateOfBirth', birthDateProblem(draft.dateOfBirth, now));
   return out;
 }
 
-/** The body to send, normalised, or null while any field has a problem (`transferAccountProblems`). */
+/** The body to send, normalised and without the optional fields left empty, or null while any field has a problem (`transferAccountProblems`). */
 export function transferAccountBody(draft: TransferAccountDraft, now: number): TransferAccountInput | null {
   if (Object.keys(transferAccountProblems(draft, now)).length > 0) return null;
   const digits = taxIdDigits(draft.taxId) ?? '';
@@ -284,11 +291,14 @@ export function transferAccountBody(draft: TransferAccountDraft, now: number): T
     name: oneLine(draft.name),
     taxId: formatTaxId(digits),
     email: draft.email.trim(),
-    phone: normalizePhone(draft.phone) ?? '',
     address: oneLine(draft.address),
-    city: oneLine(draft.city),
-    postalCode: normalizePostalCode(draft.postalCode) ?? '',
   };
+  const phone = normalizePhone(draft.phone);
+  const city = oneLine(draft.city);
+  const postalCode = normalizePostalCode(draft.postalCode);
+  if (phone) body.phone = phone;
+  if (city) body.city = city;
+  if (postalCode) body.postalCode = postalCode;
   if (draft.type === 'person') body.dateOfBirth = draft.dateOfBirth.trim();
   return body;
 }
@@ -312,6 +322,7 @@ export function transferActivateFailure(e: unknown): TransferActivateFailure {
     if (e.status === 403 && e.code === 'account_required') return { kind: 'signin' };
     if (e.status === 503 || e.code === 'transfer_unavailable') return { kind: 'message', key: 'transfer.unavailable' };
     if (e.status === 429) return { kind: 'message', key: 'transfer.tooMany' };
+    if (e.status === 400 && e.code === 'validation_failed') return { kind: 'message', key: 'transfer.invalid' };
   }
   return { kind: 'message', key: 'transfer.activateFailed' };
 }

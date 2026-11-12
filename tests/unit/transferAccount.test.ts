@@ -142,7 +142,8 @@ test('a refused activation: the tax id, an account already under way, sign in, o
   assert.deepEqual(transferActivateFailure(apiError(403, 'account_required')), { kind: 'signin' });
   assert.deepEqual(transferActivateFailure(apiError(503, 'transfer_unavailable')), { kind: 'message', key: 'transfer.unavailable' });
   assert.deepEqual(transferActivateFailure(apiError(429, 'rate_limited')), { kind: 'message', key: 'transfer.tooMany' });
-  assert.deepEqual(transferActivateFailure(apiError(400, 'validation_failed')), { kind: 'message', key: 'transfer.activateFailed' });
+  assert.deepEqual(transferActivateFailure(apiError(400, 'validation_failed')), { kind: 'message', key: 'transfer.invalid' });
+  assert.deepEqual(transferActivateFailure(apiError(500, 'internal_error')), { kind: 'message', key: 'transfer.activateFailed' });
   assert.deepEqual(transferActivateFailure(new TypeError('Failed to fetch')), { kind: 'message', key: 'transfer.activateFailed' });
   // A 409 with another code is not "it exists".
   assert.deepEqual(transferActivateFailure(apiError(409, 'request_closed')), { kind: 'message', key: 'transfer.activateFailed' });
@@ -221,16 +222,15 @@ test('a complete form has no problems; a company needs no date of birth', () => 
 
 test('every field says what is wrong with it', () => {
   const empty: TransferAccountDraft = { type: 'person', name: '', taxId: '', email: '', phone: '', address: '', city: '', postalCode: '', dateOfBirth: '' };
+  // The phone, city and postal code are optional, as the API takes them; the rest is required.
   assert.deepEqual(transferAccountProblems(empty, NOW), {
     name: 'required',
     taxId: 'required',
     email: 'required',
-    phone: 'required',
     address: 'required',
-    city: 'required',
-    postalCode: 'required',
     dateOfBirth: 'required',
   });
+  assert.deepEqual(transferAccountProblems({ ...person, phone: '  ', city: '', postalCode: ' ' }, NOW), {});
   const bad = { ...person, name: 'J', email: 'juan@', phone: '123', address: 'Av', city: 'S', postalCode: '44', dateOfBirth: '2010-01-01' };
   assert.deepEqual(transferAccountProblems(bad, NOW), {
     name: 'format',
@@ -268,6 +268,15 @@ test('the body sent is normalised, and there is none while a field has a problem
   const forCompany = transferAccountBody({ ...company, dateOfBirth: '1990-01-15' }, NOW);
   assert.equal(forCompany?.taxId, COMPANY_CUIT);
   assert.equal(forCompany && 'dateOfBirth' in forCompany, false);
+  // Optional fields left empty are left out of the body, not sent blank.
+  assert.deepEqual(transferAccountBody({ ...person, phone: '', city: '  ', postalCode: '' }, NOW), {
+    type: 'person',
+    name: 'Juan Pérez',
+    taxId: '20-12345678-6',
+    email: 'juan@example.com',
+    address: 'Av. Belgrano 123',
+    dateOfBirth: '1990-01-15',
+  });
   assert.equal(transferAccountBody({ ...person, taxId: '20-12345678-0' }, NOW), null);
   assert.equal(transferAccountBody({ ...person, dateOfBirth: '' }, NOW), null);
 });
@@ -303,7 +312,7 @@ test('every problem has a line in every language', () => {
   }
   assert.equal(transferProblemKey('taxId', 'kind', 'person'), 'transfer.errTaxIdCompany');
   assert.equal(transferProblemKey('taxId', 'kind', 'company'), 'transfer.errTaxIdPerson');
-  for (const key of ['transfer.unavailable', 'transfer.tooMany', 'transfer.activateFailed', 'transfer.signIn', 'transfer.formIncomplete', 'transfer.errTaxIdServer']) {
+  for (const key of ['transfer.unavailable', 'transfer.tooMany', 'transfer.invalid', 'transfer.activateFailed','transfer.signIn', 'transfer.formIncomplete', 'transfer.errTaxIdServer']) {
     assert.ok(T[key], key);
   }
 });
