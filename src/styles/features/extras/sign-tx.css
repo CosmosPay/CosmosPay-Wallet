@@ -35,3 +35,4 @@
   .sign-tx-screen :is(.sign-tx-paste, .sign-tx-copy):hover:not(:disabled) { background: transparent; color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
 }
 .sign-tx-screen :is(.sign-tx-paste, .sign-tx-copy):active:not(:disabled) { background: transparent; color: var(--text); }
+.sign-tx-login { margin: 0 0 24px; }
