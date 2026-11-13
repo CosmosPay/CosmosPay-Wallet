@@ -23,6 +23,16 @@
  *
  * The person still confirms, with the service's domain on the prompt: the checks prove
  * the login is the domain's and harmless to sign, not that the person meant to log in.
+ *
+ * ## Never a recovery server's
+ *
+ * A signed login is a credential for whoever holds it, and the screen cannot see where the
+ * person pastes it next. For most services that is a phishing risk the prompt names. For a
+ * SEP-30 recovery server it is an account takeover: its token changes which inbox may
+ * recover the account, and then recovers it. So a challenge from a configured recovery
+ * server's host (`blockedHosts`), or from any domain whose TOML lists
+ * `[[RECOVERY_SERVERS]]`, is refused here outright — `lib/recovery.ts` is the only path
+ * that signs those, and only for a flow the person started in the wallet itself.
  */
 import { Keypair } from '@stellar/stellar-sdk';
 import {
@@ -61,13 +71,22 @@ export async function verifyChallenge(
   cfg: NetConfig,
   xdr: string,
   account: string,
+  blockedHosts: readonly string[],
   readToml: TomlReader = fetchStellarToml,
   now?: number,
 ): Promise<VerifiedChallenge> {
   const claim = challengeClaimOf(cfg, xdr);
   if (!claim) throw new Sep10Error('sep10.error.operations');
 
+  // Before any fetch: a configured recovery server's challenge is never signed here.
+  const blocked = new Set(blockedHosts.map((h) => h.toLowerCase()).filter(Boolean));
+  if (blocked.has(claim.homeDomain.toLowerCase()) || blocked.has(claim.webAuthDomain.toLowerCase())) {
+    throw new Sep10Error('sep10.error.recoveryLogin');
+  }
+
   const toml = await readToml(`https://${claim.homeDomain}`);
+  // A domain that runs SEP-30 recovery is refused whatever its host: its token can re-key accounts.
+  if (toml?.recovery) throw new Sep10Error('sep10.error.recoveryLogin');
   if (!toml?.signingKey) throw new Sep10Error('sep10.error.noSigningKey');
   if (toml.networkPassphrase && toml.networkPassphrase !== cfg.passphrase) throw new Sep10Error('sep10.error.otherNetwork');
   if (!toml.webAuthEndpoint || webAuthDomainOf(toml.webAuthEndpoint) !== claim.webAuthDomain) {

@@ -55,9 +55,9 @@ function challenge(
   return tx.toXDR();
 }
 
-async function refusal(xdr: string, toml: StellarToml | null = TOML): Promise<string | null> {
+async function refusal(xdr: string, toml: StellarToml | null = TOML, blocked: string[] = []): Promise<string | null> {
   try {
-    await verifyChallenge(CFG, xdr, ME, reader(toml), NOW);
+    await verifyChallenge(CFG, xdr, ME, blocked, reader(toml), NOW);
     return null;
   } catch (e) {
     assert.ok(e instanceof Sep10Error, `expected a SEP-10 refusal, got ${String(e)}`);
@@ -126,7 +126,7 @@ test('a login for another account is refused', async () => {
 
 test('the signed login carries our signature beside the service’s, and nothing else changes', async () => {
   const xdr = challenge();
-  const verified = await verifyChallenge(CFG, xdr, ME, reader(TOML), NOW);
+  const verified = await verifyChallenge(CFG, xdr, ME, [], reader(TOML), NOW);
   const signed = await signVerifiedChallenge(CFG, xdr, verified, me.secret(), async () => {
     throw new Error('the ledger is only read for a recovered account');
   });
@@ -142,11 +142,22 @@ test('the signed login carries our signature beside the service’s, and nothing
 test('a recovered account signs with a key the ledger lists, and is refused with one it does not', async () => {
   const deviceKey = Keypair.random();
   const xdr = challenge();
-  const verified = await verifyChallenge(CFG, xdr, ME, reader(TOML), NOW);
+  const verified = await verifyChallenge(CFG, xdr, ME, [], reader(TOML), NOW);
   const signed = await signVerifiedChallenge(CFG, xdr, verified, deviceKey.secret(), async () => [deviceKey.publicKey()]);
   assert.equal(TransactionBuilder.fromXDR(signed, CFG.passphrase).signatures.length, 2);
   await assert.rejects(
     signVerifiedChallenge(CFG, xdr, verified, deviceKey.secret(), async () => []),
     (e: unknown) => e instanceof Sep10Error && e.key === 'sep10.error.wrongKey',
   );
+});
+
+test('a login from one of the wallet’s own recovery servers is never signed here', async () => {
+  // Its token can change which inbox recovers the account, and then recover it: a phished
+  // signature would be a takeover. Refused before anything is fetched.
+  assert.equal(await refusal(challenge(), TOML, [HOME]), 'sep10.error.recoveryLogin');
+  assert.equal(await refusal(challenge({ webAuth: 'recovery-a.example' }), TOML, ['recovery-a.example']), 'sep10.error.recoveryLogin');
+});
+
+test('a login from any domain that runs SEP-30 recovery is refused, configured or not', async () => {
+  assert.equal(await refusal(challenge(), { ...TOML, recovery: { endpoint: `https://${HOME}/sep30` } }), 'sep10.error.recoveryLogin');
 });

@@ -198,7 +198,8 @@ import {
   type RecoverableAccount,
   type RecoveryState,
 } from '@/lib/recovery';
-import { challengeClaimOf } from '@/lib/sep10';
+import { challengeClaimOf, webAuthDomainOf } from '@/lib/sep10';
+import { recoveryServers } from '@/lib/endpoints';
 import { signVerifiedChallenge, verifyChallenge } from '@/lib/webAuth';
 import {
   addTrustline as stellarAddTrustline,
@@ -6299,11 +6300,15 @@ export function useWalletStore() {
       const trimmed = xdr.trim();
       const claim = challengeClaimOf(on, trimmed);
       if (claim) {
-        const verified = await verifyChallenge(on, trimmed, session.publicKey);
+        // The wallet's own recovery servers are refused before anything is fetched: their
+        // token re-keys the account, and this screen cannot see where the signature goes next.
+        const recoveryHosts = recoveryServers().map((s) => webAuthDomainOf(s.url));
+        const verified = await verifyChallenge(on, trimmed, session.publicKey, recoveryHosts);
+        const domain = claim.webAuthDomain === claim.homeDomain ? claim.homeDomain : `${claim.homeDomain} (${claim.webAuthDomain})`;
         const okLogin = await requestSignature(
           {
             title: t('confirmSig.signChallengeTitle'),
-            message: t('confirmSig.signChallengeMsg', { domain: claim.homeDomain, network: on.label }),
+            message: t('confirmSig.signChallengeMsg', { domain, network: on.label }),
           },
           true,
         );
