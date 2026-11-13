@@ -2,6 +2,17 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.22.0] - 2026-11-13
+
+### Features
+- Sign a service's SEP-10 login from the sign screen (e0d64ae)
+
+### Bug Fixes
+- Never sign a recovery server's login from the sign screen (4ec4df5)
+
+### Miscellaneous
+- Sync the community server spec (d052365)
+
 ## [1.21.0] - 2026-11-12
 
 ### Features
