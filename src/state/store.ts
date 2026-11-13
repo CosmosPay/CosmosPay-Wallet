@@ -198,6 +198,8 @@ import {
   type RecoverableAccount,
   type RecoveryState,
 } from '@/lib/recovery';
+import { challengeClaimOf } from '@/lib/sep10';
+import { signVerifiedChallenge, verifyChallenge } from '@/lib/webAuth';
 import {
   addTrustline as stellarAddTrustline,
   allNetworks,
@@ -6290,6 +6292,25 @@ export function useWalletStore() {
       // account lives on Testnet) is signed for the network the person picks on the screen,
       // without moving the wallet's own mode. Only a network this wallet lists.
       const on = networks.find((n) => n.id === networkId) ?? network;
+      // A service's SEP-10 login (an anchor's deposit, say) is sourced by the service and
+      // names our account, which the foreign-envelope rule below refuses. It takes its own
+      // path (`lib/webAuth.ts`): checked against the domain's stellar.toml and SEP-10's shape,
+      // confirmed with the domain on the prompt, and signed — never submitted (sequence 0).
+      const trimmed = xdr.trim();
+      const claim = challengeClaimOf(on, trimmed);
+      if (claim) {
+        const verified = await verifyChallenge(on, trimmed, session.publicKey);
+        const okLogin = await requestSignature(
+          {
+            title: t('confirmSig.signChallengeTitle'),
+            message: t('confirmSig.signChallengeMsg', { domain: claim.homeDomain, network: on.label }),
+          },
+          true,
+        );
+        if (!okLogin) return null;
+        guardSession(epoch);
+        return signVerifiedChallenge(on, trimmed, verified, await secretOf(session), activeSignersOf);
+      }
       // Review only — a manual signature is deliberately allowed to carry operations
       // the automated flows refuse, but it must be decodable and either OUR account's or that
       // of an account our key alone controls (a sub-account, e.g. a Cosmos Pay private
