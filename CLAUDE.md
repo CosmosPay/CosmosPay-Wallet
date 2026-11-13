@@ -734,7 +734,13 @@ the wallet's own native plugin. Eight rules, and most of them are holes it shipp
   (`foreignEnvelopeProblem`: no operation of another source, ours above all, which would spend
   from this account under a prompt naming the sub-account; no fee bump). The confirmation names
   the account in full (`confirmSig.signForeignMsg`); anything else is refused
-  (`sign.foreignSource`, `sign.foreignOps`). A pasted envelope names no network, and a signature
+  (`sign.foreignSource`, `sign.foreignOps`). The one exception is a service's SEP-10 login (an anchor's
+  SEP-24 deposit hands one over): `challengeClaimOf` (`src/lib/sep10.ts`) recognises the shape and
+  `src/lib/webAuth.ts` checks it against the domain's own `stellar.toml` (a published `SIGNING_KEY`,
+  the `WEB_AUTH_ENDPOINT` on the challenge's `web_auth_domain`, the network), runs
+  `assertSafeChallenge` in full and verifies the service's signature (`assertServerSigned`); the
+  prompt names the domain (`confirmSig.signChallengeMsg`) and the screen offers a copy, never a
+  submit — sequence 0 can never reach the ledger. A pasted envelope names no network, and a signature
   commits to one passphrase, so the screen asks which network it is for ("Red de la transacción",
   the wallet's own by default) and `signRawXdr(xdr, networkId)` reviews, checks control and signs
   for that one without moving the wallet's mode: Cosmos Pay's private accounts are on Testnet, and

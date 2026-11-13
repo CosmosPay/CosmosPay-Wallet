@@ -5,7 +5,9 @@ import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { copyText, readText } from '@/lib/clipboard';
 import { BUILTIN_NETWORKS, inspectXdr, submitXdr, type TxSummary } from '@/lib/stellar';
+import { challengeClaimOf } from '@/lib/sep10';
 import { Segmented } from '@/ui/Segmented';
+import { Notice } from '@/ui/Notice';
 import '@/styles/features/extras/sign-tx.css';
 import { cx } from '@/lib/cx';
 
@@ -25,6 +27,9 @@ export function SignTx({ store }: { store: WalletStore }) {
   const [netId, setNetId] = useState(store.network.id);
   const netChoices = store.network.custom ? [...BUILTIN_NETWORKS, store.network] : BUILTIN_NETWORKS;
   const signNet = netChoices.find((n) => n.id === netId) ?? store.network;
+  // A service's SEP-10 login: signed and handed back, never submitted (its sequence is 0, so
+  // the network refuses it). Only the shape is read here; the store checks the claim.
+  const claim = summary ? challengeClaimOf(signNet, xdr) : null;
   const pickNet = (id: string) => {
     setNetId(id);
     setSigned('');
@@ -111,6 +116,8 @@ export function SignTx({ store }: { store: WalletStore }) {
         <p id={hintId} className="sign-tx-net-hint">{t('sign.networkHint')}</p>
       </div>
 
+      {claim && <Notice className="sign-tx-login">{t('sign.challengeNotice', { domain: claim.homeDomain })}</Notice>}
+
       {summary && (
         <dl className="glass sign-tx-summary">
           {[
@@ -138,11 +145,15 @@ export function SignTx({ store }: { store: WalletStore }) {
         </div>
       )}
 
+      {signed && claim && <Notice className="sign-tx-login">{t('sign.challengeSigned')}</Notice>}
+
       {err && <div role="alert" className="sign-tx-err">{err}</div>}
 
       <div className="col g10 kb-dock sign-tx-actions">
         {!signed ? (
-          <PrimaryButton disabled={!summary} onClick={sign}>{t('sign.sign')}</PrimaryButton>
+          <PrimaryButton disabled={!summary} onClick={sign}>{t(claim ? 'sign.signLogin' : 'sign.sign')}</PrimaryButton>
+        ) : claim ? (
+          <PrimaryButton onClick={copySigned}>{t('common.copy')}</PrimaryButton>
         ) : (
           <PrimaryButton disabled={busy} onClick={submit}>{busy ? <Spinner /> : t('sign.submit')}</PrimaryButton>
         )}
