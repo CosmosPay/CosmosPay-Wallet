@@ -140,6 +140,7 @@ import { PAGE_SIZE, RECORD_TOKEN_HEADER, RETRY_AFTER_CAP_S } from '@/constants/a
 import type { Usdt0Route } from '@/lib/usdt0';
 import type { RampMarket, RampOrder, RampQuote, RampSession, RampTokenPage } from '@/lib/p2pRamp';
 import type { RampSide } from '@/constants/ramp';
+import type { PaymentRequest, PaymentRequestInput } from '@/lib/qrCharge';
 import {
   AuthorizePayoutShape,
   BankAccountListShape,
@@ -151,6 +152,7 @@ import {
   LiquidityPositionListShape,
   LiquiditySubmitResultShape,
   PayIntentShape,
+  PaymentRequestShape,
   PayinListShape,
   PayinQuoteShape,
   PayinShape,
@@ -1350,13 +1352,14 @@ export async function createPayLink(apiKey: string, input: PayLinkInput): Promis
  */
 
 /** GET helper for the gateway (the payments API returns raw shapes, no envelope).
- *  `shape` is required for the same reason it is on postJson. */
-async function getJson<T>(url: string, apiKey: string, shape: Check<unknown>): Promise<T> {
+ *  `shape` is required for the same reason it is on postJson; `headers` adds to the key's
+ *  (a record's token, `recordHeaders`). */
+async function getJson<T>(url: string, apiKey: string, shape: Check<unknown>, headers: Record<string, string> = {}): Promise<T> {
   const startedAt = Date.now();
   const traceId = newTraceId();
   let res: Response;
   try {
-    res = await fetch(url, { headers: { ...authHeaders(apiKey), [TRACE_HEADER]: traceId } });
+    res = await fetch(url, { headers: { ...authHeaders(apiKey), ...headers, [TRACE_HEADER]: traceId } });
   } catch (e) {
     reportCall(url, startedAt, 0, traceId, e);
     throw e;
@@ -1949,4 +1952,40 @@ export async function createRampSession(apiKey: string, side: RampSide, order: R
 /** The orders this account opened on this side, newest first. */
 export async function listRampSessions(apiKey: string, side: RampSide, take: number): Promise<{ items: RampSession[]; total: number }> {
   return getPage<RampSession>(`${rampBase(side)}/sessions`, apiKey, RampSessionListShape, take);
+}
+
+/* ================== QR charges: getting paid in local money ================== */
+
+/**
+ * A payment request (`lib/qrCharge.ts`): an amount of local money a payer settles on a hosted page
+ * through a P2P purchase that delivers to the requester's own address. Made with the account's key
+ * or the shared public key; the shared key reads and cancels it again only with the `publicToken`
+ * the create answered, sent as the record's token.
+ */
+const recordHeaders = (recordToken?: string | null): Record<string, string> => (recordToken ? { [RECORD_TOKEN_HEADER]: recordToken } : {});
+
+/** Make a charge: the request, its page `url` and an estimate of the token it brings. */
+export async function createPaymentRequest(apiKey: string, input: PaymentRequestInput): Promise<PaymentRequest> {
+  return postJson<PaymentRequest>(`${gatewayApi()}/v1/onramp/p2p/payment-requests`, input, authHeaders(apiKey), false, PaymentRequestShape);
+}
+
+/** Read a charge again: its status, and once paid, what arrived. */
+export async function getPaymentRequest(apiKey: string, id: string, recordToken?: string | null): Promise<PaymentRequest> {
+  return getJson<PaymentRequest>(
+    `${gatewayApi()}/v1/onramp/p2p/payment-requests/${encodeURIComponent(id)}`,
+    apiKey,
+    PaymentRequestShape,
+    recordHeaders(recordToken),
+  );
+}
+
+/** Stop an open charge from being paid. One that is no longer open answers 409 `request_closed`. */
+export async function cancelPaymentRequest(apiKey: string, id: string, recordToken?: string | null): Promise<PaymentRequest> {
+  return postJson<PaymentRequest>(
+    `${gatewayApi()}/v1/onramp/p2p/payment-requests/${encodeURIComponent(id)}/cancel`,
+    {},
+    { ...authHeaders(apiKey), ...recordHeaders(recordToken) },
+    false,
+    PaymentRequestShape,
+  );
 }
