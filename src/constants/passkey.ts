@@ -12,7 +12,7 @@
 import type { PasskeyFailure } from '@/lib/passkey';
 
 /** What the OS sheet names as the site the passkey belongs to. Not an identifier. */
-export const PASSKEY_RP_NAME = 'Cosmos Wallet';
+export const PASSKEY_RP_NAME = 'Cosmos Pay Wallet';
 
 /**
  * The relying party every wallet passkey belongs to: the web build served from this domain

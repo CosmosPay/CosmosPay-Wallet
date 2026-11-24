@@ -2,21 +2,36 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { WalletStore } from '@/state/store';
 import { buildKind } from '@/lib/platform';
-import { ChevronRightIcon, CloseIcon, CosmosMark, MenuIcon } from '@/ui/Icons';
+import { ChevronRightIcon, CloseIcon, CosmosMark, MenuIcon, PowerIcon } from '@/ui/Icons';
 import { navTabs, navActiveKey, navGo, navShortcuts, navOpenShortcut } from '@/app/navModel';
 import { cx } from '@/lib/cx';
 import '@/styles/app/nav-menu.css';
 
 /** Both drawer sections share ONE row: a line icon, the name, a chevron. The place you are
- *  on is marked like the bar marks it — ink and the brand blue's line. */
-function NavItem({ lead, label, on, onClick }: { lead: ReactNode; label: string; on?: boolean; onClick: () => void }) {
+ *  on is marked like the bar marks it — ink and the brand blue's line. An action that goes nowhere
+ *  (the lock) has no chevron. */
+function NavItem({
+  lead,
+  label,
+  on,
+  onClick,
+  className,
+  chevron = true,
+}: {
+  lead: ReactNode;
+  label: string;
+  on?: boolean;
+  onClick: () => void;
+  className?: string;
+  chevron?: boolean;
+}) {
   return (
-    <button type="button" onClick={onClick} aria-current={on ? 'page' : undefined} className={cx('nav-menu-item', on && 'is-on')}>
+    <button type="button" onClick={onClick} aria-current={on ? 'page' : undefined} className={cx('nav-menu-item', on && 'is-on', className)}>
       <span className="nav-menu-lead" aria-hidden="true">
         {lead}
       </span>
       <span className="f1 nav-menu-item-label">{label}</span>
-      <ChevronRightIcon className="nav-menu-chevron" />
+      {chevron && <ChevronRightIcon className="nav-menu-chevron" />}
     </button>
   );
 }
@@ -84,7 +99,7 @@ export function NavMenu({ store }: { store: WalletStore }) {
               }}
             >
               <CosmosMark className="nav-menu-mark" />
-              Cosmos Wallet
+              Cosmos Pay Wallet
             </button>
             <button type="button" onClick={closeDrawer} aria-label={store.t('a11y.close')} className="glass-soft circle-btn">
               <CloseIcon />
@@ -117,6 +132,21 @@ export function NavMenu({ store }: { store: WalletStore }) {
                 onClick={() => navOpenShortcut(store, it.key)}
               />
             ))}
+
+            {/* Locking is always one tap from the menu (the user's call), not only at the foot of
+                "More". The drawer closes first: its open-state lives in the store and would
+                otherwise greet the next unlock. */}
+            <div className="nav-menu-divider" />
+            <NavItem
+              lead={<PowerIcon />}
+              label={store.t('profile.lock')}
+              chevron={false}
+              className="is-lock"
+              onClick={() => {
+                closeDrawer();
+                store.lock();
+              }}
+            />
           </div>
         </div>
       )}

@@ -148,7 +148,7 @@ try {
     d.provider.on('accountsChanged', (a: string[]) => (window as any).__events.push(['accountsChanged', a]));
     return { ...d.info, isEthereum: (window as any).ethereum === d.provider };
   });
-  ok(info.name === 'Cosmos Wallet' && /^data:image\/svg\+xml;base64,/.test(info.icon) && /^[0-9a-f-]{36}$/.test(info.uuid), 'EIP-6963 announces Cosmos Wallet with its icon');
+  ok(info.name === 'Cosmos Pay Wallet' && /^data:image\/svg\+xml;base64,/.test(info.icon) && /^[0-9a-f-]{36}$/.test(info.uuid), 'EIP-6963 announces Cosmos Pay Wallet with its icon');
   ok(info.isEthereum, 'window.ethereum is the provider when no other wallet set it');
 
   // Before any window: the test mode's default chain, no accounts, signing refused.
@@ -191,6 +191,23 @@ try {
     await win.getByRole('button', { name: 'Approve' }).click();
     const r = await answer;
     ok(typeof r.ok === 'string' && recover(personalDigest('hello'), r.ok) === EVM, `personal_sign recovers to the account (${JSON.stringify(r).slice(0, 80)})`);
+  }
+
+  // Chrome stops an idle worker after ~30 s, so the one that opened a window is often not the one
+  // that hears the answer. Stopping it under an open window must lose neither the request nor the
+  // answer: the page waits, and gets the signature once the person approves.
+  {
+    const { win, answer } = await withWindow(page, 'personal_sign', ['0x68656c6c6f', EVM]);
+    await win.getByText('hello', { exact: true }).waitFor({ timeout: 15000 });
+    const cdp = await context!.newCDPSession(win);
+    await cdp.send('ServiceWorker.enable');
+    await cdp.send('ServiceWorker.stopAllWorkers');
+    const early = await Promise.race([answer.then(() => 'answered'), new Promise((r) => setTimeout(() => r('waiting'), 3000))]);
+    ok(early === 'waiting', 'a worker restart under an open window does not answer the page');
+    await win.getByPlaceholder('Wallet password').fill(PASSWORD);
+    await win.getByRole('button', { name: 'Approve' }).click();
+    const r = await answer;
+    ok(typeof r.ok === 'string' && recover(personalDigest('hello'), r.ok) === EVM, `and the signature still reaches it (${JSON.stringify(r).slice(0, 80)})`);
   }
 
   // eth_signTypedData_v4, the spec's example bound to the selected chain; its digest is computed

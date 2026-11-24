@@ -9,8 +9,9 @@
  *
  * Everything here is pure, so `tests/unit/qrCharge.test.ts` pins it: what a charge may ask for, the
  * check that the request the API answered is the one asked for and pays this wallet, how a charge
- * reads at a given moment, and the rule that turns a rise in the wallet's own balance into
- * "payment received" — a signal that needs nothing from the API.
+ * reads at a given moment, and the rule that reads money arriving off the wallet's own balance.
+ * Only the API says a charge is paid: the balance cannot tell whose money it is, so a rise there is
+ * at most "money arriving, confirming", and only while the charge is open and has an estimate.
  */
 import type { ChainNet } from '@/constants/chains';
 import {
@@ -26,6 +27,7 @@ import {
 import { fromMinorUnits, toMinorUnitsBig } from '@/lib/amount';
 import { parseShape } from '@/lib/apiShape';
 import { PaymentRequestShape } from '@/lib/cosmospayShapes';
+import { paymentsUrl } from '@/lib/endpoints';
 import { fiatAmountProblem, type RampAmountProblem, type RampCurrency } from '@/lib/p2pRamp';
 
 /* ------------------------------ API shapes ------------------------------ */
@@ -165,21 +167,33 @@ const sameHex = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/**
- * Where the QR may send the payer: an https page (plain http only on this machine, for a local
- * server) with no credentials in it, whose path ends in this request's own `/fiat/<id>`. The host
- * is the deployment's payments page and is not pinned: a self-hosted server names its own.
- */
-export function chargeUrlOk(url: string, id: string): boolean {
+/** A URL, or null when it does not parse, is not https (plain http only on this machine) or carries credentials. */
+function safeUrl(raw: string): URL | null {
   let u: URL;
   try {
-    u = new URL(url);
+    u = new URL(raw);
   } catch {
-    return false;
+    return null;
   }
-  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && LOOPBACK.has(u.hostname))) return false;
-  if (u.username || u.password) return false;
-  return u.pathname.replace(/\/+$/, '').endsWith(`/fiat/${encodeURIComponent(id)}`);
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && LOOPBACK.has(u.hostname))) return null;
+  return u.username || u.password ? null : u;
+}
+
+const trimSlashes = (path: string) => path.replace(/\/+$/, '');
+
+/**
+ * Where the QR may send the payer: this request's own page on the configured payments site
+ * (`paymentsUrl()`, the community server's `PAYMENT_LINK_CHECKOUT_URL`), exactly
+ * `<payments>/fiat/<id>`: the same origin, that path and nothing in front of it, no credentials.
+ * Any other host is refused, even one whose path ends the same way, so an answer cannot send the
+ * payer to a page that only looks like ours. A payments site that is not https (plain http only on
+ * this machine, for a local server) accepts nothing.
+ */
+export function chargeUrlOk(url: string, id: string, payments: string = paymentsUrl()): boolean {
+  const base = safeUrl(payments);
+  const u = safeUrl(url);
+  if (!base || !u || u.origin !== base.origin) return false;
+  return trimSlashes(u.pathname) === `${trimSlashes(base.pathname)}/fiat/${encodeURIComponent(id)}`;
 }
 
 export type ChargeProblem = 'order' | 'address' | 'url';
@@ -187,10 +201,10 @@ export type ChargeProblem = 'order' | 'address' | 'url';
 /**
  * Whether a request the API answered is the charge asked for and pays this wallet: the same
  * currency, amount, network and token, this wallet's own account as the recipient, and a page
- * `chargeUrlOk` accepts. Anything else would put a QR on screen that charges another amount or
- * pays someone else, so it is never shown.
+ * `chargeUrlOk` accepts on the payments site. Anything else would put a QR on screen that charges
+ * another amount, pays someone else or opens someone else's page, so it is never shown.
  */
-export function chargeRequestProblem(req: PaymentRequest, input: PaymentRequestInput): ChargeProblem | null {
+export function chargeRequestProblem(req: PaymentRequest, input: PaymentRequestInput, payments: string = paymentsUrl()): ChargeProblem | null {
   if (
     req.currency !== input.currency ||
     Number(req.amount) !== Number(input.amount) ||
@@ -203,7 +217,7 @@ export function chargeRequestProblem(req: PaymentRequest, input: PaymentRequestI
     return 'order';
   }
   if (!sameHex(req.address, input.address)) return 'address';
-  return chargeUrlOk(req.url, req.id) ? null : 'url';
+  return chargeUrlOk(req.url, req.id, payments) ? null : 'url';
 }
 
 /** Whether a later answer is about the same charge: the same id, order and recipient. */
@@ -221,12 +235,26 @@ export function sameCharge(a: ChargeIdentity, b: ChargeIdentity): boolean {
 
 /* -------------------------------- the charge -------------------------------- */
 
-/** How the wallet learnt the charge was paid, and what arrived (a decimal of the token) when known. */
+/** The API said the charge was paid: what it delivered (a decimal of the token) when it knows, and when. */
 export interface ChargePaid {
-  by: 'api' | 'balance';
   amount: string | null;
   at: number;
 }
+
+/**
+ * The wallet's own balance rose by about the estimate while the charge was open: what came in (a
+ * decimal of the token) and when. Provisional (it may be anyone's money), so it is never "paid".
+ */
+export interface ChargeArrival {
+  amount: string;
+  at: number;
+}
+
+/**
+ * What the screen shows: the API's status (`chargeStatus`), or `arriving` while an open charge has
+ * seen the balance rise by its estimate and the API has not said paid yet.
+ */
+export type ChargeView = ChargeStatus | 'arriving';
 
 /**
  * The charge on screen, as the wallet keeps it — in storage, per wallet and mode
@@ -240,7 +268,10 @@ export interface QrCharge {
   publicToken: string | null;
   /** This wallet's balance of the token in base units when the QR was shown (the lowest since); null until read. */
   baseline: string | null;
+  /** Set only by the API's `paid`. */
   paid: ChargePaid | null;
+  /** Set only by the balance, only while open: money arriving, not yet confirmed. */
+  arriving: ChargeArrival | null;
   /** When the wallet first saw it expired or cancelled; null while it is open. */
   closedAt: number | null;
 }
@@ -279,15 +310,16 @@ export function newCharge(req: PaymentRequest, shared: boolean, baseline: bigint
     shared,
     publicToken: shared ? req.publicToken ?? null : null,
     baseline: baseline === null || baseline < 0n ? null : baseline.toString(),
-    paid: req.status === 'paid' ? { by: 'api', amount: req.paidAmount ?? null, at: Date.parse(req.paidAt ?? '') || 0 } : null,
+    paid: req.status === 'paid' ? { amount: req.paidAmount ?? null, at: Date.parse(req.paidAt ?? '') || 0 } : null,
+    arriving: null,
     closedAt: null,
   };
 }
 
 /**
- * What a charge is at `now`: paid as soon as either signal said so; otherwise the request's
- * status, an open one past its expiry being expired (the API reads it the same way). A
- * `processing` one — the money received, the token on its way — never expires.
+ * What a charge is at `now`: paid once the API said so; otherwise the request's status, an open
+ * one past its expiry being expired (the API reads it the same way). A `processing` one — the
+ * money received, the token on its way — never expires. The balance never makes it paid.
  */
 export function chargeStatus(charge: QrCharge, now: number): ChargeStatus {
   if (charge.paid) return 'paid';
@@ -295,12 +327,22 @@ export function chargeStatus(charge: QrCharge, now: number): ChargeStatus {
   return status === 'open' && now >= Date.parse(expiresAt) ? 'expired' : status;
 }
 
+/**
+ * What the screen shows at `now`: `chargeStatus`, except an open charge whose balance rose by its
+ * estimate reads `arriving`, distinct from paid and gone the moment the charge expires or is
+ * cancelled (only the API can still turn those into paid).
+ */
+export function chargeView(charge: QrCharge, now: number): ChargeView {
+  const status = chargeStatus(charge, now);
+  return status === 'open' && charge.arriving ? 'arriving' : status;
+}
+
 /** Whether the seller may still cancel it: only while it is open (the API refuses anything else). */
 export function chargeCancellable(charge: QrCharge, now: number): boolean {
   return chargeStatus(charge, now) === 'open';
 }
 
-/** How a paid charge was paid, when the API said so; null while unpaid, or while only the balance has told. */
+/** How a paid charge was paid, when the API said so; null while unpaid. */
 export function chargePaidVia(charge: QrCharge, now: number): ChargeMethod | null {
   return chargeStatus(charge, now) === 'paid' ? charge.request.paidMethod : null;
 }
@@ -322,7 +364,7 @@ export function formatCountdown(ms: number): string {
 }
 
 /**
- * Whether the screen still asks the API and reads the balance: until the charge is paid — while it
+ * Whether the screen still asks the API: until the charge is paid — while it
  * is open or processing (the money received, the token on its way), and for
  * `CHARGE_LATE_WATCH_MS` after it expired or was cancelled, because a payer who started just
  * before is still paying and that money arrives all the same.
@@ -337,10 +379,9 @@ export function chargeWatched(charge: QrCharge, now: number): boolean {
 
 /**
  * A charge after an answer from the API about it. An answer about another charge changes nothing.
- * A paid request settles the charge (`paidAmount` is what arrived, when the API knows it) unless
- * the balance already did — the first signal wins; any other status replaces the one kept, so
- * `open` → `processing` → `paid` is three answers in a row, and the balance may still settle it
- * from `processing` when the token lands before the API says so.
+ * A paid request settles the charge (`paidAmount` is what arrived, when the API knows it); any
+ * other status replaces the one kept, so `open` → `processing` → `paid` is three answers in a row.
+ * The API is the only signal that settles a charge.
  */
 export function withRequest(charge: QrCharge, req: PaymentRequest, now: number): QrCharge {
   if (!sameCharge(charge.request, req)) return charge;
@@ -349,12 +390,20 @@ export function withRequest(charge: QrCharge, req: PaymentRequest, now: number):
     ...charge,
     request: keep(req),
     closedAt: closing ? now : charge.closedAt,
-    paid: charge.paid ?? (req.status === 'paid' ? { by: 'api', amount: req.paidAmount ?? null, at: now } : null),
+    paid: charge.paid ?? (req.status === 'paid' ? { amount: req.paidAmount ?? null, at: now } : null),
   };
 }
 
+/** The estimate in the token's base units, or null when there is none worth measuring against. */
+function estimateUnits(req: Pick<PaymentRequest, 'estimatedAmountOut' | 'tokenDecimals'>): bigint | null {
+  if (req.estimatedAmountOut === null) return null;
+  const units = toMinorUnitsBig(req.estimatedAmountOut, req.tokenDecimals);
+  return units === null || units <= 0n ? null : units;
+}
+
 export interface BalanceCheck {
-  paid: boolean;
+  /** The rise covers the estimate: money arriving, for the API to confirm. */
+  arrived: boolean;
   /** What came in since the baseline, in base units. */
   received: bigint;
   /** The baseline to keep: lowered to the balance when money left meanwhile. */
@@ -362,40 +411,51 @@ export interface BalanceCheck {
 }
 
 /**
- * The rule that reads a payment off the wallet's own balance. A rise over the baseline counts as
- * the payment when it reaches `CHARGE_PAID_SHARE_BPS` of the estimate (the firm price the payer
- * gets can be a little under the market's), or when there is no estimate, any rise at all. Money
- * that left since the QR was shown lowers the baseline, so a payment counts from the lowest point.
+ * The rule that reads money arriving off the wallet's own balance. A rise over the baseline counts
+ * when it reaches `CHARGE_PAID_SHARE_BPS` of the estimate (the firm price the payer gets can be a
+ * little under the market's). Without an estimate nothing counts: any rise at all would let a payer
+ * send dust and see the charge move. Money that left since the QR was shown lowers the baseline,
+ * so a rise counts from the lowest point.
  *
  * It cannot tell whose money it is: anything of that token arriving on that network meanwhile
- * reads as the payment. The API's own answer (`withRequest`) has no such blind spot, and wins
- * whenever it comes first.
+ * reads the same. That is why it only ever says "arriving", never "paid": only the API's answer
+ * (`withRequest`) settles a charge.
  */
-export function chargePaidByBalance(baseline: bigint, current: bigint, estimatedAmountOut: string | null, decimals: number): BalanceCheck {
+export function chargeArrivalByBalance(baseline: bigint, current: bigint, estimatedAmountOut: string | null, decimals: number): BalanceCheck {
   const base = current < baseline ? current : baseline;
   const received = current - base;
-  if (received <= 0n) return { paid: false, received: 0n, baseline: base };
-  const estimate = estimatedAmountOut === null ? null : toMinorUnitsBig(estimatedAmountOut, decimals);
-  if (estimate === null || estimate <= 0n) return { paid: true, received, baseline: base };
-  return { paid: received * 10_000n >= estimate * BigInt(CHARGE_PAID_SHARE_BPS), received, baseline: base };
+  if (received <= 0n) return { arrived: false, received: 0n, baseline: base };
+  const estimate = estimateUnits({ estimatedAmountOut, tokenDecimals: decimals });
+  if (estimate === null) return { arrived: false, received, baseline: base };
+  return { arrived: received * 10_000n >= estimate * BigInt(CHARGE_PAID_SHARE_BPS), received, baseline: base };
+}
+
+/**
+ * Whether the screen reads the wallet's balance for this charge: only while it is open, has an
+ * estimate to measure a rise against, and has not seen money arrive yet. A processing, paid,
+ * expired or cancelled charge is the API's to settle.
+ */
+export function chargeBalanceWatched(charge: QrCharge, now: number): boolean {
+  return chargeStatus(charge, now) === 'open' && charge.arriving === null && estimateUnits(charge.request) !== null;
 }
 
 const UNITS = /^\d+$/;
 
 /**
  * A charge after a read of this wallet's balance of the token, in base units. The first read is
- * the baseline — the moment the QR was shown — and each later one goes through
- * `chargePaidByBalance`. A settled charge stays as it is.
+ * the baseline (the moment the QR was shown) and each later one goes through
+ * `chargeArrivalByBalance`, which can mark money arriving and nothing more. Outside
+ * `chargeBalanceWatched` the charge stays as it is.
  */
 export function withBalance(charge: QrCharge, balance: bigint, now: number): QrCharge {
-  if (charge.paid || balance < 0n) return charge;
+  if (!chargeBalanceWatched(charge, now) || balance < 0n) return charge;
   if (charge.baseline === null || !UNITS.test(charge.baseline)) return { ...charge, baseline: balance.toString() };
   const { tokenDecimals, estimatedAmountOut } = charge.request;
-  const check = chargePaidByBalance(BigInt(charge.baseline), balance, estimatedAmountOut, tokenDecimals);
+  const check = chargeArrivalByBalance(BigInt(charge.baseline), balance, estimatedAmountOut, tokenDecimals);
   return {
     ...charge,
     baseline: check.baseline.toString(),
-    paid: check.paid ? { by: 'balance', amount: fromMinorUnits(check.received, tokenDecimals), at: now } : null,
+    arriving: check.arrived ? { amount: fromMinorUnits(check.received, tokenDecimals) ?? '0', at: now } : null,
   };
 }
 
@@ -406,21 +466,35 @@ export function chargeStorageKey(walletId: string, env: ChainNet): string {
   return `${CHARGE_STORAGE_PREFIX}.${walletId}.${env}`;
 }
 
+const DECIMAL = /^\d+(\.\d+)?$/;
+
+/**
+ * A paid record read back. One an earlier build of this screen wrote from the balance alone
+ * (`by: 'balance'`) is not kept: only the API settles a charge, and its next answer says so again.
+ */
 function parsePaid(raw: unknown): ChargePaid | null {
   if (!raw || typeof raw !== 'object') return null;
   const p = raw as Record<string, unknown>;
-  if (p.by !== 'api' && p.by !== 'balance') return null;
-  const amount = typeof p.amount === 'string' && /^\d+(\.\d+)?$/.test(p.amount) ? p.amount : null;
+  if (p.by !== undefined && p.by !== 'api') return null;
+  const amount = typeof p.amount === 'string' && DECIMAL.test(p.amount) ? p.amount : null;
   const at = typeof p.at === 'number' && Number.isFinite(p.at) ? p.at : 0;
-  return { by: p.by, amount, at };
+  return { amount, at };
+}
+
+/** Money seen arriving, read back: a decimal amount and a time, or nothing. */
+function parseArrival(raw: unknown): ChargeArrival | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const a = raw as Record<string, unknown>;
+  if (typeof a.amount !== 'string' || !DECIMAL.test(a.amount) || typeof a.at !== 'number' || !Number.isFinite(a.at)) return null;
+  return { amount: a.amount, at: a.at };
 }
 
 /**
  * A charge read back from storage, checked like any input: the request against the API's own
- * contract and `chargeUrlOk`, the rest field by field. Whatever does not read is dropped (null),
- * never guessed — the person makes a new charge.
+ * contract and `chargeUrlOk` (on the payments site configured now), the rest field by field.
+ * Whatever does not read is dropped (null), never guessed — the person makes a new charge.
  */
-export function parseStoredCharge(raw: unknown): QrCharge | null {
+export function parseStoredCharge(raw: unknown, payments: string = paymentsUrl()): QrCharge | null {
   if (!raw || typeof raw !== 'object') return null;
   const c = raw as Record<string, unknown>;
   let request: PaymentRequest;
@@ -429,13 +503,14 @@ export function parseStoredCharge(raw: unknown): QrCharge | null {
   } catch {
     return null;
   }
-  if (typeof c.shared !== 'boolean' || !chargeUrlOk(request.url, request.id)) return null;
+  if (typeof c.shared !== 'boolean' || !chargeUrlOk(request.url, request.id, payments)) return null;
   return {
     request: keep(request),
     shared: c.shared,
     publicToken: c.shared && typeof c.publicToken === 'string' && c.publicToken ? c.publicToken : null,
     baseline: typeof c.baseline === 'string' && UNITS.test(c.baseline) ? c.baseline : null,
     paid: parsePaid(c.paid),
+    arriving: parseArrival(c.arriving),
     closedAt: typeof c.closedAt === 'number' && Number.isFinite(c.closedAt) ? c.closedAt : null,
   };
 }

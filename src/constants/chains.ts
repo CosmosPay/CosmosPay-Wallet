@@ -62,6 +62,12 @@ export const CHAIN_SWAP_SLIPPAGE_BPS = 50;
 export const CHAIN_RPC_TIMEOUT_MS = 15_000;
 
 /**
+ * The most addresses one Solana `getMultipleAccounts` call takes: the RPC's own limit, which
+ * the public nodes enforce. A longer list is read in calls of this size.
+ */
+export const SOLANA_MULTIPLE_ACCOUNTS_MAX = 100;
+
+/**
  * How long the wallet waits for its ERC-20 approval to land before sending the swap
  * that spends it. Monad blocks are sub-second; a minute is a congested node, and past
  * it the user is told rather than left watching a spinner.

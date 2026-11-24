@@ -161,7 +161,7 @@ try {
 
   // The account came with the wallet: `finish` was signed by the key just sealed, and Home
   // has nothing left to offer for it.
-  ok(finishes.length === 1, 'The Cosmos Wallet account is created once, with the wallet');
+  ok(finishes.length === 1, 'The Cosmos Pay account is created once, with the wallet');
   ok(finishes[0]?.session === 'tok-profile', 'It is created with the session the email code gave');
   ok(finishes[0]?.body.stellarAddress === EXPECTED_PUB && typeof finishes[0]?.body.signature === 'string', 'It is signed by the new wallet');
   ok(finishes[0]?.body.backup === undefined, 'It sends no backup: the twelve words are the backup');
@@ -176,6 +176,15 @@ try {
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByText('Saldo total').waitFor({ timeout: 15000 });
   ok((await page.getByRole('button', { name: 'Desbloquear' }).count()) === 0, 'Reload keeps the session: Home, no unlock');
+
+  // One "More": Home's fourth action opens the bar's More (features/wallet/Profile.tsx), the
+  // operations and the lock included — it used to open a separate "Operaciones" with no lock.
+  await page.locator('.home-actions').getByRole('button', { name: 'Más', exact: true }).click();
+  await page.getByRole('heading', { name: 'Más', level: 1 }).waitFor({ timeout: 10000 });
+  ok(
+    (await page.getByText('Comprar con moneda local').count()) > 0 && (await page.locator('.more-lock').count()) === 1,
+    "Home's More is the bar's More: the operations and the lock",
+  );
 
   // lock -> the lock screen (greets by name, no address/network), then decrypt; a reload
   // after a lock stays locked, because the lock dropped what was kept

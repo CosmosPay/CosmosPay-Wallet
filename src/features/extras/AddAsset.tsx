@@ -188,7 +188,7 @@ export function AddAsset({ store }: { store: WalletStore }) {
     by.set('stellar', rows.length);
     return by;
   }, [catalog, rows.length]);
-  const count = (n: number) => (n === 1 ? t('home.netAssetsOne') : t('home.netAssets', { n }));
+  const count = (n: number) => (n === 1 ? t('home.netAssetsOne') : t('home.netAssets', { n: store.num.fixed(n, 0) }));
   const currentName = net === 'all' ? t('home.allNetworksLong') : store.networkName(net);
   const nothing = (showStellar ? verified.length + (net === 'stellar' ? unverified.length : 0) : 0) + others.length === 0;
 

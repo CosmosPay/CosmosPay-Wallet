@@ -38,9 +38,9 @@ export const CHARGE_POLL_MS = 5_000;
 export const CHARGE_BALANCE_POLL_MS = 10_000;
 
 /**
- * The share of the estimate a rise in the balance must reach to count as the payment, in basis
- * points: the estimate is the market price when the QR was made, and the firm price the payer
- * gets a few minutes later can be a little lower.
+ * The share of the estimate a rise in the balance must reach to read as money arriving (never as
+ * paid: only the API says that), in basis points: the estimate is the market price when the QR
+ * was made, and the firm price the payer gets a few minutes later can be a little lower.
  */
 export const CHARGE_PAID_SHARE_BPS = 9_500;
 

@@ -16,7 +16,7 @@ import {
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
 import { coingeckoBase } from '@/lib/endpoints';
-import { defaultMemo, memoForDisplay, normalizeMemo, type MemoKind } from '@/lib/memo';
+import { memoForDisplay, memoToSign, type MemoKind } from '@/lib/memo';
 import { tNow } from '@/lib/i18n';
 
 // A network is identified by an id; built-ins are testnet/public, plus any
@@ -168,7 +168,7 @@ export interface SendParams {
 /**
  * Turn a (value, kind) pair into the SDK memo, applying the byte-accurate limit.
  *
- * With NO memo to attach the wallet signs its own: `Cosmos Wallet v1.5.0`, so a
+ * With NO memo to attach the wallet signs its own: `Cosmos Pay Wallet v1.5.0`, so a
  * transaction says on chain which client built it and which release. That default is
  * only ever reached when the field is genuinely empty — a memo the user typed, and a
  * memo a SEP-7 request carried, are both left exactly as they are.
@@ -181,7 +181,8 @@ export interface SendParams {
  * mean an empty {@link MEMO_SIGNATURE} — a transaction with no memo, exactly as before.
  */
 function buildMemo(value?: string, kind: MemoKind = 'text'): Memo | null {
-  const m = normalizeMemo(value ?? '', kind) ?? defaultMemo();
+  // The same function the review screens read, so what they show is what is signed.
+  const m = memoToSign(value ?? '', kind);
   if (!m) return null;
   return m.kind === 'id' ? Memo.id(m.value) : Memo.text(m.value);
 }

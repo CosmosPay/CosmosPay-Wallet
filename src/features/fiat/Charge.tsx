@@ -19,6 +19,7 @@ import { sanitizeDecimalInput } from '@/lib/amount';
 import { cx } from '@/lib/cx';
 import { shortAddr } from '@/lib/format';
 import { isDesktopLayout } from '@/lib/layout';
+import type { NumberFormat } from '@/lib/numberFormat';
 import { qrDataUrl } from '@/lib/qr';
 import { shareText } from '@/lib/share';
 import {
@@ -36,6 +37,7 @@ import {
 } from '@/lib/p2pRamp';
 import {
   chargeAmountProblem,
+  chargeBalanceWatched,
   chargeCancellable,
   chargeDescription,
   chargeMethodsKey,
@@ -44,6 +46,7 @@ import {
   chargeStatus,
   chargeTimeLeft,
   chargeUrlOk,
+  chargeView,
   chargeWatched,
   formatCountdown,
   sanitizeChargeDescription,
@@ -64,11 +67,13 @@ interface ChargeDraft {
 }
 const EMPTY_DRAFT: ChargeDraft = { currency: '', token: null, amount: '', description: '' };
 
-/** Local money with its cents once it has any; a token with two decimals from 1 up, four significant digits below. */
-function formatters(lang: string) {
-  const money = (v: number) => new Intl.NumberFormat(lang, { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }).format(v);
-  const units = (v: number) =>
-    v >= 1 ? new Intl.NumberFormat(lang, { maximumFractionDigits: 2 }).format(v) : new Intl.NumberFormat(lang, { maximumSignificantDigits: 4 }).format(v);
+/**
+ * Local money with its cents once it has any; a token with two decimals from 1 up, four
+ * significant digits below — in the app's language (`store.num`), like the ramp's figures.
+ */
+function formatters(num: NumberFormat) {
+  const money = (v: number) => num.fixed(v, Number.isInteger(v) ? 0 : 2);
+  const units = (v: number) => (v >= 1 ? num.amount(v, 2) : num.significant(v, 4));
   return { money, units };
 }
 
@@ -93,11 +98,11 @@ function usePageVisible(): boolean {
  * Step one is the form, drawn like the ramp's purchase: the local money with its flag, the amount,
  * the token and network it arrives as (only networks this wallet holds, the ramp's defaults), an
  * optional one-line description and the estimate at the market price. Step two is the QR, the
- * amount, the estimate, how the customer can pay, the countdown, share and cancel, and it watches
- * for the payment two ways — the API's answer about the request, and this wallet's own balance of
- * the token — whichever says so first turns it into "payment received". A bank transfer the API
- * has received but not yet credited reads "processing" in between: no QR, no cancel, still
- * watched.
+ * amount, the estimate, how the customer can pay, the countdown, share and cancel. Only the API's
+ * answer about the request turns it into "payment received"; this wallet's own balance of the
+ * token, rising by the estimate while the charge is open, only says "money arriving, confirming"
+ * (`chargeView`). A bank transfer the API has received but not yet credited reads "processing" in
+ * between: no QR, no cancel, still watched.
  */
 export function Charge({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -193,7 +198,7 @@ function ChargeForm({ store }: { store: WalletStore }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market, networks]);
 
-  const { money, units } = formatters(lang);
+  const { money, units } = formatters(store.num);
   const currencies = market?.currencies ?? [];
   const cur: RampCurrency | null = currencies.find((c) => c.id === draft.currency) ?? null;
   const token = draft.token && networks.some((n) => n.chainId === draft.token?.chainId) ? draft.token : null;
@@ -408,7 +413,7 @@ function ChargeForm({ store }: { store: WalletStore }) {
         nameOf={nameOf}
         asideOf={(c) => {
           const r = token ? marketRate(c, token) : null;
-          return r && token ? `1 ${token.symbol} = ${new Intl.NumberFormat(lang, { maximumFractionDigits: r >= 100 ? 2 : 4 }).format(r)} ${c.id}` : null;
+          return r && token ? `1 ${token.symbol} = ${store.num.amount(r, r >= 100 ? 2 : 4)} ${c.id}` : null;
         }}
         onPick={(id) => {
           setPicker(null);
@@ -438,7 +443,7 @@ function ChargeForm({ store }: { store: WalletStore }) {
           none: t('ramp.noMatch'),
           network: t('ramp.network'),
           pickNetwork: t('ramp.pickNetwork'),
-          tokens: (n) => t('ramp.tokenCount', { n: new Intl.NumberFormat(lang).format(n) }),
+          tokens: (n) => t('ramp.tokenCount', { n: store.num.amount(n, 0) }),
           failed: t('ramp.tokensFailed'),
           retry: t('ramp.retry'),
           more: t('ramp.more'),
@@ -453,7 +458,7 @@ function ChargeForm({ store }: { store: WalletStore }) {
 function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }) {
   const t = store.t;
   const { refreshQrCharge, watchQrChargeBalance, cancelQrCharge, clearQrCharge } = store;
-  const { money, units } = formatters(store.lang);
+  const { money, units } = formatters(store.num);
   const visible = usePageVisible();
   const [now, setNow] = useState(() => Date.now());
   const [qr, setQr] = useState('');
@@ -465,6 +470,9 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
   const req = charge.request;
   const status = chargeStatus(charge, now);
   const watched = chargeWatched(charge, now);
+  const balanceWatched = chargeBalanceWatched(charge, now);
+  // Provisional: the balance rose by the estimate, the API has not confirmed it (never "paid").
+  const arriving = chargeView(charge, now) === 'arriving' ? charge.arriving : null;
   const net = rampWalletNetwork(req.chainId, store.chainNet);
   const netName = net ? store.networkName(net) : String(req.chainId);
   const urlOk = chargeUrlOk(req.url, req.id);
@@ -478,8 +486,9 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
     return () => clearInterval(id);
   }, [watched]);
 
-  // Two signals, both only while the page is in view: the API's answer every few seconds, and
-  // this wallet's own balance of the token (the first read is the baseline).
+  // Only while the page is in view: the API's answer every few seconds (the one signal that says
+  // paid), and, while the charge is open with an estimate, this wallet's own balance of the token
+  // (the first read is the baseline; a rise by the estimate reads "arriving", never paid).
   useEffect(() => {
     if (!watched || !visible) return;
     void refreshQrCharge();
@@ -487,11 +496,11 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
     return () => clearInterval(id);
   }, [watched, visible, refreshQrCharge]);
   useEffect(() => {
-    if (!watched || !visible) return;
+    if (!balanceWatched || !visible) return;
     void watchQrChargeBalance();
     const id = setInterval(() => void watchQrChargeBalance(), CHARGE_BALANCE_POLL_MS);
     return () => clearInterval(id);
-  }, [watched, visible, watchQrChargeBalance]);
+  }, [balanceWatched, visible, watchQrChargeBalance]);
 
   // The wallet draws the code of the page it checked (`chargeUrlOk`), not the API's picture of one.
   useEffect(() => {
@@ -563,7 +572,7 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
   }
 
   // The API received a bank transfer and is sending the token: nothing left to pay or cancel,
-  // and still watched (`chargeWatched`) until the API or the balance says it arrived.
+  // and still watched (`chargeWatched`) until the API says it arrived.
   if (status === 'processing') {
     return (
       <div className="charge-result is-processing">
@@ -612,12 +621,12 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
         </div>
 
         <p className="charge-expiry">{t('charge.expiresIn', { time: formatCountdown(chargeTimeLeft(charge, now)) })}</p>
-        <div className="charge-waiting" role="status">
+        <div className={cx('charge-waiting', arriving && 'is-arriving')} role="status">
           <p className="charge-wait">
             <Spinner size={16} tone="text" />
-            <span>{t('charge.waiting')}</span>
+            <span>{arriving ? t('charge.arriving', { amount: units(Number(arriving.amount)), token: req.token }) : t('charge.waiting')}</span>
           </p>
-          <p className="charge-hint">{t('charge.waitingHint')}</p>
+          <p className="charge-hint">{t(arriving ? 'charge.arrivingHint' : 'charge.waitingHint')}</p>
         </div>
 
         <div className="charge-actions">

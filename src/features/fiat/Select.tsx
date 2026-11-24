@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { cx } from '@/lib/cx';
+import { ChevronDownIcon } from '@/ui/Icons';
 import '@/styles/ui/field.css';
 import '@/styles/features/fiat/forms.css';
 
@@ -14,7 +15,7 @@ export function Select({ label, value, onChange, children, className }: { label?
         <select value={value} onChange={(e) => onChange((e.target as HTMLSelectElement).value)} className="input is-soft fiat-select">
           {children}
         </select>
-        <span className="fiat-select-chevron">▼</span>
+        <ChevronDownIcon className="fiat-select-chevron" />
       </div>
     </label>
   );

@@ -2,14 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import jsQR from 'jsqr';
 import type { WalletStore } from '@/state/store';
 import { CheckIcon, ChevronDownIcon } from '@/ui/Icons';
+import { Notice } from '@/ui/Notice';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { buildKind } from '@/lib/platform';
 import { cameraFailure, cameraFailureKey, openCameraStream, type CameraFailure } from '@/lib/camera';
 import { canReadClipboardImage } from '@/lib/clipboard';
+import type { ScanRefusal } from '@/lib/scanPayload';
 import { SCAN_DECODE_MAX_PX } from '@/constants/extras';
 import '@/styles/features/extras/scan-qr.css';
 import { cx } from '@/lib/cx';
 import { parseWcUri } from '@/lib/walletConnect';
+
+/** Why a decoded QR (or an image) was not opened: `sep7Network` is a request for another Stellar network. */
+type Refusal = ScanRefusal | 'sep7Network' | 'noQr';
 
 /* ----------------------------- SCAN QR ------------------------------ */
 export function ScanQR({ store }: { store: WalletStore }) {
@@ -26,12 +31,28 @@ export function ScanQR({ store }: { store: WalletStore }) {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [deviceId, setDeviceId] = useState('');
   const [devOpen, setDevOpen] = useState(false);
+  // Why the last QR was not opened, said on the screen until another one is: never silence.
+  const [refusal, setRefusal] = useState<Refusal | null>(null);
+  // The camera decodes the same QR many times a second; each one is classified once.
+  const lastRefused = useRef('');
+
+  /** Say why `text` was not opened: a request for another Stellar network, an address of another network, or neither. */
+  const refuse = (text: string, sep7Network: boolean) => {
+    if (lastRefused.current === text) return;
+    lastRefused.current = text;
+    if (sep7Network) return setRefusal('sep7Network');
+    // Only now: it reads every family's address rules.
+    void import('@/lib/scanPayload')
+      .then(({ scanRefusal }) => setRefusal(scanRefusal(text, store.chainNet)))
+      .catch(() => setRefusal('unsupported'));
+  };
 
   /**
    * Shared for camera + uploaded images: parse the QR text and jump to Send.
    * Delegates to `store.applySep7` rather than re-implementing the mapping — this
    * used to keep its own copy, which dropped the memo type and the asset, so a
-   * scanned "10 USDC / MEMO_ID" request prefilled 10 XLM with a text memo.
+   * scanned "10 USDC / MEMO_ID" request prefilled 10 XLM with a text memo. A scan
+   * starts a new draft: nothing of an earlier one rides along (lib/sendDraft.ts).
    */
   const applyScan = (text: string): boolean => {
     // A site's WalletConnect QR: pair with it, and its proposal opens over the pairing screen.
@@ -40,9 +61,19 @@ export function ScanQR({ store }: { store: WalletStore }) {
       store.setScreen('wc-pair');
       return true;
     }
-    if (!store.applySep7(text)) return false;
+    const outcome = store.applySep7(text);
+    if (outcome !== 'applied') {
+      refuse(text, outcome === 'otherNetwork');
+      return false;
+    }
     store.setScreen('send');
     return true;
+  };
+
+  /** An image with no QR in it. Forgets the last refused QR, so the next upload of it is said again. */
+  const noQr = () => {
+    lastRefused.current = '';
+    setRefusal('noQr');
   };
 
   /** Fallback without camera: decode a QR from any image blob (file or clipboard). */
@@ -66,9 +97,10 @@ export function ScanQR({ store }: { store: WalletStore }) {
       URL.revokeObjectURL(url);
       const data = ctx.getImageData(0, 0, canvas.width, canvas.height);
       const res = jsQR(data.data, canvas.width, canvas.height); // default also tries inverted
-      if (!res?.data || !applyScan(res.data)) store.flash(t('scan.noQr'), 'err');
+      if (res?.data) applyScan(res.data);
+      else noQr();
     } catch {
-      store.flash(t('scan.noQr'), 'err');
+      noQr();
     }
   };
   const decodeRef = useRef(decodeBlob);
@@ -192,9 +224,20 @@ export function ScanQR({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen col">
-      {/* Back to wherever the scanner was opened from (send, home, operations, drawer…). */}
+      {/* Back to wherever the scanner was opened from (send, home, More, drawer…). */}
       <ScreenHeader title={t('scan.title')} onBack={store.goBack} />
-      <div className="scan-hint">{t('scan.point')}</div>
+      <div className="scan-hint">{t(store.wcEnabled ? 'scan.pointWc' : 'scan.point')}</div>
+      <div role="status" aria-live="polite">
+        {refusal && (
+          <Notice tone={refusal === 'otherNetwork' ? 'info' : 'danger'} className="scan-refusal">
+            {refusal === 'sep7Network'
+              ? t('sep7.otherNetwork', { network: `Stellar ${store.network.label}` })
+              : refusal === 'unsupported'
+                ? t(store.wcEnabled ? 'scan.unsupportedWc' : 'scan.unsupported')
+                : t(refusal === 'otherNetwork' ? 'scan.otherNetwork' : 'scan.noQr')}
+          </Notice>
+        )}
+      </div>
       <div className="glass center scan-viewport">
         {failure ? (
           <div className="scan-denied">

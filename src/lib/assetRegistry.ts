@@ -40,6 +40,7 @@ import {
 } from '@/constants/assetRegistry';
 import { assetKey, type AssetRef } from '@/lib/asset';
 import { gatewayApi } from '@/lib/endpoints';
+import { namesProvider } from '@/lib/providerNames';
 import { warmPublicKey } from '@/lib/publicKey';
 import { storageGet, storageSet } from '@/lib/storage';
 
@@ -77,6 +78,20 @@ interface RegistryPayload {
   data: RegistryAsset[];
 }
 
+/**
+ * A row as the screens may show it. The registry names who issues each asset, and one issuer
+ * is a service Cosmos Pay is built on, which the copy never names (`constants/providerNames.ts`):
+ * USDB's, on testnet, came back from the server as "Emitido por …" in Swap and "Add an asset".
+ * Such a name is dropped (the row then shows its issuer's address, as an unnamed one does), and
+ * a display name that carries one falls back to the code. Applied where a list enters this module
+ * (the fetch, the stored copy), so every reader gets the same rows and keeps their identity.
+ */
+export function withoutProviderNames(a: RegistryAsset): RegistryAsset {
+  const issuerName = namesProvider(a.issuerName) ? '' : a.issuerName;
+  const name = namesProvider(a.name) ? a.code : a.name;
+  return issuerName === a.issuerName && name === a.name ? a : { ...a, issuerName, name };
+}
+
 /* -------------------------------- cache --------------------------------- */
 
 interface CachedRegistry {
@@ -107,8 +122,10 @@ async function readCache(networkId: string): Promise<CachedRegistry | null> {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as CachedRegistry;
     if (!Array.isArray(parsed?.data) || typeof parsed.version !== 'number') return null;
-    memory.set(networkId, parsed);
-    return parsed;
+    // A copy stored by an earlier release still carries the names it was fetched with.
+    const entry = { ...parsed, data: parsed.data.map(withoutProviderNames) };
+    memory.set(networkId, entry);
+    return entry;
   } catch {
     return null;
   }
@@ -155,7 +172,8 @@ async function fetchRegistry(networkId: string): Promise<RegistryPayload | null>
         ? (json as { data: unknown }).data
         : json;
     parseShape(url, RegistryShape, payload);
-    return payload as RegistryPayload;
+    const registry = payload as RegistryPayload;
+    return { ...registry, data: registry.data.map(withoutProviderNames) };
   } catch {
     // Offline, blocked, or a shape the contract refused. All three mean the same
     // thing to the caller: use what we shipped.

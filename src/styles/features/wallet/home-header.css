@@ -73,21 +73,34 @@
   transform: rotate(180deg);
 }
 
-/* the bell: the round button, and a dot of the brand blue while something is new */
+/* the bell: the round button, and the count of what came after the last open on the bell's
+   top-right corner. Anchored to the button's centre, where the 20px bell is, so it lands the
+   same on every button size, and clear of the bell's dome: it used to sit over the icon's middle
+   (26x20 over 20x20) and the bell could not be told apart. Ink on a canvas-coloured ring, so the
+   bell's line runs up to it in both themes. */
 .home-bell {
   position: relative;
 }
 
 .home-bell-dot {
   position: absolute;
-  top: 9px;
-  right: 10px;
-  width: 9px;
-  height: 9px;
+  top: calc(50% - 22px);
+  left: calc(50% + 4px);
+  display: grid;
+  place-items: center;
+  min-width: 10px;
+  height: 16px;
+  padding: 0 3px;
   border: 2px solid var(--bg);
-  border-radius: 50%;
-  background: var(--brand);
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
   box-sizing: content-box;
+  pointer-events: none;
   animation: fadeIn var(--dur-base) var(--ease-out);
 }
 

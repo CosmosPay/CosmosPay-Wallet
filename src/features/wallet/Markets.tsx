@@ -41,6 +41,7 @@ export function Markets({ store }: { store: WalletStore }) {
             code={code}
             price={store.prices[code]}
             index={i}
+            num={store.num}
             onClick={() => {
               store.setSelectedAsset(code);
               store.setScreen('asset');
