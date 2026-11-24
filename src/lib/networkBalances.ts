@@ -32,9 +32,9 @@ import {
 import { toMinorUnitsBig } from '@/lib/amount';
 import type { ChainNet } from '@/constants/chains';
 import { networkDefOn } from '@/lib/testnets';
-import { ApiShapeError, arrayOf, bool, object, parseShape, str, type Check } from '@/lib/apiShape';
+import { ApiShapeError, arrayOf, bool, nullable, object, parseShape, str, type Check } from '@/lib/apiShape';
 import { balanceOfCalldata } from '@/lib/evmTx';
-import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, decodeTokenAccount } from '@/lib/solanaTx';
+import { AssociatedReadRefused, readAssociatedBalances, type SlotAccount } from '@/lib/solanaTokenBalances';
 import { STARKNET_BALANCE_OF_SELECTOR, STRK_TOKEN } from '@/constants/starknetSend';
 
 /** Why a balance could not be read. Each one means "unknown" to the caller — none is a zero. */
@@ -252,10 +252,11 @@ async function readEvm(io: Io, rpc: string, def: NetworkDef, address: string): P
 }
 
 /**
- * Solana and Fogo: `getBalance` in lamports, and each token by `getTokenAccountsByOwner`
- * filtered on its mint — a mint filter matches under both token programs, and asks for that one
- * mint instead of every account a busy wallet holds. No account is a known zero; several add
- * up. Each is decoded here (base64, not the node's `jsonParsed` rendering) and must be under a
+ * Solana and Fogo: `getBalance` in lamports, and each token at the owner's associated token
+ * accounts under both token programs (`lib/solanaTokenBalances.ts`), all of them in
+ * `getMultipleAccounts` calls: the public Solana node refuses the indexed
+ * `getTokenAccountsByOwner`. No account is a known zero; one under each program adds up.
+ * Each is decoded here (base64, not the node's `jsonParsed` rendering) and must be under a
  * token program, of that mint and of this owner.
  */
 async function readSvm(io: Io, rpc: string, def: NetworkDef, address: string): Promise<Record<string, bigint>> {
@@ -264,30 +265,29 @@ async function readSvm(io: Io, rpc: string, def: NetworkDef, address: string): P
     if (env.error !== undefined) refused(io, 'getBalance', env.error);
     return BigInt(parseShape(io.label, object({ value: uint }), env.result).value);
   };
-  const tokenAmount = async (mint: string) => {
-    const env = await jsonRpc(io, rpc, 'getTokenAccountsByOwner', [address, { mint }, { encoding: 'base64', commitment: 'confirmed' }]);
-    if (env.error !== undefined) refused(io, 'getTokenAccountsByOwner', env.error);
-    const accounts = parseShape(
-      io.label,
-      object({ value: arrayOf(object({ account: object({ owner: str, data: arrayOf(str) }) })) }),
-      env.result,
-    );
-    let sum = 0n;
-    for (const { account } of accounts.value) {
-      if (account.owner !== TOKEN_PROGRAM_ID && account.owner !== TOKEN_2022_PROGRAM_ID) io.fail('shape', 'an account outside the token programs');
-      let token: ReturnType<typeof decodeTokenAccount> = null;
+  const read = async (addresses: string[]): Promise<SlotAccount[]> => {
+    const env = await jsonRpc(io, rpc, 'getMultipleAccounts', [addresses, { encoding: 'base64', commitment: 'confirmed' }]);
+    if (env.error !== undefined) refused(io, 'getMultipleAccounts', env.error);
+    const { value } = parseShape(io.label, object({ value: arrayOf(nullable(object({ owner: str, data: arrayOf(str) }))) }), env.result);
+    return value.map((account) => {
+      if (!account) return null;
       try {
-        token = decodeTokenAccount(base64.decode(account.data[0]));
+        return { owner: account.owner, data: base64.decode(account.data[0]) };
       } catch {
-        // Not base64: refused just below, like any other account that does not decode.
+        return io.fail('shape', 'an account that is not base64');
       }
-      if (!token || token.mint !== mint || token.owner !== address) io.fail('shape', 'a token account of another mint or owner');
-      sum += token.amount;
-    }
-    return sum;
+    });
   };
-  const [native, ...tokens] = await Promise.all([lamports(), ...def.tokens.map((t) => tokenAmount(t.asset))]);
-  return balances(native, def, (_asset, _decimals, i) => tokens[i]);
+  const tokens = async () => {
+    try {
+      return await readAssociatedBalances(address, def.tokens.map((t) => t.asset), read);
+    } catch (e) {
+      if (e instanceof AssociatedReadRefused) io.fail('shape', e.message);
+      throw e;
+    }
+  };
+  const [native, held] = await Promise.all([lamports(), tokens()]);
+  return balances(native, def, (asset) => held[asset]);
 }
 
 /**

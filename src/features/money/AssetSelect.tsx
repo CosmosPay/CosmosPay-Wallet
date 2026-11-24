@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { AssetLogo } from '@/ui/AssetLogo';
-import { trim } from '@/lib/format';
+import type { NumberFormat } from '@/lib/numberFormat';
 import { cx } from '@/lib/cx';
 import { CheckIcon, ChevronDownIcon } from '@/ui/Icons';
 import { assetKey, codeIsAmbiguous, isSameAsset, shortIssuer, type AssetRef } from '@/lib/asset';
@@ -34,6 +34,7 @@ export function AssetSelect({
   variant = 'swap',
   open: openProp,
   onToggle,
+  num,
 }: {
   assets: SelectableAsset[];
   value: AssetRef;
@@ -41,6 +42,8 @@ export function AssetSelect({
   variant?: 'swap' | 'send';
   open?: boolean;
   onToggle?: (next: boolean) => void;
+  /** The app's number formatter (`store.num`), for the balances. */
+  num: NumberFormat;
 }) {
   const [openLocal, setOpenLocal] = useState(false);
   const open = openProp ?? openLocal;
@@ -79,7 +82,7 @@ export function AssetSelect({
                     <span className="asset-select-issuer">{shortIssuer(a.issuer)}</span>
                   )}
                 </span>
-                <span className="asset-select-bal">{trim(parseFloat(a.balance) || 0, 4)}</span>
+                <span className="asset-select-bal">{num.amount(parseFloat(a.balance) || 0, 4)}</span>
                 {isSameAsset(a, value) && <CheckIcon className="asset-select-check" />}
               </button>
             ))}

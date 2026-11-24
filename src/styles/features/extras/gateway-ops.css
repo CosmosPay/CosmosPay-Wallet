@@ -2,7 +2,7 @@
    The gateway's own record of swaps, fiat payins/payouts and liquidity moves. */
 
 /* flexShrink 0: inside the column scroller the card would compress to fit rather
-   than overflow, which is the same trap operations.css documents. */
+   than overflow. */
 .gateway-ops-card {
   margin: 0 var(--gutter);
   flex-shrink: 0;

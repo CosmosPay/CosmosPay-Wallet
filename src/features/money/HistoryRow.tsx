@@ -1,5 +1,5 @@
 import type { WalletStore } from '@/state/store';
-import { trim, shortAddr } from '@/lib/format';
+import { shortAddr } from '@/lib/format';
 import { explorerTxUrl, type HistoryOp } from '@/lib/stellar';
 import { staggerClass } from '@/lib/stagger';
 import { useCopied } from '@/hooks/useCopied';
@@ -28,7 +28,7 @@ export function HistoryRow({ item, store, index = 0, dense = false }: { item: Hi
   const [copied, copy] = useCopied();
   const url = explorerTxUrl(store.network, item.hash);
   const time = new Date(item.createdAt).toLocaleTimeString(store.locale, { hour: '2-digit', minute: '2-digit' });
-  const amount = trim(parseFloat(item.amount || '0'), 4);
+  const amount = store.num.amount(parseFloat(item.amount || '0'), 4);
   const title =
     item.kind === 'fee' ? t(FEE_TITLES[item.feeKind ?? ''] ?? 'history.fee') : t(TITLES[item.kind] ?? 'history.other');
   const inbound = item.kind === 'received' || item.kind === 'create';

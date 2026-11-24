@@ -134,7 +134,7 @@ export function EasyRecoverySend({ store }: { store: WalletStore }) {
   }
 
   if (step === 'confirm' && link) {
-    const name = store.meta?.name || 'Cosmos Wallet';
+    const name = store.meta?.name || 'Cosmos Pay Wallet';
     return (
       <div className="scr screen col">
         <ScreenHeader title={t('easyRecovery.confirmTitle')} desc={t('easyRecovery.confirmDesc', { name })} onBack={store.goBack} />

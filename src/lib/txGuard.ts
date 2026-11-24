@@ -47,7 +47,8 @@ import type { NetConfig } from '@/lib/stellar';
 import type { AssetRef } from '@/lib/asset';
 import { shortIssuer } from '@/lib/asset';
 import { STELLAR_DECIMALS, toMinorUnitsBig } from '@/lib/amount';
-import { tNow } from '@/lib/i18n';
+import { savedLang, tNow } from '@/lib/i18n';
+import { numberFormat } from '@/lib/numberFormat';
 import { memoForDisplay } from '@/lib/memo';
 import {
   ALLOWED_OPS,
@@ -93,12 +94,27 @@ export class TxGuardError extends Error {
     params?: Record<string, string | number>,
     review: TxReview | null = null,
   ) {
-    super(tNow(key, params));
+    super(tNow(key, params && shownParams(params)));
     this.name = 'TxGuardError';
     this.review = review;
     this.key = key;
     this.params = params;
   }
+}
+
+/** The params that carry an amount. Presentation only: no check reads a message. */
+const AMOUNT_PARAMS: ReadonlySet<string> = new Set(['amount', 'fee', 'max', 'min', 'floor']);
+
+/** A decoded amount as a person reads it: the wallet's language, every digit kept (lib/numberFormat.ts). */
+function shownAmount(v: string): string {
+  return numberFormat(savedLang()).decimal(v);
+}
+
+/** A refusal's params as its message shows them; `params` itself keeps the plain decimals. */
+function shownParams(params: Record<string, string | number>): Record<string, string | number> {
+  return Object.fromEntries(
+    Object.entries(params).map(([k, v]) => [k, AMOUNT_PARAMS.has(k) ? shownAmount(String(v)) : v]),
+  );
 }
 
 /**
@@ -274,6 +290,12 @@ function str(v: unknown): string | null {
   return typeof v === 'string' && v ? v : null;
 }
 
+/** A decoded amount for a row (`str`'s reading), shown in the wallet's language. */
+function amountStr(v: unknown): string | null {
+  const s = str(v);
+  return s === null ? null : shownAmount(s);
+}
+
 /**
  * A contract address as the user can check it: the `C…` strkey.
  *
@@ -380,29 +402,29 @@ function reviewOp(raw: unknown): OpReview {
       movesValue = true;
       moves(sends, o.amount, assetRefOf(o.asset));
       push(tNow('guard.row.destination'), str(o.destination));
-      push(tNow('guard.row.amount'), `${String(o.amount ?? '')} ${assetLabel(o.asset)}`.trim());
+      push(tNow('guard.row.amount'), `${amountStr(o.amount) ?? ''} ${assetLabel(o.asset)}`.trim());
       break;
     case 'createAccount':
       movesValue = true;
       moves(sends, o.startingBalance, { code: 'XLM', issuer: null });
       push(tNow('guard.row.newAccount'), str(o.destination));
-      push(tNow('guard.row.startingBalance'), `${String(o.startingBalance ?? '')} XLM`);
+      push(tNow('guard.row.startingBalance'), `${amountStr(o.startingBalance) ?? ''} XLM`);
       break;
     case 'pathPaymentStrictSend':
       movesValue = true;
       moves(sends, o.sendAmount, assetRefOf(o.sendAsset));
       moves(receives, o.destMin, assetRefOf(o.destAsset));
       push(tNow('guard.row.destination'), str(o.destination));
-      push(tNow('guard.row.youSend'), `${String(o.sendAmount ?? '')} ${assetLabel(o.sendAsset)}`.trim());
-      push(tNow('guard.row.receivesMin'), `${String(o.destMin ?? '')} ${assetLabel(o.destAsset)}`.trim());
+      push(tNow('guard.row.youSend'), `${amountStr(o.sendAmount) ?? ''} ${assetLabel(o.sendAsset)}`.trim());
+      push(tNow('guard.row.receivesMin'), `${amountStr(o.destMin) ?? ''} ${assetLabel(o.destAsset)}`.trim());
       break;
     case 'pathPaymentStrictReceive':
       movesValue = true;
       moves(sends, o.sendMax, assetRefOf(o.sendAsset));
       moves(receives, o.destAmount, assetRefOf(o.destAsset));
       push(tNow('guard.row.destination'), str(o.destination));
-      push(tNow('guard.row.youSendMax'), `${String(o.sendMax ?? '')} ${assetLabel(o.sendAsset)}`.trim());
-      push(tNow('guard.row.receives'), `${String(o.destAmount ?? '')} ${assetLabel(o.destAsset)}`.trim());
+      push(tNow('guard.row.youSendMax'), `${amountStr(o.sendMax) ?? ''} ${assetLabel(o.sendAsset)}`.trim());
+      push(tNow('guard.row.receives'), `${amountStr(o.destAmount) ?? ''} ${assetLabel(o.destAsset)}`.trim());
       break;
     case 'changeTrust':
       line = assetRefOf(o.line);
@@ -410,7 +432,7 @@ function reviewOp(raw: unknown): OpReview {
       // The SDK pads the limit to 7 decimals, so "delete" arrives as "0.0000000".
       lineRemoves = toMinorUnitsBig(String(o.limit ?? ''), STELLAR_DECIMALS) === 0n;
       push(tNow('guard.row.asset'), assetLabel(o.line));
-      push(tNow('guard.row.limit'), lineRemoves ? tNow('guard.val.removeTrustline') : String(o.limit ?? ''));
+      push(tNow('guard.row.limit'), lineRemoves ? tNow('guard.val.removeTrustline') : amountStr(o.limit));
       break;
     case 'liquidityPoolDeposit':
       // The two sides are identified by the pool id, not by a (code, issuer) pair.
@@ -418,8 +440,8 @@ function reviewOp(raw: unknown): OpReview {
       moves(sends, o.maxAmountA, null);
       moves(sends, o.maxAmountB, null);
       push(tNow('guard.row.pool'), short(String(o.liquidityPoolId ?? ''), 8));
-      push(tNow('guard.row.maxA'), str(o.maxAmountA));
-      push(tNow('guard.row.maxB'), str(o.maxAmountB));
+      push(tNow('guard.row.maxA'), amountStr(o.maxAmountA));
+      push(tNow('guard.row.maxB'), amountStr(o.maxAmountB));
       // The price band decides the execution; it used to be decoded by nobody.
       push(tNow('guard.row.minPrice'), priceLabel(o.minPrice));
       push(tNow('guard.row.maxPrice'), priceLabel(o.maxPrice));
@@ -430,14 +452,14 @@ function reviewOp(raw: unknown): OpReview {
       moves(receives, o.minAmountA, null);
       moves(receives, o.minAmountB, null);
       push(tNow('guard.row.pool'), short(String(o.liquidityPoolId ?? ''), 8));
-      push(tNow('guard.row.shares'), str(o.amount));
-      push(tNow('guard.row.minA'), str(o.minAmountA));
-      push(tNow('guard.row.minB'), str(o.minAmountB));
+      push(tNow('guard.row.shares'), amountStr(o.amount));
+      push(tNow('guard.row.minA'), amountStr(o.minAmountA));
+      push(tNow('guard.row.minB'), amountStr(o.minAmountB));
       break;
     case 'createClaimableBalance':
       movesValue = true;
       moves(sends, o.amount, assetRefOf(o.asset));
-      push(tNow('guard.row.lockedAmount'), `${String(o.amount ?? '')} ${assetLabel(o.asset)}`.trim());
+      push(tNow('guard.row.lockedAmount'), `${amountStr(o.amount) ?? ''} ${assetLabel(o.asset)}`.trim());
       push(tNow('guard.row.claimants'), claimantsLabel(o.claimants));
       break;
     case 'claimClaimableBalance':
@@ -474,8 +496,8 @@ function reviewOp(raw: unknown): OpReview {
       movesValue = true;
       push(tNow('guard.row.selling'), assetLabel(o.selling));
       push(tNow('guard.row.buying'), assetLabel(o.buying));
-      push(tNow('guard.row.quantity'), str(o.amount) ?? str(o.buyAmount));
-      push(tNow('guard.row.price'), str(o.price));
+      push(tNow('guard.row.quantity'), amountStr(o.amount) ?? amountStr(o.buyAmount));
+      push(tNow('guard.row.price'), amountStr(o.price));
       break;
     case 'manageData':
       push(tNow('guard.row.dataName'), str(o.name));
@@ -587,7 +609,7 @@ const EMPTY_CONTROL: ControlReview = {
 /** Stellar prices arrive as a string or as an `{n, d}` rational. */
 function priceLabel(v: unknown): string | null {
   if (v == null) return null;
-  if (typeof v === 'string' || typeof v === 'number') return String(v);
+  if (typeof v === 'string' || typeof v === 'number') return shownAmount(String(v));
   const r = v as { n?: unknown; d?: unknown };
   return r.n != null && r.d != null ? `${String(r.n)}/${String(r.d)}` : null;
 }

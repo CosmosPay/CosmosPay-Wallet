@@ -259,6 +259,7 @@ jobs:
           ---
           **Browser extension (unsigned / unpacked):**
           - **Chrome / Edge:** download `cosmos-pay-chrome-v${{ steps.ver.outputs.version }}.zip`, unzip it, then open `chrome://extensions` → enable *Developer mode* → *Load unpacked* → pick the folder.
+          - **Updating an unpacked install (Chrome / Edge):** unzip the new version OVER the same folder, then press *Reload* on the extension's card in `chrome://extensions`. The same folder keeps your wallet: an unpacked extension's id comes from its folder's path, and its data belongs to that id, so a new folder opens as a new, empty wallet. Until you press *Reload*, the browser keeps running the old background worker.
           - **Firefox:** download `cosmos-pay-firefox-v${{ steps.ver.outputs.version }}.zip`, then open `about:debugging` → *This Firefox* → *Load Temporary Add-on* → pick the `manifest.json` inside the zip.
 
           The .zip is also ready to upload as-is to the Chrome Web Store / Firefox AMO.

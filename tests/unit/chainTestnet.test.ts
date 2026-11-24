@@ -6,7 +6,9 @@
  */
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { base58 } from '@scure/base';
 import { chainAddressesFromMnemonic } from '@/lib/chainAddresses';
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, associatedTokenAddress } from '@/lib/solanaTx';
 import { chainSecret } from '@/lib/chainKeys';
 import { ChainSwapRefused, chainBalances, isChainAddress, sendTransfer } from '@/lib/chainSwap';
 import { chainRpcUrl } from '@/lib/endpoints';
@@ -119,6 +121,26 @@ test('a SOL test send is broadcast to devnet', async () => {
   assert.equal(id, 'sig');
   assert.ok(calls.every((c) => c.url === DEFAULT_SOLANA_TESTNET_RPC_URL));
   assert.deepEqual(calls.map((c) => c.method), ['getLatestBlockhash', 'sendTransaction']);
+});
+
+test('Solana devnet balances: test SOL, and test USDC at its associated accounts, all from devnet', async () => {
+  const { solana } = await chainAddressesFromMnemonic(PHRASE);
+  const usdc = CHAIN_TESTNET_TOKENS.solana.find((t) => t.symbol === 'USDC')!.asset;
+  const data = new Uint8Array(165);
+  data.set(base58.decode(usdc), 0);
+  data.set(base58.decode(solana), 32);
+  new DataView(data.buffer).setBigUint64(64, 25_000_000n, true);
+  const calls = stubNode({
+    getBalance: { value: 1_000_000_000 },
+    getMultipleAccounts: { value: [{ lamports: 2039280, owner: TOKEN_PROGRAM_ID, data: [Buffer.from(data).toString('base64'), 'base64'] }, null] },
+  });
+  assert.deepEqual(await chainBalances('solana', solana, 'testnet'), { native: 1_000_000_000n, [usdc]: 25_000_000n });
+  assert.ok(calls.every((c) => c.url === DEFAULT_SOLANA_TESTNET_RPC_URL));
+  const read = calls.find((c) => c.method === 'getMultipleAccounts')!;
+  assert.deepEqual(read.params[0], [
+    associatedTokenAddress(solana, usdc, TOKEN_PROGRAM_ID),
+    associatedTokenAddress(solana, usdc, TOKEN_2022_PROGRAM_ID),
+  ]);
 });
 
 const hex = (n: number | bigint) => `0x${n.toString(16)}`;

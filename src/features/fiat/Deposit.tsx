@@ -107,8 +107,8 @@ export function Deposit({ store }: { store: WalletStore }) {
 
       {quote && (
         <div className="glass fiat-quote-card">
-          <QuoteRow label={t('fiat.youPay')} val={`${fmtFiat(quote.sender_amount)}${railCurrency(method) ? ` ${railCurrency(method)}` : ''}`} />
-          <QuoteRow label={t('fiat.youReceive')} val={`${fmtMinor(quote.receiver_amount)} ${token}`} last />
+          <QuoteRow label={t('fiat.youPay')} val={`${fmtFiat(store.num, quote.sender_amount)}${railCurrency(method) ? ` ${railCurrency(method)}` : ''}`} />
+          <QuoteRow label={t('fiat.youReceive')} val={`${fmtMinor(store.num, quote.receiver_amount)} ${token}`} last />
         </div>
       )}
 

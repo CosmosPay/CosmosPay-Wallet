@@ -39,7 +39,7 @@ export function DesktopNav({ store }: { store: WalletStore }) {
         aria-label={store.t("error.goHome")}
       >
         <CosmosMark className="desk-brand-mark" />
-        <span className="desk-brand-name">Cosmos Wallet</span>
+        <span className="desk-brand-name">Cosmos Pay Wallet</span>
       </button>
 
       <ul className="desk-nav-list">
@@ -79,13 +79,14 @@ export function DesktopNav({ store }: { store: WalletStore }) {
             </button>
           </li>
         ))}
+        {/* "More": the same screen as Home's fourth action and the bar's last place; it opens on the person. */}
         <li className="desk-nav-entry is-account">
           <button type="button" onClick={() => navGo(store, "profile")}
             className={cx("desk-nav-item", activeKey === "profile" && "is-on")}
             aria-current={activeKey === "profile" ? "page" : undefined}>
             <AccountIcon />
             <span className="desk-nav-copy">
-              <span className="desk-nav-label">{store.t("profile.title")}</span>
+              <span className="desk-nav-label">{store.t("tab.more")}</span>
               {store.meta?.name && <span className="desk-nav-detail">{store.meta.name}</span>}
             </span>
           </button>

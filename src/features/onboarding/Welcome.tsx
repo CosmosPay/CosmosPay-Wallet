@@ -17,7 +17,7 @@ export function Welcome({ store }: { store: WalletStore }) {
     <div className="col welcome-screen auth-center">
       {/* The screen's name for assistive technology; on a phone the hero says it on screen.
           On a desktop window the welcome below is the heading, so this one steps aside. */}
-      <h1 className="sr-only auth-chrome">Cosmos Pay</h1>
+      <h1 className="sr-only auth-chrome">Cosmos Pay Wallet</h1>
       {/* .auth-chrome: on a desktop window before a session, the brand panel on the right
           carries these controls and the motion (src/app/AuthAside.tsx). */}
       <div className={store.addingWallet ? 'row between welcome-topbar auth-chrome' : 'row welcome-topbar auth-chrome'}>

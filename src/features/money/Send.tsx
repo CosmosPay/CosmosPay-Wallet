@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
 import { PlusIcon } from '@/ui/Icons';
+import { Notice } from '@/ui/Notice';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { readText } from '@/lib/clipboard';
-import { fmt, trim } from '@/lib/format';
+import { sendsToSelf } from '@/lib/sendDraft';
 import { isValidPublicKey } from '@/lib/wallet';
 import { fromMinorUnits, parseDecimalOr0, sanitizeDecimalInput } from '@/lib/amount';
 import { findAsset, isNativeRef } from '@/lib/asset';
@@ -56,7 +57,7 @@ export function Send({ store }: { store: WalletStore }) {
       if (net === 'stellar') {
         for (const a of sendableAssets(store.account)) {
           const n = parseFloat(a.balance) || 0;
-          out.push({ key: stellarKey(a), network: net, networkName, code: a.code, balance: trim(n, 6), held: n > 0 });
+          out.push({ key: stellarKey(a), network: net, networkName, code: a.code, balance: store.num.amount(n, 6), held: n > 0 });
         }
         continue;
       }
@@ -67,11 +68,11 @@ export function Send({ store }: { store: WalletStore }) {
       for (const tk of tokens) {
         const units = held ? held[tk.asset] ?? 0n : null;
         const n = units === null ? null : parseFloat(fromMinorUnits(units, tk.decimals) ?? '0') || 0;
-        out.push({ key: `${net}|${tk.asset}`, network: net, networkName, code: tk.symbol, balance: n === null ? null : trim(n, 6), held: (n ?? 0) > 0 });
+        out.push({ key: `${net}|${tk.asset}`, network: net, networkName, code: tk.symbol, balance: n === null ? null : store.num.amount(n, 6), held: (n ?? 0) > 0 });
       }
     }
     return out;
-  }, [offered, store.account, store.chainHoldings, store.networkHoldings, store.networkName, chainNet]);
+  }, [offered, store.account, store.chainHoldings, store.networkHoldings, store.networkName, store.num, chainNet]);
 
   const [pick, setPick] = useState(() =>
     store.screen === 'chain-send' ? `${store.chainAsset.chain}|${store.chainAsset.asset}` : stellarKey(store.send.asset),
@@ -134,6 +135,8 @@ function StellarSend({ store }: { store: WalletStore }) {
   const price = store.prices[code]?.usd ?? 0;
   const amt = parseDecimalOr0(s.amount);
   const addrValid = isValidPublicKey(s.to);
+  // Allowed (it moves nothing and costs the fee), but said on the form before review.
+  const toSelf = addrValid && sendsToSelf('stellar', s.to, store.addressOn('stellar'));
   const tooMuch = amt > avail;
   const memoErr = memoProblem(s.memo, s.memoKind);
   const ok = addrValid && amt > 0 && !tooMuch && !memoErr;
@@ -142,17 +145,30 @@ function StellarSend({ store }: { store: WalletStore }) {
   const amountId = useFieldId('amount');
   const memoId = useFieldId('memo');
 
+  /*
+   * A SEP-7 link is a whole payment request: it replaces the draft (recipient, amount, memo,
+   * asset), or is refused when it names another network. Typing or pasting a plain address
+   * edits only the recipient of the form on screen, whose amount and memo the person can see.
+   */
+  const isLink = (text: string) => text.toLowerCase().startsWith('web+stellar:');
+  const otherNetwork = () => store.flash(t('sep7.otherNetwork', { network: `Stellar ${store.network.label}` }), 'err');
   const setTo = (raw: string) => {
     const v = raw.trim();
-    // A SEP-7 link fills recipient, amount and memo in one go.
-    if (v.toLowerCase().startsWith('web+stellar:') && store.applySep7(v)) return;
+    if (isLink(v)) {
+      const outcome = store.applySep7(v);
+      if (outcome === 'applied') return;
+      // A half-typed link is just an invalid address; a whole one for another network is said.
+      if (outcome === 'otherNetwork') otherNetwork();
+    }
     store.setSend({ ...s, to: v });
   };
   const paste = async () => {
     const txt = (await readText())?.trim();
     if (!txt) return;
-    if (txt.toLowerCase().startsWith('web+stellar:')) {
-      if (!store.applySep7(txt)) store.flash(t('ops.pasteInvalid'), 'err');
+    if (isLink(txt)) {
+      const outcome = store.applySep7(txt);
+      if (outcome === 'otherNetwork') otherNetwork();
+      else if (outcome === 'invalid') store.flash(t('ops.pasteInvalid'), 'err');
       return;
     }
     store.setSend({ ...s, to: txt });
@@ -177,6 +193,7 @@ function StellarSend({ store }: { store: WalletStore }) {
           scanLabel={t('scan.scanQr')}
         />
         {s.to && <FieldNote tone={addrValid ? 'ok' : 'bad'}>{addrValid ? t('send.validAddr') : t('send.invalidAddr')}</FieldNote>}
+        {toSelf && <Notice className="send-self">{t('send.selfAddr')}</Notice>}
       </SendSection>
 
       <SendSection label={t('chainSend.amount')} htmlFor={amountId}>
@@ -190,7 +207,7 @@ function StellarSend({ store }: { store: WalletStore }) {
           maxDisabled={avail <= 0}
           invalid={tooMuch}
         />
-        <AmountMeta worth={price > 0 && amt > 0 ? `≈ $${fmt(amt * price, 2)}` : null} available={`${t('send.available')}: ${trim(avail, 4)} ${code}`} />
+        <AmountMeta worth={price > 0 && amt > 0 ? `≈ ${store.num.usd(amt * price)}` : null} available={`${t('send.available')}: ${store.num.amount(avail, 4)} ${code}`} />
         {tooMuch && <FieldNote tone="bad">{t('send.insufficient')}</FieldNote>}
       </SendSection>
 

@@ -210,7 +210,8 @@ export const NETWORKS: Record<NetworkId, NetworkDef> = {
     coin: 'SOL',
     decimals: 9,
     address: 'svm',
-    balance: { kind: 'svm', rpc: 'https://api.mainnet-beta.solana.com' },
+    // Not api.mainnet-beta.solana.com, which answers 403 to a browser Origin (2026-11-24).
+    balance: { kind: 'svm', rpc: 'https://solana-rpc.publicnode.com' },
     tokens: [USDC('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'), USDT('Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB')],
     explorerAddress: 'https://solscan.io/account/{address}',
     explorerTx: 'https://solscan.io/tx/{tx}',

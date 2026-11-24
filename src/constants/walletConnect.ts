@@ -35,8 +35,8 @@ export const WC_EVENTS = ['chainChanged', 'accountsChanged'] as const;
  * address every build can point a site at.
  */
 export const WC_METADATA = {
-  name: 'Cosmos Wallet',
-  description: 'Cosmos Wallet — a non-custodial multi-network wallet by Cosmos Pay.',
+  name: 'Cosmos Pay Wallet',
+  description: 'Cosmos Pay Wallet, a non-custodial multi-network wallet.',
   url: 'https://cosmospay.lat/wallet/',
   icons: ['https://cosmospay.lat/wallet/logo-512.png'],
 } as const;

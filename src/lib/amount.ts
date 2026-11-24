@@ -130,3 +130,15 @@ export function sanitizeDecimalInput(
   if (v.replace('.', '').length > maxDigits) return null;
   return v;
 }
+
+/**
+ * A computed amount as the plain decimal an input, an API or a ledger reads: a dot, no
+ * thousands separator, at most `decimals` places, trailing zeros dropped (`1234.5`). The
+ * display form is `src/lib/numberFormat.ts`'s, and it never goes into a field: "1.234,5" is
+ * not a decimal this module accepts.
+ */
+export function plainDecimal(n: number, decimals = STELLAR_DECIMALS): string {
+  if (!Number.isFinite(n)) return '0';
+  const s = n.toFixed(decimals);
+  return (s.includes('.') ? s.replace(/\.?0+$/, '') : s) || '0';
+}

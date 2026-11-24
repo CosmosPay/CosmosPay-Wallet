@@ -213,6 +213,12 @@
   color: var(--muted);
 }
 
+/* the recipient is the wallet's own address: said under the field, not blocked (ui/Notice) */
+.send-self {
+  margin-top: 4px;
+  animation: fadeIn var(--dur-quick) var(--ease-out);
+}
+
 .send-add-memo {
   align-self: flex-start;
   display: inline-flex;

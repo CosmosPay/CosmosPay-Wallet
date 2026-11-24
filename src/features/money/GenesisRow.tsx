@@ -16,7 +16,7 @@ export function GenesisRow({ store, index = 0, dense = false }: { store: WalletS
       </span>
       <div className="activity-main">
         <span className="activity-title">{store.t('history.genesis')}</span>
-        <span className="activity-sub">Cosmos Wallet</span>
+        <span className="activity-sub">Cosmos Pay Wallet</span>
       </div>
       <div className="activity-end">
         <span className="activity-time">{date}</span>

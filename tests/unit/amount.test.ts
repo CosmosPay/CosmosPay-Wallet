@@ -13,6 +13,7 @@ import {
   reduceByBps,
   sanitizeDecimalInput,
   STELLAR_DECIMALS,
+  plainDecimal,
 } from '@/lib/amount';
 import { toMinor } from '@/features/fiat/format';
 
@@ -98,4 +99,16 @@ test('reduceByBps derives the floor a quote must still honour', () => {
   assert.equal(reduceByBps('nonsense', 50), null);
   assert.equal(reduceByBps('100', -1), null);
   assert.equal(reduceByBps('100', 10_001), null);
+});
+
+test('plainDecimal writes what this parser reads, never a display form', () => {
+  assert.equal(plainDecimal(1234.5), '1234.5'); // no thousands separator, ever
+  assert.equal(plainDecimal(0.1 + 0.2), '0.3');
+  assert.equal(plainDecimal(12.34567891), '12.3456789'); // Stellar's seven places
+  assert.equal(plainDecimal(10), '10');
+  assert.equal(plainDecimal(0), '0');
+  assert.equal(plainDecimal(0.0000001), '0.0000001'); // not 1e-7
+  assert.equal(plainDecimal(1.25, 1), '1.3'); // rounded to the places asked for
+  assert.equal(plainDecimal(Number.NaN), '0');
+  for (const n of [1234.5, 0.0000001, 99.99]) assert.equal(parseDecimal(plainDecimal(n)), Number(plainDecimal(n)));
 });

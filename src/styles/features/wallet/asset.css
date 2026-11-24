@@ -119,5 +119,15 @@
 
 .asset-explorer {
   align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-top: 8px;
+}
+
+/* the link leaves the wallet: ui/Icons' arrow, not a `↗` in the copy */
+.asset-explorer svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }

@@ -83,8 +83,8 @@ import { VaultKeyMismatchError, WrongPasswordError, deriveVaultKey, newKdfParams
 import { assertSafeToSign, reviewTx } from '@/lib/txGuard';
 import { controlsAccount, foreignEnvelopeProblem } from '@/lib/signers';
 import { MIN_APP_PWD_LEN, appPasswordOk, isAccessCode, isSafeHorizonUrl } from '@/lib/validate';
-import { clampMemoText, memoKindFromSep7, type MemoKind } from '@/lib/memo';
-import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset, XLM, type AssetRef } from '@/lib/asset';
+import { assetRefFromGateway, codeIsAmbiguous, toPaymentAsset } from '@/lib/asset';
+import { draftFromRequest, emptySendDraft, type SendDraft } from '@/lib/sendDraft';
 import { FIAT_DECIMALS, fromMinorUnits, toMinorUnitsBig } from '@/lib/amount';
 import { createExclusiveRunner, type ExclusiveRunner } from '@/lib/exclusive';
 import { recoveryShortfall, sendableAssets, spendableCeiling } from '@/lib/balances';
@@ -122,7 +122,7 @@ import { KEPT_INPUT } from '@/constants/keptInputs';
 import type { EasyRecoveryLink, EasyRecoveryPayload } from '@/lib/easyRecovery';
 import { useEasyRecovery, type EasyRecoveryClaimFailure } from '@/state/useEasyRecovery';
 import { MOUSE_NAV_GRACE_MS, NAV_REWIND_TIMEOUT_MS } from '@/constants/ui';
-import { hydrate, invalidate, run } from '@/lib/query';
+import { expire, hydrate, invalidate, run } from '@/lib/query';
 import { bridgedAmount, type Usdt0Route } from '@/lib/usdt0';
 import { USDT0_ROUTES_TTL_MS } from '@/constants/usdt0';
 import { AFTER_OPERATION_REREAD_MS } from '@/constants/home';
@@ -296,7 +296,7 @@ import {
 import { useToast } from '@/state/useToast';
 import { usePreferences, applyLangEarly, applySavedThemeEarly, savedRequireConfirm } from '@/state/usePreferences';
 import { useSigningGate } from '@/state/useSigningGate';
-import { parseStellarQr } from '@/lib/sep7';
+import { readPaymentRequest, type Sep7Outcome } from '@/lib/sep7';
 import { buildKind } from '@/lib/platform';
 import { cachedPublicKey, warmPublicKey } from '@/lib/publicKey';
 import { useWalletConnect, type WcPeer } from '@/state/useWalletConnect';
@@ -493,15 +493,8 @@ export interface VerifyTarget {
   word: string;
 }
 
-export interface SendDraft {
-  to: string;
-  amount: string;
-  memo: string;
-  /** 'text' (default) or 'id' — a SEP-7 MEMO_ID must survive to the built tx. */
-  memoKind: MemoKind;
-  /** Full (code, issuer) identity. A bare code is ambiguous — see lib/asset.ts. */
-  asset: AssetRef;
-}
+/** The Stellar send draft, and the rule for what a payment request does to it: lib/sendDraft.ts. */
+export type { SendDraft } from '@/lib/sendDraft';
 
 const ACCENT = '#ffffff';
 
@@ -783,17 +776,23 @@ export function useWalletStore() {
 
   const { toast, flash } = useToast();
 
-  /** Load the active wallet's recent on-chain activity (payments/swaps) from Horizon. */
-  const loadHistory = useCallback(async () => {
+  /**
+   * Load the active wallet's recent on-chain activity (payments/swaps) from Horizon. `force`
+   * reads past the cache: after an operation, whose payment the cached list predates.
+   */
+  const loadHistory = useCallback(async (force = false) => {
     if (!meta) return;
     setHistoryLoading(true);
     try {
-      await run({
-        key: historyKey(networkId, meta.publicKey),
-        fetcher: () => getHistory(network, meta.publicKey, 40),
-        ttl: TTL.history,
-        retry: 2,
-      });
+      await run(
+        {
+          key: historyKey(networkId, meta.publicKey),
+          fetcher: () => getHistory(network, meta.publicKey, 40),
+          ttl: TTL.history,
+          retry: 2,
+        },
+        force,
+      );
     } finally {
       setHistoryLoading(false);
     }
@@ -807,6 +806,7 @@ export function useWalletStore() {
     setLang,
     t,
     locale,
+    num,
     requireConfirm,
     setRequireConfirm,
     diagnostics,
@@ -843,7 +843,7 @@ export function useWalletStore() {
   const [verifyBank, setVerifyBank] = useState<string[]>([]);
 
   // money flows
-  const [send, setSend] = useState<SendDraft>({ to: '', amount: '0', memo: '', memoKind: 'text', asset: XLM });
+  const [send, setSend] = useState<SendDraft>(emptySendDraft);
   const [selectedAsset, setSelectedAsset] = useState<string>('XLM');
   const [successInfo, setSuccessInfo] = useState<SuccessInfo | null>(null);
   // Liquidity-pool form target (deposit preset or the position being withdrawn).
@@ -851,25 +851,20 @@ export function useWalletStore() {
 
   // SEP-7 payment links (web+stellar:pay?…) — pasted, scanned, or arriving via URL.
   const pendingSep7 = useRef<string | null>(null);
-  const applySep7 = useCallback((raw: string): boolean => {
-    const parsed = parseStellarQr(raw);
-    if (!parsed) return false;
-    setSend((s) => ({
-      ...s,
-      to: parsed.destination,
-      amount: parsed.amount ?? s.amount,
-      // Byte-accurate clamp, and the memo TYPE travels with it: a MEMO_ID request
-      // (how exchanges route a deposit) used to arrive as a text memo and land
-      // unattributed. An unsupported type (hash/return) drops the memo entirely
-      // rather than mislabelling it.
-      memo: parsed.memo ? clampMemoText(parsed.memo) : s.memo,
-      memoKind: memoKindFromSep7(parsed.memoType) ?? 'text',
-      // The link's asset was parsed and then thrown away, so a request for "10 USDC"
-      // prefilled 10 XLM. Only accept the pair when both halves are present.
-      asset: parsed.assetCode && parsed.assetIssuer ? { code: parsed.assetCode, issuer: parsed.assetIssuer } : s.asset,
-    }));
-    return true;
-  }, []);
+  /**
+   * A scanned or pasted request (a SEP-7 link or a bare address) becomes the WHOLE draft
+   * (`draftFromRequest`): an earlier draft's amount, memo and asset never ride along. A request
+   * that names another network than the wallet's is refused, and the caller says so.
+   */
+  const applySep7 = useCallback(
+    (raw: string): Sep7Outcome => {
+      const read = readPaymentRequest(raw, network.passphrase);
+      if (!read.ok) return read.reason;
+      setSend(draftFromRequest(read.request));
+      return 'applied';
+    },
+    [network.passphrase],
+  );
 
   // The signing gate (prompt + queue) lives in its own slice — see useSigningGate.
   const { confirmReq, requestSignature, resolveConfirm, cancelPending } = useSigningGate();
@@ -1056,7 +1051,9 @@ export function useWalletStore() {
     if (session && pendingSep7.current) {
       const uri = pendingSep7.current;
       pendingSep7.current = null;
-      if (applySep7(uri)) setScreen('send');
+      const outcome = applySep7(uri);
+      if (outcome === 'applied') setScreen('send');
+      else if (outcome === 'otherNetwork') flash(t('sep7.otherNetwork', { network: `Stellar ${network.label}` }), 'err');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
@@ -1108,6 +1105,10 @@ export function useWalletStore() {
    * network — forced past the cache, at once and after each of `AFTER_OPERATION_REREAD_MS`. Called
    * from each flow's `finally`, so an error after the signature (a transaction that may well have
    * landed) refreshes too. Through a ref: the readers it calls are declared further down.
+   *
+   * The Activity list too: it was left out, so a send's balance moved while Activity kept the
+   * list cached from before it (fresh for `TTL.history`, and Home only reads it when it mounts)
+   * until a reload; a swap only looked right because its quote took longer than the TTL.
    */
   const afterOperationRef = useRef<() => void>(() => {});
   const refreshAfterOperation = useCallback(() => afterOperationRef.current(), []);
@@ -1945,7 +1946,7 @@ export function useWalletStore() {
     invalidate(ACCOUNT_PREFIX);
     invalidate(HISTORY_PREFIX);
     setCosmosPay(null);
-    setSend({ to: '', amount: '0', memo: '', memoKind: 'text', asset: XLM });
+    setSend(emptySendDraft());
     setSuccessInfo(null);
     // The one-time enrolment offer dies with the session that earned it. Left standing,
     // it outlived onboarding entirely: `success` is terminal with `back: 'home'`, so the
@@ -2448,7 +2449,7 @@ export function useWalletStore() {
       const code = send.asset.code;
       const okSig = await requestSignature({
         title: t('confirmSig.sendTitle'),
-        message: t('confirmSig.sendMsg', { amount: send.amount, code }),
+        message: t('confirmSig.sendMsg', { amount: num.decimal(send.amount), code }),
       });
       if (!okSig) return;
       setBusy(true);
@@ -2481,13 +2482,13 @@ export function useWalletStore() {
           title: t('success.sent'),
           msg: t('success.sentMsg'),
           rows: [
-            { label: t('confirm.amount'), val: `${send.amount} ${code}` },
+            { label: t('confirm.amount'), val: `${num.decimal(send.amount)} ${code}` },
             { label: t('confirm.to'), val: `${send.to.slice(0, 6)}…${send.to.slice(-6)}` },
           ],
           hash,
         });
         setScreen('success');
-        setSend({ to: '', amount: '0', memo: '', memoKind: 'text', asset: XLM });
+        setSend(emptySendDraft());
       } catch (e) {
         reportError(EVENT.paymentFailed, e, { asset: code, amount: send.amount });
         // show a red error confirmation screen instead of a transient toast
@@ -2503,7 +2504,7 @@ export function useWalletStore() {
         refreshAfterOperation();
       }
     });
-  }, [session, network, send, refresh, requestSignature, exclusive, guardSession, t]);
+  }, [session, network, send, refresh, requestSignature, exclusive, guardSession, t, num]);
 
   /* --------------------------- CosmosPay -------------------------- */
   /**
@@ -2806,7 +2807,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('confirmSig.swapTitle'),
-          message: t('confirmSig.swapMsg', { amount, code: to.code }),
+          message: t('confirmSig.swapMsg', { amount: num.decimal(amount), code: to.code }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -2882,9 +2883,12 @@ export function useWalletStore() {
               kind: 'ok',
               title: t('swap.success'),
               msg: t('swap.successMsg'),
+              // The codes the person picked (the gateway spells XLM `native`), in the past tense:
+              // the ledger took it. What arrived is still the quote's estimate, the gateway's
+              // answer carries no received amount, so the row says so.
               rows: [
-                { label: t('swap.pay'), val: `${swap.sendAmount} ${swap.sendAsset}` },
-                { label: t('swap.receiveEst'), val: `${swap.destEstimated} ${swap.destAsset}` },
+                { label: t('swap.paid'), val: `${num.decimal(swap.sendAmount)} ${from.code}` },
+                { label: t('swap.receivedEst'), val: `${num.decimal(swap.destEstimated)} ${to.code}` },
               ],
               hash: res.txHash ?? undefined,
             });
@@ -2919,7 +2923,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash],
+    [session, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash, num],
   );
 
   /* ------------------------- cross-chain swaps --------------------- */
@@ -2993,7 +2997,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('confirmSig.swapTitle'),
-          message: t('xswap.confirmMsg', { amount, code: from.code, dest: quote.destination.asset, chain: NETWORKS[target].name }),
+          message: t('xswap.confirmMsg', { amount: num.decimal(amount), code: from.code, dest: quote.destination.asset, chain: NETWORKS[target].name }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -3031,8 +3035,8 @@ export function useWalletStore() {
             title: t('xswap.success'),
             msg: t('xswap.successMsg', { chain: NETWORKS[target].name, seconds: String(swap.timeEstimateSeconds) }),
             rows: [
-              { label: t('swap.pay'), val: `${amount} ${from.code}` },
-              { label: t('swap.receiveEst'), val: `${swap.amountOutEstimated} ${quote.destination.asset}` },
+              { label: t('swap.pay'), val: `${num.decimal(amount)} ${from.code}` },
+              { label: t('swap.receiveEst'), val: `${num.decimal(swap.amountOutEstimated)} ${quote.destination.asset}` },
               { label: t('xswap.to'), val: `${input.recipient.slice(0, 6)}…${input.recipient.slice(-6)}` },
             ],
             hash,
@@ -3048,7 +3052,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, network, openAccessKey, crossChainInput, requestSignature, refresh, exclusive, guardSession, t],
+    [session, network, openAccessKey, crossChainInput, requestSignature, refresh, exclusive, guardSession, t, num],
   );
 
   /* --------------------- USDT0 through the bridge --------------------- */
@@ -3085,7 +3089,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('usdt0.confirmTitle'),
-          message: t('usdt0.confirmMsg', { amount: sent, dest: quote.amountReceived, receives: quote.receives, network: NETWORKS[chain].name }),
+          message: t('usdt0.confirmMsg', { amount: num.decimal(String(sent)), dest: num.decimal(quote.amountReceived), receives: quote.receives, network: NETWORKS[chain].name }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -3130,8 +3134,8 @@ export function useWalletStore() {
             title: t('usdt0.success'),
             msg: t('usdt0.successMsg', { network: NETWORKS[chain].name }),
             rows: [
-              { label: t('usdt0.sent'), val: `${res.transfer.amountSent} USDT0` },
-              { label: t('usdt0.receives'), val: `${res.transfer.amountReceived} ${quote.receives}` },
+              { label: t('usdt0.sent'), val: `${num.decimal(res.transfer.amountSent)} USDT0` },
+              { label: t('usdt0.receives'), val: `${num.decimal(res.transfer.amountReceived)} ${quote.receives}` },
               { label: t('xswap.to'), val: `${recipient.slice(0, 6)}…${recipient.slice(-6)}` },
             ],
             hash: res.txHash ?? undefined,
@@ -3148,7 +3152,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, testMode, network, openAccessKey, addressOnNetwork, usdt0Routes, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
+    [session, testMode, network, openAccessKey, addressOnNetwork, usdt0Routes, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, num],
   );
 
   /* ------------------ paying from Solana / Monad ------------------- */
@@ -3264,9 +3268,13 @@ export function useWalletStore() {
   afterOperationRef.current = () => {
     const readAll = () => {
       void refresh(true, true);
+      void loadHistory(true);
       void loadChainHoldings(true);
       void loadNetworkHoldings(true);
     };
+    // Marked stale (kept on screen) before the first read lands, so a screen that mounts in
+    // between reads Horizon instead of trusting a list that predates this operation.
+    expire(HISTORY_PREFIX);
     readAll();
     for (const ms of AFTER_OPERATION_REREAD_MS) setTimeout(readAll, ms);
   };
@@ -3435,7 +3443,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('chainSend.confirmTitle'),
-          message: t('chainSend.confirmMsg', { amount, code: token.symbol, net, to: short }),
+          message: t('chainSend.confirmMsg', { amount: num.decimal(amount), code: token.symbol, net, to: short }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -3464,7 +3472,7 @@ export function useWalletStore() {
             title: t('chainSend.success'),
             msg: t('chainSend.successMsg', { net }),
             rows: [
-              { label: t('chainSend.amount'), val: `${amount} ${token.symbol}` },
+              { label: t('chainSend.amount'), val: `${num.decimal(amount)} ${token.symbol}` },
               { label: t('chainSend.to'), val: short },
             ],
             hash,
@@ -3480,7 +3488,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, chainNet, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, loadChainHoldings, t],
+    [session, chainNet, exclusive, requestSignature, chainSigner, guardSession, chainSwapMessage, loadChainHoldings, t, num],
   );
 
   /** A fresh read of one network's balances (the send form's); null when it cannot be read. */
@@ -3514,7 +3522,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('chainSend.confirmTitle'),
-          message: t('chainSend.confirmMsg', { amount, code: token.symbol, net: def.name, to: short }),
+          message: t('chainSend.confirmMsg', { amount: num.decimal(amount), code: token.symbol, net: def.name, to: short }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -3545,7 +3553,7 @@ export function useWalletStore() {
             title: t('chainSend.success'),
             msg: t('chainSend.successMsg', { net: def.name }),
             rows: [
-              { label: t('chainSend.amount'), val: `${amount} ${token.symbol}` },
+              { label: t('chainSend.amount'), val: `${num.decimal(amount)} ${token.symbol}` },
               { label: t('chainSend.to'), val: short },
               ...(memo?.trim() ? [{ label: t(net === 'xrp' ? 'chainSend.tag' : 'chainSend.comment'), val: memo.trim() }] : []),
             ],
@@ -3562,7 +3570,7 @@ export function useWalletStore() {
         }
       });
     },
-    [refreshAfterOperation, session, chainNet, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, submitChainSend, loadNetworkHoldings, t],
+    [refreshAfterOperation, session, chainNet, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, submitChainSend, loadNetworkHoldings, t, num],
   );
 
   /* ------------------------------ WalletConnect ------------------------------ */
@@ -3658,7 +3666,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('confirmSig.swapTitle'),
-          message: t('xswap.chainConfirmMsg', { amount, code: from.symbol, dest: to.symbol, chain: NETWORKS[chain].name }),
+          message: t('xswap.chainConfirmMsg', { amount: num.decimal(amount), code: from.symbol, dest: to.symbol, chain: NETWORKS[chain].name }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -3716,8 +3724,8 @@ export function useWalletStore() {
             title: t('xswap.chainSuccess'),
             msg: t('xswap.chainSuccessMsg', { chain: NETWORKS[chain].name }),
             rows: [
-              { label: t('swap.pay'), val: `${amount} ${from.symbol}` },
-              { label: t('swap.receiveEst'), val: `${swap.destEstimated} ${to.symbol}` },
+              { label: t('swap.pay'), val: `${num.decimal(amount)} ${from.symbol}` },
+              { label: t('swap.receiveEst'), val: `${num.decimal(swap.destEstimated)} ${to.symbol}` },
             ],
             hash: res.txHash,
             explorer: CHAIN_EXPLORER_TX[chain](res.txHash),
@@ -3733,7 +3741,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, meta, openAccessKey, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, loadChainHoldings, t],
+    [session, meta, openAccessKey, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, loadChainHoldings, t, num],
   );
 
   /** The request a cross-chain swap from Solana / Monad sends: both ends are our own. */
@@ -3787,7 +3795,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('confirmSig.swapTitle'),
-          message: t('xswap.confirmMsg', { amount, code: from.symbol, dest: quote.destination.asset, chain: NETWORKS[dest.chain].name }),
+          message: t('xswap.confirmMsg', { amount: num.decimal(amount), code: from.symbol, dest: quote.destination.asset, chain: NETWORKS[dest.chain].name }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -3843,8 +3851,8 @@ export function useWalletStore() {
               seconds: String(swap.timeEstimateSeconds),
             }),
             rows: [
-              { label: t('swap.pay'), val: `${amount} ${from.symbol}` },
-              { label: t('swap.receiveEst'), val: `${swap.amountOutEstimated} ${quote.destination.asset}` },
+              { label: t('swap.pay'), val: `${num.decimal(amount)} ${from.symbol}` },
+              { label: t('swap.receiveEst'), val: `${num.decimal(swap.amountOutEstimated)} ${quote.destination.asset}` },
               { label: t('xswap.to'), val: `${input.recipient.slice(0, 6)}…${input.recipient.slice(-6)}` },
             ],
             hash,
@@ -3861,7 +3869,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, openAccessKey, crossChainFromInput, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, refresh, loadChainHoldings, t],
+    [session, openAccessKey, crossChainFromInput, requestSignature, exclusive, guardSession, chainSigner, chainSwapMessage, refresh, loadChainHoldings, t, num],
   );
 
   /* ------------------------- liquidity pools ---------------------- */
@@ -4032,7 +4040,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('confirmSig.swapTitle'),
-          message: t('xswap.confirmMsg', { amount, code: from.symbol, dest: quote.destination.asset, chain: NETWORKS[dest.chain].name }),
+          message: t('xswap.confirmMsg', { amount: num.decimal(amount), code: from.symbol, dest: quote.destination.asset, chain: NETWORKS[dest.chain].name }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -4074,8 +4082,8 @@ export function useWalletStore() {
             title: t('xswap.success'),
             msg: t('xswap.successFromMsg', { origin: def.name, chain: NETWORKS[dest.chain].name, seconds: String(swap.timeEstimateSeconds) }),
             rows: [
-              { label: t('swap.pay'), val: `${amount} ${from.symbol}` },
-              { label: t('swap.receiveEst'), val: `${swap.amountOutEstimated} ${quote.destination.asset}` },
+              { label: t('swap.pay'), val: `${num.decimal(amount)} ${from.symbol}` },
+              { label: t('swap.receiveEst'), val: `${num.decimal(swap.amountOutEstimated)} ${quote.destination.asset}` },
               { label: t('xswap.to'), val: `${input.recipient.slice(0, 6)}…${input.recipient.slice(-6)}` },
             ],
             hash,
@@ -4092,7 +4100,7 @@ export function useWalletStore() {
         }
       });
     },
-    [refreshAfterOperation, session, chainNet, openAccessKey, crossChainFromNetworkInput, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, loadNetworkHoldings, refresh, t],
+    [refreshAfterOperation, session, chainNet, openAccessKey, crossChainFromNetworkInput, exclusive, requestSignature, networkSigner, guardSession, chainSwapMessage, loadNetworkHoldings, refresh, t, num],
   );
   const cosmosApiKey = useCallback((): string | null => {
     const apiKey = cosmosPay?.keys[networkEnv(network)] ?? null;
@@ -4329,7 +4337,7 @@ export function useWalletStore() {
           const missing = opts.code ? 0 : recoveryShortfall(await getAccountState(network, address));
           guardSession(epoch);
           if (missing > 0) {
-            flash(t('recovery.needXlm', { amount: missing }), 'err');
+            flash(t('recovery.needXlm', { amount: num.amount(missing, 2) }), 'err');
             return false;
           }
 
@@ -4420,7 +4428,7 @@ export function useWalletStore() {
       });
       return outcome.ran ? outcome.value : false;
     },
-    [session, meta, network, exclusive, guardSession, requestSignature, signEnvelope, signIn, loadRecovery, t, flash],
+    [session, meta, network, exclusive, guardSession, requestSignature, signEnvelope, signIn, loadRecovery, t, flash, num],
   );
 
   /**
@@ -4992,8 +5000,8 @@ export function useWalletStore() {
               title: t('lp.depositSuccess'),
               msg: t('lp.depositSuccessMsg'),
               rows: [
-                { label: t('lp.assetA'), val: `${op.amountA} ${op.assetA === 'native' ? 'XLM' : op.assetA}` },
-                { label: t('lp.assetB'), val: `${op.amountB} ${op.assetB === 'native' ? 'XLM' : op.assetB}` },
+                { label: t('lp.assetA'), val: `${num.decimal(op.amountA)} ${op.assetA === 'native' ? 'XLM' : op.assetA}` },
+                { label: t('lp.assetB'), val: `${num.decimal(op.amountB)} ${op.assetB === 'native' ? 'XLM' : op.assetB}` },
               ],
               hash: res.txHash ?? undefined,
             });
@@ -5019,7 +5027,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, account, openAccessKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
+    [session, account, openAccessKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, num],
   );
 
   /** Full withdraw flow: build -> sign locally -> submit. Mirrors submitDeposit. */
@@ -5032,7 +5040,7 @@ export function useWalletStore() {
         const epoch = sessionEpochRef.current;
         const okSig = await requestSignature({
           title: t('confirmSig.lpWithdrawTitle'),
-          message: t('confirmSig.lpWithdrawMsg', { shares: input.shares }),
+          message: t('confirmSig.lpWithdrawMsg', { shares: num.decimal(input.shares) }),
         });
         if (!okSig) return;
         setBusy(true);
@@ -5068,9 +5076,9 @@ export function useWalletStore() {
               title: t('lp.withdrawSuccess'),
               msg: t('lp.withdrawSuccessMsg'),
               rows: [
-                { label: t('lp.shares'), val: op.shares ?? input.shares },
-                { label: t('lp.assetA'), val: `≥ ${op.amountA} ${op.assetA === 'native' ? 'XLM' : op.assetA}` },
-                { label: t('lp.assetB'), val: `≥ ${op.amountB} ${op.assetB === 'native' ? 'XLM' : op.assetB}` },
+                { label: t('lp.shares'), val: num.decimal(op.shares ?? input.shares) },
+                { label: t('lp.assetA'), val: `≥ ${num.decimal(op.amountA)} ${op.assetA === 'native' ? 'XLM' : op.assetA}` },
+                { label: t('lp.assetB'), val: `≥ ${num.decimal(op.amountB)} ${op.assetB === 'native' ? 'XLM' : op.assetB}` },
               ],
               hash: res.txHash ?? undefined,
             });
@@ -5096,7 +5104,7 @@ export function useWalletStore() {
         }
       });
     },
-    [session, openAccessKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t],
+    [session, openAccessKey, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, num],
   );
 
   /** Create a shareable CosmosPay pay link (SEP-7 pay intent) addressed to this wallet. */
@@ -5510,14 +5518,14 @@ export function useWalletStore() {
           const fiatMinor = quote.receiver_local_amount || quote.receiver_amount || 0;
           const sent = payout.senderAmount ?? senderAmount ?? '';
           // Local fiat (e.g. ARS) shown as whole units — no centavos — with its currency suffix.
-          const gotAmount = fiatMinor ? Math.round(fiatMinor / 100).toLocaleString('es-AR') : (payout.receiverAmount ?? '');
+          const gotAmount = fiatMinor ? num.fixed(Math.round(fiatMinor / 100), 0) : num.decimal(String(payout.receiverAmount ?? ''));
           const got = gotAmount && fiatCcy ? `${gotAmount} ${fiatCcy}` : gotAmount;
           setSuccessInfo({
             kind: 'ok',
             title: t('fiat.withdrawSuccess'),
             msg: t('fiat.withdrawSuccessMsg'),
             rows: [
-              { label: t('fiat.youSend'), val: `${sent} ${token}`.trim() },
+              { label: t('fiat.youSend'), val: `${num.decimal(String(sent))} ${token}`.trim() },
               { label: t('fiat.youReceive'), val: got ? String(got) : '—' },
             ],
           });
@@ -5534,7 +5542,7 @@ export function useWalletStore() {
       });
       return run.ran ? run.value : false;
     },
-    [session, account, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash],
+    [session, account, cosmosPay, network, requestSignature, refresh, exclusive, guardSession, signEnvelope, t, flash, num],
   );
 
   /** Unlink the default BlindPay fiat receiver (keeps the CosmosPay keys). */
@@ -7412,6 +7420,8 @@ export function useWalletStore() {
     setWalletAvatar,
     t,
     locale,
+    /** Every number on screen, in the app's language (lib/numberFormat.ts). */
+    num,
     accent: ACCENT,
     draftMnemonic,
     draftAccount,

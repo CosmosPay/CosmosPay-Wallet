@@ -209,6 +209,9 @@ export function associatedTokenAddress(owner: string, mint: string, tokenProgram
   return findProgramAddress([solanaKey(owner), solanaKey(tokenProgram), solanaKey(mint)], ASSOCIATED_TOKEN_PROGRAM_ID);
 }
 
+/** The fixed part of an SPL token account, the bytes both token programs share. */
+export const TOKEN_ACCOUNT_SIZE = 165;
+
 /** An SPL token account (both programs share the first 165 bytes). */
 export interface TokenAccount {
   mint: string;
@@ -226,7 +229,7 @@ const u64le = (b: Uint8Array, at: number): bigint => {
 };
 
 export function decodeTokenAccount(data: Uint8Array): TokenAccount | null {
-  if (data.length < 165) return null;
+  if (data.length < TOKEN_ACCOUNT_SIZE) return null;
   return {
     mint: base58.encode(data.subarray(0, 32)),
     owner: base58.encode(data.subarray(32, 64)),
@@ -240,6 +243,23 @@ export function decodeTokenAccount(data: Uint8Array): TokenAccount | null {
 
 /** One account before or after a simulation; null when it does not exist. */
 export type AccountState = { lamports: bigint; owner: string; data: Uint8Array } | null;
+
+/**
+ * Which of `accounts` (as they stand before a transaction) are token accounts of `owner`:
+ * owned by SPL Token or Token-2022, and naming `owner` in their own data. Associated or
+ * not, every account the owner holds among them is found this way, with no index of the
+ * owner's accounts to ask. It errs toward "ours": anything under a token program that
+ * decodes with `owner` in that field is checked, and checking one account too many can only
+ * refuse a swap, never let one through.
+ */
+export function ownTokenAccounts(owner: string, accounts: ReadonlyMap<string, AccountState>): Set<string> {
+  const out = new Set<string>();
+  for (const [address, state] of accounts) {
+    if (!state || (state.owner !== TOKEN_PROGRAM_ID && state.owner !== TOKEN_2022_PROGRAM_ID)) continue;
+    if (decodeTokenAccount(state.data)?.owner === owner) out.add(address);
+  }
+  return out;
+}
 
 /** Why a Solana swap was refused before signing (an i18n-free code the store maps). */
 export type SolanaSwapRefusal = 'authority' | 'drain' | 'short';
