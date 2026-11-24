@@ -36,11 +36,13 @@ import {
 } from '@/lib/p2pRamp';
 import {
   chargeAmountProblem,
+  chargeBalanceWatched,
   chargeCancellable,
   chargeDescription,
   chargeStatus,
   chargeTimeLeft,
   chargeUrlOk,
+  chargeView,
   chargeWatched,
   formatCountdown,
   sanitizeChargeDescription,
@@ -91,10 +93,11 @@ function usePageVisible(): boolean {
  * Step one is the form, drawn like the ramp's purchase: the local money with its flag, the amount,
  * the token and network it arrives as (only networks this wallet holds, the ramp's defaults), an
  * optional one-line description and the estimate at the market price. Step two is the QR, the
- * amount, the estimate, the countdown, share and cancel, and it watches for the payment two ways —
- * the API's answer about the request, and this wallet's own balance of the token — whichever
- * says so first turns it into "payment received". A payment the API has received but not yet
- * credited reads "processing" in between: no QR, no cancel, still watched.
+ * amount, the estimate, the countdown, share and cancel. Only the API's answer about the request
+ * turns it into "payment received"; this wallet's own balance of the token, rising by the
+ * estimate while the charge is open, only says "money arriving, confirming" (`chargeView`). A
+ * payment the API has received but not yet credited reads "processing" in between: no QR, no
+ * cancel, still watched.
  */
 export function Charge({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -458,6 +461,9 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
   const req = charge.request;
   const status = chargeStatus(charge, now);
   const watched = chargeWatched(charge, now);
+  const balanceWatched = chargeBalanceWatched(charge, now);
+  // Provisional: the balance rose by the estimate, the API has not confirmed it (never "paid").
+  const arriving = chargeView(charge, now) === 'arriving' ? charge.arriving : null;
   const net = rampWalletNetwork(req.chainId, store.chainNet);
   const netName = net ? store.networkName(net) : String(req.chainId);
   const urlOk = chargeUrlOk(req.url, req.id);
@@ -471,8 +477,9 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
     return () => clearInterval(id);
   }, [watched]);
 
-  // Two signals, both only while the page is in view: the API's answer every few seconds, and
-  // this wallet's own balance of the token (the first read is the baseline).
+  // Only while the page is in view: the API's answer every few seconds (the one signal that says
+  // paid), and, while the charge is open with an estimate, this wallet's own balance of the token
+  // (the first read is the baseline; a rise by the estimate reads "arriving", never paid).
   useEffect(() => {
     if (!watched || !visible) return;
     void refreshQrCharge();
@@ -480,11 +487,11 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
     return () => clearInterval(id);
   }, [watched, visible, refreshQrCharge]);
   useEffect(() => {
-    if (!watched || !visible) return;
+    if (!balanceWatched || !visible) return;
     void watchQrChargeBalance();
     const id = setInterval(() => void watchQrChargeBalance(), CHARGE_BALANCE_POLL_MS);
     return () => clearInterval(id);
-  }, [watched, visible, watchQrChargeBalance]);
+  }, [balanceWatched, visible, watchQrChargeBalance]);
 
   // The wallet draws the code of the page it checked (`chargeUrlOk`), not the API's picture of one.
   useEffect(() => {
@@ -601,12 +608,12 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
         </div>
 
         <p className="charge-expiry">{t('charge.expiresIn', { time: formatCountdown(chargeTimeLeft(charge, now)) })}</p>
-        <div className="charge-waiting" role="status">
+        <div className={cx('charge-waiting', arriving && 'is-arriving')} role="status">
           <p className="charge-wait">
             <Spinner size={16} tone="text" />
-            <span>{t('charge.waiting')}</span>
+            <span>{arriving ? t('charge.arriving', { amount: units(Number(arriving.amount)), token: req.token }) : t('charge.waiting')}</span>
           </p>
-          <p className="charge-hint">{t('charge.waitingHint')}</p>
+          <p className="charge-hint">{t(arriving ? 'charge.arrivingHint' : 'charge.waitingHint')}</p>
         </div>
 
         <div className="charge-actions">

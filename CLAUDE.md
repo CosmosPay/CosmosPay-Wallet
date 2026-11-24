@@ -1404,11 +1404,14 @@ opens it pays through a P2P purchase that delivers to this wallet's own EVM addr
 - **The ramp's key choice, and the record token kept.** The account's key, else the shared public key;
   a charge made with the shared key keeps its `publicToken` in storage with it (one charge per wallet and
   mode, so a reload comes back to the same QR) and sends it as `X-Record-Token` to read or cancel it.
-- **Paid is whichever signal comes first**: the API's `paid`, or this wallet's own balance of the token
-  rising by 95% of the estimate since the QR was shown (`chargePaidByBalance`; any rise without an
-  estimate). Until the marketplace's webhook reaches the API the balance is the only signal, and it
-  cannot tell whose money arrived. Both are asked only while the page is in view, and for half an hour
-  after a charge expires or is cancelled (a payment already under way still lands).
+- **Only the API says paid.** "Payment received" is the API's `paid` and nothing else. This wallet's own
+  balance of the token cannot tell whose money arrived (a payer could send dust), so a rise by 95% of
+  the estimate since the QR was shown, while the charge is open, reads only "money arriving, confirming"
+  (`chargeArrivalByBalance`, `chargeView` → `arriving`), a distinct state that tells the seller to
+  wait. No estimate, no reading: the balance is not even watched (`chargeBalanceWatched`). An expired or
+  cancelled charge never moves from the balance; the API is asked only while the page is in view, and
+  for half an hour after a charge expires or is cancelled (a payment already under way still lands).
+  `processing` (the payment received, the token on its way) never expires and cannot be cancelled.
 - **The ramp's copy rules**: the marketplace is never named; the payer "pays with bank transfer or their
   local methods".
 

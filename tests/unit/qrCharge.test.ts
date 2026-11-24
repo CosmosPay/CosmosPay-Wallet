@@ -2,8 +2,8 @@
  * Charging with a QR in local money (`src/lib/qrCharge.ts`): what a charge may ask for, the
  * response contract, the check that the request the API answered is the one asked for and pays
  * this wallet, how a charge reads over time (a payment being processed included), the rule that
- * reads a payment off the wallet's own
- * balance, and what comes back from storage.
+ * reads money arriving off the wallet's own balance (never a payment: only the API says paid),
+ * and what comes back from storage.
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,14 +13,16 @@ import { CHARGE_DESCRIPTION_MAX, CHARGE_LATE_WATCH_MS } from '@/constants/qrChar
 import type { RampCurrency } from '@/lib/p2pRamp';
 import {
   chargeAmountProblem,
+  chargeArrivalByBalance,
+  chargeBalanceWatched,
   chargeCancellable,
   chargeDescription,
-  chargePaidByBalance,
   chargeRequestProblem,
   chargeStatus,
   chargeStorageKey,
   chargeTimeLeft,
   chargeUrlOk,
+  chargeView,
   chargeWatched,
   formatCountdown,
   newCharge,
@@ -229,7 +231,7 @@ test('a closed charge is still watched for a while, for a payer who had already 
 test('the API saying paid settles the charge with what it delivered', () => {
   const c = newCharge(answer(), true, 0n);
   const paid = withRequest(c, answer({ status: 'paid', paidAt: new Date(T0 + HOUR).toISOString(), paidAmount: '8.91' }), T0 + HOUR);
-  assert.deepEqual(paid.paid, { by: 'api', amount: '8.91', at: T0 + HOUR });
+  assert.deepEqual(paid.paid, { amount: '8.91', at: T0 + HOUR });
   assert.equal(chargeStatus(paid, T0 + 30 * HOUR), 'paid');
   // Paid even after it expired or was cancelled: the money arrived.
   const late = withRequest(withRequest(c, answer({ status: 'cancelled' }), T0), answer({ status: 'paid', paidAmount: '8.9' }), T0 + 2 * HOUR);
@@ -271,43 +273,86 @@ test('a payment being processed reads processing until paid: never expired, neve
 
 /* ------------------------- the balance as the signal ------------------------- */
 
-test('a rise of at least 95% of the estimate is the payment', () => {
+test('a rise of at least 95% of the estimate is money arriving', () => {
   // 8.94 USDT0 (6 decimals) estimated; 95% of it is 8.493.
   const base = 2_000_000n;
-  assert.equal(chargePaidByBalance(base, base + 8_940_000n, '8.94', 6).paid, true);
-  assert.equal(chargePaidByBalance(base, base + 8_493_000n, '8.94', 6).paid, true);
-  assert.equal(chargePaidByBalance(base, base + 8_492_999n, '8.94', 6).paid, false);
-  assert.equal(chargePaidByBalance(base, base + 20_000_000n, '8.94', 6).paid, true);
-  assert.equal(chargePaidByBalance(base, base, '8.94', 6).paid, false);
-  assert.equal(chargePaidByBalance(base, base + 8_940_000n, '8.94', 6).received, 8_940_000n);
+  assert.equal(chargeArrivalByBalance(base, base + 8_940_000n, '8.94', 6).arrived, true);
+  assert.equal(chargeArrivalByBalance(base, base + 8_493_000n, '8.94', 6).arrived, true);
+  assert.equal(chargeArrivalByBalance(base, base + 8_492_999n, '8.94', 6).arrived, false);
+  assert.equal(chargeArrivalByBalance(base, base + 20_000_000n, '8.94', 6).arrived, true);
+  assert.equal(chargeArrivalByBalance(base, base, '8.94', 6).arrived, false);
+  assert.equal(chargeArrivalByBalance(base, base + 8_940_000n, '8.94', 6).received, 8_940_000n);
 });
 
-test('without an estimate, any rise is the payment; no rise never is', () => {
-  assert.equal(chargePaidByBalance(10n, 11n, null, 18).paid, true);
-  assert.equal(chargePaidByBalance(10n, 10n, null, 18).paid, false);
-  assert.equal(chargePaidByBalance(10n, 11n, '0', 18).paid, true);
+test('without an estimate no rise counts: dust never moves a charge', () => {
+  assert.equal(chargeArrivalByBalance(10n, 11n, null, 18).arrived, false);
+  assert.equal(chargeArrivalByBalance(10n, 10n ** 30n, null, 18).arrived, false);
+  assert.equal(chargeArrivalByBalance(10n, 11n, '0', 18).arrived, false);
+  assert.equal(chargeArrivalByBalance(10n, 10n, null, 18).arrived, false);
+  // The charge itself: its balance is not even read, and a read changes nothing.
+  const c = withBalance(newCharge(answer({ estimatedAmountOut: null }), false, 1_000_000n), 1_000_000n, T0);
+  assert.equal(chargeBalanceWatched(c, T0), false);
+  const dusted = withBalance(c, 1_000_001n, T0 + 10_000);
+  assert.equal(dusted, c);
+  assert.equal(chargeView(dusted, T0 + 10_000), 'open');
+  assert.equal(chargeStatus(dusted, T0 + 10_000), 'open');
 });
 
-test('money that left meanwhile lowers the baseline, so the payment counts from the lowest point', () => {
-  const spent = chargePaidByBalance(10_000_000n, 4_000_000n, '8.94', 6);
-  assert.deepEqual(spent, { paid: false, received: 0n, baseline: 4_000_000n });
-  assert.equal(chargePaidByBalance(spent.baseline, 4_000_000n + 8_940_000n, '8.94', 6).paid, true);
+test('money that left meanwhile lowers the baseline, so a rise counts from the lowest point', () => {
+  const spent = chargeArrivalByBalance(10_000_000n, 4_000_000n, '8.94', 6);
+  assert.deepEqual(spent, { arrived: false, received: 0n, baseline: 4_000_000n });
+  assert.equal(chargeArrivalByBalance(spent.baseline, 4_000_000n + 8_940_000n, '8.94', 6).arrived, true);
 });
 
-test('the first balance read is the baseline; a later rise settles the charge with the amount', () => {
+test('a rise by the estimate reads arriving, never paid; only the API settles the charge', () => {
   let c = newCharge(answer(), false, null);
   c = withBalance(c, 1_500_000n, T0);
   assert.equal(c.baseline, '1500000');
-  assert.equal(c.paid, null);
-  c = withBalance(c, 1_500_000n, T0 + 10_000);
-  assert.equal(c.paid, null);
+  assert.equal(c.arriving, null);
+  // Dust under the estimate: nothing.
+  c = withBalance(c, 1_500_001n, T0 + 10_000);
+  assert.equal(c.arriving, null);
+  assert.equal(chargeView(c, T0 + 10_000), 'open');
   c = withBalance(c, 1_500_000n + 8_910_000n, T0 + 20_000);
-  assert.deepEqual(c.paid, { by: 'balance', amount: '8.910000', at: T0 + 20_000 });
-  // The first signal wins: the API's later answer does not replace it.
-  const after = withRequest(c, answer({ status: 'paid', paidAmount: '8.91' }), T0 + 30_000);
-  assert.equal(after.paid?.by, 'balance');
-  // And a settled charge ignores the balance from then on.
-  assert.equal(withBalance(after, 0n, T0 + 40_000), after);
+  assert.deepEqual(c.arriving, { amount: '8.910000', at: T0 + 20_000 });
+  assert.equal(c.paid, null);
+  assert.equal(chargeStatus(c, T0 + 20_000), 'open');
+  assert.equal(chargeView(c, T0 + 20_000), 'arriving');
+  assert.equal(chargeWatched(c, T0 + 20_000), true);
+  // Seen once is enough: the balance is not read again until the API answers.
+  assert.equal(chargeBalanceWatched(c, T0 + 20_000), false);
+  assert.equal(withBalance(c, 0n, T0 + 30_000), c);
+  // The API saying paid is what settles it, with what the API says it delivered.
+  const paid = withRequest(c, answer({ status: 'paid', paidAmount: '8.91' }), T0 + 40_000);
+  assert.deepEqual(paid.paid, { amount: '8.91', at: T0 + 40_000 });
+  assert.equal(chargeView(paid, T0 + 40_000), 'paid');
+});
+
+test('a cancelled or expired charge never turns paid, nor arriving, from the balance', () => {
+  const open = withBalance(newCharge(answer(), false, null), 1_000_000n, T0);
+  const cancelled = withRequest(open, answer({ status: 'cancelled' }), T0 + HOUR);
+  const expiredAt = T0 + 24 * HOUR + 60_000;
+  for (const [c, at, status] of [
+    [cancelled, T0 + HOUR + 60_000, 'cancelled'],
+    [open, expiredAt, 'expired'],
+  ] as const) {
+    assert.equal(chargeBalanceWatched(c, at), false, status);
+    const after = withBalance(c, 1_000_000n + 50_000_000n, at);
+    assert.equal(after, c, status);
+    assert.equal(chargeStatus(after, at), status);
+    assert.equal(chargeView(after, at), status);
+    // Still watched for a while: the API can still say a payment already under way completed.
+    assert.equal(chargeWatched(after, at), true, status);
+  }
+  // Money seen arriving before the charge closed does not survive the close either.
+  const arrived = withBalance(open, 1_000_000n + 8_940_000n, T0 + 60_000);
+  assert.equal(chargeView(arrived, T0 + 60_000), 'arriving');
+  assert.equal(chargeView(withRequest(arrived, answer({ status: 'cancelled' }), T0 + HOUR), T0 + HOUR), 'cancelled');
+  assert.equal(chargeView(arrived, expiredAt), 'expired');
+  // A processing charge is the API's to settle: the balance is not read there.
+  const processing = withRequest(open, answer({ status: 'processing' }), T0 + HOUR);
+  assert.equal(chargeBalanceWatched(processing, T0 + HOUR), false);
+  assert.equal(withBalance(processing, 1_000_000n + 8_940_000n, T0 + HOUR), processing);
 });
 
 /* --------------------------------- storage --------------------------------- */
@@ -318,6 +363,20 @@ test('a charge is kept per wallet and mode, and read back checked', () => {
   assert.deepEqual(parseStoredCharge(JSON.parse(JSON.stringify(c))), c);
   const paid = withRequest(c, answer({ status: 'paid', paidAmount: '8.91' }), T0);
   assert.deepEqual(parseStoredCharge(JSON.parse(JSON.stringify(paid))), paid);
+  // Money seen arriving survives a reload, still provisional.
+  const arriving = withBalance(c, 7n + 8_940_000n, T0 + 1000);
+  const back = parseStoredCharge(JSON.parse(JSON.stringify(arriving)));
+  assert.deepEqual(back, arriving);
+  assert.equal(back && chargeView(back, T0 + 1000), 'arriving');
+});
+
+test('a paid record written from the balance alone is not read back as paid', () => {
+  const c = newCharge(answer(), true, 7n);
+  const back = parseStoredCharge({ ...c, paid: { by: 'balance', amount: '8.91', at: T0 } });
+  assert.equal(back?.paid, null);
+  assert.equal(back && chargeStatus(back, T0), 'open');
+  // One the API settled (as an earlier build wrote it) still reads paid.
+  assert.deepEqual(parseStoredCharge({ ...c, paid: { by: 'api', amount: '8.91', at: T0 } })?.paid, { amount: '8.91', at: T0 });
 });
 
 test('a stored charge that does not read is dropped, never guessed', () => {
@@ -328,9 +387,10 @@ test('a stored charge that does not read is dropped, never guessed', () => {
   assert.equal(parseStoredCharge({ ...c, request: { ...c.request, url: 'https://evil.example/x' } }), null);
   assert.equal(parseStoredCharge({ ...c, shared: 'yes' }), null);
   // Loose fields fall back rather than sink the charge.
-  const loose = parseStoredCharge({ ...c, baseline: '-5', paid: { by: 'magic' }, closedAt: 'later' });
+  const loose = parseStoredCharge({ ...c, baseline: '-5', paid: { by: 'magic' }, arriving: { amount: 'lots', at: T0 }, closedAt: 'later' });
   assert.equal(loose?.baseline, null);
   assert.equal(loose?.paid, null);
+  assert.equal(loose?.arriving, null);
   assert.equal(loose?.closedAt, null);
   // A public token is only ever kept for a shared-key charge.
   assert.equal(parseStoredCharge({ ...c, shared: false })?.publicToken, null);

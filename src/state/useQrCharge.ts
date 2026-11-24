@@ -5,6 +5,7 @@ import { ApiRequestError } from '@/lib/apiError';
 import { cancelPaymentRequest, createPaymentRequest, getPaymentRequest } from '@/lib/cosmospay';
 import type { TFn } from '@/lib/i18n';
 import {
+  chargeBalanceWatched,
   chargeCancellable,
   chargeRequestProblem,
   chargeStorageKey,
@@ -146,10 +147,14 @@ export function useQrCharge({ walletId, chainNet, accountKey, sharedKey, ownAddr
     }
   }, [keyFor, save]);
 
-  /** Read the wallet's own balance of the charge's token; the first read is the baseline. */
+  /**
+   * Read the wallet's own balance of the charge's token; the first read is the baseline. Only
+   * while `chargeBalanceWatched` (open, with an estimate): what it can find is money arriving,
+   * never a payment.
+   */
   const watchQrChargeBalance = useCallback(async (): Promise<void> => {
     const { key, charge } = live.current;
-    if (!charge || charge.paid) return;
+    if (!charge || !chargeBalanceWatched(charge, Date.now())) return;
     const { chainId, tokenAddress, tokenDecimals, id } = charge.request;
     const balance = await tokenBalance(chainId, tokenAddress, tokenDecimals).catch(() => null);
     const cur = still(live.current, key, id);

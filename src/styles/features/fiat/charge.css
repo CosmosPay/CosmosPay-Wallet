@@ -173,6 +173,11 @@
   text-align: center;
 }
 
+/* Money seen arriving, not yet confirmed: the warning to wait reads in the text colour. */
+.charge-waiting.is-arriving .charge-hint {
+  color: var(--text);
+}
+
 .charge-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
