@@ -18,6 +18,7 @@ import { sanitizeDecimalInput } from '@/lib/amount';
 import { cx } from '@/lib/cx';
 import { shortAddr } from '@/lib/format';
 import { isDesktopLayout } from '@/lib/layout';
+import type { NumberFormat } from '@/lib/numberFormat';
 import { qrDataUrl } from '@/lib/qr';
 import { shareText } from '@/lib/share';
 import {
@@ -59,11 +60,13 @@ interface ChargeDraft {
 }
 const EMPTY_DRAFT: ChargeDraft = { currency: '', token: null, amount: '', description: '' };
 
-/** Local money with its cents once it has any; a token with two decimals from 1 up, four significant digits below. */
-function formatters(lang: string) {
-  const money = (v: number) => new Intl.NumberFormat(lang, { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }).format(v);
-  const units = (v: number) =>
-    v >= 1 ? new Intl.NumberFormat(lang, { maximumFractionDigits: 2 }).format(v) : new Intl.NumberFormat(lang, { maximumSignificantDigits: 4 }).format(v);
+/**
+ * Local money with its cents once it has any; a token with two decimals from 1 up, four
+ * significant digits below — in the app's language (`store.num`), like the ramp's figures.
+ */
+function formatters(num: NumberFormat) {
+  const money = (v: number) => num.fixed(v, Number.isInteger(v) ? 0 : 2);
+  const units = (v: number) => (v >= 1 ? num.amount(v, 2) : num.significant(v, 4));
   return { money, units };
 }
 
@@ -181,7 +184,7 @@ function ChargeForm({ store }: { store: WalletStore }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [market, networks]);
 
-  const { money, units } = formatters(lang);
+  const { money, units } = formatters(store.num);
   const currencies = market?.currencies ?? [];
   const cur: RampCurrency | null = currencies.find((c) => c.id === draft.currency) ?? null;
   const token = draft.token && networks.some((n) => n.chainId === draft.token?.chainId) ? draft.token : null;
@@ -396,7 +399,7 @@ function ChargeForm({ store }: { store: WalletStore }) {
         nameOf={nameOf}
         asideOf={(c) => {
           const r = token ? marketRate(c, token) : null;
-          return r && token ? `1 ${token.symbol} = ${new Intl.NumberFormat(lang, { maximumFractionDigits: r >= 100 ? 2 : 4 }).format(r)} ${c.id}` : null;
+          return r && token ? `1 ${token.symbol} = ${store.num.amount(r, r >= 100 ? 2 : 4)} ${c.id}` : null;
         }}
         onPick={(id) => {
           setPicker(null);
@@ -426,7 +429,7 @@ function ChargeForm({ store }: { store: WalletStore }) {
           none: t('ramp.noMatch'),
           network: t('ramp.network'),
           pickNetwork: t('ramp.pickNetwork'),
-          tokens: (n) => t('ramp.tokenCount', { n: new Intl.NumberFormat(lang).format(n) }),
+          tokens: (n) => t('ramp.tokenCount', { n: store.num.amount(n, 0) }),
           failed: t('ramp.tokensFailed'),
           retry: t('ramp.retry'),
           more: t('ramp.more'),
@@ -441,7 +444,7 @@ function ChargeForm({ store }: { store: WalletStore }) {
 function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }) {
   const t = store.t;
   const { refreshQrCharge, watchQrChargeBalance, cancelQrCharge, clearQrCharge } = store;
-  const { money, units } = formatters(store.lang);
+  const { money, units } = formatters(store.num);
   const visible = usePageVisible();
   const [now, setNow] = useState(() => Date.now());
   const [qr, setQr] = useState('');
