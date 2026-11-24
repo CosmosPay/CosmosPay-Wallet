@@ -36,6 +36,7 @@ import {
 } from '@/lib/p2pRamp';
 import {
   chargeAmountProblem,
+  chargeCancellable,
   chargeDescription,
   chargeStatus,
   chargeTimeLeft,
@@ -92,7 +93,8 @@ function usePageVisible(): boolean {
  * optional one-line description and the estimate at the market price. Step two is the QR, the
  * amount, the estimate, the countdown, share and cancel, and it watches for the payment two ways —
  * the API's answer about the request, and this wallet's own balance of the token — whichever
- * says so first turns it into "payment received".
+ * says so first turns it into "payment received". A payment the API has received but not yet
+ * credited reads "processing" in between: no QR, no cancel, still watched.
  */
 export function Charge({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -522,6 +524,10 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
     </PrimaryButton>
   );
   const forLine = [t('charge.paidFor', { amount: fiat }), req.description].filter(Boolean).join(' · ');
+  const getsLine =
+    estimate !== null && Number.isFinite(estimate)
+      ? t('charge.getsAbout', { amount: units(estimate), token: req.token, network: netName })
+      : t('charge.getsOn', { token: req.token, network: netName });
 
   if (status === 'paid') {
     const got = charge.paid?.amount ?? null;
@@ -541,6 +547,26 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
         <div className="charge-result-actions">
           {newCharge}
           <GhostButton onClick={store.goBack}>{t('common.done')}</GhostButton>
+        </div>
+      </div>
+    );
+  }
+
+  // The API has the customer's payment and is sending the token: nothing left to pay or cancel,
+  // and still watched (`chargeWatched`) until the API says it arrived.
+  if (status === 'processing') {
+    return (
+      <div className="charge-result is-processing">
+        <span className="charge-result-mark is-pending" aria-hidden="true" />
+        <h2 className="charge-result-title">{t('charge.processingTitle')}</h2>
+        <p className="charge-result-line is-strong" role="status">
+          {t('charge.processingBody')}
+        </p>
+        <p className="charge-result-line">{getsLine}</p>
+        <p className="charge-result-line">{forLine}</p>
+        <Notice className="charge-note">{t('charge.processingHint')}</Notice>
+        <div className="charge-result-actions">
+          <GhostButton onClick={clearQrCharge}>{t('charge.new')}</GhostButton>
         </div>
       </div>
     );
@@ -570,11 +596,7 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
       <div className="charge-details">
         <div className="charge-figures">
           <p className="charge-fiat">{fiat}</p>
-          <p className="charge-gets">
-            {estimate !== null && Number.isFinite(estimate)
-              ? t('charge.getsAbout', { amount: units(estimate), token: req.token, network: netName })
-              : t('charge.getsOn', { token: req.token, network: netName })}
-          </p>
+          <p className="charge-gets">{getsLine}</p>
           {req.description && <p className="charge-what">{req.description}</p>}
         </div>
 
@@ -607,9 +629,11 @@ function ChargeShown({ store, charge }: { store: WalletStore; charge: QrCharge }
             </span>
           </Notice>
         ) : (
-          <button type="button" className="link-btn charge-cancel" onClick={() => setAsking(true)}>
-            {t('charge.cancel')}
-          </button>
+          chargeCancellable(charge, now) && (
+            <button type="button" className="link-btn charge-cancel" onClick={() => setAsking(true)}>
+              {t('charge.cancel')}
+            </button>
+          )
         )}
         {error && (
           <p className="swapw-error" role="alert">

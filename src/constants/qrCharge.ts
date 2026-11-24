@@ -6,8 +6,12 @@
  * the marketplace is never named in the wallet's copy.
  */
 
-/** What the API says of a request. An open request past its expiry reads as `expired`. */
-export const CHARGE_STATUSES = ['open', 'paid', 'expired', 'cancelled'] as const;
+/**
+ * What the API says of a request. An open request past its expiry reads as `expired`;
+ * `processing` is a bank transfer received whose token is on its way to the seller: it never
+ * expires and can no longer be cancelled.
+ */
+export const CHARGE_STATUSES = ['open', 'processing', 'paid', 'expired', 'cancelled'] as const;
 export type ChargeStatus = (typeof CHARGE_STATUSES)[number];
 
 /** The description the payer sees: one line, at most this many characters (the API's cap). */

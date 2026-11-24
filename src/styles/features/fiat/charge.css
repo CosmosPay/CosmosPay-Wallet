@@ -217,7 +217,7 @@
   outline-offset: 2px;
 }
 
-/* ------------------------- paid, expired, cancelled ------------------------- */
+/* -------------------- processing, paid, expired, cancelled -------------------- */
 
 .charge-result {
   display: flex;
@@ -246,6 +246,13 @@
   height: 34px;
 }
 
+/* A bank transfer received, the token on its way: the same ring, turning, one arc in green. */
+.charge-result-mark.is-pending {
+  border-color: var(--line);
+  border-top-color: var(--up);
+  animation: spin 1.1s linear infinite;
+}
+
 .charge-result-title {
   margin: 0;
   color: var(--text);
@@ -270,6 +277,13 @@
   font-size: 14px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* "Crediting your wallet…": the line that says what is happening reads in the text colour. */
+.charge-result-line.is-strong {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 500;
 }
 
 .charge-result .charge-note {

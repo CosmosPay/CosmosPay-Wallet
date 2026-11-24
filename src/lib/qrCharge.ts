@@ -220,12 +220,18 @@ export function newCharge(req: PaymentRequest, shared: boolean, baseline: bigint
 
 /**
  * What a charge is at `now`: paid as soon as either signal said so; otherwise the request's
- * status, an open one past its expiry being expired (the API reads it the same way).
+ * status, an open one past its expiry being expired (the API reads it the same way). A
+ * `processing` one — the money received, the token on its way — never expires.
  */
 export function chargeStatus(charge: QrCharge, now: number): ChargeStatus {
   if (charge.paid) return 'paid';
   const { status, expiresAt } = charge.request;
   return status === 'open' && now >= Date.parse(expiresAt) ? 'expired' : status;
+}
+
+/** Whether the seller may still cancel it: only while it is open (the API refuses anything else). */
+export function chargeCancellable(charge: QrCharge, now: number): boolean {
+  return chargeStatus(charge, now) === 'open';
 }
 
 /** Milliseconds until the charge expires, never below zero. */
@@ -246,13 +252,14 @@ export function formatCountdown(ms: number): string {
 
 /**
  * Whether the screen still asks the API and reads the balance: until the charge is paid — while it
- * is open, and for `CHARGE_LATE_WATCH_MS` after it expired or was cancelled, because a payer who
- * started just before is still paying and that money arrives all the same.
+ * is open or processing (the money received, the token on its way), and for
+ * `CHARGE_LATE_WATCH_MS` after it expired or was cancelled, because a payer who started just
+ * before is still paying and that money arrives all the same.
  */
 export function chargeWatched(charge: QrCharge, now: number): boolean {
   const status = chargeStatus(charge, now);
   if (status === 'paid') return false;
-  if (status === 'open') return true;
+  if (status === 'open' || status === 'processing') return true;
   const since = status === 'expired' ? Date.parse(charge.request.expiresAt) : charge.closedAt;
   return since === null || !Number.isFinite(since) || now - since < CHARGE_LATE_WATCH_MS;
 }
@@ -260,7 +267,8 @@ export function chargeWatched(charge: QrCharge, now: number): boolean {
 /**
  * A charge after an answer from the API about it. An answer about another charge changes nothing.
  * A paid request settles the charge (`paidAmount` is what arrived, when the API knows it) unless
- * the balance already did — the first signal wins; any other status replaces the one kept.
+ * the balance already did — the first signal wins; any other status replaces the one kept, so
+ * `open` → `processing` → `paid` is three answers in a row.
  */
 export function withRequest(charge: QrCharge, req: PaymentRequest, now: number): QrCharge {
   if (!sameCharge(charge.request, req)) return charge;

@@ -1,7 +1,8 @@
 /**
  * Charging with a QR in local money (`src/lib/qrCharge.ts`): what a charge may ask for, the
  * response contract, the check that the request the API answered is the one asked for and pays
- * this wallet, how a charge reads over time, the rule that reads a payment off the wallet's own
+ * this wallet, how a charge reads over time (a payment being processed included), the rule that
+ * reads a payment off the wallet's own
  * balance, and what comes back from storage.
  */
 import { test } from 'node:test';
@@ -12,6 +13,7 @@ import { CHARGE_DESCRIPTION_MAX, CHARGE_LATE_WATCH_MS } from '@/constants/qrChar
 import type { RampCurrency } from '@/lib/p2pRamp';
 import {
   chargeAmountProblem,
+  chargeCancellable,
   chargeDescription,
   chargePaidByBalance,
   chargeRequestProblem,
@@ -117,7 +119,8 @@ test('a description is one line, at most 140 characters, never cut through a cha
 /* ------------------------------- the contract ------------------------------- */
 
 test('the response contract reads every status and refuses one it does not know', () => {
-  for (const status of ['open', 'paid', 'expired', 'cancelled']) {
+  // `processing` too: a server that takes bank transfers sends it, whichever release ships first.
+  for (const status of ['open', 'processing', 'paid', 'expired', 'cancelled']) {
     assert.doesNotThrow(() => parseShape('u', PaymentRequestShape, answer({ status } as never)));
   }
   assert.throws(() => parseShape('u', PaymentRequestShape, answer({ status: 'pending' } as never)), ApiShapeError);
@@ -235,6 +238,35 @@ test('the API saying paid settles the charge with what it delivered', () => {
   assert.equal(withRequest(c, answer({ id: 'cm3other', status: 'paid' }), T0), c);
   // The public token stays with the charge, not with the request kept.
   assert.equal(paid.publicToken, c.publicToken);
+});
+
+test('only an open charge can be cancelled', () => {
+  const c = newCharge(answer(), false, 0n);
+  assert.equal(chargeCancellable(c, T0), true);
+  assert.equal(chargeCancellable(c, T0 + 24 * HOUR), false);
+  assert.equal(chargeCancellable(withRequest(c, answer({ status: 'processing' }), T0), T0), false);
+  assert.equal(chargeCancellable(withRequest(c, answer({ status: 'cancelled' }), T0), T0), false);
+  assert.equal(chargeCancellable(withRequest(c, answer({ status: 'paid', paidAmount: '8.91' }), T0), T0), false);
+});
+
+test('a payment being processed reads processing until paid: never expired, never cancellable, always watched', () => {
+  let c = newCharge(answer(), false, 0n);
+  c = withRequest(c, answer({ status: 'processing' }), T0 + HOUR);
+  assert.equal(chargeStatus(c, T0 + HOUR), 'processing');
+  assert.equal(c.closedAt, null);
+  assert.equal(c.paid, null);
+  // Past the request's expiry, and long after: still processing, still watched.
+  for (const at of [T0 + 24 * HOUR, T0 + 24 * HOUR + CHARGE_LATE_WATCH_MS, T0 + 72 * HOUR]) {
+    assert.equal(chargeStatus(c, at), 'processing');
+    assert.equal(chargeWatched(c, at), true);
+    assert.equal(chargeCancellable(c, at), false);
+  }
+  // Then the API says paid.
+  const paid = withRequest(c, answer({ status: 'paid', paidAt: new Date(T0 + 2 * HOUR).toISOString(), paidAmount: '9.02' }), T0 + 2 * HOUR);
+  assert.equal(chargeStatus(paid, T0 + 2 * HOUR), 'paid');
+  assert.equal(chargeWatched(paid, T0 + 2 * HOUR), false);
+  // And it survives a reload as it was.
+  assert.deepEqual(parseStoredCharge(JSON.parse(JSON.stringify(c))), c);
 });
 
 /* ------------------------- the balance as the signal ------------------------- */
