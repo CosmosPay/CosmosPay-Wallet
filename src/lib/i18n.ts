@@ -778,6 +778,7 @@ export const T: Record<string, Record<Lang, string>> = {
   'settings.devReset': { es: 'Restablecer endpoints', en: 'Reset endpoints', pt: 'Repor endpoints', de: 'Endpunkte zurücksetzen', fr: 'Réinitialiser les endpoints' },
   'settings.epCoingecko': { es: 'API de precios (CoinGecko)', en: 'Prices API (CoinGecko)', pt: 'API de preços (CoinGecko)', de: 'Preis-API (CoinGecko)', fr: 'API de prix (CoinGecko)' },
   'settings.epGateway': { es: 'Gateway de pagos (APISIX)', en: 'Payments gateway (APISIX)', pt: 'Gateway de pagamentos (APISIX)', de: 'Zahlungs-Gateway (APISIX)', fr: 'Passerelle de paiements (APISIX)' },
+  'settings.epPayments': { es: 'Sitio de pagos', en: 'Payments site', pt: 'Site de pagamentos', de: 'Zahlungsseite', fr: 'Site de paiement' },
   'settings.epGatewayEntry': { es: 'Prefijo del gateway', en: 'Gateway entry prefix', pt: 'Prefixo do gateway', de: 'Gateway-Präfix', fr: 'Préfixe de la passerelle' },
 
   /* The two recovery servers, in developer mode. */

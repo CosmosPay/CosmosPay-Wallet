@@ -1400,7 +1400,9 @@ directly. Neither side needs the BlindPay receiver, so both fiat entry screens o
 opens it pays through a P2P purchase that delivers to this wallet's own EVM address. Four rules:
 
 - **A request is checked before it is shown** (`chargeRequestProblem`): the currency, amount, network and
-  token sent, this wallet's own address, an https page on the request's own `/fiat/<id>` path.
+  token sent, this wallet's own address, and exactly `<payments site>/fiat/<id>` as its page. The site
+  is `paymentsUrl()` (`PUBLIC_COSMOS_PAYMENTS_URL`, the server's `PAYMENT_LINK_CHECKOUT_URL`; default
+  `https://payments.cosmospay.lat`), so no other host is ever drawn as the QR.
 - **The ramp's key choice, and the record token kept.** The account's key, else the shared public key;
   a charge made with the shared key keeps its `publicToken` in storage with it (one charge per wallet and
   mode, so a reload comes back to the same QR) and sends it as `X-Record-Token` to read or cancel it.

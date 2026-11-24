@@ -14,6 +14,7 @@
 import {
   DEFAULT_GATEWAY_ENTRY,
   DEFAULT_GATEWAY_URL,
+  DEFAULT_PAYMENTS_URL,
   DEFAULT_RECOVERY_A_URL,
   DEFAULT_RECOVERY_B_URL,
   DEFAULT_SOLANA_RPC_URL,
@@ -47,6 +48,7 @@ export interface EndpointOverrides {
   coingeckoBase?: string; // price feed base, e.g. https://api.coingecko.com
   gatewayUrl?: string; // APISIX gateway base ('' = same-origin proxy)
   gatewayEntry?: string; // gateway entry prefix, e.g. /cosmos-api
+  paymentsUrl?: string; // hosted payments site, e.g. https://payments.cosmospay.lat
   recoveryAUrl?: string; // SEP-30 recovery server A
   recoveryBUrl?: string; // SEP-30 recovery server B — a DIFFERENT deployment, always
   solanaRpcUrl?: string; // Solana mainnet JSON-RPC node
@@ -126,6 +128,13 @@ export const gatewayEntry = (): string => resolve('gatewayEntry', ENV.PUBLIC_COS
 export const gatewayApi = (): string => `${gatewayUrl()}${gatewayEntry()}`;
 
 /**
+ * The hosted payments site the community server builds payer pages under (its
+ * `PAYMENT_LINK_CHECKOUT_URL`): a QR charge's page must be `<this>/fiat/<id>`. A self-hosted
+ * server with its own payments site sets `PUBLIC_COSMOS_PAYMENTS_URL` to the same value.
+ */
+export const paymentsUrl = (): string => resolve('paymentsUrl', ENV.PUBLIC_COSMOS_PAYMENTS_URL || undefined, DEFAULT_PAYMENTS_URL);
+
+/**
  * One of the two SEP-30 recovery servers (`lib/recovery.ts`).
  *
  * Never same-origin, even on the web dev server: these are two separate deployments by
@@ -189,6 +198,7 @@ export const ENDPOINT_FIELDS: { key: keyof EndpointOverrides; labelKey: string; 
     getDefault: () => ENV.PUBLIC_COSMOS_GATEWAY_URL || (sameOriginWorks() ? '' : DEFAULT_GATEWAY_URL),
   },
   { key: 'gatewayEntry', labelKey: 'settings.epGatewayEntry', getDefault: () => ENV.PUBLIC_COSMOS_GATEWAY_ENTRY || DEFAULT_GATEWAY_ENTRY },
+  { key: 'paymentsUrl', labelKey: 'settings.epPayments', getDefault: () => ENV.PUBLIC_COSMOS_PAYMENTS_URL || DEFAULT_PAYMENTS_URL },
   {
     key: 'recoveryAUrl',
     labelKey: 'settings.epRecoveryA',

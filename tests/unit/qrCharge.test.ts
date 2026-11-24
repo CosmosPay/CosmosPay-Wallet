@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { ApiShapeError, parseShape } from '@/lib/apiShape';
 import { PaymentRequestShape } from '@/lib/cosmospayShapes';
 import { CHARGE_DESCRIPTION_MAX, CHARGE_LATE_WATCH_MS } from '@/constants/qrCharge';
+import { DEFAULT_PAYMENTS_URL } from '@/constants/backends';
 import type { RampCurrency } from '@/lib/p2pRamp';
 import {
   chargeAmountProblem,
@@ -151,16 +152,32 @@ test('the response contract asserts what the wallet acts on, and lets the rest t
 
 /* ------------------------- the request the API answered ------------------------- */
 
-test('the page a QR opens is https, without credentials, on this request\'s own path', () => {
+test('the page a QR opens is this request\'s own page on the configured payments site, and nowhere else', () => {
+  // The default payments site: the community server's own PAYMENT_LINK_CHECKOUT_URL.
+  assert.equal(DEFAULT_PAYMENTS_URL, 'https://payments.cosmospay.lat');
   assert.equal(chargeUrlOk('https://payments.cosmospay.lat/fiat/cm3charge01', 'cm3charge01'), true);
-  assert.equal(chargeUrlOk('https://pay.example.org/base/fiat/cm3charge01/', 'cm3charge01'), true);
-  assert.equal(chargeUrlOk('http://localhost:4321/fiat/cm3charge01', 'cm3charge01'), true);
+  assert.equal(chargeUrlOk('https://payments.cosmospay.lat/fiat/cm3charge01/', 'cm3charge01'), true);
+  // Any other host, even with the same path: the finding this pins.
+  assert.equal(chargeUrlOk('https://pay.example.org/fiat/cm3charge01', 'cm3charge01'), false);
+  assert.equal(chargeUrlOk('https://payments.cosmospay.lat.evil.example/fiat/cm3charge01', 'cm3charge01'), false);
+  assert.equal(chargeUrlOk('https://evil.example/payments.cosmospay.lat/fiat/cm3charge01', 'cm3charge01'), false);
+  assert.equal(chargeUrlOk('https://payments.cosmospay.lat:8443/fiat/cm3charge01', 'cm3charge01'), false);
+  // The right host, a path in front of the request's own: not the page the server builds.
+  assert.equal(chargeUrlOk('https://payments.cosmospay.lat/x/fiat/cm3charge01', 'cm3charge01'), false);
   assert.equal(chargeUrlOk('http://payments.cosmospay.lat/fiat/cm3charge01', 'cm3charge01'), false);
   assert.equal(chargeUrlOk('https://payments.cosmospay.lat/fiat/other', 'cm3charge01'), false);
   assert.equal(chargeUrlOk('https://payments.cosmospay.lat/fiat/cm3charge01x', 'cm3charge01'), false);
   assert.equal(chargeUrlOk('https://user:pw@payments.cosmospay.lat/fiat/cm3charge01', 'cm3charge01'), false);
   assert.equal(chargeUrlOk('javascript:alert(1)//fiat/cm3charge01', 'cm3charge01'), false);
   assert.equal(chargeUrlOk('not a url', 'cm3charge01'), false);
+  // A self-hosted payments site (PUBLIC_COSMOS_PAYMENTS_URL), with a base path, or a local one.
+  assert.equal(chargeUrlOk('https://pay.example.org/base/fiat/cm3charge01', 'cm3charge01', 'https://pay.example.org/base/'), true);
+  assert.equal(chargeUrlOk('https://payments.cosmospay.lat/fiat/cm3charge01', 'cm3charge01', 'https://pay.example.org/base'), false);
+  assert.equal(chargeUrlOk('http://localhost:4321/fiat/cm3charge01', 'cm3charge01', 'http://localhost:4321'), true);
+  assert.equal(chargeUrlOk('http://localhost:4321/fiat/cm3charge01', 'cm3charge01'), false);
+  // A payments site that is not https accepts nothing.
+  assert.equal(chargeUrlOk('http://pay.example.org/fiat/cm3charge01', 'cm3charge01', 'http://pay.example.org'), false);
+  assert.equal(chargeUrlOk('https://payments.cosmospay.lat/fiat/cm3charge01', 'cm3charge01', 'not a url'), false);
 });
 
 test('a request is shown only when it is the charge asked for, paying this wallet', () => {
@@ -175,6 +192,7 @@ test('a request is shown only when it is the charge asked for, paying this walle
   assert.equal(chargeRequestProblem(answer({ tokenDecimals: 77 }), input), 'order');
   assert.equal(chargeRequestProblem(answer({ address: OTHER }), input), 'address');
   assert.equal(chargeRequestProblem(answer({ url: 'https://evil.example/fiat/somebody-else' }), input), 'url');
+  assert.equal(chargeRequestProblem(answer({ url: 'https://evil.example/fiat/cm3charge01' }), input), 'url');
 });
 
 test('a later answer counts only for the same charge', () => {
@@ -385,6 +403,7 @@ test('a stored charge that does not read is dropped, never guessed', () => {
   assert.equal(parseStoredCharge('x'), null);
   assert.equal(parseStoredCharge({ ...c, request: { ...c.request, status: 'weird' } }), null);
   assert.equal(parseStoredCharge({ ...c, request: { ...c.request, url: 'https://evil.example/x' } }), null);
+  assert.equal(parseStoredCharge({ ...c, request: { ...c.request, url: 'https://evil.example/fiat/cm3charge01' } }), null);
   assert.equal(parseStoredCharge({ ...c, shared: 'yes' }), null);
   // Loose fields fall back rather than sink the charge.
   const loose = parseStoredCharge({ ...c, baseline: '-5', paid: { by: 'magic' }, arriving: { amount: 'lots', at: T0 }, closedAt: 'later' });

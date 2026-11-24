@@ -22,6 +22,7 @@ import {
 import { fromMinorUnits, toMinorUnitsBig } from '@/lib/amount';
 import { parseShape } from '@/lib/apiShape';
 import { PaymentRequestShape } from '@/lib/cosmospayShapes';
+import { paymentsUrl } from '@/lib/endpoints';
 import { fiatAmountProblem, type RampAmountProblem, type RampCurrency } from '@/lib/p2pRamp';
 
 /* ------------------------------ API shapes ------------------------------ */
@@ -105,21 +106,33 @@ const sameHex = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-/**
- * Where the QR may send the payer: an https page (plain http only on this machine, for a local
- * server) with no credentials in it, whose path ends in this request's own `/fiat/<id>`. The host
- * is the deployment's payments page and is not pinned: a self-hosted server names its own.
- */
-export function chargeUrlOk(url: string, id: string): boolean {
+/** A URL, or null when it does not parse, is not https (plain http only on this machine) or carries credentials. */
+function safeUrl(raw: string): URL | null {
   let u: URL;
   try {
-    u = new URL(url);
+    u = new URL(raw);
   } catch {
-    return false;
+    return null;
   }
-  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && LOOPBACK.has(u.hostname))) return false;
-  if (u.username || u.password) return false;
-  return u.pathname.replace(/\/+$/, '').endsWith(`/fiat/${encodeURIComponent(id)}`);
+  if (u.protocol !== 'https:' && !(u.protocol === 'http:' && LOOPBACK.has(u.hostname))) return null;
+  return u.username || u.password ? null : u;
+}
+
+const trimSlashes = (path: string) => path.replace(/\/+$/, '');
+
+/**
+ * Where the QR may send the payer: this request's own page on the configured payments site
+ * (`paymentsUrl()`, the community server's `PAYMENT_LINK_CHECKOUT_URL`), exactly
+ * `<payments>/fiat/<id>`: the same origin, that path and nothing in front of it, no credentials.
+ * Any other host is refused, even one whose path ends the same way, so an answer cannot send the
+ * payer to a page that only looks like ours. A payments site that is not https (plain http only on
+ * this machine, for a local server) accepts nothing.
+ */
+export function chargeUrlOk(url: string, id: string, payments: string = paymentsUrl()): boolean {
+  const base = safeUrl(payments);
+  const u = safeUrl(url);
+  if (!base || !u || u.origin !== base.origin) return false;
+  return trimSlashes(u.pathname) === `${trimSlashes(base.pathname)}/fiat/${encodeURIComponent(id)}`;
 }
 
 export type ChargeProblem = 'order' | 'address' | 'url';
@@ -127,10 +140,10 @@ export type ChargeProblem = 'order' | 'address' | 'url';
 /**
  * Whether a request the API answered is the charge asked for and pays this wallet: the same
  * currency, amount, network and token, this wallet's own account as the recipient, and a page
- * `chargeUrlOk` accepts. Anything else would put a QR on screen that charges another amount or
- * pays someone else, so it is never shown.
+ * `chargeUrlOk` accepts on the payments site. Anything else would put a QR on screen that charges
+ * another amount, pays someone else or opens someone else's page, so it is never shown.
  */
-export function chargeRequestProblem(req: PaymentRequest, input: PaymentRequestInput): ChargeProblem | null {
+export function chargeRequestProblem(req: PaymentRequest, input: PaymentRequestInput, payments: string = paymentsUrl()): ChargeProblem | null {
   if (
     req.currency !== input.currency ||
     Number(req.amount) !== Number(input.amount) ||
@@ -143,7 +156,7 @@ export function chargeRequestProblem(req: PaymentRequest, input: PaymentRequestI
     return 'order';
   }
   if (!sameHex(req.address, input.address)) return 'address';
-  return chargeUrlOk(req.url, req.id) ? null : 'url';
+  return chargeUrlOk(req.url, req.id, payments) ? null : 'url';
 }
 
 /** Whether a later answer is about the same charge: the same id, order and recipient. */
@@ -407,10 +420,10 @@ function parseArrival(raw: unknown): ChargeArrival | null {
 
 /**
  * A charge read back from storage, checked like any input: the request against the API's own
- * contract and `chargeUrlOk`, the rest field by field. Whatever does not read is dropped (null),
- * never guessed — the person makes a new charge.
+ * contract and `chargeUrlOk` (on the payments site configured now), the rest field by field.
+ * Whatever does not read is dropped (null), never guessed — the person makes a new charge.
  */
-export function parseStoredCharge(raw: unknown): QrCharge | null {
+export function parseStoredCharge(raw: unknown, payments: string = paymentsUrl()): QrCharge | null {
   if (!raw || typeof raw !== 'object') return null;
   const c = raw as Record<string, unknown>;
   let request: PaymentRequest;
@@ -419,7 +432,7 @@ export function parseStoredCharge(raw: unknown): QrCharge | null {
   } catch {
     return null;
   }
-  if (typeof c.shared !== 'boolean' || !chargeUrlOk(request.url, request.id)) return null;
+  if (typeof c.shared !== 'boolean' || !chargeUrlOk(request.url, request.id, payments)) return null;
   return {
     request: keep(request),
     shared: c.shared,
