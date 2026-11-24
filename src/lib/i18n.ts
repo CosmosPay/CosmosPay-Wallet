@@ -646,6 +646,25 @@ export const T: Record<string, Record<Lang, string>> = {
   'greet.back.4.m': { es: '¿Listo para despegar?', en: 'Ready for liftoff?', pt: 'Pronto para descolar?', de: 'Bereit zum Abheben?', fr: 'Prêt au décollage ?' },
   'greet.back.4.f': { es: '¿Lista para despegar?', en: 'Ready for liftoff?', pt: 'Pronta para descolar?', de: 'Bereit zum Abheben?', fr: 'Prête au décollage ?' },
   'greet.back.4.x': { es: '¿Listx para despegar?', en: 'Ready for liftoff?', pt: 'Pronte para descolar?', de: 'Bereit zum Abheben?', fr: 'Prêt·e au décollage ?' },
+  // The same lines with the name in them (`getGreeting`'s `line`): the name goes where each
+  // language puts it, before a closing "!" or "?", never glued on after the mark.
+  'greet.morning.named': { es: 'Buenos días, {name}', en: 'Good morning, {name}', pt: 'Bom dia, {name}', de: 'Guten Morgen, {name}', fr: 'Bonjour, {name}' },
+  'greet.morning.2.named': { es: '¡Arriba, {name}, el día es tuyo!', en: 'Rise and shine, {name}!', pt: 'Levanta, {name}, o dia é teu!', de: 'Auf geht’s, {name}, der Tag gehört dir!', fr: 'Debout, {name}, la journée est à toi !' },
+  'greet.morning.3.named': { es: 'Un café y a brillar, {name}', en: 'Coffee first, then shine, {name}', pt: 'Um café e a brilhar, {name}', de: 'Erst Kaffee, dann glänzen, {name}', fr: 'Un café et ça brille, {name}' },
+  'greet.afternoon.named': { es: 'Buenas tardes, {name}', en: 'Good afternoon, {name}', pt: 'Boa tarde, {name}', de: 'Guten Tag, {name}', fr: 'Bon après-midi, {name}' },
+  'greet.afternoon.2.named': { es: 'Qué buena tarde para avanzar, {name}', en: 'A fine afternoon to make moves, {name}', pt: 'Boa tarde para avançar, {name}', de: 'Ein guter Nachmittag, um voranzukommen, {name}', fr: 'Un bel après-midi pour avancer, {name}' },
+  'greet.afternoon.3.named': { es: 'Seguimos en órbita, {name}', en: 'Still in orbit, {name}', pt: 'Continuamos em órbita, {name}', de: 'Weiter im Orbit, {name}', fr: 'Toujours en orbite, {name}' },
+  'greet.evening.named': { es: 'Buenas noches, {name}', en: 'Good evening, {name}', pt: 'Boa noite, {name}', de: 'Guten Abend, {name}', fr: 'Bonsoir, {name}' },
+  'greet.evening.2.named': { es: 'Linda noche para revisar tu universo, {name}', en: 'A nice night to check your universe, {name}', pt: 'Boa noite para rever o teu universo, {name}', de: 'Ein schöner Abend für deinen Kosmos, {name}', fr: 'Belle soirée pour ton univers, {name}' },
+  'greet.evening.3.named': { es: 'Las estrellas ya salieron, {name}', en: 'The stars are out, {name}', pt: 'As estrelas já saíram, {name}', de: 'Die Sterne sind schon da, {name}', fr: 'Les étoiles sont de sortie, {name}' },
+  'greet.back.1.m.named': { es: '¡Bienvenido de nuevo, {name}!', en: 'Welcome back, {name}!', pt: 'Bem-vindo de volta, {name}!', de: 'Willkommen zurück, {name}!', fr: 'Content de te revoir, {name} !' },
+  'greet.back.1.f.named': { es: '¡Bienvenida de nuevo, {name}!', en: 'Welcome back, {name}!', pt: 'Bem-vinda de volta, {name}!', de: 'Willkommen zurück, {name}!', fr: 'Contente de te revoir, {name} !' },
+  'greet.back.1.x.named': { es: '¡Bienvenidx de nuevo, {name}!', en: 'Welcome back, {name}!', pt: 'Bem-vinde de volta, {name}!', de: 'Willkommen zurück, {name}!', fr: 'Content·e de te revoir, {name} !' },
+  'greet.back.2.named': { es: 'Te extrañábamos, {name}', en: 'We missed you, {name}', pt: 'Tivemos saudades tuas, {name}', de: 'Wir haben dich vermisst, {name}', fr: 'Tu nous as manqué, {name}' },
+  'greet.back.3.named': { es: 'Qué bueno verte por aquí, {name}', en: 'Good to see you here, {name}', pt: 'Que bom ver-te por aqui, {name}', de: 'Schön, dich zu sehen, {name}', fr: 'Ravi de te voir ici, {name}' },
+  'greet.back.4.m.named': { es: '¿Listo para despegar, {name}?', en: 'Ready for liftoff, {name}?', pt: 'Pronto para descolar, {name}?', de: 'Bereit zum Abheben, {name}?', fr: 'Prêt au décollage, {name} ?' },
+  'greet.back.4.f.named': { es: '¿Lista para despegar, {name}?', en: 'Ready for liftoff, {name}?', pt: 'Pronta para descolar, {name}?', de: 'Bereit zum Abheben, {name}?', fr: 'Prête au décollage, {name} ?' },
+  'greet.back.4.x.named': { es: '¿Listx para despegar, {name}?', en: 'Ready for liftoff, {name}?', pt: 'Pronte para descolar, {name}?', de: 'Bereit zum Abheben, {name}?', fr: 'Prêt·e au décollage, {name} ?' },
   'greet.birthday': { es: '¡Feliz cumpleaños, {name}! 🎉', en: 'Happy birthday, {name}! 🎉', pt: 'Feliz aniversário, {name}! 🎉', de: 'Alles Gute zum Geburtstag, {name}! 🎉', fr: 'Joyeux anniversaire, {name} ! 🎉' },
 
   // ---- tabs ----
