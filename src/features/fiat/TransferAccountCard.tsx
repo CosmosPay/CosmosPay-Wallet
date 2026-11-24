@@ -95,8 +95,9 @@ export function TransferAccountCard({ store }: { store: WalletStore }) {
   }, [waiting, refresh]);
 
   if (read === null) {
-    // The shared key's probe says nothing until it answers: no card that then vanishes.
-    if (store.publicAccess) return null;
+    // Nothing until the answer, unless this account was read in this session: a deployment
+    // without bank transfers never shows a card that then vanishes (the shared key's probe too).
+    if (store.publicAccess || !store.transferAccountSeen()) return null;
     return (
       <section className="transfer-card is-loading" aria-busy="true" aria-label={t('transfer.title')}>
         <Spinner tone="text" />

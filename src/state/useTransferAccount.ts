@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import { createTransferAccount, getTransferAccount } from '@/lib/cosmospay';
 import type { TFn } from '@/lib/i18n';
 import {
@@ -26,8 +26,17 @@ export interface TransferAccountDeps {
  * Only an account has one. Without an account key the read is a probe with the shared public
  * key: `403 account_required` means this deployment offers bank transfers to accounts, so the
  * card asks the seller to sign in; anything else, and the card stays away.
+ *
+ * The account keys read successfully in this session are remembered (memory only): an
+ * unexplained failure reads as "off" unless the rail was seen working for this key, so a server
+ * without bank transfers that answers a 500 never gets a "Bank transfers" card with a retry.
  */
 export function useTransferAccount({ accountKey, sharedKey, t }: TransferAccountDeps) {
+  const readOk = useRef(new Set<string>());
+
+  /** Whether this account's transfer account was read in this session: the rail is there. */
+  const transferAccountSeen = useCallback(() => !!accountKey && readOk.current.has(accountKey), [accountKey]);
+
   const loadTransferAccount = useCallback(async (): Promise<TransferAccountRead> => {
     if (!accountKey) {
       const shared = await sharedKey().catch(() => null);
@@ -40,9 +49,11 @@ export function useTransferAccount({ accountKey, sharedKey, t }: TransferAccount
       }
     }
     try {
-      return { kind: 'account', account: readTransferAccount(await getTransferAccount(accountKey)) };
+      const account = readTransferAccount(await getTransferAccount(accountKey));
+      readOk.current.add(accountKey);
+      return { kind: 'account', account };
     } catch (e) {
-      return transferAccountReadError(e, false);
+      return transferAccountReadError(e, false, readOk.current.has(accountKey));
     }
   }, [accountKey, sharedKey]);
 
@@ -61,5 +72,5 @@ export function useTransferAccount({ accountKey, sharedKey, t }: TransferAccount
     [accountKey, t],
   );
 
-  return { loadTransferAccount, activateTransferAccount };
+  return { loadTransferAccount, activateTransferAccount, transferAccountSeen };
 }

@@ -129,11 +129,19 @@ test('a failed read: sign in for the shared key, no card where there are no bank
     assert.deepEqual(transferAccountReadError(apiError(status, code), false), { kind: 'off' }, `${status} ${code}`);
     assert.deepEqual(transferAccountReadError(apiError(status, code), true), { kind: 'off' }, `${status} ${code} shared`);
   }
-  // A hiccup: an account may try again; the shared key's probe just stays quiet.
-  assert.deepEqual(transferAccountReadError(apiError(500, 'internal_error'), false), { kind: 'failed' });
-  assert.deepEqual(transferAccountReadError(new TypeError('Failed to fetch'), false), { kind: 'failed' });
-  assert.deepEqual(transferAccountReadError(new ApiShapeError(URL_, 'status', 'one of: none', 'x'), false), { kind: 'failed' });
-  assert.deepEqual(transferAccountReadError(apiError(500, 'internal_error'), true), { kind: 'off' });
+  // An unexplained failure (5xx, a timeout, an answer that does not read) proves nothing about the
+  // rail: no card, unless this account was read before in the session. Then an account may try
+  // again; the shared key's probe just stays quiet either way.
+  const unknown = [apiError(500, 'internal_error'), apiError(502, null), apiError(504, null), new TypeError('Failed to fetch'), new ApiShapeError(URL_, 'status', 'one of: none', 'x')];
+  for (const e of unknown) {
+    assert.deepEqual(transferAccountReadError(e, false), { kind: 'off' }, String(e));
+    assert.deepEqual(transferAccountReadError(e, false, false), { kind: 'off' }, String(e));
+    assert.deepEqual(transferAccountReadError(e, false, true), { kind: 'failed' }, String(e));
+    assert.deepEqual(transferAccountReadError(e, true, true), { kind: 'off' }, `${String(e)} shared`);
+  }
+  // Read before or not, a known "off" stays off and a sign-in stays a sign-in.
+  assert.deepEqual(transferAccountReadError(apiError(503, 'transfer_unavailable'), false, true), { kind: 'off' });
+  assert.deepEqual(transferAccountReadError(apiError(403, 'account_required'), false, true), { kind: 'signin' });
 });
 
 test('a refused activation: the tax id, an account already under way, sign in, or a message', () => {

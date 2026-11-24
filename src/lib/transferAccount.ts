@@ -110,22 +110,25 @@ export type TransferAccountRead =
   | { kind: 'signin' }
   /** This deployment does not offer bank transfers (no such route, or switched off). The card is not shown. */
   | { kind: 'off' }
-  /** It could not be read this time: the card offers to try again. */
+  /** It could not be read this time, though it was read before: the card offers to try again. */
   | { kind: 'failed' };
 
 /**
  * What a failed read means. `403 account_required` is the API telling the shared public key that
  * only accounts have one — the feature exists, so the seller is asked to sign in. A missing route
  * (404), a deployment without the rail (503) or a key refused for another reason is "off": no
- * card. Anything else failed this time, and an account may try again; the shared key's probe is
- * never worth a retry button.
+ * card. Anything else (a 500, a 502, a timeout, an answer that does not read) says nothing about
+ * whether this deployment has the rail, so it is "off" too: a card with a retry button would
+ * advertise bank transfers a server may not offer. Only when this account was read in this session
+ * (`readBefore`), which proves the rail is there, did it fail this time, and the account may try
+ * again. The shared key's probe is never worth a retry button.
  */
-export function transferAccountReadError(e: unknown, shared: boolean): TransferAccountRead {
+export function transferAccountReadError(e: unknown, shared: boolean, readBefore = false): TransferAccountRead {
   if (e instanceof ApiRequestError) {
     if (e.status === 403 && e.code === 'account_required') return { kind: 'signin' };
     if (e.status === 401 || e.status === 403 || e.status === 404 || e.status === 501 || e.status === 503) return { kind: 'off' };
   }
-  return shared ? { kind: 'off' } : { kind: 'failed' };
+  return !shared && readBefore ? { kind: 'failed' } : { kind: 'off' };
 }
 
 /* -------------------------------- the form -------------------------------- */

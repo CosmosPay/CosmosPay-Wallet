@@ -1431,7 +1431,9 @@ under the charge form). Only an account key has one: the card activates it (hold
 check digit, a company gives its CUIT), opens the hosted verification in the system browser, and shows
 the alias and CVU once approved. The shared public key only probes the route: `403 account_required`
 shows "Sign in to accept bank transfers", anything else shows nothing — a deployment without the rail
-must not advertise it.
+must not advertise it. An account's read that fails without saying why (5xx, a timeout) shows nothing
+either, unless that account was read in this session (`transferAccountReadError`'s `readBefore`):
+only then does the card stay, with a retry.
 
 ## Validation lives in `src/lib/`, never in a component
 
