@@ -26,6 +26,7 @@ import {
   InfoCircleIcon,
   LinkIcon,
   PowerIcon,
+  QrIcon,
   ScanIcon,
   SendIcon,
   ShieldIcon,
@@ -128,6 +129,7 @@ export function Profile({ store }: { store: WalletStore }) {
         </h2>
         <ListRow icon={<ReceiveIcon />} title={t('ramp.entryBuy')} desc={t('ramp.entryBuyDesc')} onClick={() => openRamp('buy')} />
         <ListRow icon={<SendIcon />} title={t('ramp.entrySell')} desc={t('ramp.entrySellDesc')} onClick={() => openRamp('sell')} />
+        <ListRow icon={<QrIcon />} title={t('charge.title')} desc={t('charge.entryDesc')} onClick={() => store.setScreen('charge')} />
         <ListRow icon={<ActivityIcon />} title={t('ops.gatewayTitle')} desc={t('ops.gatewaySub')} onClick={() => store.setScreen('gateway-ops')} />
         <ListRow icon={<PenIcon />} title={t('ops.signTx')} desc={t('ops.signTxSub')} onClick={() => store.setScreen('sign-tx')} />
         <ListRow icon={<LinkIcon />} title={t('ops.pastePay')} desc={t('ops.pastePaySub')} onClick={() => void pastePayUrl()} />

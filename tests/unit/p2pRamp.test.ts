@@ -7,14 +7,18 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   currencyCountry,
+  fiatAmountProblem,
   marketRate,
   methodLabel,
   orderKey,
   quoteRate,
   rampAmountProblem,
+  rampDefaultCurrency,
   rampEstimate,
   rampMinIn,
   rampNetworks,
+  rampTokenPick,
+  rampTokenStart,
   rampSessionProblem,
   rampWindowProblem,
   rampWalletNetwork,
@@ -122,6 +126,47 @@ test('an order only names a network the wallet has in the mode, with an address 
     rampNetworks(market, 'mainnet', () => true).map((n) => n.chainId),
     [42161, 8453],
   );
+});
+
+test('a form starts on pesos when the market trades them, else on its first currency', () => {
+  assert.equal(rampDefaultCurrency(['BRL', 'ARS', 'COP']), 'ARS');
+  assert.equal(rampDefaultCurrency(['BRL', 'COP']), 'BRL');
+  assert.equal(rampDefaultCurrency([]), '');
+});
+
+test('a form\'s token starts on the market\'s own default when its network is usable, else on the first usable network', () => {
+  const market: RampMarket = {
+    currencies: [ars],
+    networks: [
+      { chainId: 8453, name: 'Base', tokenCount: 1200 },
+      { chainId: 42161, name: 'Arbitrum', tokenCount: 900 },
+    ],
+    defaultToken: usdt,
+  };
+  assert.deepEqual(rampTokenStart(market, [8453, 42161]), { chainId: 42161, token: usdt });
+  assert.deepEqual(rampTokenStart(market, [8453]), { chainId: 8453, token: null });
+  assert.equal(rampTokenStart(market, []), null);
+});
+
+test('the start lands on its own token from the list, else the first stablecoin, else the first token', () => {
+  const listed = { ...usdt, address: usdt.address.toLowerCase(), priceUsd: '1.0002' };
+  const usdc: RampToken = { chainId: 8453, address: OTHER, symbol: 'USDC', decimals: 6, priceUsd: '1', main: true };
+  const weth: RampToken = { ...eth, chainId: 8453 };
+  // The listed copy carries the price, so it is the one taken.
+  assert.equal(rampTokenPick([eth, listed], usdt), listed);
+  // Not on the first page: the start is kept as it came.
+  assert.equal(rampTokenPick([eth], usdt), usdt);
+  assert.equal(rampTokenPick([weth, usdc], null), usdc);
+  assert.equal(rampTokenPick([weth], null), weth);
+  assert.equal(rampTokenPick([], null), null);
+});
+
+test('local money asked for is checked the same for a purchase and a QR charge', () => {
+  for (const a of ['', '0', '9999.99', '10000', '10000.5', '10000.555', '1,5']) {
+    assert.equal(fiatAmountProblem(a, ars), rampAmountProblem('buy', a, ars, usdt), a);
+  }
+  assert.equal(fiatAmountProblem('10000.555', ars), 'format');
+  assert.equal(fiatAmountProblem('9999.99', ars), 'below-min');
 });
 
 test('labels: a method without the appended currency, a currency\'s country', () => {

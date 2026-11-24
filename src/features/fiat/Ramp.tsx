@@ -12,14 +12,7 @@ import { CurrencyFlag, CurrencySheet, RampTokenMark, TokenSheet, type RampSheetN
 import { RampOrders } from '@/features/fiat/RampOrders';
 import { useKeptState } from '@/hooks/useKeptState';
 import { KEPT_INPUT } from '@/constants/keptInputs';
-import {
-  RAMP_DEFAULT_CURRENCY,
-  RAMP_FIAT_DECIMALS,
-  RAMP_QUOTE_DEBOUNCE_MS,
-  RAMP_SIDES,
-  RAMP_USD_STABLES,
-  type RampSide,
-} from '@/constants/ramp';
+import { RAMP_FIAT_DECIMALS, RAMP_QUOTE_DEBOUNCE_MS, RAMP_SIDES, type RampSide } from '@/constants/ramp';
 import { ApiRequestError } from '@/lib/apiError';
 import { cx } from '@/lib/cx';
 import { shortAddr } from '@/lib/format';
@@ -34,9 +27,12 @@ import {
   orderKey,
   quoteRate,
   rampAmountProblem,
+  rampDefaultCurrency,
   rampEstimate,
   rampMinIn,
   rampNetworks,
+  rampTokenPick,
+  rampTokenStart,
   rampWalletNetwork,
   tokenUsd,
   type RampCurrency,
@@ -138,32 +134,25 @@ function RampForm({ store, side }: { store: WalletStore; side: RampSide }) {
     });
   }, [market, env, addressOn, store.networkName]);
 
-  // Defaults once the market is in: pesos when they trade, else the first currency; the token
-  // kept from before when its network is still offered, else the market's own, else the first
-  // stablecoin the first network lists — read from the list so it carries its price.
+  // Defaults once the market is in (`rampDefaultCurrency`, `rampTokenStart`, `rampTokenPick`):
+  // pesos when they trade, else the first currency; the token kept from before when its network
+  // is still offered, else the market's own, else the first stablecoin the first network lists —
+  // read from the list so it carries its price.
   const loadTokens = useCallback((s: RampSide, chainId: number, q: string, skip: number) => rampTokens(s, chainId, q, skip), [rampTokens]);
   useEffect(() => {
     if (!market) return;
     const ids = market.currencies.map((c) => c.id);
-    if (!ids.includes(draft.currency)) patch({ currency: ids.includes(RAMP_DEFAULT_CURRENCY) ? RAMP_DEFAULT_CURRENCY : ids[0] ?? '', method: '' });
+    if (!ids.includes(draft.currency)) patch({ currency: rampDefaultCurrency(ids), method: '' });
     if (draft.token && networks.some((n) => n.chainId === draft.token?.chainId)) return;
     let alive = true;
-    const d = market.defaultToken;
-    const start = networks.some((n) => n.chainId === d.chainId) ? d : null;
-    const chainId = start?.chainId ?? networks[0]?.chainId;
-    if (chainId === undefined) {
+    const start = rampTokenStart(market, networks.map((n) => n.chainId));
+    if (!start) {
       patch({ token: null });
       return;
     }
-    loadTokens(side, chainId, start?.address ?? '', 0)
-      .then((page) => {
-        if (!alive) return;
-        const hit = start
-          ? page.data.find((x) => x.address.toLowerCase() === start.address.toLowerCase())
-          : page.data.find((x) => RAMP_USD_STABLES.includes(x.symbol)) ?? page.data[0];
-        patch({ token: hit ?? start });
-      })
-      .catch(() => alive && start && patch({ token: start }));
+    loadTokens(side, start.chainId, start.token?.address ?? '', 0)
+      .then((page) => alive && patch({ token: rampTokenPick(page.data, start.token) }))
+      .catch(() => alive && start.token && patch({ token: start.token }));
     return () => {
       alive = false;
     };

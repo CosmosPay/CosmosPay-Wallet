@@ -180,6 +180,14 @@ test('history never re-enters a finished flow or crosses the lock', () => {
   assert.equal(canEnter('unlock', ctx({ hasSession: false, hasWallets: false })), false);
 });
 
+test('charge with QR is a screen of the session, reached from Receive and More, falling back to Home', () => {
+  assert.ok(SCREEN_IDS.includes('charge'));
+  assert.equal(backTarget('charge', ctx()), 'home');
+  assert.equal(SCREENS.charge.terminal, undefined);
+  assert.equal(canEnter('charge', ctx()), true);
+  assert.equal(canEnter('charge', ctx({ hasSession: false })), false);
+});
+
 /**
  * One "More" (the user's call, 2026-11-24): Home's fourth action opened "Operations" while the
  * bar and the menu opened the profile, the only place with the lock. Now both are `profile`, and

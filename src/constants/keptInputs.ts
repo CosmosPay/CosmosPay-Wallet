@@ -22,4 +22,6 @@ export const KEPT_INPUT = {
   /** Ramp: buying or selling, and each side's order (currency, method, token, amount) per mode. */
   rampSide: 'ramp.side',
   rampDraft: 'ramp.draft',
+  /** Charge with QR: the form (currency, token, amount, description) per mode. */
+  chargeDraft: 'charge.draft',
 } as const;
