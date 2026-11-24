@@ -2,6 +2,17 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.23.0] - 2026-11-24
+
+### Features
+- Ready the Cosmos Pay Wallet store update (388183c)
+
+### Bug Fixes
+- Astro 7.4.13 for GHSA-r3h5-4585-7x3w (99198fc)
+
+### Miscellaneous
+- Sync the community server spec (b787095)
+
 ## [1.22.0] - 2026-11-13
 
 ### Features
