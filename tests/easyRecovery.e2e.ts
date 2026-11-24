@@ -155,7 +155,7 @@ async function finishImport(page: Page, name: string) {
   // NEW device: "I already have one" → from another Cosmos Wallet → the QR.
   const newPage = await open(ctxNew);
   await newPage.getByText('Ya tengo una wallet').click();
-  await newPage.getByRole('button', { name: /Desde otra Cosmos Wallet/ }).click();
+  await newPage.getByRole('button', { name: /Desde otra Cosmos Pay Wallet/ }).click();
   await newPage.getByAltText(/Código QR/).waitFor({ timeout: 10000 });
   ok(true, 'new device shows the QR');
   await newPage.getByRole('button', { name: 'Copiar el enlace' }).click();
@@ -169,7 +169,7 @@ async function finishImport(page: Page, name: string) {
   await oldPage.getByRole('button', { name: /Transferir a otro dispositivo/ }).click();
   await oldPage.getByPlaceholder('cosmos-easy-recovery:v1?…').fill('not a link');
   await oldPage.getByRole('button', { name: 'Usar este enlace' }).click();
-  ok(await oldPage.getByText('Ese no es un código de Cosmos Wallet').isVisible(), 'a pasted non-link is refused in place');
+  ok(await oldPage.getByText('Ese no es un código de Cosmos Pay Wallet').isVisible(), 'a pasted non-link is refused in place');
   await oldPage.getByPlaceholder('cosmos-easy-recovery:v1?…').fill(link);
   await oldPage.getByRole('button', { name: 'Usar este enlace' }).click();
   await oldPage.getByText('¿Transferir tu wallet?').waitFor();

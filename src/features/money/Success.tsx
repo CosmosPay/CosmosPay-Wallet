@@ -2,6 +2,7 @@ import { ExternalLink } from '@/ui/ExternalLink';
 import type { WalletStore } from '@/state/store';
 import { PrimaryButton } from '@/ui/Buttons';
 import { KVRow } from '@/ui/KVRow';
+import { ArrowUpRightIcon } from '@/ui/Icons';
 import { explorerTxUrl } from '@/lib/stellar';
 import '@/styles/features/money/success.css';
 
@@ -40,6 +41,7 @@ export function Success({ store }: { store: WalletStore }) {
       {si?.hash && (
         <ExternalLink href={si.explorer ?? explorerTxUrl(store.network, si.hash)} className="success-tx">
           {t('success.viewTx')}
+          <ArrowUpRightIcon />
         </ExternalLink>
       )}
       <PrimaryButton onClick={goHome}>{store.hasSession ? t('success.viewWallet') : t('common.continue')}</PrimaryButton>

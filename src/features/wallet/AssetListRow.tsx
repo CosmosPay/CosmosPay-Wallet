@@ -1,5 +1,5 @@
 import { AssetLogo, NetworkLogo, assetMeta } from '@/ui/AssetLogo';
-import { fmt, trim, pct } from '@/lib/format';
+import type { NumberFormat } from '@/lib/numberFormat';
 import type { AssetRow } from '@/lib/portfolio';
 import { isHomeCoin } from '@/lib/logos';
 import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
@@ -19,12 +19,15 @@ export function AssetListRow({
   network,
   onClick,
   index = 0,
+  num,
 }: {
   row: AssetRow;
   chg?: number;
   network: string;
   onClick: () => void;
   index?: number;
+  /** The app's number formatter (`store.num`). */
+  num: NumberFormat;
 }) {
   const m = assetMeta(row.code);
   const shownValue = useAnimatedNumber(row.value ?? 0);
@@ -50,22 +53,22 @@ export function AssetListRow({
         <span className="asset-row-sub">
           {/* Off Stellar the network is said: ETH on Base and ETH on Ethereum are two holdings. */}
           {net !== 'stellar' && <span aria-hidden="true">{network}</span>}
-          {row.price !== null && <span className="asset-row-sub-price">${fmt(row.price, row.price >= 1 ? 2 : 4)}</span>}
-          {chg !== undefined && <span className={cx('asset-row-chg', chg >= 0 ? 'is-up' : 'is-down')}>{pct(shownChg)}</span>}
+          {row.price !== null && <span className="asset-row-sub-price">{num.usd(row.price, row.price >= 1 ? 2 : 4)}</span>}
+          {chg !== undefined && <span className={cx('asset-row-chg', chg >= 0 ? 'is-up' : 'is-down')}>{num.pct(shownChg)}</span>}
         </span>
       </span>
       {/* A PC window's table (home.css) gives the price and the day's move their own columns;
           on a phone these are not drawn, and they repeat what the line above already says. */}
       <span className="asset-row-col is-price" aria-hidden="true">
-        {row.price !== null ? '$' + fmt(row.price, row.price >= 1 ? 2 : 4) : '—'}
+        {row.price !== null ? num.usd(row.price, row.price >= 1 ? 2 : 4) : '—'}
       </span>
       <span className={cx('asset-row-col is-change', chg !== undefined && (chg >= 0 ? 'is-up' : 'is-down'))} aria-hidden="true">
-        {chg !== undefined ? pct(shownChg) : '—'}
+        {chg !== undefined ? num.pct(shownChg) : '—'}
       </span>
       <span className="asset-row-end">
-        <span className="asset-row-value">{row.value !== null ? '$' + fmt(shownValue, 2) : '—'}</span>
+        <span className="asset-row-value">{row.value !== null ? num.usd(shownValue) : '—'}</span>
         <span className="asset-row-amount">
-          {trim(row.amount, 6)} {row.code}
+          {num.amount(row.amount, 6)} {row.code}
         </span>
       </span>
     </button>

@@ -4,7 +4,7 @@
  * built may be signed at all. Each refusal case here is a way the gateway (or anyone
  * between it and the wallet) could otherwise take more than the user confirmed.
  */
-import { test } from 'node:test';
+import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { base58 } from '@scure/base';
 import { ed25519 } from '@noble/curves/ed25519.js';
@@ -12,6 +12,9 @@ import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { chainAddressesFromMnemonic, toChecksumAddress } from '@/lib/chainAddresses';
 import { chainSecret } from '@/lib/chainKeys';
+import { ChainSwapRefused, chainBalances, signSolanaSwap } from '@/lib/chainSwap';
+import { AssociatedReadRefused } from '@/lib/solanaTokenBalances';
+import { DEFAULT_SOLANA_RPC_URL } from '@/constants/backends';
 import {
   approveCalldata,
   bytesToHex,
@@ -23,11 +26,14 @@ import {
 } from '@/lib/evmTx';
 import {
   SYSTEM_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   TOKEN_PROGRAM_ID,
   associatedTokenAddress,
   WRAPPED_SOL_MINT,
   checkSwapEffects,
+  compileLegacyTx,
   messageAccounts,
+  ownTokenAccounts,
   parseSolanaTx,
   signSolanaTx,
   solTransferTx,
@@ -36,6 +42,11 @@ import {
 } from '@/lib/solanaTx';
 import { MONAD_CHAIN_ID } from '@/constants/chains';
 import { T } from '@/lib/i18n';
+
+const realFetch = globalThis.fetch;
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const USDC_SOL = 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
@@ -201,6 +212,186 @@ test('the writable accounts of a message are the ones its header marks writable'
   const { writable, lookups } = messageAccounts(parseSolanaTx(solTransferTx(OWNER, OTHER, 1n, BLOCKHASH)).message);
   assert.deepEqual(writable, [OWNER, OTHER]);
   assert.deepEqual(lookups, []);
+});
+
+/* ------------------------- which accounts are ours ------------------------ */
+
+test('ours: every account under a token program that names the owner, associated or not, and nothing else', () => {
+  const accounts = new Map<string, AccountState>([
+    [OWNER, wallet(1n)],
+    ['owner-usdc-not-associated', token(USDC_SOL, 5n)],
+    ['owner-usdt-2022', { ...token(USDT_SOL, 5n)!, owner: TOKEN_2022_PROGRAM_ID }],
+    ['others-usdc', token(USDC_SOL, 5n, { owner: OTHER })],
+    // The owner's bytes under a program that is not a token program: not a token account.
+    ['look-alike', { ...token(USDC_SOL, 5n)!, owner: 'BPFLoaderUpgradeab1e11111111111111111111111' }],
+    ['a-mint', { lamports: 1n, owner: TOKEN_PROGRAM_ID, data: new Uint8Array(82) }],
+    ['missing', null],
+  ]);
+  assert.deepEqual([...ownTokenAccounts(OWNER, accounts)].sort(), ['owner-usdc-not-associated', 'owner-usdt-2022']);
+});
+
+/** The node a swap is checked against: accounts before (`getMultipleAccounts`) and after (`simulateTransaction`). */
+function swapNode(before: Record<string, AccountState>, after: Record<string, AccountState>) {
+  const raw = (s: AccountState) => (s ? { lamports: Number(s.lamports), owner: s.owner, data: [Buffer.from(s.data).toString('base64'), 'base64'] } : null);
+  const calls: { url: string; method: string; params: unknown[] }[] = [];
+  globalThis.fetch = (async (url: string, init: { body: string }) => {
+    const { id, method, params } = JSON.parse(init.body);
+    calls.push({ url, method, params });
+    const result =
+      method === 'getBalance'
+        ? { context: { slot: 1 }, value: 7 }
+        : method === 'getAccountInfo'
+        ? { value: { lamports: 1, owner: TOKEN_PROGRAM_ID, data: [Buffer.alloc(82).toString('base64'), 'base64'] } }
+        : method === 'getMultipleAccounts'
+          ? { value: (params[0] as string[]).map((a) => raw(before[a] ?? null)) }
+          : method === 'simulateTransaction'
+            ? { value: { err: null, accounts: (params[1] as { accounts: { addresses: string[] } }).accounts.addresses.map((a) => raw(after[a] ?? null)) } }
+            : undefined;
+    if (result === undefined) throw new Error(`unexpected ${method}`);
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { status: 200 });
+  }) as typeof fetch;
+  const simulated = () => {
+    const sim = calls.find((c) => c.method === 'simulateTransaction');
+    return sim ? (sim.params[1] as { accounts: { addresses: string[] } }).accounts.addresses : null;
+  };
+  return { calls, simulated };
+}
+
+// A swap selling 1 SOL for USDC, as a route writes it: the wallet, a token account of the
+// wallet's that is NOT its associated one, a token account of somebody else's (a pool's
+// vault, say), and the wallet's USDC associated account, which the swap opens. A token
+// account of the wallet's that the route only reads cannot change, so it is never asked for.
+const OWN_TOKEN = base58.encode(new Uint8Array(32).fill(21));
+const POOL_VAULT = base58.encode(new Uint8Array(32).fill(22));
+const READ_ONLY_OWN = base58.encode(new Uint8Array(32).fill(23));
+const ROUTE = base58.encode(new Uint8Array(32).fill(24));
+const BUY_ATA = associatedTokenAddress(OWNER, USDC_SOL, TOKEN_PROGRAM_ID);
+const SWAP_WIRE = Buffer.from(
+  compileLegacyTx(OWNER, BLOCKHASH, [
+    {
+      program: ROUTE,
+      accounts: [
+        { key: OWNER, signer: true, writable: true },
+        { key: OWN_TOKEN, signer: false, writable: true },
+        { key: POOL_VAULT, signer: false, writable: true },
+        { key: BUY_ATA, signer: false, writable: true },
+        { key: READ_ONLY_OWN, signer: false, writable: false },
+      ],
+      data: Uint8Array.of(1),
+    },
+  ]),
+).toString('base64');
+const SWAP = {
+  wire: SWAP_WIRE,
+  secret: OWNER_SECRET,
+  owner: OWNER,
+  sell: 'native',
+  buy: USDC_SOL,
+  amount: 1_000_000_000n,
+  minimum: 150_000_000n,
+};
+const SWAP_BEFORE = (ownProgram = TOKEN_PROGRAM_ID): Record<string, AccountState> => ({
+  [OWNER]: wallet(2_000_000_000n),
+  [OWN_TOKEN]: { ...token(USDT_SOL, 9_000_000n)!, owner: ownProgram },
+  [POOL_VAULT]: token(USDT_SOL, 50_000_000n, { owner: OTHER }),
+  [READ_ONLY_OWN]: token(USDT_SOL, 1_000_000n),
+});
+const SWAP_AFTER = (over: Record<string, AccountState> = {}, ownProgram = TOKEN_PROGRAM_ID): Record<string, AccountState> => ({
+  [OWNER]: wallet(999_995_000n),
+  [OWN_TOKEN]: { ...token(USDT_SOL, 9_000_000n)!, owner: ownProgram },
+  [POOL_VAULT]: token(USDT_SOL, 50_000_000n, { owner: OTHER }),
+  [BUY_ATA]: token(USDC_SOL, 160_000_000n),
+  ...over,
+});
+const refusedWith = (code: string) => (e: unknown) => e instanceof ChainSwapRefused && e.code === code;
+
+test('a swap that only does what was confirmed is signed; ours were found by reading the writable accounts', async () => {
+  const { calls, simulated } = swapNode(SWAP_BEFORE(), SWAP_AFTER());
+  const signed = await signSolanaSwap(SWAP);
+  const tx = parseSolanaTx(Buffer.from(signed, 'base64'));
+  assert.ok(ed25519.verify(tx.signatures[0], tx.message, base58.decode(OWNER)));
+  assert.ok(calls.every((c) => c.url === DEFAULT_SOLANA_RPC_URL));
+  assert.ok(!calls.some((c) => c.method === 'getTokenAccountsByOwner'), 'no indexed query');
+  // Every writable account was read, its fixed part only; nothing the route only reads.
+  const read = calls.find((c) => c.method === 'getMultipleAccounts')!;
+  assert.deepEqual(new Set(read.params[0] as string[]), new Set([OWNER, OWN_TOKEN, POOL_VAULT, BUY_ATA]));
+  assert.deepEqual((read.params[1] as { dataSlice: unknown }).dataSlice, { offset: 0, length: 165 });
+  assert.deepEqual(new Set(simulated()), new Set([OWNER, OWN_TOKEN, BUY_ATA]));
+});
+
+test('a writable token account of the owner that is not its associated one is ours: draining it is refused', async () => {
+  const { simulated } = swapNode(SWAP_BEFORE(), SWAP_AFTER({ [OWN_TOKEN]: token(USDT_SOL, 0n) }));
+  await assert.rejects(signSolanaSwap(SWAP), refusedWith('drain'));
+  assert.ok(simulated()!.includes(OWN_TOKEN));
+  // The same under Token-2022.
+  swapNode(SWAP_BEFORE(TOKEN_2022_PROGRAM_ID), SWAP_AFTER({ [OWN_TOKEN]: { ...token(USDT_SOL, 0n)!, owner: TOKEN_2022_PROGRAM_ID } }, TOKEN_2022_PROGRAM_ID));
+  await assert.rejects(signSolanaSwap(SWAP), refusedWith('drain'));
+  // Delegated or handed to somebody else: still ours, still refused.
+  swapNode(SWAP_BEFORE(), SWAP_AFTER({ [OWN_TOKEN]: token(USDT_SOL, 9_000_000n, { delegate: true }) }));
+  await assert.rejects(signSolanaSwap(SWAP), refusedWith('authority'));
+  swapNode(SWAP_BEFORE(), SWAP_AFTER({ [OWN_TOKEN]: token(USDT_SOL, 9_000_000n, { owner: OTHER }) }));
+  await assert.rejects(signSolanaSwap(SWAP), refusedWith('authority'));
+});
+
+test('a writable token account of somebody else is not ours: what it loses is the counterparty’s', async () => {
+  const { simulated } = swapNode(SWAP_BEFORE(), SWAP_AFTER({ [POOL_VAULT]: token(USDT_SOL, 0n, { owner: OTHER }) }));
+  assert.equal(typeof (await signSolanaSwap(SWAP)), 'string');
+  assert.ok(!simulated()!.includes(POOL_VAULT));
+});
+
+test('a writable account the node cannot answer for refuses the swap before it is simulated', async () => {
+  const unreadable = (answer: (addresses: string[]) => unknown) => {
+    const calls: string[] = [];
+    globalThis.fetch = (async (_url: string, init: { body: string }) => {
+      const { id, method, params } = JSON.parse(init.body);
+      calls.push(method);
+      const result =
+        method === 'getAccountInfo' ? { value: { lamports: 1, owner: TOKEN_PROGRAM_ID, data: ['', 'base64'] } } : { value: answer(params[0]) };
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id, result }), { status: 200 });
+    }) as typeof fetch;
+    return calls;
+  };
+  // One entry short: the missing account is not one that does not exist.
+  let calls = unreadable((addresses) => addresses.slice(1).map(() => null));
+  await assert.rejects(signSolanaSwap(SWAP), /getMultipleAccounts: the answer does not match/);
+  assert.ok(!calls.includes('simulateTransaction'));
+  // An entry that is not an account.
+  calls = unreadable((addresses) => addresses.map(() => ({ lamports: 1, owner: TOKEN_PROGRAM_ID, data: ['not base64!', 'base64'] })));
+  await assert.rejects(signSolanaSwap(SWAP), /could not be read/);
+  assert.ok(!calls.includes('simulateTransaction'));
+  calls = unreadable((addresses) => addresses.map(() => ({ owner: TOKEN_PROGRAM_ID })));
+  await assert.rejects(signSolanaSwap(SWAP), /could not be read/);
+  assert.ok(!calls.includes('simulateTransaction'));
+});
+
+test('the swap screen’s Solana balances: SOL, and USDC and USDT at their associated accounts, from the wallet’s node', async () => {
+  const usdc2022 = associatedTokenAddress(OWNER, USDC_SOL, TOKEN_2022_PROGRAM_ID);
+  const { calls } = swapNode({ [BUY_ATA]: token(USDC_SOL, 42_000_000n), [usdc2022]: { ...token(USDC_SOL, 1n)!, owner: TOKEN_2022_PROGRAM_ID } }, {});
+  assert.deepEqual(await chainBalances('solana', OWNER), { native: 7n, [USDC_SOL]: 42_000_001n, [USDT_SOL]: 0n });
+  assert.ok(calls.every((c) => c.url === DEFAULT_SOLANA_RPC_URL));
+  assert.deepEqual(calls.map((c) => c.method).sort(), ['getBalance', 'getMultipleAccounts']);
+  assert.deepEqual(calls.find((c) => c.method === 'getMultipleAccounts')!.params[0], [
+    BUY_ATA,
+    usdc2022,
+    associatedTokenAddress(OWNER, USDT_SOL, TOKEN_PROGRAM_ID),
+    associatedTokenAddress(OWNER, USDT_SOL, TOKEN_2022_PROGRAM_ID),
+  ]);
+  // Somebody else's account where the wallet's belongs: unknown, never a zero.
+  swapNode({ [BUY_ATA]: token(USDC_SOL, 42_000_000n, { owner: OTHER }) }, {});
+  await assert.rejects(chainBalances('solana', OWNER), (e: unknown) => e instanceof AssociatedReadRefused && e.problem === 'account');
+});
+
+test('a simulation that answers for fewer accounts than asked is refused, not read as accounts it deleted', async () => {
+  swapNode(SWAP_BEFORE(), SWAP_AFTER());
+  const answer = globalThis.fetch;
+  globalThis.fetch = (async (url: string, init: { body: string }) => {
+    const res = await answer(url, init as RequestInit);
+    if (JSON.parse(init.body).method !== 'simulateTransaction') return res;
+    const body = await res.json();
+    body.result.value.accounts.pop();
+    return new Response(JSON.stringify(body), { status: 200 });
+  }) as typeof fetch;
+  await assert.rejects(signSolanaSwap(SWAP), /simulateTransaction: the answer does not match/);
 });
 
 /* --------------------------------- Monad --------------------------------- */

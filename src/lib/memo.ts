@@ -90,7 +90,7 @@ export function normalizeMemo(value: string, kind: MemoKind = 'text'): { kind: M
  * The memo a transaction gets when the user did not write one.
  *
  * Stellar memos are free-form and most payments leave the field empty, so the wallet
- * signs its own work: `Cosmos Wallet v1.5.0` on chain says which client built a
+ * signs its own work: `Cosmos Pay Wallet v1.5.0` on chain says which client built a
  * transaction and which release, which is the difference between a support report of
  * "the payment looked wrong" and knowing what built it.
  *
@@ -116,6 +116,20 @@ export function defaultMemoText(): string {
 /** The default memo as a (kind, value) pair, or null if it somehow does not fit. */
 export function defaultMemo(): { kind: MemoKind; value: string } | null {
   return normalizeMemo(defaultMemoText(), 'text');
+}
+
+/**
+ * The memo a Stellar payment the wallet builds will carry: the one typed or requested,
+ * normalized, or the wallet's own (`isDefault`) when the field is empty. `buildMemo` in
+ * lib/stellar.ts signs exactly this, and the review screens show exactly this, so what is
+ * read before signing is what goes on chain: the review used to show no memo for an empty
+ * field while the transaction carried `Cosmos Pay Wallet v…`.
+ */
+export function memoToSign(value: string, kind: MemoKind = 'text'): { kind: MemoKind; value: string; isDefault: boolean } | null {
+  const given = normalizeMemo(value, kind);
+  if (given) return { ...given, isDefault: false };
+  const fallback = defaultMemo();
+  return fallback ? { ...fallback, isDefault: true } : null;
 }
 
 /** Why a typed memo is not acceptable, for the UI. Null when it is fine (or empty). */

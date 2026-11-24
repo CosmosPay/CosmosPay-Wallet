@@ -96,6 +96,15 @@
   outline: 2px solid var(--brand);
   outline-offset: 2px;
 }
+/* The lock: an action, not a place — in the danger ink "More"'s own lock uses, at rest and on hover. */
+.nav-menu-item.is-lock {
+  color: var(--danger);
+}
+@media (hover: hover) and (pointer: fine) {
+  .nav-menu-item.is-lock:not(.is-on):hover:not(:disabled):not([aria-disabled='true']) {
+    color: var(--danger);
+  }
+}
 .nav-menu-lead {
   display: grid;
   place-items: center;

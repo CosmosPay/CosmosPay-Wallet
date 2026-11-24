@@ -4,7 +4,6 @@ import { Notice } from '@/ui/Notice';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
-import { trim } from '@/lib/format';
 import { cx } from '@/lib/cx';
 import { AssetSelect } from '@/features/money/AssetSelect';
 import { findAsset, isSameAsset, XLM, type AssetRef } from '@/lib/asset';
@@ -66,11 +65,11 @@ export function Deposit({ store }: { store: WalletStore }) {
         <div className={cx('exchange-card', openSel === 'a' && 'is-active')}>
           <div className="exchange-label">{t('lp.assetA')}</div>
           <div className="row between g10">
-            <AssetSelect assets={assets} value={aRef} onPick={(x) => setARef({ code: x.code, issuer: x.issuer })} open={openSel === 'a'} onToggle={(n) => setOpenSel(n ? 'a' : null)} />
+            <AssetSelect assets={assets} num={store.num} value={aRef} onPick={(x) => setARef({ code: x.code, issuer: x.issuer })} open={openSel === 'a'} onToggle={(n) => setOpenSel(n ? 'a' : null)} />
             <input value={amountA} onChange={(e) => { const v = sanitizeDecimalInput((e.target as HTMLInputElement).value); if (v !== null) setAmountA(v); }} inputMode="decimal" placeholder="0" className="exchange-input" />
           </div>
           <div className="exchange-balance">
-            {t('swap.balance')}: {trim(availA, 4)} {aRef.code}
+            {t('swap.balance')}: {store.num.amount(availA, 4)} {aRef.code}
           </div>
         </div>
 
@@ -81,21 +80,21 @@ export function Deposit({ store }: { store: WalletStore }) {
         <div className={cx('exchange-card exchange-card--to', openSel === 'b' && 'is-active')}>
           <div className="exchange-label">{t('lp.assetB')}</div>
           <div className="row between g10">
-            <AssetSelect assets={assets} value={bRef} onPick={(x) => setBRef({ code: x.code, issuer: x.issuer })} open={openSel === 'b'} onToggle={(n) => setOpenSel(n ? 'b' : null)} />
+            <AssetSelect assets={assets} num={store.num} value={bRef} onPick={(x) => setBRef({ code: x.code, issuer: x.issuer })} open={openSel === 'b'} onToggle={(n) => setOpenSel(n ? 'b' : null)} />
             <input value={amountB} onChange={(e) => { const v = sanitizeDecimalInput((e.target as HTMLInputElement).value); if (v !== null) setAmountB(v); }} inputMode="decimal" placeholder={t('lp.autoAmount')} className="exchange-input" />
           </div>
           <div className="exchange-balance">
-            {t('swap.balance')}: {trim(availB, 4)} {bRef.code}
+            {t('swap.balance')}: {store.num.amount(availB, 4)} {bRef.code}
           </div>
         </div>
       </div>
 
       {sameAsset && <Notice className="exchange-notice">{t('lp.sameAsset')}</Notice>}
       {!sameAsset && overA && (
-        <Notice tone="danger" className="exchange-notice">{t('swap.insufficient', { avail: trim(availA, 4), code: aRef.code })}</Notice>
+        <Notice tone="danger" className="exchange-notice">{t('swap.insufficient', { avail: store.num.amount(availA, 4), code: aRef.code })}</Notice>
       )}
       {!sameAsset && !overA && overB && (
-        <Notice tone="danger" className="exchange-notice">{t('swap.insufficient', { avail: trim(availB, 4), code: bRef.code })}</Notice>
+        <Notice tone="danger" className="exchange-notice">{t('swap.insufficient', { avail: store.num.amount(availB, 4), code: bRef.code })}</Notice>
       )}
 
       <Notice className="exchange-notice">{t('lp.depositNote')}</Notice>

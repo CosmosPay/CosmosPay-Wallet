@@ -40,6 +40,57 @@ const DEFAULT_NETWORK = {
 // rid -> { port, windowId, origin, method, pageId }
 const pending = new Map();
 
+/*
+ * A WORKER RESTART MUST NOT LOSE A REQUEST.
+ * Chrome stops an idle extension service worker after about 30 seconds, and an open Port does
+ * not keep it alive. Reading a request and typing a password routinely takes longer, so the
+ * worker that opened the approval window is often not the one that receives the answer. Every
+ * request is persisted under REQ_PREFIX when its window opens; `pending` is only this worker's
+ * in-memory view of those records, so a fresh worker rebuilds it before it routes anything.
+ * Without that, the content script's `resume` found nothing and told the page "expired" while
+ * the window stayed open: the person then signed (or paid) for a dapp that had already been
+ * told it failed, and a dapp that retries a failed payment pays twice.
+ */
+let hydrated = null;
+
+function hydrate() {
+  if (!hydrated) {
+    hydrated = (async () => {
+      let all = {};
+      try {
+        all = await chrome.storage.session.get(null);
+      } catch {
+        return;
+      }
+      for (const [key, r] of Object.entries(all)) {
+        if (!key.startsWith(REQ_PREFIX) || !r || typeof r !== 'object') continue;
+        // A window closed while no worker was running: answer as onRemoved would have.
+        const open = await chrome.windows.get(r.windowId).then(
+          () => true,
+          () => false,
+        );
+        if (pending.has(r.id)) continue;
+        if (open) pending.set(r.id, { port: null, windowId: r.windowId, origin: r.origin, method: r.method, pageId: r.pageId });
+        else await settleClosed(r.id, r);
+      }
+    })().catch(() => {});
+  }
+  return hydrated;
+}
+
+const CLOSED = 'The user closed the approval window.';
+
+/** The approval window of `rid` is gone: tell the page, or park the answer for its `resume`. */
+async function settleClosed(rid, p) {
+  pending.delete(rid);
+  if (p.pageId != null) {
+    const reply = { id: p.pageId, error: p.method === EVM_METHOD ? evmError(EVM_ERR.rejected, CLOSED) : CLOSED };
+    if (p.port) safePost(p.port, reply);
+    else if (p.origin) await chrome.storage.session.set({ [resKey(p.origin, p.pageId)]: reply }).catch(() => {});
+  }
+  await chrome.storage.session.remove(REQ_PREFIX + rid).catch(() => {});
+}
+
 /* ------------------------------------------------------------------------------------------
  * EVM: the EIP-1193 provider's calls (extension-src/inpage.js) arrive as method 'evm' with the
  * JSON-RPC method and params inside. Rules (src/constants/evmDapp.ts, src/lib/evmDapp.ts):
@@ -167,7 +218,7 @@ async function handleEvm(port, pageId, origin, call, mirror) {
       return reply(granted ? account : null);
     case 'eth_requestAccounts':
       if (granted) return reply([account]);
-      if (evmBusy(origin)) return fail(EVM_ERR.pending, 'A request is already waiting in Cosmos Wallet.');
+      if (evmBusy(origin)) return fail(EVM_ERR.pending, 'A request is already waiting in Cosmos Pay Wallet.');
       return openApproval({ origin, method: EVM_METHOD, params: { method, params: [], chainId: chain.chainId }, pageId }, port);
     case 'wallet_switchEthereumChain':
     case 'wallet_addEthereumChain': {
@@ -176,8 +227,8 @@ async function handleEvm(port, pageId, origin, call, mirror) {
       const hit = EVM_CHAINS[mode].find((c) => c.chainId === wanted);
       if (!hit) {
         return method === 'wallet_addEthereumChain'
-          ? fail(EVM_ERR.unsupported, 'Cosmos Wallet cannot add this chain.')
-          : fail(EVM_ERR.unknownChain, 'Cosmos Wallet does not have this chain in its current mode.');
+          ? fail(EVM_ERR.unsupported, 'Cosmos Pay Wallet cannot add this chain.')
+          : fail(EVM_ERR.unknownChain, 'Cosmos Pay Wallet does not have this chain in its current mode.');
       }
       try {
         await chrome.storage.session.set({ [evmChainKey(mode, origin)]: hit.chainId });
@@ -205,8 +256,8 @@ async function handleEvm(port, pageId, origin, call, mirror) {
     return out.error ? safePost(port, { id: pageId, error: out.error }) : reply(out.result);
   }
   if (EVM_SIGN_METHODS.includes(method)) {
-    if (!granted) return fail(EVM_ERR.unauthorized, 'Connect Cosmos Wallet to this site first (eth_requestAccounts).');
-    if (evmBusy(origin)) return fail(EVM_ERR.pending, 'A request is already waiting in Cosmos Wallet.');
+    if (!granted) return fail(EVM_ERR.unauthorized, 'Connect Cosmos Pay Wallet to this site first (eth_requestAccounts).');
+    if (evmBusy(origin)) return fail(EVM_ERR.pending, 'A request is already waiting in Cosmos Pay Wallet.');
     return openApproval({ origin, method: EVM_METHOD, params: { method, params, chainId: chain.chainId }, pageId }, port);
   }
   return fail(EVM_ERR.unsupported, 'Unsupported method: ' + method);
@@ -300,6 +351,7 @@ chrome.runtime.onConnect.addListener((port) => {
     const origin = msg.origin || '';
 
     (async () => {
+      await hydrate();
       if (method === 'resume') {
         // Sent by content.js after reconnecting: the previous port died (often a
         // worker restart) while `ids` were still in flight. Reclaim whatever we can —
@@ -362,8 +414,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) return undefined;
 
   const rid = msg.id;
-  const p = pending.get(rid);
   (async () => {
+    await hydrate();
+    const p = pending.get(rid);
     const stored = p || (await chrome.storage.session.get(REQ_PREFIX + rid))[REQ_PREFIX + rid];
     if (!stored) {
       sendResponse({ ok: false });
@@ -400,21 +453,20 @@ if (chrome.omnibox) {
   chrome.omnibox.onInputEntered.addListener((text) => {
     const uri = text.trim();
     if (!/^web\+stellar:/i.test(uri)) return;
-    openApproval({ origin: 'address-bar', method: 'requestPayment', params: { uri }, pageId: null }, null).catch(() => {});
+    hydrate()
+      .then(() => openApproval({ origin: 'address-bar', method: 'requestPayment', params: { uri }, pageId: null }, null))
+      .catch(() => {});
   });
   if (chrome.omnibox.setDefaultSuggestion) {
-    chrome.omnibox.setDefaultSuggestion({ description: 'Cosmos Wallet — paste a web+stellar:pay… link' });
+    chrome.omnibox.setDefaultSuggestion({ description: 'Cosmos Pay Wallet: paste a web+stellar:pay… link' });
   }
 }
 
-// If the user just closes the approval window, reject the pending request.
+// If the user just closes the approval window, reject the pending request. The event may be what
+// starts this worker, so the requests an earlier worker opened are read back first.
 chrome.windows.onRemoved.addListener((windowId) => {
-  for (const [rid, p] of pending) {
-    if (p.windowId === windowId) {
-      const closed = 'The user closed the approval window.';
-      if (p.pageId != null) safePost(p.port, { id: p.pageId, error: p.method === EVM_METHOD ? evmError(EVM_ERR.rejected, closed) : closed });
-      pending.delete(rid);
-      chrome.storage.session.remove(REQ_PREFIX + rid).catch(() => {});
-    }
-  }
+  (async () => {
+    await hydrate();
+    for (const [rid, p] of [...pending]) if (p.windowId === windowId) await settleClosed(rid, p);
+  })().catch(() => {});
 });

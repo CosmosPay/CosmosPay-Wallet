@@ -22,22 +22,21 @@
  */
 export const APP_NAME = 'Cosmos Pay';
 export const APP_VERSION = __APP_VERSION__;
-export const APP_PRODUCER = 'Un producto de Cosmos';
 
 /**
  * What the wallet signs its own transactions with when the memo field is free —
- * `Cosmos Wallet v1.5.0` (see `defaultMemoText` in lib/memo.ts).
+ * `Cosmos Pay Wallet v1.5.0` (see `defaultMemoText` in lib/memo.ts).
  *
  * Not `APP_NAME`: this is on-chain, permanent and read by strangers, and what it has
  * to answer there is "which CLIENT built this transaction", not which product family
  * it belongs to. `Cosmos Pay` is also the name of the payments API, so a memo carrying
  * it would attribute a wallet's payment to the gateway.
  *
- * Its length is load-bearing. A text memo is 28 BYTES, and this plus ` v` plus a
- * semver leaves nine bytes of headroom — enough for `v10.20.30`. A longer label would
+ * Its length is load-bearing. A text memo is 28 BYTES, and this plus ` v` leaves nine
+ * bytes for the semver, enough for `10.20.30`. A longer label would
  * silently start truncating the VERSION, which is the half worth having.
  */
-export const MEMO_SIGNATURE = 'Cosmos Wallet';
+export const MEMO_SIGNATURE = 'Cosmos Pay Wallet';
 
 /**
  * The Terms & Conditions of use and the privacy terms. Linked from the foot of Welcome

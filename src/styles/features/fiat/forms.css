@@ -10,15 +10,16 @@
 .fiat-select-wrap { position: relative; }
 /* declared after .input so padding-right wins over the shorthand */
 .fiat-select { -webkit-appearance: none; appearance: none; padding-right: 42px; cursor: pointer; }
+/* ui/Icons' chevron (the line icon), not a `▼` glyph */
 .fiat-select-chevron {
   position: absolute;
-  right: 16px;
+  right: 14px;
   top: 50%;
+  width: 18px;
+  height: 18px;
   transform: translateY(-50%);
   pointer-events: none;
-  font-size: 10px;
   color: var(--muted);
-  opacity: 0.85;
 }
 
 /* ------------------- quote summary (compose with .glass) --------------------- */

@@ -10,7 +10,7 @@
 import type { ChainNet } from '@/constants/chains';
 
 /** The provider's EIP-6963 identity (`eip6963:announceProvider`). */
-export const EVM_PROVIDER_NAME = 'Cosmos Wallet';
+export const EVM_PROVIDER_NAME = 'Cosmos Pay Wallet';
 export const EVM_PROVIDER_RDNS = 'lat.cosmospay.wallet';
 
 /**

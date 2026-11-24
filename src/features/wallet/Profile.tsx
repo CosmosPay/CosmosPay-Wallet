@@ -7,19 +7,27 @@ import { HomeNetworkButton } from '@/features/wallet/HomeNetworkButton';
 import { ListRow } from '@/ui/ListRow';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { addressOn } from '@/lib/accountAddress';
+import { readText } from '@/lib/clipboard';
+import { keepInput } from '@/lib/keptInputs';
+import { KEPT_INPUT } from '@/constants/keptInputs';
+import type { RampSide } from '@/constants/ramp';
 import {
   AccountIcon,
   ActivityIcon,
   CheckIcon,
   ChevronRightIcon,
   CopyIcon,
+  GlobeIcon,
   KeyIcon,
+  PenIcon,
   PlusIcon,
   ReceiveIcon,
   GearIcon,
   InfoCircleIcon,
   LinkIcon,
   PowerIcon,
+  ScanIcon,
+  SendIcon,
   ShieldIcon,
 } from '@/ui/Icons';
 import '@/styles/features/wallet/profile.css';
@@ -46,8 +54,12 @@ function resizeToDataUrl(file: File, size = 160): Promise<string> {
 
 /* ------------------------------- MORE -------------------------------- */
 /**
- * The bar's "More" (Figma): the person — photo, name, email, the active wallet's address —
- * then everything that is not a daily action, in short lists between lines.
+ * "More", the one screen behind every "More" (the user's call, 2026-11-24): Home's fourth
+ * action, the bar's last place, the extension menu's and the rail's account entry all open
+ * it. The person — photo, name, email, the active wallet's address — then the operations
+ * that used to be Home's own "More" (buying and selling with local money first, so the ramp
+ * stays two taps from Home), the wallets, and everything else that is not a daily action, in
+ * short lists between lines; the lock closes it.
  */
 export function Profile({ store }: { store: WalletStore }) {
   const t = store.t;
@@ -56,6 +68,19 @@ export function Profile({ store }: { store: WalletStore }) {
   const avatar = store.meta?.avatar;
   const fileRef = useRef<HTMLInputElement>(null);
   const [copied, copy] = useCopied();
+
+  const pastePayUrl = async () => {
+    const txt = (await readText())?.trim();
+    const outcome = txt ? store.applySep7(txt) : 'invalid';
+    if (outcome === 'applied') store.setScreen('send');
+    else if (outcome === 'otherNetwork') store.flash(t('sep7.otherNetwork', { network: `Stellar ${store.network.label}` }), 'err');
+    else store.flash(t('ops.pasteInvalid'), 'err');
+  };
+
+  const openRamp = (side: RampSide) => {
+    keepInput(KEPT_INPUT.rampSide, side);
+    store.setScreen('ramp');
+  };
 
   const onFile = async (e: { target: HTMLInputElement }) => {
     const f = e.target.files?.[0];
@@ -71,7 +96,7 @@ export function Profile({ store }: { store: WalletStore }) {
 
   return (
     <div className="scr screen pb-110 more">
-      <ScreenHeader title={t('profile.title')} onBack={store.goBack} />
+      <ScreenHeader title={t('tab.more')} onBack={store.goBack} />
 
       <section className="more-person" aria-label={t('profile.accountDetails')}>
         <button type="button" onClick={() => fileRef.current?.click()} className="more-avatar" aria-label={t('profile.changePhoto')}>
@@ -95,6 +120,20 @@ export function Profile({ store }: { store: WalletStore }) {
           <span className="sr-only" role="status">{copied ? t('common.copied') : ''}</span>
           <HomeNetworkButton store={store} />
         </div>
+      </section>
+
+      <section className="more-section" aria-labelledby="more-ops">
+        <h2 id="more-ops" className="more-section-title">
+          {t('ops.title')}
+        </h2>
+        <ListRow icon={<ReceiveIcon />} title={t('ramp.entryBuy')} desc={t('ramp.entryBuyDesc')} onClick={() => openRamp('buy')} />
+        <ListRow icon={<SendIcon />} title={t('ramp.entrySell')} desc={t('ramp.entrySellDesc')} onClick={() => openRamp('sell')} />
+        <ListRow icon={<ActivityIcon />} title={t('ops.gatewayTitle')} desc={t('ops.gatewaySub')} onClick={() => store.setScreen('gateway-ops')} />
+        <ListRow icon={<PenIcon />} title={t('ops.signTx')} desc={t('ops.signTxSub')} onClick={() => store.setScreen('sign-tx')} />
+        <ListRow icon={<LinkIcon />} title={t('ops.pastePay')} desc={t('ops.pastePaySub')} onClick={() => void pastePayUrl()} />
+        <ListRow icon={<ScanIcon />} title={t('scan.scanQr')} onClick={() => store.setScreen('scan')} />
+        <ListRow icon={<PlusIcon />} title={t('addAsset.title')} onClick={() => store.setScreen('add-asset')} />
+        <ListRow icon={<GlobeIcon />} title={t('net.add')} onClick={() => store.setScreen('add-network')} />
       </section>
 
       <section className="more-section more-wallets" aria-labelledby="more-wallets">

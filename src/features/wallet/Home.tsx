@@ -31,7 +31,6 @@ import { useRecoveryReachable } from '@/hooks/useRecoveryReachable';
 import { useKeptState } from '@/hooks/useKeptState';
 import { useAnimatedNumber } from '@/hooks/useAnimatedNumber';
 import { chainRows, networkRows, computePortfolio, intentsPriceOf, rowKey, type AssetRow } from '@/lib/portfolio';
-import { fmt, splitMoney, pct } from '@/lib/format';
 import { getGreeting } from '@/lib/greeting';
 import { buildKind } from '@/lib/platform';
 import { cx } from '@/lib/cx';
@@ -71,7 +70,8 @@ export function Home({ store }: { store: WalletStore }) {
   ];
   const { total, rows, changePct, deltaUsd } = computePortfolio(store.account, store.prices, store.network.id, extra);
   // Every portfolio number eases towards its live value (colours and arrows follow the target).
-  const money = splitMoney(useAnimatedNumber(total));
+  const num = store.num;
+  const money = num.money(useAnimatedNumber(total));
   const shownPct = useAnimatedNumber(changePct);
   const shownDelta = useAnimatedNumber(deltaUsd);
   const notActivated = store.account && !store.account.exists;
@@ -182,9 +182,9 @@ export function Home({ store }: { store: WalletStore }) {
           </p>
           <p className={cx('home-change', changePct >= 0 ? 'is-up' : 'is-down')}>
             {changePct >= 0 ? <TrendUpIcon className="home-change-icon" /> : <TrendDownIcon className="home-change-icon" />}
-            <span className="home-change-pct">{pct(shownPct)}</span>
+            <span className="home-change-pct">{num.pct(shownPct)}</span>
             <span className="home-change-delta">
-              {deltaUsd >= 0 ? '+' : '−'}${fmt(Math.abs(shownDelta), 2)} · {t('home.in24h')}
+              {deltaUsd >= 0 ? '+' : '−'}{num.usd(Math.abs(shownDelta))} · {t('home.in24h')}
             </span>
           </p>
         </section>
@@ -199,7 +199,8 @@ export function Home({ store }: { store: WalletStore }) {
           <HomeAction label={t('home.swap')} onClick={() => store.setScreen('swap')}>
             <ExchangeIcon />
           </HomeAction>
-          <HomeAction label={t('home.more')} onClick={() => store.setScreen('operations')}>
+          {/* The same "More" as the bar's and the menu's (features/wallet/Profile.tsx). */}
+          <HomeAction label={t('home.more')} onClick={() => store.go('profile', 'profile')}>
             <DotsIcon />
           </HomeAction>
         </nav>
@@ -250,6 +251,7 @@ export function Home({ store }: { store: WalletStore }) {
                         chg={store.prices[r.code]?.change24h}
                         network={networkName(networkOf(r))}
                         index={i}
+                        num={store.num}
                         onClick={() => openRow(r)}
                       />
                     ))}
@@ -346,8 +348,8 @@ function Watchlist({ store }: { store: WalletStore }) {
                 <span className="home-watch-code">{code}</span>
               </span>
               <span className="home-watch-end">
-                <span className="home-watch-price">{p ? '$' + fmt(p.usd, p.usd >= 1 ? 2 : 4) : '—'}</span>
-                {p && <span className={cx('home-watch-chg', p.change24h >= 0 ? 'is-up' : 'is-down')}>{pct(p.change24h)}</span>}
+                <span className="home-watch-price">{p ? store.num.usd(p.usd, p.usd >= 1 ? 2 : 4) : '—'}</span>
+                {p && <span className={cx('home-watch-chg', p.change24h >= 0 ? 'is-up' : 'is-down')}>{store.num.pct(p.change24h)}</span>}
               </span>
             </button>
             <button

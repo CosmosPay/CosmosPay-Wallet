@@ -34,12 +34,13 @@ import { WrongPasswordError } from '@/lib/crypto';
 import { PasskeyError, wipePasskeySecrets } from '@/lib/passkey';
 import { PasskeyUnlockStaleError, passkeyUnlockCredential, unlockWithPasskey } from '@/lib/passkeyUnlock';
 import { networkEnv, resolveNetwork, signXdr, sendPayment, type NetConfig } from '@/lib/stellar';
-import { parseStellarQr, type ParsedQr } from '@/lib/sep7';
+import { isForOtherNetwork, parseStellarQr, type ParsedQr } from '@/lib/sep7';
 import { reviewTx, type TxReview } from '@/lib/txGuard';
 import { signMessagePayload, SIGN_MESSAGE_DOMAIN } from '@/lib/signMessage';
-import { memoKindFromSep7 } from '@/lib/memo';
+import { memoKindFromSep7, memoToSign } from '@/lib/memo';
 import { cx } from '@/lib/cx';
 import { makeT, savedLang, setDocumentLang, type TFn } from '@/lib/i18n';
+import { numberFormat } from '@/lib/numberFormat';
 
 // Extension API — no @types/chrome in this project; the popup only runs as an
 // extension page where `chrome` exists (guarded by hasChrome()).
@@ -219,6 +220,8 @@ export default function ApprovePopup() {
   const [allowanceBalance, setAllowanceBalance] = useState<bigint | null>(null);
   const [loaded, setLoaded] = useState(false);
   const t = useMemo(() => makeT(savedLang()), []);
+  // Its figures too: amounts and fees in the wallet's language (lib/numberFormat.ts), every digit kept.
+  const num = useMemo(() => numberFormat(savedLang()), []);
   // The window speaks the wallet's language, and its `<html lang>` says so.
   useEffect(() => setDocumentLang(savedLang()), []);
   const [pwd, setPwd] = useState('');
@@ -261,6 +264,9 @@ export default function ApprovePopup() {
           const parsed = parseStellarQr(String(r.params.uri || ''));
           if (parsed) setPay(parsed);
           else setPayErr(t('approve.badSep7'));
+          // A request for another network is shown and refused, never paid on this one: the
+          // same rule as signTransaction's passphrase, read from the link (lib/sep7.ts).
+          if (parsed && isForOtherNetwork(parsed, c.passphrase)) setNetMismatch(t('sep7.otherNetwork', { network: `Stellar ${c.label}` }));
         }
         if (r && r.method === 'signTransaction') {
           // A dapp may state which network it built for, but it does NOT get to
@@ -323,6 +329,7 @@ export default function ApprovePopup() {
   const isPay = req.method === 'requestPayment';
   const short = (s: string, n = 10) => (s.length > n * 2 ? `${s.slice(0, n)}…${s.slice(-n)}` : s);
   const payAsset = pay ? (pay.assetCode && pay.assetIssuer ? pay.assetCode : 'XLM') : '';
+  const payMemo = pay ? memoToSign(pay.memo ?? '', memoKindFromSep7(pay.memoType) ?? 'text') : null;
   const originLabel = req.origin === 'address-bar' ? t('approve.addressBar') : req.origin;
 
   if (doneHash) {
@@ -464,6 +471,7 @@ export default function ApprovePopup() {
       }
       if (req.method === 'requestPayment') {
         if (!pay) throw new Error(payErr || t('approve.badPayLink'));
+        if (netMismatch) throw new Error(netMismatch);
         const { hash } = await sendPayment({
           cfg,
           secret,
@@ -572,7 +580,7 @@ export default function ApprovePopup() {
     const evmSend = kind === 'sendTransaction';
     const canApproveEvm = !v.refusal && !!v.request && (!evmNeedsAck || ack) && (evmConnect || hasProof);
     const amountLabel = (c: Extract<CallReview, { kind: 'erc20' }>) =>
-      c.unlimited ? t('approve.evm.unlimited') : `${formatUnits(c.amount, c.token.decimals)} ${c.token.symbol}`;
+      c.unlimited ? t('approve.evm.unlimited') : `${num.decimal(formatUnits(c.amount, c.token.decimals))} ${c.token.symbol}`;
     const counterpartyLabel = (fn: Erc20Function) => t(fn === 'approve' || fn === 'increaseAllowance' ? 'approve.evm.rowSpender' : 'approve.evm.rowRecipient');
     const domainChain = typed ? typedDataChainId(typed) : null;
     const rejectEvm = () => respond(req, false, undefined, { code: EVM_ERR.rejected, message: 'User rejected the request.' });
@@ -595,8 +603,8 @@ export default function ApprovePopup() {
             <>
               <div className="approve-divider" />
               <Row label={t('approve.evm.rowTo')} value={short(tx.to)} mono />
-              <Row label={t('approve.evm.rowValue')} value={`${formatUnits(tx.value, decimals)} ${coin}`} />
-              <Row label={t('approve.evm.rowFeeCap')} value={`${formatUnits(sendFeeReserveOn(v.chain.network, v.env), decimals)} ${coin}`} />
+              <Row label={t('approve.evm.rowValue')} value={`${num.decimal(formatUnits(tx.value, decimals))} ${coin}`} />
+              <Row label={t('approve.evm.rowFeeCap')} value={`${num.decimal(formatUnits(sendFeeReserveOn(v.chain.network, v.env), decimals))} ${coin}`} />
               {call?.kind === 'erc20' && (
                 <div className="approve-ops">
                   <div className={cx('approve-op', (call.grant || call.fn === 'transferFrom') && 'is-critical')}>
@@ -723,8 +731,9 @@ export default function ApprovePopup() {
           <>
             <div className="approve-divider" />
             <Row label={t('approve.rowSendTo')} value={short(pay.destination)} mono />
-            <Row label={t('approve.rowAmount')} value={`${pay.amount || '—'} ${payAsset}`} />
-            {pay.memo && <Row label={t('approve.rowMemo')} value={pay.memo} />}
+            <Row label={t('approve.rowAmount')} value={`${pay.amount ? num.decimal(pay.amount) : '—'} ${payAsset}`} />
+            {/* The memo that will be signed, the wallet's own when the link names none. */}
+            {payMemo && <Row label={t('approve.rowMemo')} value={payMemo.kind === 'id' ? `${payMemo.value} (ID)` : payMemo.value} />}
           </>
         )}
         {isPay && payErr && <div className="approve-pay-error">{payErr}</div>}
@@ -744,7 +753,7 @@ export default function ApprovePopup() {
                 `signatures` and then render none of them: it consumed only
                 `hasCritical`. Everything the envelope commits you to is shown. */}
             <Row label={t('approve.rowSource')} value={foreignSource ? short(review.source) : t('approve.yourAccount')} mono={foreignSource} />
-            <Row label={t('approve.rowFee')} value={`${review.feeXlm} XLM`} />
+            <Row label={t('approve.rowFee')} value={`${num.decimal(review.feeXlm)} XLM`} />
             <Row label={t('approve.rowSequence')} value={review.sequence || '—'} mono />
             <Row label={t('approve.rowExpires')} value={expiryLabel(t, review.maxTime)} />
             {review.signatures > 0 && <Row label={t('approve.rowSignatures')} value={String(review.signatures)} />}

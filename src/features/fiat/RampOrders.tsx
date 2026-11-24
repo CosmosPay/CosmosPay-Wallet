@@ -44,7 +44,7 @@ export function RampOrders({ store, side, market, rev }: { store: WalletStore; s
 
   const num = (v: string, max: number) => {
     const n = Number(v);
-    return Number.isFinite(n) ? new Intl.NumberFormat(lang, { maximumFractionDigits: max }).format(n) : v;
+    return Number.isFinite(n) ? store.num.amount(n, max) : v;
   };
   const when = (iso: string) => {
     const d = new Date(iso);

@@ -179,3 +179,23 @@ test('history never re-enters a finished flow or crosses the lock', () => {
   assert.equal(canEnter('unlock', ctx()), false);
   assert.equal(canEnter('unlock', ctx({ hasSession: false, hasWallets: false })), false);
 });
+
+/**
+ * One "More" (the user's call, 2026-11-24): Home's fourth action opened "Operations" while the
+ * bar and the menu opened the profile, the only place with the lock. Now both are `profile`, and
+ * the operations it lists come back to it.
+ */
+test('there is one "More": the operations hub is gone and its screens return to More', () => {
+  assert.ok(!(SCREEN_IDS as readonly string[]).includes('operations'));
+  assert.ok(!('operations' in SCREENS));
+  assert.equal(TAB_SCREEN.profile, 'profile');
+  assert.equal(SCREENS.profile.tab, 'profile');
+  assert.equal(backTarget('profile', ctx()), 'home');
+  for (const s of ['sign-tx', 'gateway-ops'] as const) {
+    assert.equal(backTarget(s, ctx()), 'profile', s);
+    assert.equal(canEnter(s, ctx()), true, s);
+    assert.equal(canEnter(s, ctx({ hasSession: false })), false, s);
+  }
+  assert.equal(canEnter('profile', ctx()), true);
+  assert.equal(canEnter('profile', ctx({ hasSession: false })), false);
+});

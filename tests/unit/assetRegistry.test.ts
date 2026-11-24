@@ -14,7 +14,9 @@ import {
   findRegistryAsset,
   isVerifiedAsset,
   issuerLabel,
+  withoutProviderNames,
 } from '@/lib/assetRegistry';
+import { namesProvider } from '@/lib/providerNames';
 import { BUNDLED_ASSETS } from '@/constants/assetRegistry';
 
 const CIRCLE_USDC = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
@@ -71,15 +73,40 @@ test('USDT0 is present, and it is Tether', () => {
   assert.equal(usdt0[0].verified, true);
 });
 
-test('every entry names its issuer', () => {
+/**
+ * Rows whose issuer is a service Cosmos Pay is built on: the copy never names it
+ * (constants/providerNames.ts), so the row carries no issuer name on purpose and screens show
+ * its issuer's address instead. A new entry here needs that reason, nothing less.
+ */
+const UNNAMED_ON_PURPOSE = ['testnet USDB'];
+
+test('every entry names its issuer, unless the issuer is a provider', () => {
   // `issuerName` is the only thing distinguishing two rows that share a code, and
   // on testnet it is the only identifying information at all — no testnet issuer
-  // publishes a home domain. An empty one would render as a blank line.
+  // publishes a home domain.
+  const unnamed: string[] = [];
   for (const [network, list] of Object.entries(BUNDLED_ASSETS)) {
     for (const asset of list) {
-      assert.ok(asset.issuerName.trim(), `${network} ${asset.code} has no issuerName`);
+      if (!asset.issuerName.trim()) unnamed.push(`${network} ${asset.code}`);
     }
   }
+  assert.deepEqual(unnamed, UNNAMED_ON_PURPOSE);
+});
+
+test('no bundled row names a provider, and a fetched one that does is shown without it', () => {
+  for (const asset of Object.values(BUNDLED_ASSETS).flat()) {
+    assert.ok(!namesProvider(asset.issuerName) && !namesProvider(asset.name), `${asset.code} names a provider`);
+  }
+  // What the server's registry answered for USDB before this was fixed.
+  const fromServer = { ...bundledAssets('testnet').find((a) => a.code === 'USDB')!, name: 'USD BlindPay', issuerName: 'BlindPay' };
+  const shown = withoutProviderNames(fromServer);
+  assert.equal(shown.issuerName, '');
+  assert.equal(shown.name, 'USDB');
+  assert.equal(shown.issuer, fromServer.issuer, 'the identity is untouched');
+  assert.equal(shown.verified, true);
+  // A row that names nobody is passed through as the same object.
+  const circle = bundledAssets('testnet').find((a) => a.code === 'USDC')!;
+  assert.equal(withoutProviderNames(circle), circle);
 });
 
 test('a verified entry either publishes a domain or is one we integrate with', () => {

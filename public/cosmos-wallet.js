@@ -105,7 +105,7 @@
       const url = `${APPROVE_URL}?${PARAM.flag}=1&${PARAM.nonce}=${n}&${PARAM.origin}=${encodeURIComponent(location.origin)}`;
       const win = window.open(url, `cosmos-wallet-${n}`, features());
       if (!win) {
-        reject(new Error('Cosmos Wallet: the approval window was blocked. Allow pop-ups for this site, and call the wallet from a click.'));
+        reject(new Error('Cosmos Pay Wallet: the approval window was blocked. Allow pop-ups for this site, and call the wallet from a click.'));
         return;
       }
 
@@ -154,7 +154,7 @@
         } catch {
           /* already gone */
         }
-        finish(new Error('Cosmos Wallet: no answer from the approval window (timed out).'));
+        finish(new Error('Cosmos Pay Wallet: no answer from the approval window (timed out).'));
       }, TIMEOUT_MS);
     });
   }
@@ -162,7 +162,7 @@
   const api = {
     isCosmosWallet: true,
     id: 'cosmos',
-    name: 'Cosmos Wallet',
+    name: 'Cosmos Pay Wallet',
     /** 'web' here, absent on the extension's provider — a page can tell them apart. */
     transport: 'web',
     async isConnected() {
