@@ -85,7 +85,7 @@ export function ProtectAccountCard({ store }: { store: WalletStore }) {
         </PrimaryButton>
       ) : !sent ? (
         <>
-          <p className="home-card-desc">{t('recovery.needXlm', { amount: missing })}</p>
+          <p className="home-card-desc">{t('recovery.needXlm', { amount: store.num.amount(missing, 2) })}</p>
           <PrimaryButton disabled={busy} onClick={() => void run(async () => setSent(await store.startRecoveryCode()))}>
             {busy ? <Spinner /> : t('recoveryCard.cta')}
           </PrimaryButton>

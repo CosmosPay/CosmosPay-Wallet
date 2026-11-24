@@ -14,12 +14,8 @@ import { base64 } from '@scure/base';
 import { CHAIN_RPC_TIMEOUT_MS, type ChainNet } from '@/constants/chains';
 import { chainRpcUrl, testnetRpcUrl } from '@/lib/endpoints';
 import { balanceOfCalldata } from '@/lib/evmTx';
-import {
-  TOKEN_2022_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  decodeTokenAccount,
-  type AccountState,
-} from '@/lib/solanaTx';
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, type AccountState } from '@/lib/solanaTx';
+import { accountBatches, readAssociatedBalances } from '@/lib/solanaTokenBalances';
 
 export class ChainRpcError extends Error {
   readonly code?: number;
@@ -61,31 +57,28 @@ const sol = <T>(method: string, params: unknown[], net: ChainNet = 'mainnet') =>
 
 type RawAccount = { lamports: number; owner: string; data: [string, string] } | null;
 
-const toState = (a: RawAccount): AccountState =>
-  a ? { lamports: BigInt(a.lamports), owner: a.owner, data: base64.decode(a.data[0]) } : null;
+/**
+ * One account as the node answered it, or a `ChainRpcError`: an entry that is neither null
+ * nor a readable account is not an account that does not exist.
+ */
+function toState(a: unknown): AccountState {
+  if (a === null) return null;
+  const r = (a ?? {}) as { lamports?: unknown; owner?: unknown; data?: unknown };
+  const lamports = r.lamports;
+  const data = Array.isArray(r.data) ? r.data[0] : undefined;
+  if (typeof lamports !== 'number' || !Number.isInteger(lamports) || lamports < 0 || typeof r.owner !== 'string' || typeof data !== 'string') {
+    throw new ChainRpcError('an account the node answered could not be read');
+  }
+  try {
+    return { lamports: BigInt(lamports), owner: r.owner, data: base64.decode(data) };
+  } catch {
+    throw new ChainRpcError('an account the node answered could not be read');
+  }
+}
 
 export async function solanaLamports(owner: string, net: ChainNet = 'mainnet'): Promise<bigint> {
   const r = await sol<{ value: number }>('getBalance', [owner, { commitment: 'confirmed' }], net);
   return BigInt(r.value);
-}
-
-/** Every token account `owner` holds, under both token programs. */
-export async function solanaTokenAccounts(owner: string, net: ChainNet = 'mainnet'): Promise<{ address: string; mint: string; amount: bigint }[]> {
-  const lists = await Promise.all(
-    [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID].map((programId) =>
-      sol<{ value: { pubkey: string; account: NonNullable<RawAccount> }[] }>('getTokenAccountsByOwner', [
-        owner,
-        { programId },
-        { encoding: 'base64', commitment: 'confirmed' },
-      ], net),
-    ),
-  );
-  return lists.flatMap((l) =>
-    l.value.flatMap(({ pubkey, account }) => {
-      const token = decodeTokenAccount(base64.decode(account.data[0]));
-      return token ? [{ address: pubkey, mint: token.mint, amount: token.amount }] : [];
-    }),
-  );
 }
 
 /** The token program that owns `mint` (SPL Token or Token-2022). */
@@ -96,9 +89,38 @@ export async function solanaMintProgram(mint: string, net: ChainNet = 'mainnet')
   return program;
 }
 
-export async function solanaAccounts(addresses: string[]): Promise<Map<string, AccountState>> {
-  const r = await sol<{ value: RawAccount[] }>('getMultipleAccounts', [addresses, { encoding: 'base64', commitment: 'confirmed' }]);
-  return new Map(addresses.map((a, i) => [a, toState(r.value[i])]));
+/**
+ * One `getMultipleAccounts` call, answered in the order asked. An answer of another length
+ * is an error, never a list of accounts that do not exist. `head` keeps only an account's
+ * first bytes (`dataSlice`), for reads that need no more than a token account's fixed part.
+ */
+async function multipleAccounts(addresses: readonly string[], net: ChainNet, head?: number): Promise<AccountState[]> {
+  const options = { encoding: 'base64', commitment: 'confirmed', ...(head === undefined ? {} : { dataSlice: { offset: 0, length: head } }) };
+  const r = await sol<{ value?: unknown } | null>('getMultipleAccounts', [addresses, options], net);
+  if (!Array.isArray(r?.value) || r.value.length !== addresses.length) {
+    throw new ChainRpcError('getMultipleAccounts: the answer does not match the addresses asked for');
+  }
+  return r.value.map(toState);
+}
+
+/** The accounts at `addresses`, null where none exists, read in calls of at most `SOLANA_MULTIPLE_ACCOUNTS_MAX`. */
+export async function solanaAccounts(
+  addresses: readonly string[],
+  opts: { net?: ChainNet; head?: number } = {},
+): Promise<Map<string, AccountState>> {
+  const batches = accountBatches([...new Set(addresses)]);
+  const answers = await Promise.all(batches.map((batch) => multipleAccounts(batch, opts.net ?? 'mainnet', opts.head)));
+  const out = new Map<string, AccountState>();
+  batches.forEach((batch, i) => batch.forEach((address, j) => out.set(address, answers[i][j])));
+  return out;
+}
+
+/**
+ * Base-unit balance of each of `mints` held by `owner`, at its associated token accounts
+ * (`lib/solanaTokenBalances.ts`): no indexed query, which the public node refuses.
+ */
+export function solanaTokenBalances(owner: string, mints: readonly string[], net: ChainNet = 'mainnet'): Promise<Record<string, bigint>> {
+  return readAssociatedBalances(owner, mints, (addresses) => multipleAccounts(addresses, net));
 }
 
 /**
@@ -121,6 +143,11 @@ export async function solanaSimulate(
     },
   ]);
   const accounts = r.value.accounts ?? [];
+  // A run that failed reports no accounts, and the caller refuses it on `err`. One that ran
+  // must answer for every address: a missing entry is not an account the run deleted.
+  if (!r.value.err && accounts.length !== addresses.length) {
+    throw new ChainRpcError('simulateTransaction: the answer does not match the addresses asked for');
+  }
   return { err: r.value.err, accounts: new Map(addresses.map((a, i) => [a, toState(accounts[i] ?? null)])) };
 }
 

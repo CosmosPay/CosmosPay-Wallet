@@ -3,6 +3,7 @@ import { formatUnits, messagePreview, typedDataChainId, type CallReview } from '
 import type { EvmReview } from '@/lib/evmReview';
 import { networkDefOn, networkNameOn, sendFeeReserveOn } from '@/lib/testnets';
 import { shortAddr } from '@/lib/format';
+import type { NumberFormat } from '@/lib/numberFormat';
 import { cx } from '@/lib/cx';
 import { KVRow } from '@/ui/KVRow';
 import '@/styles/features/walletconnect/wc-review.css';
@@ -17,7 +18,7 @@ type TFn = (key: string, params?: Record<string, string | number>) => string;
  * is `lib/evmReview.ts`, the same as the extension's approval window; its warnings are shown by
  * the sheet, outside the scrolling rows, where they cannot be missed.
  */
-export function WcReview({ review, t }: { review: EvmReview; t: TFn }) {
+export function WcReview({ review, t, num }: { review: EvmReview; t: TFn; num: NumberFormat }) {
   const { request, chain, env, call } = review;
   const def = chain ? networkDefOn(chain.network, env) : null;
   const coin = def?.coin ?? '';
@@ -28,7 +29,7 @@ export function WcReview({ review, t }: { review: EvmReview; t: TFn }) {
   const domainChain = typed ? typedDataChainId(typed) : null;
   const short = (a: string) => shortAddr(a, 8, 6);
   const amountLabel = (c: Extract<CallReview, { kind: 'erc20' }>) =>
-    c.unlimited ? t('approve.evm.unlimited') : `${formatUnits(c.amount, c.token.decimals)} ${c.token.symbol}`;
+    c.unlimited ? t('approve.evm.unlimited') : `${num.decimal(formatUnits(c.amount, c.token.decimals))} ${c.token.symbol}`;
   const counterpartyLabel = (fn: Erc20Function) => t(fn === 'approve' || fn === 'increaseAllowance' ? 'approve.evm.rowSpender' : 'approve.evm.rowRecipient');
 
   return (
@@ -39,8 +40,8 @@ export function WcReview({ review, t }: { review: EvmReview; t: TFn }) {
         {tx && chain && (
           <>
             <KVRow label={t('approve.evm.rowTo')} value={short(tx.to)} mono />
-            <KVRow label={t('approve.evm.rowValue')} value={`${formatUnits(tx.value, decimals)} ${coin}`} />
-            <KVRow label={t('approve.evm.rowFeeCap')} value={`${formatUnits(sendFeeReserveOn(chain.network, env), decimals)} ${coin}`} />
+            <KVRow label={t('approve.evm.rowValue')} value={`${num.decimal(formatUnits(tx.value, decimals))} ${coin}`} />
+            <KVRow label={t('approve.evm.rowFeeCap')} value={`${num.decimal(formatUnits(sendFeeReserveOn(chain.network, env), decimals))} ${coin}`} />
           </>
         )}
       </div>

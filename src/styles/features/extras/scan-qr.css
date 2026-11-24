@@ -10,6 +10,12 @@
   margin: 12px 0 18px;
 }
 
+/* why the last QR was not opened (ui/Notice), between the hint and the camera */
+.scan-refusal {
+  margin: -6px 0 16px;
+  animation: fadeIn var(--dur-quick) var(--ease-out);
+}
+
 /* square camera viewport on a glass card.
    `isolation` is not cosmetic: Safari does not clip a composited child (the
    <video> below) to an ancestor's border-radius unless that ancestor forms its

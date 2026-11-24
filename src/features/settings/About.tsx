@@ -32,7 +32,7 @@ export function About({ store }: { store: WalletStore }) {
       <ScreenHeader title={t('about.title')} onBack={store.goBack} />
       <div className="about-hero">
         <Logo size={84} />
-        <div className="about-title">Cosmos Pay</div>
+        <div className="about-title">Cosmos Pay Wallet</div>
         <div className="about-tagline">{t('about.tagline')}</div>
       </div>
       <div className="glass kv-card">
@@ -46,7 +46,7 @@ export function About({ store }: { store: WalletStore }) {
       </div>
       <div className="about-desc">{t('about.desc')}</div>
       <div className="spacer" />
-      <div className="about-footer">Un producto de Cosmos · v{APP_VERSION}</div>
+      <div className="about-footer">{t('about.footer', { version: APP_VERSION })}</div>
     </div>
   );
 }

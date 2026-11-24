@@ -14,6 +14,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LANGUAGES, adoptUrlLang, localeOf, makeT, persistLang, savedLang, setDocumentLang, type Lang } from '@/lib/i18n';
+import { numberFormat } from '@/lib/numberFormat';
 import { setTelemetryEnabled, telemetryEnabled } from '@/lib/telemetry';
 import { AUTO_LOCK_CHOICES_MS, AUTO_LOCK_KEY, DEFAULT_AUTO_LOCK_MS, type AutoLockMs } from '@/constants/app';
 
@@ -117,6 +118,8 @@ export function usePreferences(onLangChange: (message: string) => void) {
 
   const t = useMemo(() => makeT(lang), [lang]);
   const locale = useMemo(() => localeOf(lang), [lang]);
+  // Every number on screen is written in the app's language too (lib/numberFormat.ts).
+  const num = useMemo(() => numberFormat(lang), [lang]);
 
   const setRequireConfirm = useCallback((on: boolean) => {
     setRequireConfirmState(on);
@@ -202,6 +205,7 @@ export function usePreferences(onLangChange: (message: string) => void) {
     setLang,
     t,
     locale,
+    num,
     requireConfirm,
     setRequireConfirm,
     diagnostics,

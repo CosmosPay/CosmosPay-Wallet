@@ -71,11 +71,11 @@ export function Withdraw({ store }: { store: WalletStore }) {
         {accounts.map((a) => <option key={a.id} value={a.id}>{a.name} · {railLabel(a.rail ?? a.type)}</option>)}
       </Select>
       <Select label={t('fiat.token')} value={token} onChange={(v) => { setToken(v as FiatToken); setQuote(null); }}>
-        {tokens.map((x) => <option key={x.code} value={x.code}>{x.code} · {x.balance.toFixed(2)}</option>)}
+        {tokens.map((x) => <option key={x.code} value={x.code}>{x.code} · {store.num.fixed(x.balance, 2)}</option>)}
       </Select>
       <Field tone="soft" kind="amount" label={t('fiat.sendAmount')} value={amount} onChange={(v) => { setAmount(v); setQuote(null); }} placeholder="0.00" />
       <div className={cx('withdraw-balance', insufficient && 'is-insufficient')}>
-        {t('fiat.balance')}: {bal.toFixed(2)} {token}
+        {t('fiat.balance')}: {store.num.fixed(bal, 2)} {token}
       </div>
 
       <div onClick={() => { setCoverFees((v) => !v); setQuote(null); }} className="tap glass row between withdraw-cover">
@@ -87,8 +87,8 @@ export function Withdraw({ store }: { store: WalletStore }) {
 
       {quote && (
         <div className="glass fiat-quote-card">
-          <QuoteRow label={t('fiat.youSend')} val={`${fmtMinor(quote.sender_amount)} ${token}`} />
-          <QuoteRow label={t('fiat.youReceive')} val={`${fmtFiat(quote.receiver_local_amount || quote.receiver_amount)}${ccy ? ` ${ccy}` : ''}`} last />
+          <QuoteRow label={t('fiat.youSend')} val={`${fmtMinor(store.num, quote.sender_amount)} ${token}`} />
+          <QuoteRow label={t('fiat.youReceive')} val={`${fmtFiat(store.num, quote.receiver_local_amount || quote.receiver_amount)}${ccy ? ` ${ccy}` : ''}`} last />
         </div>
       )}
 

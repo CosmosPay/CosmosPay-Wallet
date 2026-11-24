@@ -66,6 +66,8 @@ function Row({ index, title, sub, right, status }: { index: number; title: strin
 
 export function GatewayOps({ store }: { store: WalletStore }) {
   const t = store.t;
+  // Amounts arrive as decimal strings; `decimal` keeps every digit and writes the app's separators.
+  const dec = (v: string | number | null | undefined) => (v == null ? '' : store.num.decimal(String(v)));
   const [tab, setTab] = useState<OpsDomain>('swaps');
   const [loading, setLoading] = useState(false);
 
@@ -114,7 +116,7 @@ export function GatewayOps({ store }: { store: WalletStore }) {
               index={i}
               title={`${r.sendAsset} → ${r.destAsset}`}
               sub={r.txHash ? `${r.txHash.slice(0, 10)}…` : r.id.slice(0, 10)}
-              right={`${r.sendAmount} ${r.sendAsset}`}
+              right={`${dec(r.sendAmount)} ${r.sendAsset}`}
               status={r.status}
             />
           ))}
@@ -132,7 +134,7 @@ export function GatewayOps({ store }: { store: WalletStore }) {
               // a float amount could be — rendering '' beats rendering 'null'.
               right={
                 r.senderAmount != null
-                  ? `${fromMinorUnits(r.senderAmount, FIAT_DECIMALS) ?? ''} ${railCurrency(r.paymentMethod)}`.trim()
+                  ? `${dec(fromMinorUnits(r.senderAmount, FIAT_DECIMALS))} ${railCurrency(r.paymentMethod)}`.trim()
                   : ''
               }
               status={r.status}
@@ -146,7 +148,7 @@ export function GatewayOps({ store }: { store: WalletStore }) {
               index={i}
               title={railLabel(r.rail) || t('ops.tabWithdrawals')}
               sub={r.token ?? ''}
-              right={r.senderAmount ? `${r.senderAmount} ${r.token ?? ''}` : ''}
+              right={r.senderAmount ? `${dec(r.senderAmount)} ${r.token ?? ''}` : ''}
               status={r.status}
             />
           ))}
@@ -158,7 +160,7 @@ export function GatewayOps({ store }: { store: WalletStore }) {
               index={i}
               title={`${r.assetA} / ${r.assetB}`}
               sub={r.kind}
-              right={`${r.amountA} / ${r.amountB}`}
+              right={`${dec(r.amountA)} / ${dec(r.amountB)}`}
               status={r.status}
             />
           ))}

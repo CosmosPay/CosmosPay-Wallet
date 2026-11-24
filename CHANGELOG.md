@@ -2,6 +2,33 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.23.1] - 2026-11-24
+
+### Bug Fixes
+- Astro 7.4.12 on compiler 0.5.2, which the web server's CPU can run (fb33e24)
+
+## [1.23.0] - 2026-11-24
+
+### Features
+- Ready the Cosmos Pay Wallet store update (388183c)
+
+### Bug Fixes
+- Astro 7.4.13 for GHSA-r3h5-4585-7x3w (99198fc)
+
+### Miscellaneous
+- Sync the community server spec (b787095)
+
+## [1.22.0] - 2026-11-13
+
+### Features
+- Sign a service's SEP-10 login from the sign screen (e0d64ae)
+
+### Bug Fixes
+- Never sign a recovery server's login from the sign screen (4ec4df5)
+
+### Miscellaneous
+- Sync the community server spec (d052365)
+
 ## [1.21.0] - 2026-11-12
 
 ### Features

@@ -3,7 +3,6 @@ import { NavMenu } from '@/app/NavMenu';
 import { TokenAvatar } from '@/ui/TokenAvatar';
 import { buildKind } from '@/lib/platform';
 import { chainRows, computePortfolio } from '@/lib/portfolio';
-import { fmt } from '@/lib/format';
 import { BackCircle } from '@/features/wallet/BackCircle';
 import { ChevronRightIcon, SentIcon } from '@/ui/Icons';
 import '@/styles/features/wallet/earn.css';
@@ -51,7 +50,7 @@ export function Earn({ store }: { store: WalletStore }) {
       </header>
       <section className="earn-card" aria-label={t('earn.totalAssets')}>
         <p className="earn-label">{t('earn.totalAssets')}</p>
-        <p className="earn-total">${fmt(total, 2)}</p>
+        <p className="earn-total">{store.num.usd(total)}</p>
         <p className="earn-net-label">
           {t('earn.network')}: <span className="earn-net-value">{store.network.label}</span>
         </p>

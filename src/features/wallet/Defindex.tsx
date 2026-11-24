@@ -170,7 +170,7 @@ export function Defindex({ store }: { store: WalletStore }) {
           >
             {vaults.map((item, index) => (
               <option value={item.address} key={item.address}>
-                #{index + 1} · {item.apy.toFixed(2)}% APY ·{" "}
+                #{index + 1} · {store.num.fixed(item.apy, 2)}% APY ·{" "}
                 {short(item.address)}
               </option>
             ))}
@@ -178,7 +178,7 @@ export function Defindex({ store }: { store: WalletStore }) {
           {vault && (
             <div className="glass card defindex-summary">
               <span>
-                <strong>{vault.apy.toFixed(2)}%</strong> APY
+                <strong>{store.num.fixed(vault.apy, 2)}%</strong> APY
               </span>
               <span>
                 {vault.totalManagedFunds.length} {t("defindex.assets")}

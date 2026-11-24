@@ -5,11 +5,11 @@ import { PlusIcon } from '@/ui/Icons';
 import { Notice } from '@/ui/Notice';
 import { Spinner } from '@/ui/Spinner';
 import { readText } from '@/lib/clipboard';
-import { fmt, trim } from '@/lib/format';
 import { fromMinorUnits, sanitizeDecimalInput, toMinorUnitsBig } from '@/lib/amount';
 import { isChainAddress } from '@/lib/chainSwap';
 import { networkMemoProblem } from '@/lib/memo';
 import { isNetworkAddress } from '@/lib/networkSend';
+import { sendsToSelf } from '@/lib/sendDraft';
 import { networkDefOn, sendFeeReserveOn } from '@/lib/testnets';
 import { AmountInput, AmountMeta, FieldNote, RecipientInput, SendSection, useFieldId } from '@/features/money/SendParts';
 import { CHAIN_TOKENS_BY_NET, NATIVE_RESERVE } from '@/constants/chains';
@@ -70,10 +70,12 @@ export function ChainSendForm({ store, chain, asset }: { store: WalletStore; cha
   const avail = token.asset === 'native' ? (balance > reserve ? balance - reserve : 0n) : balance;
   const noGas = token.asset !== 'native' && nativeBalance < reserve;
   const units = toMinorUnitsBig(amount, token.decimals);
-  const human = (v: bigint, decimals: number) => trim(parseFloat(fromMinorUnits(v, decimals) ?? '0') || 0, 6);
+  const human = (v: bigint, decimals: number) => store.num.amount(parseFloat(fromMinorUnits(v, decimals) ?? '0') || 0, 6);
 
   const addrValid = legacy ? isChainAddress(chain, to.trim()) : isNetworkAddress(chain, to.trim(), net);
-  const self = !!owner && (def.address === 'evm' ? to.trim().toLowerCase() === owner.toLowerCase() : to.trim() === owner);
+  // Refused here, unlike Stellar's warning: some of these ledgers reject a payment to its own
+  // source (XRP's temREDUNDANT), so the form never builds one.
+  const self = sendsToSelf(chain, to, owner);
   const tooMuch = !!units && units > avail;
   const ready = !!owner && addrValid && !self && !!units && units > 0n && !tooMuch && !noGas && !memoErr && !store.busy;
   const price = store.prices[token.symbol]?.usd ?? 0;
@@ -123,7 +125,7 @@ export function ChainSendForm({ store, chain, asset }: { store: WalletStore; cha
           invalid={tooMuch}
         />
         <AmountMeta
-          worth={price > 0 && amt > 0 ? `≈ $${fmt(amt * price, 2)}` : null}
+          worth={price > 0 && amt > 0 ? `≈ ${store.num.usd(amt * price)}` : null}
           available={`${t('send.available')}: ${balances === undefined && owner ? '…' : human(avail, token.decimals)} ${token.symbol}`}
         />
         {tooMuch && <FieldNote tone="bad">{t('chainSend.tooMuch')}</FieldNote>}

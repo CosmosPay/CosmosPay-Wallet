@@ -195,11 +195,13 @@ const TESTNET_ASSETS: RegistryAsset[] = [
   {
     // BlindPay's test stablecoin — what this wallet's own fiat rails settle in.
     // Verified because the integration is ours, which is a stronger claim than a
-    // DNS record rather than a weaker one.
+    // DNS record rather than a weaker one. Its issuer is a provider, which the copy
+    // never names (constants/providerNames.ts), so no name is shown with it: the
+    // developer platform's presets do the same (`issuerName: null`).
     code: 'USDB',
     issuer: 'GCQSSIMOW5OCGULZATDXKU5MOJBOMFX6G65X6CXZDQ7AIB3SKFUZ67NX',
-    name: 'USD BlindPay',
-    issuerName: 'BlindPay',
+    name: 'USDB',
+    issuerName: '',
     issuerDomain: '',
     verified: true,
     flags: { authRevocable: true, clawback: false },

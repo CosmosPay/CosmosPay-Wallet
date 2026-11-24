@@ -44,8 +44,15 @@ export const DEFAULT_RECOVERY_B_URL = 'https://reserv002.cosmospay.lat';
  * endpoints: both answer CORS, and both are rate-limited, which is fine for one wallet
  * and is why a build expecting traffic should point `PUBLIC_SOLANA_RPC_URL` /
  * `PUBLIC_MONAD_RPC_URL` at a node of its own.
+ *
+ * Solana's is publicnode, not api.mainnet-beta.solana.com: that one answers 403 to every
+ * request carrying a browser Origin (the extension, the web wallet, the Tauri app; probed
+ * 2026-11-24). publicnode refuses indexed queries (`getTokenAccountsByOwner`) without a
+ * personal token, so the wallet reads tokens at their associated accounts instead
+ * (`src/lib/solanaTokenBalances.ts`). The same host is the Solana balance source in
+ * `src/constants/networks.ts`.
  */
-export const DEFAULT_SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com';
+export const DEFAULT_SOLANA_RPC_URL = 'https://solana-rpc.publicnode.com';
 export const DEFAULT_MONAD_RPC_URL = 'https://rpc.monad.xyz';
 
 /**

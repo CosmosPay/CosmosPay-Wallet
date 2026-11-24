@@ -30,9 +30,9 @@ interface Props {
 
 const { lang = DEFAULT_LANG } = Astro.props;
 const base = import.meta.env.BASE_URL;
-const title = 'Cosmos Pay · Stellar Wallet';
+const title = 'Cosmos Pay Wallet';
 const description =
-  'Cosmos Pay — non-custodial Stellar wallet. Send, receive and swap XLM and Stellar assets, with fiat on/off-ramp. Your keys never leave your device.';
+  'Cosmos Pay Wallet is a non-custodial wallet for 30+ networks. Send, receive and swap crypto and stablecoins, and buy or sell with local money. Your keys are encrypted on your device.';
 const shareImage = `${WALLET_WEB_URL}og-image.png`;
 const alternateLocales = LANG_CODES.filter((code) => code !== DEFAULT_LANG).map(ogLocale);
 ---
@@ -65,7 +65,7 @@ const alternateLocales = LANG_CODES.filter((code) => code !== DEFAULT_LANG).map(
     <link rel="icon" type="image/svg+xml" href={`${base}favicon.svg`} />
     <link rel="apple-touch-icon" href={`${base}favicon.svg`} />
     <meta name="description" content={description} />
-    <meta name="application-name" content="Cosmos Pay" />
+    <meta name="application-name" content="Cosmos Pay Wallet" />
     <title>{title}</title>
     <link rel="canonical" href={WALLET_WEB_URL} />
     <!-- How a shared link previews: English, whatever language the link opens in. -->

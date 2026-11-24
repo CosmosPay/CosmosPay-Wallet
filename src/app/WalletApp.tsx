@@ -106,7 +106,6 @@ const SCREEN_COMPONENTS: Record<Exclude<Screen, 'boot'>, ScreenComponent> = {
   about: lazy(() => import('@/features/settings/About').then((m) => ({ default: m.About }))),
 
   // lazy — extras
-  operations: lazy(() => import('@/features/extras/Operations').then((m) => ({ default: m.Operations }))),
   'sign-tx': lazy(() => import('@/features/extras/SignTx').then((m) => ({ default: m.SignTx }))),
   'gateway-ops': lazy(() => import('@/features/extras/GatewayOps').then((m) => ({ default: m.GatewayOps }))),
   'add-network': lazy(() => import('@/features/extras/AddNetwork').then((m) => ({ default: m.AddNetwork }))),

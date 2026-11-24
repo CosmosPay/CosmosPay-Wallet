@@ -1,12 +1,13 @@
 import type { TokenBalance } from '@/lib/stellar';
 import { STABLES } from '@/constants/fiat';
 import { toMinorUnits } from '@/lib/amount';
+import type { NumberFormat } from '@/lib/numberFormat';
 
 /* ---- onramp/offramp amount helpers ---- */
-/** Minor units (cents) -> "12.34". */
-export const fmtMinor = (n?: number | null) => (n == null ? '—' : (n / 100).toFixed(2));
-/** Local fiat (minor units) -> whole units, grouped, no centavos (e.g. ARS "15.615"). */
-export const fmtFiat = (n?: number | null) => (n == null ? '—' : Math.round(n / 100).toLocaleString('es-AR'));
+/** Minor units (cents) -> "12.34" ("12,34" in Spanish), for display. */
+export const fmtMinor = (num: NumberFormat, n?: number | null) => (n == null ? '—' : num.fixed(n / 100, 2));
+/** Local fiat (minor units) -> whole units, grouped, no centavos (ARS "15.615" in Spanish), for display. */
+export const fmtFiat = (num: NumberFormat, n?: number | null) => (n == null ? '—' : num.fixed(Math.round(n / 100), 0));
 /**
  * "12.34" -> 1234 minor units (the API takes integer cents).
  * Delegates to the shared parser: this used to be `parseFloat(s) * 100`, which read

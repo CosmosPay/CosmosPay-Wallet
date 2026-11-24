@@ -121,6 +121,15 @@ export function ChevronDownIcon(p: IconProps) {
   );
 }
 
+/** Up and to the right: a link that leaves the wallet (an explorer), the glyph `↗` drawn as a line. */
+export function ArrowUpRightIcon(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M7 17 17 7M8.5 7H17v8.5" />
+    </Svg>
+  );
+}
+
 /** Straight down: what goes in turns into what comes out (the fiat ramp's seam, which does not flip). */
 export function ArrowDownIcon(p: IconProps) {
   return (

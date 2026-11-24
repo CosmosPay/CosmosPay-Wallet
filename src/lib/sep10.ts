@@ -17,12 +17,18 @@
  * `web_auth_domain` naming a different server, a missing or unbounded window, a memo, a
  * fee bump. A challenge that fails any of them is not signed and the flow stops.
  *
- * ## What it is NOT
+ * ## Who calls it
  *
- * Not a login for the wallet, and not something a dapp can ask for. The only callers are
- * the two recovery servers in `lib/recovery.ts`, and the token it produces can do exactly
- * two things there: register an account for recovery, and change which identities may
- * recover it. Both already require the key this proves.
+ * Not a login for the wallet, and not something a dapp can ask for. Two callers:
+ *
+ * - the two recovery servers in `lib/recovery.ts`, whose token can do exactly two things
+ *   there: register an account for recovery, and change which identities may recover it.
+ *   Both already require the key this proves.
+ * - the manual "sign transaction" screen, when the person pastes a challenge a service
+ *   (an anchor's SEP-24 deposit, say) handed them to sign — see `lib/webAuth.ts`. There
+ *   the expectations come from the challenge's own home domain and that domain's
+ *   `stellar.toml`, and the server's signature on it is verified (`assertServerSigned`),
+ *   because nothing configured vouches for the service the way it does for recovery.
  */
 import { FeeBumpTransaction, Keypair, Transaction, TransactionBuilder } from '@stellar/stellar-sdk';
 import { tNow } from '@/lib/i18n';
@@ -192,6 +198,92 @@ export function signChallenge(
   if (key !== expect.account && !accountSigners.includes(key)) throw new Sep10Error('sep10.error.wrongKey');
   tx.sign(kp);
   return tx.toXDR();
+}
+
+/** What a challenge says about who is asking, read off its own operations. */
+export interface ChallengeClaim {
+  /** The first operation's `<home domain> auth`: the service the login is for. */
+  homeDomain: string;
+  /** `web_auth_domain`: the host that minted the challenge. */
+  webAuthDomain: string;
+}
+
+/** SEP-10 names the first operation `<home domain> auth`. */
+const AUTH_SUFFIX = ' auth';
+
+/**
+ * A bare host — letters, digits, dots and hyphens, an optional port — and nothing a URL
+ * could read as a path, credentials or a second host. The home domain is put into
+ * `https://<domain>/.well-known/stellar.toml`, so `evil.example/x` or `a@b` must not pass.
+ */
+export function isChallengeDomain(value: string): boolean {
+  if (!/^[a-z0-9.-]+(:\d{1,5})?$/i.test(value)) return false;
+  try {
+    return new URL(`https://${value}`).host === value.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Whether a pasted envelope has SEP-10's shape, and if so who it claims to come from.
+ *
+ * Shape only, and a CLAIM: nothing here is trusted. It is what lets the manual signing
+ * screen route a challenge to `lib/webAuth.ts`, which checks the claim against the
+ * domain's own `stellar.toml` and then runs `assertSafeChallenge` in full. Null for
+ * anything that is not one: a sequence other than 0, an operation that is not
+ * `manageData`, a first operation not named `<domain> auth`, no `web_auth_domain`.
+ */
+export function challengeClaimOf(cfg: NetConfig, xdr: string): ChallengeClaim | null {
+  let tx: Transaction | FeeBumpTransaction;
+  try {
+    tx = TransactionBuilder.fromXDR(xdr.trim(), cfg.passphrase);
+  } catch {
+    return null;
+  }
+  if (tx instanceof FeeBumpTransaction || tx.sequence !== '0') return null;
+  const ops = tx.operations;
+  if (ops.length < 2 || ops.some((op) => op.type !== 'manageData')) return null;
+  const name = (ops[0] as { name?: string }).name ?? '';
+  if (!name.endsWith(AUTH_SUFFIX)) return null;
+  const homeDomain = name.slice(0, -AUTH_SUFFIX.length);
+  const web = ops.slice(1).find((op) => (op as { name?: string }).name === 'web_auth_domain') as { value?: unknown } | undefined;
+  if (!web) return null;
+  const webAuthDomain = utf8(web.value);
+  if (!isChallengeDomain(homeDomain) || !isChallengeDomain(webAuthDomain)) return null;
+  return { homeDomain, webAuthDomain };
+}
+
+/**
+ * Refuse a challenge that `signingKey` did not sign.
+ *
+ * `assertSafeChallenge` checks the challenge is SOURCED by the published key; SEP-10 also
+ * has the server sign it, and a client is to verify that signature. Sourcing is a field
+ * anyone can write; the signature is what only the key's holder can produce.
+ */
+export function assertServerSigned(tx: Transaction, signingKey: string): void {
+  const kp = Keypair.fromPublicKey(signingKey);
+  const hint = kp.signatureHint();
+  const hash = tx.hash();
+  const sameBytes = (a: Uint8Array, b: Uint8Array) => a.length === b.length && a.every((v, i) => v === b[i]);
+  const signed = tx.signatures.some((s) => {
+    const sigHint = signatureField(s, 'hint');
+    const sig = signatureField(s, 'signature');
+    return !!sigHint && !!sig && sameBytes(sigHint, hint) && kp.verify(hash, sig as Buffer);
+  });
+  if (!signed) throw new Sep10Error('sep10.error.serverSignature');
+}
+
+/**
+ * A `DecoratedSignature` field's bytes. stellar-sdk 17 holds each field as a readonly
+ * property wrapping the bytes (`.value`); older releases exposed accessor methods — the
+ * same tolerance `hintOf` in `lib/txGuard.ts` has. Anything else is null, never a guess.
+ */
+function signatureField(sig: unknown, name: 'hint' | 'signature'): Uint8Array | null {
+  const field = (sig as Record<string, unknown> | null)?.[name];
+  const raw = typeof field === 'function' ? (field as () => unknown).call(sig) : field;
+  const bytes = raw && typeof raw === 'object' && 'value' in raw ? (raw as { value: unknown }).value : raw;
+  return bytes instanceof Uint8Array ? bytes : null;
 }
 
 /** The host a base URL presents, which is what its challenges must name. */

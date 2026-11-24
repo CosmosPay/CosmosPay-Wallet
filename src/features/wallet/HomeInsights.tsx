@@ -3,7 +3,6 @@ import type { WalletStore } from "@/state/store";
 import { NETWORK_IDS, type NetworkId } from "@/constants/networks";
 import { networkOfRow } from "@/lib/assetList";
 import { rowKey, type AssetRow } from "@/lib/portfolio";
-import { fmt, pct } from "@/lib/format";
 import { AssetLogo, assetMeta } from "@/ui/AssetLogo";
 import "@/styles/features/wallet/home-insights.css";
 
@@ -20,6 +19,7 @@ export function HomeInsights({
   networkName: (network: NetworkId) => string;
 }) {
   const t = store.t;
+  const num = store.num;
   const titleId = useId();
   const held = rows
     .filter((row) => (row.value ?? 0) > 0)
@@ -58,8 +58,8 @@ export function HomeInsights({
               {networks.map(({ network, value }) => (
                 <li key={network} className="insights-network">
                   <span className="insights-name">{networkName(network)}</span>
-                  <span className="insights-value">${fmt(value, 2)}</span>
-                  <span className="insights-detail">{fmt(share(value), 1)}%</span>
+                  <span className="insights-value">{num.usd(value)}</span>
+                  <span className="insights-detail">{num.fixed(share(value), 1)}%</span>
                 </li>
               ))}
             </ol>
@@ -81,13 +81,13 @@ export function HomeInsights({
                       </span>
                       <span className="insights-detail">
                         {networkName(networkOfRow(row))} ·{" "}
-                        {fmt(share(row.value ?? 0), 1)}%
+                        {num.fixed(share(row.value ?? 0), 1)}%
                       </span>
                     </div>
                     <div className="insights-numbers">
-                      <span>${fmt(row.value ?? 0, 2)}</span>
+                      <span>{num.usd(row.value ?? 0)}</span>
                       <span className="insights-detail">
-                        {change !== undefined ? pct(change) : "—"}
+                        {change !== undefined ? num.pct(change) : "—"}
                       </span>
                     </div>
                   </li>

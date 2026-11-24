@@ -6,7 +6,6 @@ import { Dropdown } from '@/ui/Dropdown';
 import { Spinner } from '@/ui/Spinner';
 import { ChevronDownIcon, ExchangeIcon, GearIcon, ShieldIcon } from '@/ui/Icons';
 import { cx } from '@/lib/cx';
-import { fmt, trim } from '@/lib/format';
 import { isDesktopLayout } from '@/lib/layout';
 import { fromMinorUnits, sanitizeDecimalInput } from '@/lib/amount';
 import { spendableXlm } from '@/lib/balances';
@@ -46,6 +45,7 @@ const LEGACY = (c: NetworkId): c is 'solana' | 'monad' => c === 'solana' || c ==
  */
 export function Swap({ store }: { store: WalletStore }) {
   const t = store.t;
+  const nf = store.num;
   const env = store.chainNet;
   const { loadIntentsAssets, loadUsdt0Routes, setSwapOrigin, addressOn } = store;
   useEffect(() => {
@@ -88,7 +88,7 @@ export function Swap({ store }: { store: WalletStore }) {
   };
   const heldOf = (tk: SwapToken) => {
     const n = unitsOf(tk);
-    return n !== null && n > 0 ? trim(n, 6) : null;
+    return n !== null && n > 0 ? nf.amount(n, 6) : null;
   };
   // What can be paid: XLM keeps its reserve, a network's coin its fee reserve.
   const spendable = (tk: SwapToken): number => {
@@ -216,12 +216,12 @@ export function Swap({ store }: { store: WalletStore }) {
   const bridged = route?.kind === 'usdt0' ? bridgedAmount(amount) : null;
   const estimate = !out && from && to ? (route?.kind === 'usdt0' ? (bridged ? Number(bridged) : null) : estimateOut(amt, from, to)) : null;
   const shownOut = out ?? (estimate !== null ? String(estimate) : '');
-  const usd = (n: number | null) => (n === null || !Number.isFinite(n) ? null : `≈ $${fmt(n, 2)}`);
+  const usd = (n: number | null) => (n === null || !Number.isFinite(n) ? null : `≈ ${nf.usd(n)}`);
   const payUsd = from?.priceUsd && amt > 0 ? usd(amt * from.priceUsd) : null;
   const getUsd = to?.priceUsd && shownOut ? usd(Number(shownOut) * to.priceUsd) : null;
   const rate = shownOut && amt > 0 ? Number(shownOut) / amt : null;
   const venue = !route || route.kind === 'none' ? '' : route.kind === 'near' ? t('swapw.venue.near') : route.kind === 'usdt0' ? t('swapw.venue.usdt0') : t(`swapw.venue.${route.chain}`);
-  const num = (v: string | number, dp = 7) => trim(Number(v) || 0, dp);
+  const num = (v: string | number, dp = 7) => nf.amount(Number(v) || 0, dp);
 
   // The button: what is missing, or the action.
   const cta = (() => {
@@ -335,7 +335,7 @@ export function Swap({ store }: { store: WalletStore }) {
               }}
               className={cx('swapw-slip-opt', slippage === s && 'is-on')}
             >
-              {s ? `${Number(s) / 100}%` : t('swapw.slippageAuto')}
+              {s ? `${nf.amount(Number(s) / 100, 2)}%` : t('swapw.slippageAuto')}
             </button>
           ))}
         </div>
@@ -384,7 +384,7 @@ export function Swap({ store }: { store: WalletStore }) {
           {from && (
             <div className="swapw-panel-foot">
               <span id="swapw-balance">
-                {t('swap.balance')}: {trim(avail, 6)} {from.symbol}
+                {t('swap.balance')}: {nf.amount(avail, 6)} {from.symbol}
               </span>
               <div className="swapw-quick-amounts">
                 <button type="button" onClick={() => setAmount(String(Math.floor(avail * 0.5 * 1e6) / 1e6))} disabled={avail <= 0} className="swapw-max" aria-label={t('swapw.halfBalance')}>50%</button>
@@ -418,7 +418,7 @@ export function Swap({ store }: { store: WalletStore }) {
 
       <dl className="swapw-overview">
         <div><dt>{t('swapw.route')}</dt><dd>{venue || '—'}</dd></div>
-        {route?.kind !== 'usdt0' && <div><dt>{t('swapw.slippage')}</dt><dd>{slippage ? `${Number(slippage) / 100}%` : `${t('swapw.slippageAuto')} · ${bps(route) / 100}%`}</dd></div>}
+        {route?.kind !== 'usdt0' && <div><dt>{t('swapw.slippage')}</dt><dd>{slippage ? `${nf.amount(Number(slippage) / 100, 2)}%` : `${t('swapw.slippageAuto')} · ${nf.amount(bps(route) / 100, 2)}%`}</dd></div>}
       </dl>
 
       {rate !== null && from && to && (
@@ -447,7 +447,7 @@ export function Swap({ store }: { store: WalletStore }) {
                 <div>
                   <dt>{t('swap.fee')}</dt>
                   <dd>
-                    {num(fresh.q.feeAmount)} {from.symbol} ({fresh.q.feeBps / 100}%)
+                    {num(fresh.q.feeAmount)} {from.symbol} ({nf.amount(fresh.q.feeBps / 100, 2)}%)
                   </dd>
                 </div>
               )}
@@ -469,7 +469,7 @@ export function Swap({ store }: { store: WalletStore }) {
                 <div>
                   <dt>{t('swap.fee')}</dt>
                   <dd>
-                    {num(fresh.q.fee.amount)} {fresh.kind === 'near' ? fresh.q.fee.asset : from.symbol} ({fresh.q.fee.bps / 100}%)
+                    {num(fresh.q.fee.amount)} {fresh.kind === 'near' ? fresh.q.fee.asset : from.symbol} ({nf.amount(fresh.q.fee.bps / 100, 2)}%)
                   </dd>
                 </div>
               )}

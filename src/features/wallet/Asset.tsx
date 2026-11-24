@@ -3,9 +3,8 @@ import { AssetLogo, assetMeta } from '@/ui/AssetLogo';
 import { GhostButton, PrimaryButton } from '@/ui/Buttons';
 import { ExternalLink } from '@/ui/ExternalLink';
 import { ScreenHeader } from '@/ui/ScreenHeader';
-import { TrendDownIcon, TrendUpIcon } from '@/ui/Icons';
+import { ArrowUpRightIcon, TrendDownIcon, TrendUpIcon } from '@/ui/Icons';
 import { computePortfolio } from '@/lib/portfolio';
-import { fmt, trim, pct } from '@/lib/format';
 import { explorerAccountUrl } from '@/lib/stellar';
 import { cx } from '@/lib/cx';
 import '@/styles/features/wallet/asset.css';
@@ -14,6 +13,7 @@ import '@/styles/features/wallet/asset.css';
 /** A Stellar asset: its market price and 24h move, what this wallet holds, and the verbs. */
 export function Asset({ store }: { store: WalletStore }) {
   const t = store.t;
+  const num = store.num;
   const code = store.selectedAsset || 'XLM';
   const m = assetMeta(code);
   const price = store.prices[code];
@@ -27,11 +27,11 @@ export function Asset({ store }: { store: WalletStore }) {
       <section className="asset-hero" aria-label={t('asset.marketPrice')}>
         <AssetLogo code={code} size={64} />
         <div className="asset-hero-text">
-          <p className="asset-price">{price ? '$' + fmt(price.usd, price.usd >= 1 ? 2 : 4) : '—'}</p>
+          <p className="asset-price">{price ? num.usd(price.usd, price.usd >= 1 ? 2 : 4) : '—'}</p>
           {price && (
             <p className={cx('asset-change', price.change24h >= 0 ? 'is-up' : 'is-down')}>
               {price.change24h >= 0 ? <TrendUpIcon /> : <TrendDownIcon />}
-              {pct(price.change24h)} · {t('home.in24h')}
+              {num.pct(price.change24h)} · {t('home.in24h')}
             </p>
           )}
         </div>
@@ -40,9 +40,9 @@ export function Asset({ store }: { store: WalletStore }) {
       <section className="asset-balance" aria-label={t('asset.balance')}>
         <span className="asset-balance-label">{t('asset.balance')}</span>
         <span className="asset-balance-value">
-          {held ? trim(held.amount, 7) : '0'} {code}
+          {held ? num.amount(held.amount, 7) : '0'} {code}
         </span>
-        <span className="asset-balance-fiat">{held?.value != null ? '≈ $' + fmt(held.value, 2) : '—'}</span>
+        <span className="asset-balance-fiat">{held?.value != null ? `≈ ${num.usd(held.value)}` : '—'}</span>
       </section>
 
       <div className="asset-actions">
@@ -59,6 +59,7 @@ export function Asset({ store }: { store: WalletStore }) {
       {store.publicKey && (
         <ExternalLink href={explorerAccountUrl(store.network, store.publicKey)} className="link-btn asset-explorer">
           {t('asset.explorer')}
+          <ArrowUpRightIcon />
         </ExternalLink>
       )}
     </div>

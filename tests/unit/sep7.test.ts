@@ -5,7 +5,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildSep7Pay, parseStellarQr } from '@/lib/sep7';
+import { Networks } from '@stellar/stellar-sdk';
+import { buildSep7Pay, isForOtherNetwork, parseStellarQr, readPaymentRequest } from '@/lib/sep7';
 
 const DEST = 'GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6';
 const ATTACKER = 'GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN';
@@ -61,4 +62,47 @@ test('build -> parse round trip preserves the memo type', () => {
 test('garbage yields null', () => {
   assert.equal(parseStellarQr('hello world'), null);
   assert.equal(parseStellarQr(''), null);
+});
+
+/*
+ * The network a request is for. SEP-7 reads a link WITHOUT `network_passphrase` as a public
+ * network request, so the wallet's testnet Receive QR (which left it out) had another wallet
+ * build a mainnet payment from it.
+ */
+
+test('a testnet request names its network; a public one is left as SEP-7 reads it', () => {
+  const testnet = buildSep7Pay({ destination: DEST, networkPassphrase: Networks.TESTNET });
+  assert.equal(new URLSearchParams(testnet.slice(testnet.indexOf('?') + 1)).get('network_passphrase'), Networks.TESTNET);
+  assert.equal(parseStellarQr(testnet)?.networkPassphrase, Networks.TESTNET);
+  // Percent-encoded, so a reader using decodeURIComponent gets the same passphrase back.
+  const raw = testnet.slice(testnet.indexOf('network_passphrase=') + 'network_passphrase='.length);
+  assert.equal(decodeURIComponent(raw), Networks.TESTNET);
+  assert.equal(parseStellarQr(buildSep7Pay({ destination: DEST, memo: 'a+b c' }))?.memo, 'a+b c');
+  const pub = buildSep7Pay({ destination: DEST, networkPassphrase: Networks.PUBLIC });
+  assert.ok(!pub.includes('network_passphrase'), 'the public network is SEP-7’s default, so it is left out');
+  assert.equal(parseStellarQr(pub)?.networkPassphrase, undefined);
+  // A custom network's own passphrase is named like testnet's.
+  const custom = 'Private Network ; 2026';
+  assert.equal(parseStellarQr(buildSep7Pay({ destination: DEST, networkPassphrase: custom }))?.networkPassphrase, custom);
+});
+
+test('a request for another network is refused, both ways', () => {
+  const testnetLink = buildSep7Pay({ destination: DEST, amount: '5', networkPassphrase: Networks.TESTNET });
+  const publicLink = `web+stellar:pay?destination=${DEST}&amount=5&network_passphrase=${encodeURIComponent(Networks.PUBLIC)}`;
+  // A testnet request read by a mainnet wallet would pay real money for a test request.
+  assert.deepEqual(readPaymentRequest(testnetLink, Networks.PUBLIC), { ok: false, reason: 'otherNetwork' });
+  // A mainnet request read by a testnet wallet would never pay its payee.
+  assert.deepEqual(readPaymentRequest(publicLink, Networks.TESTNET), { ok: false, reason: 'otherNetwork' });
+  // Each on its own network goes through.
+  assert.equal(readPaymentRequest(testnetLink, Networks.TESTNET).ok, true);
+  assert.equal(readPaymentRequest(publicLink, Networks.PUBLIC).ok, true);
+  assert.equal(isForOtherNetwork({ networkPassphrase: Networks.TESTNET }, Networks.PUBLIC), true);
+});
+
+test('a request that names no network is read on the wallet’s, and a broken one stays invalid', () => {
+  const unnamed = buildSep7Pay({ destination: DEST, amount: '5' });
+  assert.equal(readPaymentRequest(unnamed, Networks.TESTNET).ok, true);
+  assert.equal(readPaymentRequest(unnamed, Networks.PUBLIC).ok, true);
+  assert.equal(readPaymentRequest(DEST, Networks.TESTNET).ok, true, 'a bare address names no network');
+  assert.deepEqual(readPaymentRequest('web+stellar:pay?destination=nope', Networks.TESTNET), { ok: false, reason: 'invalid' });
 });

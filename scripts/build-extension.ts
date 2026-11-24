@@ -189,29 +189,32 @@ await writeFile(join(OUT, 'camera.js'), cameraJs, 'utf8');
 //   appDesc      — store + chrome://extensions description (HARD Chrome limit ≤132)
 //   actionTitle  — toolbar-icon tooltip (localised, more descriptive than the name)
 // default_locale is `en`, so `en` MUST define every key referenced by the manifest.
-const APP_NAME = 'Cosmos Pay — Stellar Wallet';
+// The wallet holds an address on every network of `src/constants/networks.ts` but one (Aleo), so
+// the copy says "30+" rather than a count that goes stale, and names no network first: the
+// product is every network the swaps reach, not a Stellar wallet with extras.
+const APP_NAME = 'Cosmos Pay Wallet';
 const APP_SHORT = 'Cosmos Pay';
 type Locale = { desc: string; tooltip: string };
 const LOCALES: Record<string, Locale> = {
   en: {
-    desc: 'Non-custodial Stellar wallet: send, receive and swap XLM & assets. Your keys are encrypted on-device and never leave it.',
-    tooltip: 'Open your Cosmos Pay Stellar wallet',
+    desc: 'Non-custodial wallet for 30+ networks: send, receive and swap crypto and stablecoins. Your keys are encrypted on your device.',
+    tooltip: 'Open Cosmos Pay Wallet',
   },
   es: {
-    desc: 'Wallet no custodial de Stellar: envía, recibe e intercambia XLM y activos. Tus claves se cifran en tu dispositivo y nunca salen.',
-    tooltip: 'Abre tu wallet Stellar de Cosmos Pay',
+    desc: 'Wallet no custodial para más de 30 redes: envía, recibe e intercambia cripto y stablecoins. Tus claves se cifran en tu dispositivo.',
+    tooltip: 'Abre Cosmos Pay Wallet',
   },
   pt: {
-    desc: 'Carteira não custodial de Stellar: envie, receba e troque XLM e ativos. Suas chaves são cifradas no dispositivo e nunca saem.',
-    tooltip: 'Abra sua carteira Stellar da Cosmos Pay',
+    desc: 'Carteira não custodial para mais de 30 redes: envie, receba e troque cripto e stablecoins. Suas chaves são cifradas no dispositivo.',
+    tooltip: 'Abra a Cosmos Pay Wallet',
   },
   de: {
-    desc: 'Nicht-verwahrende Stellar-Wallet: XLM & Assets senden, empfangen und tauschen. Schlüssel werden auf dem Gerät verschlüsselt.',
-    tooltip: 'Cosmos Pay – deine Stellar-Wallet öffnen',
+    desc: 'Nicht-verwahrende Wallet für über 30 Netzwerke: Krypto und Stablecoins senden, empfangen, tauschen. Schlüssel bleiben verschlüsselt.',
+    tooltip: 'Cosmos Pay Wallet öffnen',
   },
   fr: {
-    desc: "Portefeuille Stellar non dépositaire : envoyez, recevez et échangez XLM et actifs. Vos clés restent chiffrées sur l'appareil.",
-    tooltip: 'Ouvrir votre portefeuille Stellar Cosmos Pay',
+    desc: "Portefeuille non dépositaire pour 30+ réseaux : envoyez, recevez et échangez crypto et stablecoins. Clés chiffrées sur l'appareil.",
+    tooltip: 'Ouvrir Cosmos Pay Wallet',
   },
 };
 const DESC_LIMIT = 132; // Chrome rejects a manifest `description` longer than this.
@@ -243,25 +246,39 @@ for (const [code, l] of Object.entries(LOCALES)) {
  * the message "The `data_collection_permissions` property is missing". Firefox-only: the
  * key lives under `browser_specific_settings.gecko`, so Chrome never sees it.
  *
- * NOTHING IS REQUIRED, and that is a claim about the code rather than a convenience. A
- * wallet that only holds keys and sends XLM talks to exactly two places, neither of them
- * ours: Horizon, where the transactions it submits are public by construction, and
- * CoinGecko, which is handed no user data at all. The vault never leaves the device.
+ * REQUIRED is the email, and only because onboarding asks for it. Creating the first wallet
+ * creates its Cosmos Pay account (`src/features/onboarding/ProfileSetup.tsx`): the email step
+ * sends the address a code (`sendProfileEmailCode`) and `finishOnboarding` links that email to
+ * the wallet's address (`finishSignIn`). The step can be passed only when the server does not
+ * answer, so the extension does not work without it, and AMO's rule is that what the extension
+ * needs to work is declared required (the user's call, 2026-11-24, over making the step
+ * skippable). Signing in to restore a wallet sends the email the same way.
  *
- * Everything below is OPTIONAL because every one of those calls is behind a deliberate
- * user action, and none of it happens to a wallet that never taps them:
+ * Beyond that, a wallet talks to each network's public node (Horizon and the other chains'
+ * RPCs), where its addresses and the transactions it submits are public by construction, and
+ * to price and catalogue reads (CoinGecko, Cosmos Pay's asset registry and quotes), which are
+ * handed no user data. Keys leave the device only sealed, in the backup that only the person's
+ * own doors open (`src/lib/cloudBackup.ts`).
  *
- * - `personallyIdentifyingInfo` — linking a CosmosPay account posts name + email
- *   (`registerCosmosAccount` / `linkCosmosAccount`), and the fiat on/off-ramp's KYC posts
- *   legal name, date of birth, tax id, address and photographs of an identity document and
- *   the holder's face (`createReceiver`, `uploadKycDoc` in `src/lib/cosmospay.ts`).
+ * Everything listed as OPTIONAL is behind a deliberate user action, and none of it happens
+ * to a wallet that never taps it:
+ *
+ * - `personallyIdentifyingInfo` (required, above) also covers what is optional on top of the
+ *   email: linking a Cosmos Pay account posts name + email (`registerCosmosAccount` /
+ *   `linkCosmosAccount`), and the fiat on/off-ramp's KYC posts legal name, date of birth, tax
+ *   id, address and photographs of an identity document and the holder's face
+ *   (`createReceiver`, `uploadKycDoc` in `src/lib/cosmospay.ts`).
  * - `financialAndPaymentInfo` — the same flow registers a bank account, and swaps,
  *   liquidity and payouts go through the gateway with amounts attached.
+ * - `technicalAndInteraction` — the diagnostics in `src/lib/telemetry.ts`: errors, screen
+ *   views, request timings and the operations the wallet built, sent to Cosmos Pay once the
+ *   person opts in (onboarding's consent or Settings → Privacy; off by default). It is the one
+ *   value Firefox will not accept as required, which matches what it is. This line said
+ *   "there is no analytics of any kind" after the diagnostics shipped, so the consent screen
+ *   under-claimed — the failure this block exists to prevent.
  *
- * `technicalAndInteraction` is absent because there is no analytics of any kind in this
- * repo. It is the one value Firefox will not accept as required, and the temptation is to
- * list it defensively; do not. A declaration that over-claims is not "safe", it is a
- * consent prompt asking the user to agree to something that never happens.
+ * A declaration that over-claims is not "safe" either: it is a consent prompt asking the user
+ * to agree to something that never happens. List a value when the code sends it.
  *
  * KEEP THIS HONEST IN BOTH DIRECTIONS. A new endpoint that posts user data adds a value
  * here; an over-broad list trains users to click through the one screen that exists to
@@ -276,8 +293,8 @@ for (const [code, l] of Object.entries(LOCALES)) {
  * whole block exists to fix — "The `data_collection_permissions` property is missing".
  */
 const DATA_COLLECTION = {
-  required: ['none'],
-  optional: ['personallyIdentifyingInfo', 'financialAndPaymentInfo'],
+  required: ['personallyIdentifyingInfo'],
+  optional: ['financialAndPaymentInfo', 'technicalAndInteraction'],
 };
 
 /**

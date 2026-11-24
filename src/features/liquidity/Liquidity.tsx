@@ -9,7 +9,7 @@ import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { Notice } from '@/ui/Notice';
 import { TokenAvatar } from '@/ui/TokenAvatar';
-import { trim } from '@/lib/format';
+import type { NumberFormat } from '@/lib/numberFormat';
 import { cx } from '@/lib/cx';
 import '@/styles/features/liquidity/liquidity.css';
 import { assetRefFromGateway, gatewayAssetLabel } from '@/lib/asset';
@@ -27,8 +27,8 @@ const toAsset = (r: { asset: string; issuer: string | null }): SwapAsset =>
   assetRefFromGateway(r.asset, r.issuer);
 const pairLabel = (rs: { asset: string }[]) => rs.map(label).join(' / ');
 /** Reserve/redeemable amounts as the card's asset rows want them. */
-const amountRows = (rs: { asset: string; amount: string }[], decimals: number) =>
-  rs.map((r) => ({ code: label(r), amount: trim(parseFloat(r.amount) || 0, decimals) }));
+const amountRows = (rs: { asset: string; amount: string }[], decimals: number, num: NumberFormat) =>
+  rs.map((r) => ({ code: label(r), amount: num.amount(parseFloat(r.amount) || 0, decimals) }));
 
 /** Loading / empty / list frame — both tabs load asynchronously and start at null. */
 function LpSection<T>({
@@ -104,6 +104,7 @@ function LpCard({
 
 export function Liquidity({ store }: { store: WalletStore }) {
   const t = store.t;
+  const num = store.num;
   // Pools need a gateway credential, not an ACCOUNT: browsing is on-chain data and
   // a deposit is an envelope the device signs. Without an account of their own the
   // user operates on the shared public key at the community rate; with one, at
@@ -171,15 +172,15 @@ export function Liquidity({ store }: { store: WalletStore }) {
             <LpCard
               key={p.poolId}
               title={pairLabel(p.reserves)}
-              sub={`${t('lp.poolShare')}: ${trim(p.shareOfPoolBps / 100, 2)}%`}
+              sub={`${t('lp.poolShare')}: ${num.amount(p.shareOfPoolBps / 100, 2)}%`}
               right={
                 <div className="lp-item-shares">
-                  <div className="lp-item-shares-val">{trim(parseFloat(p.shares) || 0, 4)}</div>
+                  <div className="lp-item-shares-val">{num.amount(parseFloat(p.shares) || 0, 4)}</div>
                   <div className="t-dim-12">{t('lp.shares')}</div>
                 </div>
               }
               rowsLabel={t('lp.redeemable')}
-              rows={amountRows(p.redeemable, 4)}
+              rows={amountRows(p.redeemable, 4, num)}
               action={t('lp.withdraw')}
               onAction={() => store.openWithdraw(p)}
             />
@@ -191,8 +192,8 @@ export function Liquidity({ store }: { store: WalletStore }) {
             <LpCard
               key={pool.id}
               title={pairLabel(pool.reserves)}
-              sub={`${t('lp.fee')}: ${trim(pool.feeBp / 100, 2)}% · ${t('lp.tvl')} ${trim(parseFloat(pool.totalShares) || 0, 2)}`}
-              rows={amountRows(pool.reserves, 2)}
+              sub={`${t('lp.fee')}: ${num.amount(pool.feeBp / 100, 2)}% · ${t('lp.tvl')} ${num.amount(parseFloat(pool.totalShares) || 0, 2)}`}
+              rows={amountRows(pool.reserves, 2, num)}
               action={t('lp.deposit')}
               onAction={() => store.openDeposit(toAsset(pool.reserves[0]), toAsset(pool.reserves[1]))}
             />

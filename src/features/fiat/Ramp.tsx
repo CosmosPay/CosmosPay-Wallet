@@ -168,11 +168,11 @@ function RampForm({ store, side }: { store: WalletStore; side: RampSide }) {
   const address = net ? addressOn(net) : null;
   const amount = draft.amount;
 
-  const num = (v: number, max = 2) => new Intl.NumberFormat(lang, { maximumFractionDigits: max }).format(v);
+  const num = (v: number, max = 2) => store.num.amount(v, max);
   // Local money with its cents once it has any; a token with two decimals from 1 up, four
   // significant digits below (0.002231 ETH).
-  const money = (v: number) => new Intl.NumberFormat(lang, { minimumFractionDigits: Number.isInteger(v) ? 0 : 2, maximumFractionDigits: 2 }).format(v);
-  const units = (v: number) => (v >= 1 ? num(v, 2) : new Intl.NumberFormat(lang, { maximumSignificantDigits: 4 }).format(v));
+  const money = (v: number) => store.num.fixed(v, Number.isInteger(v) ? 0 : 2);
+  const units = (v: number) => (v >= 1 ? num(v, 2) : store.num.significant(v, 4));
   const nameOf = useCallback((c: RampCurrency) => currencyLabel(c.id, lang, c.name), [lang]);
 
   const problem = cur && token ? rampAmountProblem(side, amount, cur, token) : 'empty';

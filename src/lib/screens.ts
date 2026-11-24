@@ -58,7 +58,6 @@ export const SCREEN_IDS = [
   'easy-recovery-send',
   'settings',
   'about',
-  'operations',
   'gateway-ops',
   'history',
   'paylink',
@@ -177,6 +176,8 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   wallets: { back: 'home', tab: 'wallet', nav: true },
   // Another wallet under the same password: no account, no profile, no password screen.
   'add-wallet': { back: 'wallets', tab: 'wallet' },
+  // "More": the one screen behind Home's fourth action, the bar's last place, the extension
+  // menu's and the rail's account entry — the person, the operations, the wallets, the lock.
   profile: { back: 'home', tab: 'profile', nav: true },
 
   // money
@@ -219,10 +220,9 @@ export const SCREENS: Record<Screen, ScreenDef> = {
   about: { back: profileOrHome },
   'edit-profile': { back: 'profile' },
 
-  // extras
-  operations: { back: 'home' },
-  'sign-tx': { back: 'operations' },
-  'gateway-ops': { back: 'operations' },
+  // extras — the operations listed on "More" (features/wallet/Profile.tsx)
+  'sign-tx': { back: 'profile' },
+  'gateway-ops': { back: 'profile' },
   'add-network': { back: 'home' },
   'add-asset': { back: 'home' },
   scan: { back: 'send' },
