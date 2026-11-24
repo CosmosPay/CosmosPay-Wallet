@@ -86,8 +86,8 @@ function usePageVisible(): boolean {
 
 /**
  * Charge with QR (screen `charge`): the seller asks for an amount of local money and shows the QR
- * of a hosted page; whoever scans it pays with a bank transfer or a local method, through the same
- * P2P purchase the ramp opens, and the token arrives in this wallet's own EVM account. Rules in
+ * of a hosted page; whoever scans it pays with a local payment method, through the same P2P
+ * purchase the ramp opens, and the token arrives in this wallet's own EVM account. Rules in
  * `lib/qrCharge.ts`, the charge and its calls in `state/useQrCharge.ts`.
  *
  * Step one is the form, drawn like the ramp's purchase: the local money with its flag, the amount,

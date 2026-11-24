@@ -1414,8 +1414,8 @@ opens it pays through a P2P purchase that delivers to this wallet's own EVM addr
   cancelled charge never moves from the balance; the API is asked only while the page is in view, and
   for half an hour after a charge expires or is cancelled (a payment already under way still lands).
   `processing` (the payment received, the token on its way) never expires and cannot be cancelled.
-- **The ramp's copy rules**: the marketplace is never named; the payer "pays with bank transfer or their
-  local methods".
+- **The ramp's copy rules**: the marketplace is never named, and the copy never promises a way to pay
+  the charge may not have: before there is a charge the payer "pays with a local payment method".
 
 ## Validation lives in `src/lib/`, never in a component
 
