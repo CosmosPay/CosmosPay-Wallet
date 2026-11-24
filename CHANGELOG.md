@@ -2,6 +2,11 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.23.1] - 2026-11-24
+
+### Bug Fixes
+- Astro 7.4.12 on compiler 0.5.2, which the web server's CPU can run (fb33e24)
+
 ## [1.23.0] - 2026-11-24
 
 ### Features
