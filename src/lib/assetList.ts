@@ -6,10 +6,11 @@
  * added, which they chose to keep even at zero), a token the person added on any other network
  * (the same choice), and otherwise only a balance above zero — a native coin at 0 is not a
  * holding, on Solana and Monad no more than on the thirty others. The filter offers every network the wallet has an address on, with what it holds: the
- * ones with assets first, by value, then the rest — whose balance is either read as nothing or
- * could not be read, and says which.
+ * ones with assets first, by value, then the rest in the neutral order (`networkRank`, A to Z),
+ * whose balance is either read as nothing or could not be read, and says which.
  */
-import { NETWORK_IDS, type NetworkId } from '@/constants/networks';
+import type { NetworkId } from '@/constants/networks';
+import { networkRank } from '@/lib/networkOrder';
 import type { AssetRow } from '@/lib/portfolio';
 
 export const networkOfRow = (r: AssetRow): NetworkId => r.network ?? r.chain ?? 'stellar';
@@ -29,8 +30,9 @@ export interface NetworkSummary {
 }
 
 /**
- * One summary per network offered — `offered` in registry order, `known` saying whether its
- * balance was actually read — the held ones first by value, the rest after in registry order.
+ * One summary per network offered — `known` saying whether its balance was actually read — the
+ * held ones first by value, the rest after in the neutral order (`networkRank`): never the
+ * registry's, whose first three would lead the list whatever is held.
  */
 export function networkSummaries(rows: readonly AssetRow[], offered: readonly NetworkId[], known: (id: NetworkId) => boolean): NetworkSummary[] {
   const byNet = new Map<NetworkId, AssetRow[]>();
@@ -38,7 +40,7 @@ export function networkSummaries(rows: readonly AssetRow[], offered: readonly Ne
     const n = networkOfRow(r);
     byNet.set(n, [...(byNet.get(n) ?? []), r]);
   }
-  const order = (id: NetworkId) => NETWORK_IDS.indexOf(id);
+  const order = networkRank;
   const all = offered.map((id): NetworkSummary => {
     const held = byNet.get(id) ?? [];
     const value = held.some((r) => r.value === null) ? null : held.reduce((s, r) => s + (r.value ?? 0), 0);

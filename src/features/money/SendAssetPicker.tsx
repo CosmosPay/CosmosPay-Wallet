@@ -20,12 +20,15 @@ export interface SendOption {
   /** "18,034.8011", or null while unknown. */
   balance: string | null;
   held: boolean;
+  /** What is held of it in dollars; null without a price. Orders the held ones (`byHolding`). */
+  value: number | null;
 }
 
 /**
  * What to send, first — the way wallets ask it: a card naming the asset, its network and what is
  * held of it, opening every asset the wallet can send on every network it signs on, with a
- * search; the ones it holds first. Choosing an asset chooses its network. A panel under the card
+ * search; the ones it holds first, by value, then the rest by network name (`byHolding`, in the
+ * order the caller passes). Choosing an asset chooses its network. A panel under the card
  * on a PC window, a sheet on a phone (no focus on the search there: the keyboard would cover it).
  */
 export function SendAssetPicker({

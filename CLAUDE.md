@@ -319,14 +319,16 @@ Stellar lists XLM and its trustlines; every other network — Solana and Monad i
 balance above zero. `AssetToolbar` is a search (name, symbol or network; every word, accents
 aside; `ui/SearchField`, the app's one search box) and a network selector over every network
 with an address in the mode: the held ones first with their value and asset count, then the
-rest saying "no assets" or "balance unavailable" (a failed read is never shown as zero). A
+rest saying "no assets" or "balance unavailable" (a failed read is never shown as zero), A to Z by
+name (`lib/networkOrder.ts`): never the registry's order, which would put Stellar, Solana and Monad
+first whatever is held. A
 network with nothing shows so, with "Receive on …". No chips: thirty-odd networks do not fit a
 row. The search takes all the room the selector leaves; "all networks" wears the Cosmos Pay Wallet
 mark (`ui/NetworkSelect`, shared with "add an asset").
 
 **Send is one structure on every network** (the user: it was "desestructurada"). What (an asset
-card opening every sendable asset of every network the wallet signs on, held first, with a
-search — choosing the asset chooses the network: `SendAssetPicker`), to whom (one field, paste and
+card opening every sendable asset of every network the wallet signs on, held first by value and
+the rest by network name (`byHolding`, as the filter), with a search — choosing the asset chooses the network: `SendAssetPicker`), to whom (one field, paste and
 scan inside; pasting a SEP-7 link fills the draft), how much (one field, the code and "Max"
 inside; worth and available under it), Stellar's memo folded until asked for or set, then the
 button — docked over the keyboard on a phone, right after the form on a PC window. The pieces are
