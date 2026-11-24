@@ -1620,11 +1620,11 @@ export const T: Record<string, Record<Lang, string>> = {
   // ---- CosmosPay (enable receiving payments) ----
   'cosmospay.cardTitle': { es: 'Conecta Cosmos Pay', en: 'Connect Cosmos Pay', pt: 'Conectar Cosmos Pay', de: 'Cosmos Pay verbinden', fr: 'Connecter Cosmos Pay' },
   'cosmospay.cardDesc': {
-    es: 'Conecta tu wallet a Cosmos Pay para cobrar, intercambiar a tasa preferencial y usar onramp/offramp. Te enviamos un código a tu correo y firmas con tu clave de Stellar — sin secretos guardados en la app.',
-    en: 'Connect your wallet to Cosmos Pay to receive payments, swap at a preferential rate and use on/off-ramp. We email you a code and you sign with your Stellar key — no secrets stored in the app.',
-    pt: 'Conecta a tua wallet ao Cosmos Pay para receber pagamentos, trocar a uma taxa preferencial e usar on/off-ramp. Enviamos-te um código por e-mail e assinas com a tua chave Stellar — sem segredos guardados na app.',
-    de: 'Verbinde deine Wallet mit Cosmos Pay, um Zahlungen zu empfangen, zu einem Vorzugskurs zu tauschen und On-/Off-Ramp zu nutzen. Wir senden dir einen Code per E-Mail und du signierst mit deinem Stellar-Schlüssel — keine Geheimnisse in der App.',
-    fr: 'Connecte ton portefeuille à Cosmos Pay pour recevoir des paiements, échanger à un taux préférentiel et utiliser l’on/off-ramp. Nous t’envoyons un code par e-mail et tu signes avec ta clé Stellar — aucun secret stocké dans l’app.',
+    es: 'Conecta tu cuenta de Cosmos Pay a esta wallet para cobrar, intercambiar a tasa preferencial y usar onramp/offramp. Te enviamos un código a tu correo y confirmas con la clave de esta wallet, que nunca sale de este dispositivo.',
+    en: 'Connect your Cosmos Pay account to this wallet to receive payments, swap at a preferential rate and use on/off-ramp. We email you a code and you confirm with this wallet’s key, which never leaves this device.',
+    pt: 'Conecta a tua conta Cosmos Pay a esta wallet para receber pagamentos, trocar a uma taxa preferencial e usar on/off-ramp. Enviamos-te um código por e-mail e confirmas com a chave desta wallet, que nunca sai deste dispositivo.',
+    de: 'Verbinde dein Cosmos-Pay-Konto mit dieser Wallet, um Zahlungen zu empfangen, zu einem Vorzugskurs zu tauschen und On-/Off-Ramp zu nutzen. Wir senden dir einen Code per E-Mail und du bestätigst mit dem Schlüssel dieser Wallet, der dieses Gerät nie verlässt.',
+    fr: 'Connecte ton compte Cosmos Pay à ce portefeuille pour recevoir des paiements, échanger à un taux préférentiel et utiliser l’on/off-ramp. Nous t’envoyons un code par e-mail et tu confirmes avec la clé de ce portefeuille, qui ne quitte jamais cet appareil.',
   },
 
   'addAsset.verified': {
@@ -1685,11 +1685,11 @@ export const T: Record<string, Record<Lang, string>> = {
   'cosmospay.confirmRow': { es: 'Confirma tu correo (Cosmos Pay)', en: 'Confirm your email (Cosmos Pay)', pt: 'Confirm your email (Cosmos Pay)', de: 'Confirm your email (Cosmos Pay)', fr: 'Confirm your email (Cosmos Pay)' },
   'cosmospay.enableTitle': { es: 'Activar cobros', en: 'Enable receiving payments', pt: 'Enable receiving payments', de: 'Enable receiving payments', fr: 'Enable receiving payments' },
   'cosmospay.enableConfirm': {
-    es: 'Introduce tu contraseña para firmar con tu clave de Stellar y terminar de conectar la cuenta.',
-    en: 'Enter your password to sign with your Stellar key and finish connecting the account.',
-    pt: 'Introduz a tua palavra-passe para assinar com a tua chave Stellar e terminar de conectar a conta.',
-    de: 'Gib dein Passwort ein, um mit deinem Stellar-Schlüssel zu signieren und die Verbindung abzuschließen.',
-    fr: 'Saisis ton mot de passe pour signer avec ta clé Stellar et terminer la connexion du compte.',
+    es: 'Introduce tu contraseña para confirmar con la clave de esta wallet y terminar de conectar tu cuenta de Cosmos Pay.',
+    en: 'Enter your password to confirm with this wallet’s key and finish connecting your Cosmos Pay account.',
+    pt: 'Introduz a tua palavra-passe para confirmar com a chave desta wallet e terminar de conectar a tua conta Cosmos Pay.',
+    de: 'Gib dein Passwort ein, um mit dem Schlüssel dieser Wallet zu bestätigen und die Verbindung mit deinem Cosmos-Pay-Konto abzuschließen.',
+    fr: 'Saisis ton mot de passe pour confirmer avec la clé de ce portefeuille et terminer la connexion de ton compte Cosmos Pay.',
   },
   'cosmospay.needEmail': {
     es: 'Añade un correo a esta wallet para activar los cobros.',
