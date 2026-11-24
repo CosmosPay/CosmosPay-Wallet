@@ -6,10 +6,10 @@ import { ScreenHeader } from '@/ui/ScreenHeader';
 import { PrimaryButton } from '@/ui/Buttons';
 import { Spinner } from '@/ui/Spinner';
 import { TokenAvatar } from '@/ui/TokenAvatar';
-import { trim } from '@/lib/format';
 import '@/styles/ui/exchange-card.css';
 import '@/styles/features/liquidity/liquidity.css';
 import { gatewayAssetLabel } from '@/lib/asset';
+import { plainDecimal, STELLAR_DECIMALS } from '@/lib/amount';
 
 /* -------------------------- LP WITHDRAW -------------------------- */
 /**
@@ -42,7 +42,8 @@ export function Withdraw({ store }: { store: WalletStore }) {
   const over = amt > held;
   const canWithdraw = amt > 0 && !over;
 
-  const setPct = (pct: number) => setShares(trim((held * pct) / 100, 7));
+  // An input's value: the plain decimal the parser reads, never the display form.
+  const setPct = (pct: number) => setShares(plainDecimal((held * pct) / 100, STELLAR_DECIMALS));
 
   return (
     <div className="scr screen col pb-104">
@@ -54,7 +55,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
           <div>
             <div className="lp-item-title">{position.reserves.map(label).join(' / ')}</div>
             <div className="t-dim-12">
-              {t('lp.poolShare')}: {trim(position.shareOfPoolBps / 100, 2)}%
+              {t('lp.poolShare')}: {store.num.amount(position.shareOfPoolBps / 100, 2)}%
             </div>
           </div>
         </div>
@@ -67,7 +68,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
           <input value={shares} onChange={(e) => setShares((e.target as HTMLInputElement).value)} inputMode="decimal" placeholder="0" className="exchange-input" />
         </div>
         <div className="exchange-balance">
-          {t('lp.sharesHeld')}: {trim(held, 4)}
+          {t('lp.sharesHeld')}: {store.num.amount(held, 4)}
         </div>
         <div className="lp-pct-row">
           {[25, 50, 100].map((p) => (
@@ -78,7 +79,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
         </div>
       </div>
 
-      {over && <Notice tone="danger" className="exchange-notice">{t('lp.overShares', { held: trim(held, 4) })}</Notice>}
+      {over && <Notice tone="danger" className="exchange-notice">{t('lp.overShares', { held: store.num.amount(held, 4) })}</Notice>}
 
       <div className="exchange-quote">
         <div className="lp-redeem-label">{t('lp.youReceiveApprox')}</div>
@@ -87,7 +88,7 @@ export function Withdraw({ store }: { store: WalletStore }) {
             <span className="exchange-quote-label row g8">
               <AssetLogo code={label(r)} size={20} /> {label(r)}
             </span>
-            <span className="exchange-quote-val">≈ {trim((parseFloat(r.amount) || 0) * fraction, 4)}</span>
+            <span className="exchange-quote-val">≈ {store.num.amount((parseFloat(r.amount) || 0) * fraction, 4)}</span>
           </div>
         ))}
       </div>

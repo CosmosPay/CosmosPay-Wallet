@@ -122,7 +122,7 @@ export function SignTx({ store }: { store: WalletStore }) {
         <dl className="glass sign-tx-summary">
           {[
             [t('sign.source'), summary.source ? `${summary.source.slice(0, 6)}…${summary.source.slice(-6)}` : '—'],
-            [t('sign.fee'), `${summary.fee} stroops`],
+            [t('sign.fee'), `${store.num.decimal(summary.fee)} stroops`],
             [t('sign.ops'), summary.operations.join(', ') || '—'],
             [t('sign.memo'), summary.memo || '—'],
             [t('sign.signatures'), String(summary.signatures)],

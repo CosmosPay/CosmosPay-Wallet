@@ -35,7 +35,7 @@
 
   /** An EIP-1193 error: an Error carrying `code` (and `data` when the node sent some). */
   function rpcError(e) {
-    const err = new Error(e && e.message ? String(e.message) : 'Cosmos Wallet: request failed.');
+    const err = new Error(e && e.message ? String(e.message) : 'Cosmos Pay Wallet: request failed.');
     err.code = e && typeof e.code === 'number' ? e.code : -32603;
     if (e && e.data !== undefined) err.data = e.data;
     return err;
@@ -58,7 +58,7 @@
       const id = `${Date.now()}.${seq++}`;
       const timer = setTimeout(() => {
         pending.delete(id);
-        reject(new Error('Cosmos Wallet: no response from the extension (timed out).'));
+        reject(new Error('Cosmos Pay Wallet: no response from the extension (timed out).'));
       }, TIMEOUT_MS[method] ?? DEFAULT_TIMEOUT_MS);
       pending.set(id, {
         resolve: (v) => {
@@ -77,7 +77,7 @@
   const api = {
     isCosmosWallet: true,
     id: 'cosmos',
-    name: 'Cosmos Wallet',
+    name: 'Cosmos Pay Wallet',
     async isConnected() {
       try {
         const r = await request('isConnected');
@@ -209,7 +209,7 @@
     return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
   }
 
-  const info = Object.freeze({ uuid: uuid(), name: 'Cosmos Wallet', icon: ICON, rdns: 'lat.cosmospay.wallet' });
+  const info = Object.freeze({ uuid: uuid(), name: 'Cosmos Pay Wallet', icon: ICON, rdns: 'lat.cosmospay.wallet' });
   const announce = () => window.dispatchEvent(new CustomEvent('eip6963:announceProvider', { detail: Object.freeze({ info, provider }) }));
   window.addEventListener('eip6963:requestProvider', announce);
   announce();

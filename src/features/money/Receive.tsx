@@ -54,6 +54,9 @@ export function Receive({ store }: { store: WalletStore }) {
     return n > 1 ? t('receive.sameAddrN', { n }) : t('receive.coinLine', { coin: NETWORKS[id].coin });
   };
 
+  // The wallet's own Stellar network, written into the request off the public one: SEP-7 reads
+  // a link without `network_passphrase` as a public-network request.
+  const passphrase = store.network.passphrase;
   useEffect(() => {
     let live = true;
     setQr('');
@@ -61,11 +64,11 @@ export function Receive({ store }: { store: WalletStore }) {
     // Stellar encodes a SEP-7 payment request so other Stellar wallets pre-fill the send. The
     // other networks get the bare address: it is what every wallet on those chains scans. `H`:
     // the network's mark covers the centre.
-    qrDataUrl(net === 'stellar' ? buildSep7Pay({ destination: addr }) : addr, 'H')
+    qrDataUrl(net === 'stellar' ? buildSep7Pay({ destination: addr, networkPassphrase: passphrase }) : addr, 'H')
       .then((value) => { if (live) setQr(value); })
       .catch(() => {});
     return () => { live = false; };
-  }, [net, addr]);
+  }, [net, addr, passphrase]);
 
   const label = t('receive.addrOn', { network: name });
   const share = async () => {
@@ -85,7 +88,7 @@ export function Receive({ store }: { store: WalletStore }) {
         <div className="receive-qr">
           {qr ? (
             <>
-              <img src={qr} width="240" height="240" alt={t('receive.qrAlt', { network: label })} className="receive-qr-img" />
+              <img src={qr} width="240" height="240" alt={t('receive.qrAlt', { network: name })} className="receive-qr-img" />
               <span className="receive-qr-mark" aria-hidden="true">
                 <NetworkLogo network={net} size={44} />
               </span>

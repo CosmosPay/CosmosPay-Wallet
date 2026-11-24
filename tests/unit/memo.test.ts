@@ -16,6 +16,7 @@ import {
   memoForDisplay,
   memoKindFromSep7,
   memoProblem,
+  memoToSign,
   networkMemoProblem,
   normalizeMemo,
 } from '@/lib/memo';
@@ -127,6 +128,18 @@ test('a supplied memo is never replaced by the default', () => {
   // Only an empty field falls through to it.
   assert.equal(normalizeMemo('', 'text'), null);
   assert.equal(normalizeMemo('   ', 'text'), null);
+});
+
+test('the review shows the memo that is signed, the default included', () => {
+  // `memoToSign` is what buildMemo signs AND what Confirm and the approval window show. The
+  // review used to show no memo row for an empty field while the transaction carried the
+  // wallet's own (e2e run, 2026-11-24).
+  assert.deepEqual(memoToSign('', 'text'), { kind: 'text', value: defaultMemoText(), isDefault: true });
+  assert.deepEqual(memoToSign('   ', 'id'), { kind: 'text', value: defaultMemoText(), isDefault: true });
+  assert.deepEqual(memoToSign('order-42', 'text'), { kind: 'text', value: 'order-42', isDefault: false });
+  assert.deepEqual(memoToSign('12345', 'id'), { kind: 'id', value: '12345', isDefault: false });
+  // A memo over the limit is shown as it will be clamped, not as typed.
+  assert.equal(memoByteLength(memoToSign('ñ'.repeat(20))!.value), MEMO_TEXT_MAX_BYTES);
 });
 
 test('another network memo: XRP tags are uint32 digits, TON comments byte-bounded', () => {

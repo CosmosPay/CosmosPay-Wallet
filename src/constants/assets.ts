@@ -15,7 +15,8 @@ export type TokenAvatarTone = 'base' | 'brand' | 'pool';
 export const ASSET_META: Record<string, { name: string; glyph: string; tone: TokenAvatarTone }> = {
   XLM: { name: 'Stellar Lumens', glyph: '✦', tone: 'brand' },
   USDC: { name: 'USD Coin', glyph: '$', tone: 'base' },
-  USDB: { name: 'USD BlindPay', glyph: '$', tone: 'base' },
+  // Named by its code: its issuer is a provider, which the copy never names (constants/providerNames.ts).
+  USDB: { name: 'USDB', glyph: '$', tone: 'base' },
   EURC: { name: 'Euro Coin', glyph: '€', tone: 'base' },
   yXLM: { name: 'yieldXLM', glyph: 'y', tone: 'base' },
   AQUA: { name: 'Aquarius', glyph: 'A', tone: 'base' },

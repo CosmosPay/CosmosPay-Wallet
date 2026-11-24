@@ -9,8 +9,11 @@
  */
 import { afterEach, mock, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { base58, base64 } from '@scure/base';
+import { DEFAULT_SOLANA_RPC_URL } from '@/constants/backends';
 import { NETWORKS, NETWORK_BALANCE_TIMEOUT_MS, type NetworkId } from '@/constants/networks';
 import { NetworkBalanceError, readNetworkBalances, type NetworkBalanceFailure } from '@/lib/networkBalances';
+import { SYSTEM_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, associatedTokenAddress } from '@/lib/solanaTx';
 
 // Public, well-known addresses (exchange hot wallets and the like), as probed.
 const EVM = '0xF977814e90dA44bFA03b6295A0616a897441aceC';
@@ -136,36 +139,97 @@ test('EVM: an empty call result, an error item or a refused batch throws', async
 
 /* ----------------------------------------------------------------------- SVM */
 
-// Two of that wallet's USDC accounts, verbatim from `getTokenAccountsByOwner` (207.3133 + 2,839.940216 USDC).
-const USDC_ACCOUNTS = [
-  'xvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWFIwBtQWQBUVdncsMa87Ny0+1suq8GpqCtXOSuqpA8E5pRZWwwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAMGv0gVz6blwBk7j2axSOdwQw2l7gjqu1RAL9cGGRMEB',
-  'xvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWFIwBtQWQBUVdncsMa87Ny0+1suq8GpqCtXOSuqpA8E5ngMRqkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAFWxhbTTbZHVudY26Z7ugqb2RYw1c7hweFM7NiqTMY7m',
-];
-const tokenAccount = (data: string, owner = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') => ({
-  pubkey: '2ocS3orPq3jyszjsJ4NozKWyhdotr3csDjAizmkj65aH',
-  account: { lamports: 2039280, data: [data, 'base64'], owner, executable: false, rentEpoch: 0, space: 165 },
+// That wallet's USDC associated account (FzbcyEZ9…, under SPL Token), verbatim from
+// `getMultipleAccounts` on solana-rpc.publicnode.com, 2026-11-24: 1,972,502.78173 USDC. Its
+// state byte says frozen, which leaves the tokens held, and counted.
+const USDC_ATA = 'FzbcyEZ9m8xjtergWgWDq7mfPoHEbboBF791B6cTpzbq';
+const USDC_ATA_DATA =
+  'xvp6877brTo9ZfNqq8l0MbG75MLS9uDkfKYCA0UvXWFIwBtQWQBUVdncsMa87Ny0+1suq8GpqCtXOSuqpA8E5iLfU0LLAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+/** 165 bytes of a token account, base64. */
+const tokenData = (mint: string, owner: string, amount: bigint) => {
+  const d = new Uint8Array(165);
+  d.set(base58.decode(mint), 0);
+  d.set(base58.decode(owner), 32);
+  new DataView(d.buffer).setBigUint64(64, amount, true);
+  d[108] = 1; // initialized
+  return base64.encode(d);
+};
+/** One entry of a `getMultipleAccounts` answer, as the node writes it. */
+const svmAccount = (data: string, owner = TOKEN_PROGRAM_ID) => ({
+  data: [data, 'base64'],
+  executable: false,
+  lamports: 2039280,
+  owner,
+  rentEpoch: 0,
+  space: data.length,
 });
 const rpcOk = (id: unknown, result: unknown) => JSON.stringify({ jsonrpc: '2.0', id, result });
+type MultipleAccounts = { id: number; method: string; params: [string[], { encoding: string }] };
 
-test('Solana: lamports, and each token summed over its accounts; a mint with none is zero', async () => {
+/** An SVM node: `getBalance` answers `lamports`, `getMultipleAccounts` each address from `accounts` (none: null). */
+const svmNode = (accounts: Record<string, unknown>, lamports: unknown = 1) => ({ body }: Call) => {
+  const { id, method, params } = body as MultipleAccounts;
+  if (method === 'getBalance') return { body: rpcOk(id, { value: lamports }) };
+  assert.equal(method, 'getMultipleAccounts');
+  return { body: rpcOk(id, { context: { slot: 473392829 }, value: params[0].map((a) => accounts[a] ?? null) }) };
+};
+const multipleAccountsCalls = (calls: Call[]) => calls.map((c) => c.body as MultipleAccounts).filter((b) => b.method === 'getMultipleAccounts');
+
+test('Solana: the balance source is the wallet’s own Solana node, one that answers a browser', () => {
+  const source = NETWORKS.solana.balance;
+  assert.ok(source?.kind === 'svm');
+  assert.equal(source.rpc, DEFAULT_SOLANA_RPC_URL);
+  assert.equal(source.rpc, 'https://solana-rpc.publicnode.com');
+});
+
+test('Solana: lamports, and each token at its associated accounts under both programs, in one call; none is zero', async () => {
   const usdc = token('solana', 'USDC');
   const usdt = token('solana', 'USDT');
+  assert.equal(associatedTokenAddress(SOL, usdc, TOKEN_PROGRAM_ID), USDC_ATA, 'the derivation finds the account the chain holds');
   const calls = stub(({ body }) => {
-    const { id, method, params } = body as { id: number; method: string; params: [string, { mint?: string }] };
+    const { id, method } = body as MultipleAccounts;
     if (method === 'getBalance') {
       return { body: `{"jsonrpc":"2.0","result":{"context":{"apiVersion":"4.3.2","slot":462705291},"value":1555570563258297},"id":${id}}` };
     }
-    const value = params[1].mint === usdc ? USDC_ACCOUNTS.map((d) => tokenAccount(d)) : [];
-    return { body: rpcOk(id, { context: { slot: 462705295 }, value }) };
+    return svmNode({ [USDC_ATA]: svmAccount(USDC_ATA_DATA) })({ body } as Call);
   });
-  assert.deepEqual(await readNetworkBalances('solana', SOL), {
-    native: 1555570563258297n,
-    [usdc]: 207313300n + 2839940216n,
-    [usdt]: 0n,
-  });
-  assert.ok(calls.every((c) => c.url === 'https://api.mainnet-beta.solana.com'));
-  const filters = calls.filter((c) => (c.body as { method: string }).method === 'getTokenAccountsByOwner');
-  assert.deepEqual(filters.map((c) => (c.body as { params: [string, { mint: string }] }).params[1].mint).sort(), [usdc, usdt].sort());
+  assert.deepEqual(await readNetworkBalances('solana', SOL), { native: 1555570563258297n, [usdc]: 1972502781730n, [usdt]: 0n });
+  assert.ok(calls.every((c) => c.url === 'https://solana-rpc.publicnode.com'));
+  assert.deepEqual(calls.map((c) => (c.body as { method: string }).method).sort(), ['getBalance', 'getMultipleAccounts']);
+  const [read] = multipleAccountsCalls(calls);
+  assert.deepEqual(read.params[0], [
+    USDC_ATA,
+    associatedTokenAddress(SOL, usdc, TOKEN_2022_PROGRAM_ID),
+    associatedTokenAddress(SOL, usdt, TOKEN_PROGRAM_ID),
+    associatedTokenAddress(SOL, usdt, TOKEN_2022_PROGRAM_ID),
+  ]);
+  assert.equal(read.params[1].encoding, 'base64');
+});
+
+test('Solana: a Token-2022 mint is read at its Token-2022 associated account; one under each program adds up', async () => {
+  const usdc = token('solana', 'USDC');
+  const usdt = token('solana', 'USDT');
+  const pyusd = { symbol: 'PYUSD', asset: '2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo', decimals: 6 };
+  stub(
+    svmNode({
+      [associatedTokenAddress(SOL, pyusd.asset, TOKEN_2022_PROGRAM_ID)]: svmAccount(tokenData(pyusd.asset, SOL, 5_000_000n), TOKEN_2022_PROGRAM_ID),
+      [USDC_ATA]: svmAccount(tokenData(usdc, SOL, 1n)),
+      [associatedTokenAddress(SOL, usdc, TOKEN_2022_PROGRAM_ID)]: svmAccount(tokenData(usdc, SOL, 2n), TOKEN_2022_PROGRAM_ID),
+    }),
+  );
+  const tokens = [...NETWORKS.solana.tokens, pyusd];
+  assert.deepEqual(await readNetworkBalances('solana', SOL, tokens), { native: 1n, [usdc]: 3n, [usdt]: 0n, [pyusd.asset]: 5_000_000n });
+});
+
+test('Solana: an address with no account, or only lamports somebody sent it, holds no tokens: zero, not unknown', async () => {
+  const usdc = token('solana', 'USDC');
+  const usdt = token('solana', 'USDT');
+  const fresh = base58.encode(new Uint8Array(32).fill(42));
+  stub(svmNode({}, 0));
+  assert.deepEqual(await readNetworkBalances('solana', fresh), { native: 0n, [usdc]: 0n, [usdt]: 0n });
+  // 0.001 SOL sent to the Token-2022 address of a mint that lives under SPL Token opens a System account there.
+  stub(svmNode({ [associatedTokenAddress(SOL, usdc, TOKEN_2022_PROGRAM_ID)]: svmAccount('', SYSTEM_PROGRAM_ID), [USDC_ATA]: svmAccount(USDC_ATA_DATA) }));
+  assert.deepEqual(await readNetworkBalances('solana', SOL), { native: 1n, [usdc]: 1972502781730n, [usdt]: 0n });
 });
 
 test('Fogo: lamports past 2^53 are read to the last digit', async () => {
@@ -175,23 +239,50 @@ test('Fogo: lamports past 2^53 are read to the last digit', async () => {
   assert.deepEqual(await readNetworkBalances('fogo', SOL), { native: 1431986162493298241n });
 });
 
-test('Solana: an account of another mint or owner, or outside the token programs, or an RPC error throws', async () => {
+test('Solana: an account of another mint or owner, outside the token programs, not base64, a short answer or an RPC error throws', async () => {
   const usdc = token('solana', 'USDC');
-  const answer = (accounts: unknown[], error?: unknown) => ({ body }: Call) => {
-    const { id, method } = body as { id: number; method: string };
+  const usdt = token('solana', 'USDT');
+  const other = '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM';
+  // SOL's USDC account, answered at the address asked for somebody else: not that owner's money.
+  stub(svmNode({ [associatedTokenAddress(other, usdc, TOKEN_PROGRAM_ID)]: svmAccount(USDC_ATA_DATA) }));
+  await fails(readNetworkBalances('solana', other), 'shape', other);
+  // A USDC account where USDT's belongs.
+  stub(svmNode({ [associatedTokenAddress(SOL, usdt, TOKEN_PROGRAM_ID)]: svmAccount(USDC_ATA_DATA) }));
+  await fails(readNetworkBalances('solana', SOL), 'shape', SOL);
+  // The right bytes under a program that is not a token program, or a System account with data.
+  stub(svmNode({ [USDC_ATA]: svmAccount(USDC_ATA_DATA, 'BPFLoaderUpgradeab1e11111111111111111111111') }));
+  await fails(readNetworkBalances('solana', SOL), 'shape');
+  stub(svmNode({ [USDC_ATA]: svmAccount(USDC_ATA_DATA, SYSTEM_PROGRAM_ID) }));
+  await fails(readNetworkBalances('solana', SOL), 'shape');
+  // Under a token program, but too short to be a token account (a mint is 82 bytes).
+  stub(svmNode({ [USDC_ATA]: svmAccount(USDC_ATA_DATA.slice(0, 108)) }));
+  await fails(readNetworkBalances('solana', SOL), 'shape');
+  stub(svmNode({ [USDC_ATA]: svmAccount('not base64!') }));
+  await fails(readNetworkBalances('solana', SOL), 'shape');
+  // An answer one entry short is not one account that does not exist.
+  stub(({ body }) => {
+    const { id, method, params } = body as MultipleAccounts;
+    return { body: rpcOk(id, method === 'getBalance' ? { value: 1 } : { value: params[0].slice(1).map(() => null) }) };
+  });
+  await fails(readNetworkBalances('solana', SOL), 'shape');
+  stub(({ body }) => {
+    const { id, method } = body as MultipleAccounts;
     if (method === 'getBalance') return { body: rpcOk(id, { value: 1 }) };
-    if (error) return { body: { jsonrpc: '2.0', id, error } };
-    return { body: rpcOk(id, { value: (body as { params: [string, { mint: string }] }).params[1].mint === usdc ? accounts : [] }) };
-  };
-  stub(answer([tokenAccount(USDC_ACCOUNTS[0])]));
-  // The same account, asked for as somebody else's: not this owner's money.
-  await fails(readNetworkBalances('solana', '9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM'), 'shape');
-  stub(answer([tokenAccount(USDC_ACCOUNTS[0], '11111111111111111111111111111111')]));
-  await fails(readNetworkBalances('solana', SOL), 'shape');
-  stub(answer([tokenAccount('not base64!')]));
-  await fails(readNetworkBalances('solana', SOL), 'shape');
-  stub(answer([], { code: -32602, message: `Invalid param: could not find account ${SOL}` }));
+    return { body: { jsonrpc: '2.0', id, error: { code: -32602, message: `Invalid param: could not find account ${SOL}` } } };
+  });
   await fails(readNetworkBalances('solana', SOL), 'refused', SOL);
+});
+
+test('Solana: more associated accounts than one call takes are read in calls of 100, each address once', async () => {
+  const added = Array.from({ length: 60 }, (_, i) => ({ symbol: `T${i}`, asset: base58.encode(new Uint8Array(32).fill(i + 1)), decimals: 6 }));
+  const calls = stub(svmNode({}));
+  const read = await readNetworkBalances('solana', SOL, added);
+  assert.equal(Object.keys(read).length, 61);
+  assert.ok(added.every((t) => read[t.asset] === 0n));
+  const sizes = multipleAccountsCalls(calls).map((c) => c.params[0].length);
+  assert.deepEqual(sizes.sort((a, b) => b - a), [100, 20]);
+  const asked = multipleAccountsCalls(calls).flatMap((c) => c.params[0]);
+  assert.equal(new Set(asked).size, 120);
 });
 
 /* ----------------------------------------------------------- UTXO explorers */

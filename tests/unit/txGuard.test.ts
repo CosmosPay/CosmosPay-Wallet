@@ -497,7 +497,8 @@ test('createClaimableBalance shows what it moves, and is refused', () => {
     }) as never,
   ]);
   const op = reviewTx(CFG, xdr).operations[0];
-  assert.ok(op.rows.some((r) => r.value.includes('10000')));
+  // As the approval window shows it, in the suite's pinned language: grouped, every digit kept.
+  assert.ok(op.rows.some((r) => r.value.includes('10,000.0000000')));
   assert.ok(op.rows.some((r) => r.label === tNow('guard.row.claimants')));
   assert.equal(op.critical, true);
   throws(() => assertSafeToSign(CFG, xdr, SWAP_OPTS), 'guard.criticalOp');
@@ -759,4 +760,16 @@ test('the commission is a total, not a per-operation cap', () => {
       ),
     'guard.overCommission',
   );
+});
+
+test('a refusal says its amounts in the wallet language and keeps them plain in params', () => {
+  localStorage.setItem('cosmos.lang', 'es');
+  try {
+    const e = new TxGuardError('guard.overMaxSend', { amount: '1234.5', code: 'USDC' });
+    assert.ok(e.message.includes('1.234,5 USDC'), e.message);
+    // What a caller or a test compares stays the decimal the guard computed with.
+    assert.deepEqual(e.params, { amount: '1234.5', code: 'USDC' });
+  } finally {
+    localStorage.setItem('cosmos.lang', 'en');
+  }
 });

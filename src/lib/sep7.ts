@@ -5,7 +5,7 @@
  * Reference: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0007.md
  */
 
-import { StrKey } from '@stellar/stellar-sdk';
+import { Networks, StrKey } from '@stellar/stellar-sdk';
 
 const SCHEME = 'web+stellar:';
 /** Shape only — `isPublicKey` adds the CRC-16 checksum StrKey actually enforces. */
@@ -29,6 +29,13 @@ export interface Sep7Pay {
   assetCode?: string;
   assetIssuer?: string;
   msg?: string;
+  /**
+   * The passphrase of the network the request is for: the wallet's own. Written into the
+   * link for every network but the public one, because SEP-7 reads a link WITHOUT
+   * `network_passphrase` as a public-network request: a testnet QR that left it out had
+   * another wallet build a mainnet payment from it.
+   */
+  networkPassphrase?: string;
 }
 
 /** Build a `web+stellar:pay` URI from a payment request. Empty fields are omitted. */
@@ -43,7 +50,11 @@ export function buildSep7Pay(p: Sep7Pay): string {
     params.set('memo_type', p.memoType || 'MEMO_TEXT');
   }
   if (p.msg) params.set('msg', p.msg);
-  return `${SCHEME}pay?${params.toString()}`;
+  if (p.networkPassphrase && p.networkPassphrase !== Networks.PUBLIC) params.set('network_passphrase', p.networkPassphrase);
+  // Spaces as `%20`, not the form encoding's `+`: a wallet that reads the link with
+  // `decodeURIComponent` would otherwise compare `Test+SDF+Network+;+September+2015` against
+  // the passphrase. A literal `+` is already `%2B`, so this changes nothing else.
+  return `${SCHEME}pay?${params.toString().replace(/\+/g, '%20')}`;
 }
 
 export interface ParsedQr {
@@ -53,6 +64,8 @@ export interface ParsedQr {
   memoType?: string;
   assetCode?: string;
   assetIssuer?: string;
+  /** The link's `network_passphrase`, when it names one. */
+  networkPassphrase?: string;
 }
 
 /**
@@ -86,6 +99,7 @@ export function parseStellarQr(raw: string): ParsedQr | null {
           // An asset code without a valid issuer is not an asset — dropping the pair
           // together stops a half-parsed link from resolving to the wrong token.
           assetIssuer: isPublicKey(assetIssuer) ? assetIssuer : undefined,
+          networkPassphrase: params.get('network_passphrase') || undefined,
         };
       }
     }
@@ -102,4 +116,32 @@ export function parseStellarQr(raw: string): ParsedQr | null {
     if (isPublicKey(m[0])) return { destination: m[0] };
   }
   return null;
+}
+
+/**
+ * Whether a request names a network other than the wallet's (`passphrase`, from its own
+ * `NetConfig`). Paying it anyway would send real money for a test request, or the reverse,
+ * so every way a request reaches the wallet refuses it: the scanner, a paste into Send, a
+ * link in the URL (`store.applySep7`) and a site's `requestPayment` (ApprovePopup).
+ *
+ * Only a passphrase the link NAMES is compared. SEP-7 reads a missing one as the public
+ * network, but most wallets leave it out of their testnet QRs too (this one did, before
+ * `buildSep7Pay` wrote it), and refusing all of those on a test network would refuse test
+ * money only.
+ */
+export function isForOtherNetwork(req: Pick<ParsedQr, 'networkPassphrase'>, passphrase: string): boolean {
+  return !!req.networkPassphrase && req.networkPassphrase !== passphrase;
+}
+
+/** What a payment request came to on its way into the send draft. */
+export type Sep7Outcome = 'applied' | 'invalid' | 'otherNetwork';
+
+/** A scanned or pasted payment request read against the wallet's network: the request, or why not. */
+export type PaymentRequestRead = { ok: true; request: ParsedQr } | { ok: false; reason: Exclude<Sep7Outcome, 'applied'> };
+
+export function readPaymentRequest(raw: string, passphrase: string): PaymentRequestRead {
+  const request = parseStellarQr(raw);
+  if (!request) return { ok: false, reason: 'invalid' };
+  if (isForOtherNetwork(request, passphrase)) return { ok: false, reason: 'otherNetwork' };
+  return { ok: true, request };
 }

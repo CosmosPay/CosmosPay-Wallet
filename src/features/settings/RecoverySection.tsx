@@ -192,7 +192,7 @@ export function RecoverySection({ store }: { store: WalletStore }) {
             </>
           ) : (
             <>
-              <div className="recovery-note recovery-note-warn">{t('recovery.needXlm', { amount: missing })}</div>
+              <div className="recovery-note recovery-note-warn">{t('recovery.needXlm', { amount: store.num.amount(missing, 2) })}</div>
               <div className="recovery-note">{t('recovery.sponsoredNote')}</div>
               <button
                 disabled={busy || !email}

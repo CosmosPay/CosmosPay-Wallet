@@ -25,3 +25,17 @@ export const LANG_STORAGE_KEY = 'cosmos.lang';
 
 /** The query parameter a link carries a language in: `https://cosmospay.lat/wallet/?lang=en`. */
 export const LANG_QUERY_PARAM = 'lang';
+
+/**
+ * The locale each language writes its numbers in (`src/lib/numberFormat.ts`). Spanish is
+ * Argentina's, like its flag: plain `es` / `es-ES` leave a four-digit figure ungrouped
+ * ("1252,54") while the wallet groups every figure from a thousand up ("1.252,54"), the way
+ * the other four languages already do.
+ */
+export const NUMBER_LOCALES = {
+  en: 'en-US',
+  es: 'es-AR',
+  pt: 'pt-BR',
+  de: 'de-DE',
+  fr: 'fr-FR',
+} as const satisfies Record<(typeof LANG_CODES)[number], string>;

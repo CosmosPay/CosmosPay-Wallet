@@ -193,7 +193,11 @@ The onboarding (Welcome → `backup-choice` / `restore-choice` → words or acco
 Unlock, the device-unlock offer and Success are done. **The wallet follows the Figma's Home**
 (node 1:2, plus its Activity variant 108:272): the bar is Home · Wallet · the QR scanner raised on
 the brand blue · Earn · More (`app/navModel.tsx`; the rail marks the active place with the same
-blue line). Investing (Earn, DeFindex, liquidity) is switched off for now (`EARN_ENABLED` in
+blue line). **There is one "More"** (the user's call, 2026-11-24): Home's fourth action, the bar's
+last place, the extension menu's and the rail's account entry all open screen `profile`
+(`features/wallet/Profile.tsx`, titled "More"): the person, the operations (the ramp first), the
+wallets, account, security, app, and the lock. "Lock wallet" is also always in the extension menu
+and the rail. Investing (Earn, DeFindex, liquidity) is switched off for now (`EARN_ENABLED` in
 `src/constants/features.ts`): `isScreenOn` in `lib/screens.ts` drops its tab from every bar and
 keeps `/earn`, history (`canEnter`), a kept session and `store.go` out of its screens. Home is greeting, total balance with its 24h move, four ringed actions, and the tabs
 Activos (every network's holdings, a network filter, each token's network coin on its corner) ·
@@ -213,7 +217,7 @@ call: a screen with every field was too much at once): `profile-setup` walks
 `PROFILE_STEPS` (`constants/onboarding.ts`) — the name, the email, its code, the age and gender,
 the two optional consents — as `goStep` stops, under a line per step and "Paso n de 5"; Enter in a
 step's field goes on. A new step goes in that list, not as another field on an existing one.
-**Using the wallet creates its Cosmos Wallet account** (the user's call): the email step sends a
+**Using the wallet creates its Cosmos Pay account** (the user's call): the email step sends a
 code (`sendProfileEmailCode`, the sign-in's `email/start`), the code step proves the inbox
 (`verifyProfileEmailCode`), and `finishOnboarding` ends with the same `finishSignIn` a sign-in
 does — signed by the key just sealed, with no backup, since the twelve words are this wallet's
@@ -306,7 +310,7 @@ check it at 1366 and 1920. The logo at the top of the rail (and of the extension
 button to Home, inside the session. Home's header ends with the Stellar network pill — always,
 mainnet too — that switches networks (`HomeNetworkButton`), the notifications bell from the Figma
 (`HomeNotifications`, `lib/notifications.ts`: payments, swaps and the account's creation from the
-loaded history, a blue dot for what came after the last open, kept per wallet and network), and
+loaded history, a count badge on the bell's corner for what came after the last open, kept per wallet and network), and
 the settings; each opens a panel under it on a PC window and a sheet on a phone.
 
 **Home's assets are what is held, and the tools are a search and a network selector** (the user:
@@ -317,7 +321,7 @@ aside; `ui/SearchField`, the app's one search box) and a network selector over e
 with an address in the mode: the held ones first with their value and asset count, then the
 rest saying "no assets" or "balance unavailable" (a failed read is never shown as zero). A
 network with nothing shows so, with "Receive on …". No chips: thirty-odd networks do not fit a
-row. The search takes all the room the selector leaves; "all networks" wears the Cosmos Wallet
+row. The search takes all the room the selector leaves; "all networks" wears the Cosmos Pay Wallet
 mark (`ui/NetworkSelect`, shared with "add an asset").
 
 **Send is one structure on every network** (the user: it was "desestructurada"). What (an asset
@@ -537,7 +541,13 @@ the request arrives:
 
 - **extension** — `extension-src/content.js` stamps the origin (a page cannot forge it,
   having no way to open the port itself), `extension-src/sw.js` routes on an internal
-  `rid` the page never sees, and the approval window is opened by the worker.
+  `rid` the page never sees, and the approval window is opened by the worker. **The worker
+  that answers is often not the one that opened the window**: Chrome stops an idle worker
+  after ~30 s and an open Port does not keep it alive, so every request is persisted under
+  `cosmos.req.<rid>` and a fresh worker reads them back (`hydrate`) before it routes anything.
+  A worker that skipped that told the page "expired" while the window stayed open, and the
+  person then signed or paid for a dapp that had been told it failed.
+  `npm run test:e2e:extension-evm` stops the worker under an open window to keep it so.
 - **web** — `src/lib/webSigner.ts`. Hosted as a page the wallet has no background to
   route through, so the dapp opens `approve/?web=1&n=…&o=…` itself and posts the request
   to it. `public/cosmos-wallet.js` is the provider it loads from the wallet's origin to
@@ -881,7 +891,7 @@ Eight rules:
 
 `src/lib/easyRecovery.ts` (crypto, QR, code), `src/state/useEasyRecovery.ts` (the two halves),
 `features/onboarding/EasyRecoveryReceive.tsx` (new device: "Ya tengo una wallet → Desde otra
-Cosmos Wallet") and `features/settings/EasyRecoverySend.tsx` (old device: Ajustes → Transferir a otro
+Cosmos Pay Wallet") and `features/settings/EasyRecoverySend.tsx` (old device: Ajustes → Transferir a otro
 dispositivo). The mailbox is the community server's `easy-recovery` module (its own repository):
 a session that expires in five minutes, holds one sealed payload, and is burned after five
 wrong codes.
@@ -1355,7 +1365,7 @@ percentage displayed in a quote is always the gateway's own number, never this f
 ## Buying and selling with local money goes through the Cosmos Pay API
 
 Fiat → "Comprar con moneda local" / "Vender por moneda local" (`features/fiat/RampEntries.tsx`), the
-same two rows at the top of Home → More (`features/extras/Operations.tsx`) and "Comprar" under
+same two rows heading the operations on More (`features/wallet/Profile.tsx`) and "Comprar" under
 Receive's address (`features/money/Receive.tsx`) open screen `ramp` (`features/fiat/Ramp.tsx`): the developer platform's Fiat → On-ramp / Off-ramp, over the
 same API (`/v1/onramp/p2p` buys, `/v1/offramp/p2p` sells; calls in `lib/cosmospay.ts`, rules in
 `lib/p2pRamp.ts`), drawn like the Swap (`styles/ui/swap-widget.css` is the look both share). The user's
@@ -1379,7 +1389,7 @@ directly. Neither side needs the BlindPay receiver, so both fiat entry screens o
   the deployment has no integrator ids, so the form keeps the market estimate and stops asking. Quote
   errors show under the button, never as toasts.
 - **A sale is signed in the hosted window.** The window asks a connected wallet to send the token; the
-  browser extension's EVM provider answers as Cosmos Wallet. The screen says so (`ramp.sellConnect*`).
+  browser extension's EVM provider answers as Cosmos Pay Wallet. The screen says so (`ramp.sellConnect*`).
 - **The marketplace is never named in the copy, and test mode is its sandbox** (test USDT on Arbitrum
   Sepolia only). Code and comments may name it.
 
@@ -1657,7 +1667,7 @@ was caught before it shipped.
 ## The wallet signs its own transactions with a memo — never over one
 
 `buildMemo` (`src/lib/stellar.ts`) falls back to `defaultMemo()` (`src/lib/memo.ts`),
-which is `Cosmos Wallet v<version>` derived from `APP_VERSION` — so a transaction says
+which is `Cosmos Pay Wallet v<version>` derived from `APP_VERSION` — so a transaction says
 on chain which client built it and which release.
 
 **It only ever fills an EMPTY field.** A memo the user typed, and a memo a SEP-7 request
@@ -1721,6 +1731,37 @@ Three cases, and the difference matters:
 `src/lib/txGuard.ts` is the worked example: ~80 `guard.*` keys, and
 `tests/unit/txGuard.test.ts` asserts refusals by key, so rewording a refusal breaks
 nothing and deleting a check breaks a test.
+
+**Two names, one role each** (the user's call, 2026-11-24). **Cosmos Pay Wallet** is the app: the
+store listings, window titles, About, the name dapps see (EIP-6963, the web provider,
+WalletConnect's metadata, the passkey's RP name) and the memo the wallet signs with. **Cosmos Pay**
+is the company and the ONE account a person has with it: the onboarding's email step, the
+sign-in, the second factor, recovery and "Connect Cosmos Pay" are all that account (it used to be
+"Cosmos Wallet account" in one place and "Cosmos Pay account" in the next). Neither "CosmosPay" nor
+a bare "Cosmos" appears in copy: the first is a handle, the second reads as the Cosmos Network. The
+phone's settings path says "Cosmos Pay" because that is still the installed app's label
+(`productName`); renaming the desktop and Android app is a change of its own, tested as an update.
+Some identifiers keep the old name ON PURPOSE and never change: `window.cosmosWallet`,
+`isCosmosWallet`, the rdns `lat.cosmospay.wallet`, `SIGN_MESSAGE_DOMAIN` and `ATTESTATION_DOMAIN`
+(a new domain is a different signature), and every storage key.
+
+**Copy never names a provider** (the product owner's rule, as on the developer platform): no
+string a person reads names the services Cosmos Pay is built on (`src/constants/providerNames.ts`);
+a route is "Solana DEX", "Monad DEX", "Cosmos Pay", "USDT0 bridge". Code, comments and identifiers
+keep the real names. The server's asset registry still sends some (USDB's issuer), so
+`withoutProviderNames` (`src/lib/providerNames.ts`) cleans the list where it enters the wallet;
+`tests/unit/providerNames.test.ts` fails on any i18n value or bundled asset that names one.
+
+**Numbers follow the app's language** (the user's call, 2026-11-24): every figure a person reads —
+fiat values, token amounts, percentages, rates, fees, minimums — goes through ONE formatter,
+`src/lib/numberFormat.ts`, built from the chosen language and never the device's locale:
+`store.num` on a screen, a `num` prop for a component without the store, `numberFormat(savedLang())`
+where there is none (`ApprovePopup`, `txGuard`'s rows and refusal messages). Spanish writes
+"1.252,54", English "1,252.54". Each screen keeps its own decimals; "$" and "%" stay as they are.
+`decimal(s)` localizes a decimal string digit for digit, for amounts that must not pass through a
+float. Never `toLocaleString`, `Intl.NumberFormat` or `toFixed` for display. And never the other way
+round: what a machine reads (an input's value, an API body, a transaction, a SEP-7 link, a memo,
+what a copy button copies) stays the plain decimal `lib/amount.ts` reads (`plainDecimal` writes one).
 
 **Not yet done, and known:** ~140 of the 600 i18n keys are still English in the `pt`,
 `de` and `fr` columns. `tests/unit/i18n.test.ts` only checks a key is non-empty in

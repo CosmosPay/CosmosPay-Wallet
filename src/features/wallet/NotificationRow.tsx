@@ -4,11 +4,11 @@ import { ExternalLink } from '@/ui/ExternalLink';
 import { ExchangeIcon, ReceiveIcon, SentIcon, WalletIcon } from '@/ui/Icons';
 
 export function NotificationRow({ item, store }: { item: HistoryOp; store: WalletStore }) {
-  const { t, locale } = store;
+  const { t, locale, num } = store;
   const Icon = item.kind === 'swap' ? ExchangeIcon : item.kind === 'sent' ? SentIcon : item.kind === 'create' ? WalletIcon : ReceiveIcon;
-  const value = Number(item.amount);
-  const amount = item.amount && Number.isFinite(value)
-    ? `${value.toLocaleString(locale, { maximumFractionDigits: 7 })} ${item.code}`.trim()
+  // Up to the ledger's seven decimals, written the way the app's language writes them.
+  const amount = item.amount && Number.isFinite(Number(item.amount))
+    ? `${num.amount(Number(item.amount), 7)} ${item.code}`.trim()
     : '';
 
   let title = t('history.other');

@@ -36,19 +36,22 @@ import {
   solanaMintProgram,
   solanaSend,
   solanaSimulate,
-  solanaTokenAccounts,
+  solanaTokenBalances,
 } from '@/lib/chainRpc';
 import { checkMonadSwapCalls, isEvmAddress, signEip1559, transferCalldata, type EvmCall } from '@/lib/evmTx';
 import {
+  TOKEN_ACCOUNT_SIZE,
   associatedTokenAddress,
   checkSwapEffects,
   isSolanaAddress,
   lookupTableAddresses,
   messageAccounts,
+  ownTokenAccounts,
   parseSolanaTx,
   signSolanaTx,
   solTransferTx,
   splTransferTx,
+  type AccountState,
 } from '@/lib/solanaTx';
 
 /** Why the wallet would not sign. Each maps to an `xswap.refused.*` message. */
@@ -88,10 +91,9 @@ export async function chainBalances(chain: OtherChain, owner: string, net: Chain
   const out: Record<string, bigint> = {};
   const tokens = CHAIN_TOKENS_BY_NET[net][chain];
   if (chain === 'solana') {
-    const [lamports, accounts] = await Promise.all([solanaLamports(owner, net), solanaTokenAccounts(owner, net)]);
-    for (const t of tokens) {
-      out[t.asset] = t.asset === 'native' ? lamports : accounts.filter((a) => a.mint === t.asset).reduce((s, a) => s + a.amount, 0n);
-    }
+    const mints = tokens.filter((t) => t.asset !== 'native').map((t) => t.asset);
+    const [lamports, held] = await Promise.all([solanaLamports(owner, net), solanaTokenBalances(owner, mints, net)]);
+    for (const t of tokens) out[t.asset] = t.asset === 'native' ? lamports : held[t.asset];
     return out;
   }
   if (net === 'testnet') await assertMonadNode(net);
@@ -145,6 +147,13 @@ async function writableAccounts(message: Uint8Array): Promise<Set<string>> {
  * change, and a node takes no more accounts than the transaction names. `sell` / `buy` are `native` or a mint; `amount` and `minimum` are base units — the
  * amount typed and the minimum the confirmed QUOTE showed, not the create response's.
  * Answers the signed wire bytes, base64.
+ *
+ * Which writable accounts are ours is read from the accounts themselves, not from an index
+ * of the owner's accounts (the public node refuses indexed queries): every account the
+ * transaction may write to is fetched, and ours are the wallet, each one under a token
+ * program that names the wallet as its owner (associated or not: `ownTokenAccounts`), and
+ * the bought mint's associated account, which the swap may open. An account that cannot be
+ * read is a refusal, never one left out of the comparison.
  */
 export async function signSolanaSwap(p: {
   wire: string;
@@ -156,9 +165,6 @@ export async function signSolanaSwap(p: {
   minimum: bigint;
 }): Promise<string> {
   const wire = base64.decode(p.wire);
-  const tokens = await solanaTokenAccounts(p.owner);
-  const ours = new Set([p.owner, ...tokens.map((t) => t.address)]);
-  if (p.buy !== 'native') ours.add(associatedTokenAddress(p.owner, p.buy, await solanaMintProgram(p.buy)));
   let writable: Set<string>;
   try {
     writable = await writableAccounts(parseSolanaTx(wire).message);
@@ -166,9 +172,24 @@ export async function signSolanaSwap(p: {
     if (e instanceof ChainSwapRefused) throw e;
     throw new ChainSwapRefused('simulation');
   }
+  // One read decides which accounts are ours and is what the simulation is compared with.
+  // A token account's fixed part is all either needs, and it keeps a pool or market
+  // account the route writes from weighing megabytes here.
+  const [before, bought] = await Promise.all([
+    solanaAccounts([p.owner, ...writable], { head: TOKEN_ACCOUNT_SIZE }),
+    p.buy === 'native' ? null : solanaMintProgram(p.buy).then((program) => associatedTokenAddress(p.owner, p.buy, program)),
+  ]);
+  const ours = ownTokenAccounts(p.owner, before);
+  if (bought) ours.add(bought);
   // The fee payer is always writable; the rest of ours only where the transaction says so.
   const list = [p.owner, ...[...ours].filter((a) => a !== p.owner && writable.has(a))];
-  const [pre, sim] = await Promise.all([solanaAccounts(list), solanaSimulate(wire, list)]);
+  const pre = new Map<string, AccountState>();
+  for (const address of list) {
+    // Every writable account was read above: a gap is a read that failed, not an account that does not exist.
+    if (!before.has(address)) throw new ChainSwapRefused('simulation');
+    pre.set(address, before.get(address) ?? null);
+  }
+  const sim = await solanaSimulate(wire, list);
   if (sim.err) throw new ChainSwapRefused('simulation');
   const refusal = checkSwapEffects(
     {

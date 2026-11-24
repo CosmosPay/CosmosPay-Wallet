@@ -4,8 +4,8 @@ import { GhostButton, PrimaryButton } from '@/ui/Buttons';
 import { Notice } from '@/ui/Notice';
 import { ScreenHeader } from '@/ui/ScreenHeader';
 import { ExternalLink } from '@/ui/ExternalLink';
+import { ArrowUpRightIcon } from '@/ui/Icons';
 import { chainRows } from '@/lib/portfolio';
-import { fmt, trim } from '@/lib/format';
 import {
   CHAIN_EXPLORER_ADDRESS_BY_NET,
   CHAIN_TESTNET_FAUCET,
@@ -52,9 +52,9 @@ export function ChainAsset({ store }: { store: WalletStore }) {
         <AssetLogo code={token.symbol} size={64} />
         <div className="asset-hero-text">
           <p className="asset-price">
-            {row ? trim(row.amount, 6) : holdings ? '0' : '…'} {token.symbol}
+            {row ? store.num.amount(row.amount, 6) : holdings ? '0' : '…'} {token.symbol}
           </p>
-          <p className="asset-change">{row?.value != null ? '≈ $' + fmt(row.value, 2) : '—'}</p>
+          <p className="asset-change">{row?.value != null ? `≈ ${store.num.usd(row.value)}` : '—'}</p>
         </div>
       </section>
       {unreadable && <Notice tone="danger" className="asset-notice">{t('chains.unreachable')}</Notice>}
@@ -94,6 +94,7 @@ export function ChainAsset({ store }: { store: WalletStore }) {
       {address && (
         <ExternalLink href={CHAIN_EXPLORER_ADDRESS_BY_NET[net][chain](address)} className="link-btn asset-explorer">
           {t('asset.explorer')}
+          <ArrowUpRightIcon />
         </ExternalLink>
       )}
     </div>
