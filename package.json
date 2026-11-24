@@ -58,7 +58,7 @@
     "@tauri-apps/plugin-store": "^2.5.0",
     "@walletconnect/core": "2.25.0",
     "@walletconnect/utils": "2.25.0",
-    "astro": "^7.4.13",
+    "astro": "7.4.12",
     "bip39": "^3.1.2",
     "buffer": "^6.0.3",
     "country-flag-icons": "^1.6.20",
@@ -84,6 +84,7 @@
     "browserslist": "^4.28.9",
     "fast-uri": "^3.1.7",
     "yaml": "^2.9.0",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.1",
+    "@astrojs/compiler-rs": "0.5.2"
   }
 }
