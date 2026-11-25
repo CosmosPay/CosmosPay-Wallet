@@ -74,7 +74,6 @@ export function Home({ store }: { store: WalletStore }) {
   const money = num.money(useAnimatedNumber(total));
   const shownPct = useAnimatedNumber(changePct);
   const shownDelta = useAnimatedNumber(deltaUsd);
-  const notActivated = store.account && !store.account.exists;
   // Offered only when both recovery servers answer — see `recoveryReachable`.
   const recoveryUp = useRecoveryReachable(store.network) === true;
 
@@ -205,8 +204,8 @@ export function Home({ store }: { store: WalletStore }) {
           </HomeAction>
         </nav>
 
-        {/* Recovery can only go on a funded account. The card itself decides from the ledger. */}
-        {!notActivated && recoveryUp && <ProtectAccountCard store={store} />}
+        {/* Email recovery of the backup: nothing on the ledger, so any account can have it. */}
+        {recoveryUp && <ProtectAccountCard store={store} />}
         {!store.cosmosPay && !!store.meta?.email && <EnableReceivingCard store={store} />}
       </div>
 

@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { WalletStore } from '@/state/store';
 import { Spinner } from '@/ui/Spinner';
+import { Field } from '@/ui/Field';
 import { useBusy } from '@/hooks/useBusy';
-import { recoveryShortfall } from '@/lib/balances';
-import { isAccessCode, normalizeAccessCode } from '@/lib/validate';
 import { RECOVERY_OFFER_DISMISSED_PREFIX } from '@/constants/recovery';
 import { PrimaryButton } from '@/ui/Buttons';
 import { HomeCard } from '@/features/wallet/HomeCard';
@@ -25,51 +24,41 @@ function rememberDismissed(address: string): void {
 }
 
 /**
- * "Protect your account if you lose this device" — SEP-30 recovery, offered where people
- * actually are instead of four levels deep in Settings.
+ * "Protect your account if you lose this device": the backup's email door
+ * (`lib/backupRecovery.ts`), offered where people actually are instead of in Settings.
  *
- * It can only be turned on once the account EXISTS on the ledger (a signer is an entry on
- * an account, and an unfunded address has none), which is exactly when this card appears:
- * the first time Home shows a funded account with recovery off. Before this, recovery lived
- * only in Settings, almost nobody found it, and "forgot your password?" then listed no
- * account to recover — the one moment it was needed.
+ * It offers the email door, never SEP-30 signers. The door brings back the WHOLE wallet
+ * (the same recovery phrase and the same address on every chain) and puts nothing on the
+ * ledger: no signers, no XLM reserve, no funded account needed. It rests on the same two
+ * servers and the same proof of the inbox, so it asks for no trust SEP-30 does not.
+ * SEP-30 stays in Settings for a wallet without a cloud backup, the one case the door
+ * cannot cover (`RecoverySection`).
  *
- * One tap when the account can pay the two signers' reserve itself: the confirmation that
- * follows names the email, because that is the whole bargain (see `RecoverySection`).
- * When it cannot, the card says how much is missing and the operator sponsors the reserve
- * — that path needs the emailed code the store sends, asked for right here, not on another
- * screen — with a way to cover the shortfall and pay it yourself beside it.
+ * A wallet signed in, restored or given a new password since the door existed already has
+ * it, so this mostly reaches backups made before. Turning it on re-seals the backup, which
+ * takes this device's password, or its passkey where that is how it unlocks.
  *
- * "Not now" is remembered per account, and Settings keeps the same controls for later.
+ * "Not now" is remembered per account, and Settings keeps the same control for later.
  */
 export function ProtectAccountCard({ store }: { store: WalletStore }) {
   const t = store.t;
+  const meta = store.meta;
   const address = store.publicKey ?? '';
-  const email = (store.meta?.email ?? '').trim();
+  const email = (meta?.email ?? '').trim();
   const [dismissed, setDismissed] = useState(() => wasDismissed(address));
-  const [sent, setSent] = useState(false);
-  const [code, setCode] = useState('');
+  const [pwd, setPwd] = useState('');
   const [busy, run] = useBusy();
 
   // A switch to another wallet is another account, with its own answer.
   useEffect(() => {
     setDismissed(wasDismissed(address));
-    setSent(false);
-    setCode('');
+    setPwd('');
   }, [address]);
 
-  const { loadRecovery } = store;
-  useEffect(() => {
-    void loadRecovery();
-  }, [loadRecovery, address]);
+  // No backup means no box for the door to open; a filed door means nothing left to offer.
+  if (dismissed || !email || !meta?.cloudBackup || meta.backupRecoveryEmail) return null;
 
-  const state = store.recovery;
-  // Only a state read from the ledger decides this: a card for an account that is
-  // already protected, or not yet funded, would offer something that cannot happen.
-  if (dismissed || !email || !state || !state.exists || state.enabled) return null;
-
-  const missing = recoveryShortfall(store.account);
-  const affordable = missing === 0;
+  const passkey = store.passkeyUnlock;
   const dismiss = () => {
     rememberDismissed(address);
     setDismissed(true);
@@ -78,47 +67,19 @@ export function ProtectAccountCard({ store }: { store: WalletStore }) {
   return (
     <HomeCard title={t('recoveryCard.title')}>
       <p className="home-card-desc">{t('recoveryCard.desc', { email })}</p>
-
-      {affordable ? (
-        <PrimaryButton disabled={busy} onClick={() => void run(() => store.enableRecovery())}>
-          {busy ? <Spinner /> : t('recoveryCard.cta')}
-        </PrimaryButton>
-      ) : !sent ? (
-        <>
-          <p className="home-card-desc">{t('recovery.needXlm', { amount: store.num.amount(missing, 2) })}</p>
-          <PrimaryButton disabled={busy} onClick={() => void run(async () => setSent(await store.startRecoveryCode()))}>
-            {busy ? <Spinner /> : t('recoveryCard.cta')}
-          </PrimaryButton>
-          {/* The alternative to sponsorship: cover the shortfall and pay it yourself. */}
-          {store.network.friendbot ? (
-            <button type="button" disabled={busy} onClick={() => void run(() => store.topUpTestnet())} className="link-btn home-card-link">
-              {t('recovery.topUpTestnet')}
-            </button>
-          ) : (
-            <button type="button" onClick={() => store.go('receive')} className="link-btn home-card-link">
-              {t('receive.title')}
-            </button>
-          )}
-        </>
-      ) : (
-        <>
-          <p className="home-card-desc">{t('signin.codeDesc', { email })}</p>
-          {/* The same input the sign-in screen uses, down to the one-time-code hint —
-              it is the same six digits from the same kind of email. */}
-          <input
-            value={code}
-            onChange={(e) => setCode(normalizeAccessCode((e.target as HTMLInputElement).value))}
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            aria-label={t('cosmospay.codePlaceholder')}
-            placeholder={t('cosmospay.codePlaceholder')}
-            className="input home-card-code"
-          />
-          <PrimaryButton disabled={busy || !isAccessCode(code)} onClick={() => void run(() => store.enableRecovery({ code }))}>
-            {busy ? <Spinner /> : t('recovery.turnOn')}
-          </PrimaryButton>
-        </>
-      )}
+      {/* A passkey device proves itself with the passkey; anything else with the password,
+          which is also what the re-sealed backup opens with. */}
+      {!passkey && <Field password label={t('pwd.label')} value={pwd} onChange={setPwd} />}
+      <PrimaryButton
+        disabled={busy || (!passkey && !pwd)}
+        onClick={() =>
+          void run(async () => {
+            if (await store.enableBackupRecovery(passkey ? undefined : pwd)) setPwd('');
+          })
+        }
+      >
+        {busy ? <Spinner /> : t('recoveryCard.cta')}
+      </PrimaryButton>
       <button type="button" onClick={dismiss} className="link-btn home-card-link">
         {t('recoveryCard.later')}
       </button>

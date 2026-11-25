@@ -1012,10 +1012,15 @@ Seven rules, each one a way this breaks:
   holds the password every wallet here shares — and `lib/vault.ts` drops it with the last wallet,
   so the next onboarding does not inherit a button for a vault it never sealed.
 
-SEP-30 is offered on Home (`features/wallet/ProtectAccountCard.tsx`) as soon as the ledger shows
-the account funded with recovery off — a passkey-only wallet has no password to fall back on, and
-recovery is what stands in for one. "Not now" is remembered per account; Settings keeps the
-controls.
+**Recovering never needs signers on the account** (the user's call, 2026-11-25: "que no se
+necesiten firmas para recuperar la cuenta"). Home offers the backup's email door
+(`features/wallet/ProtectAccountCard.tsx`) to a backed-up wallet that does not have it yet — a
+passkey-only wallet has no password to fall back on, and the door is what stands in for one. It
+brings back the same phrase and every address, needs no funded account and locks no XLM; turning
+it on re-seals the backup with the password or the passkey. "Not now" is remembered per account.
+SEP-30 is never offered on Home: Settings shows it only to a wallet without a cloud backup (the
+one case the door cannot cover) or one that already has it on, to manage or turn off. The Wallet
+tab's recovery row counts either door as on.
 
 ## Recovery is SEP-30, it is opt-in, and it replaces nothing
 
