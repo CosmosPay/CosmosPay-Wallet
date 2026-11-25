@@ -319,14 +319,16 @@ Stellar lists XLM and its trustlines; every other network — Solana and Monad i
 balance above zero. `AssetToolbar` is a search (name, symbol or network; every word, accents
 aside; `ui/SearchField`, the app's one search box) and a network selector over every network
 with an address in the mode: the held ones first with their value and asset count, then the
-rest saying "no assets" or "balance unavailable" (a failed read is never shown as zero). A
+rest saying "no assets" or "balance unavailable" (a failed read is never shown as zero), A to Z by
+name (`lib/networkOrder.ts`): never the registry's order, which would put Stellar, Solana and Monad
+first whatever is held. A
 network with nothing shows so, with "Receive on …". No chips: thirty-odd networks do not fit a
 row. The search takes all the room the selector leaves; "all networks" wears the Cosmos Pay Wallet
 mark (`ui/NetworkSelect`, shared with "add an asset").
 
 **Send is one structure on every network** (the user: it was "desestructurada"). What (an asset
-card opening every sendable asset of every network the wallet signs on, held first, with a
-search — choosing the asset chooses the network: `SendAssetPicker`), to whom (one field, paste and
+card opening every sendable asset of every network the wallet signs on, held first by value and
+the rest by network name (`byHolding`, as the filter), with a search — choosing the asset chooses the network: `SendAssetPicker`), to whom (one field, paste and
 scan inside; pasting a SEP-7 link fills the draft), how much (one field, the code and "Max"
 inside; worth and available under it), Stellar's memo folded until asked for or set, then the
 button — docked over the keyboard on a phone, right after the form on a PC window. The pieces are
@@ -1392,6 +1394,48 @@ directly. Neither side needs the BlindPay receiver, so both fiat entry screens o
   browser extension's EVM provider answers as Cosmos Pay Wallet. The screen says so (`ramp.sellConnect*`).
 - **The marketplace is never named in the copy, and test mode is its sandbox** (test USDT on Arbitrum
   Sepolia only). Code and comments may name it.
+
+**Charging with a QR in local money is that purchase, paid by someone else** (screen `charge`,
+`features/fiat/Charge.tsx`, from Receive and Home → More; rules `lib/qrCharge.ts`, state
+`state/useQrCharge.ts`). The seller asks for an amount of local money; the API
+(`/v1/onramp/p2p/payment-requests`) answers a page `url` whose QR the wallet draws itself, and whoever
+opens it pays one of the ways the request's `methods` lists: `transfer` (a bank transfer the API
+converts and sends to this wallet's own EVM address; the request reads `processing` in between) or
+`p2p` (a P2P purchase that delivers there directly). Five rules:
+
+- **A request is checked before it is shown** (`chargeRequestProblem`): the currency, amount, network and
+  token sent, this wallet's own address, and exactly `<payments site>/fiat/<id>` as its page. The site
+  is `paymentsUrl()` (`PUBLIC_COSMOS_PAYMENTS_URL`, the server's `PAYMENT_LINK_CHECKOUT_URL`; default
+  `https://payments.cosmospay.lat`), so no other host is ever drawn as the QR.
+- **The ramp's key choice, and the record token kept.** The account's key, else the shared public key;
+  a charge made with the shared key keeps its `publicToken` in storage with it (one charge per wallet and
+  mode, so a reload comes back to the same QR) and sends it as `X-Record-Token` to read or cancel it.
+- **Only the API says paid.** "Payment received" is the API's `paid` and nothing else. This wallet's own
+  balance of the token cannot tell whose money arrived (a payer could send dust), so a rise by 95% of
+  the estimate since the QR was shown, while the charge is open, reads only "money arriving, confirming"
+  (`chargeArrivalByBalance`, `chargeView` → `arriving`), a distinct state that tells the seller to
+  wait. No estimate, no reading: the balance is not even watched (`chargeBalanceWatched`). An expired or
+  cancelled charge never moves from the balance; the API is asked only while the page is in view, and
+  for half an hour after a charge expires or is cancelled (a payment already under way still lands).
+- **`processing` is neither open nor paid** (`chargeStatus`, `chargeCancellable`): the money reached the
+  API and the token is on its way, so the screen drops the QR and the cancel, never reads it as expired,
+  and keeps watching until the API says paid. `methods` and `paidMethod` only change copy
+  (`chargeMethodsKey`, `chargePaidMethodKey`), so they are read leniently (`chargeMethods`: absent is the
+  older server's `["p2p"]`, an unknown way is dropped) and never asserted by the response contract.
+- **The ramp's copy rules**: no provider is ever named; the rails are "bank transfer" and "other payment
+  methods" (the purchase), and the copy never promises a way to pay the charge may not have: before
+  there is a charge the payer "pays with a local payment method", and a charge on screen says the ways
+  its own `methods` list.
+
+Bank transfers land in **the seller's own receiving account** (`/v1/onramp/transfer/account`; rules
+`lib/transferAccount.ts`, calls `state/useTransferAccount.ts`, card `features/fiat/TransferAccountCard.tsx`
+under the charge form). Only an account key has one: the card activates it (holder details, CUIT/CUIL
+check digit, a company gives its CUIT), opens the hosted verification in the system browser, and shows
+the alias and CVU once approved. The shared public key only probes the route: `403 account_required`
+shows "Sign in to accept bank transfers", anything else shows nothing — a deployment without the rail
+must not advertise it. An account's read that fails without saying why (5xx, a timeout) shows nothing
+either, unless that account was read in this session (`transferAccountReadError`'s `readBefore`):
+only then does the card stay, with a retry.
 
 ## Validation lives in `src/lib/`, never in a component
 

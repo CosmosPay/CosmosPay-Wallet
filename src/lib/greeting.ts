@@ -46,9 +46,27 @@ export function welcomeGreeting(t: TFn, now: Date = new Date(), random: () => nu
   return pool[Math.floor(random() * pool.length)];
 }
 
+/**
+ * The keys a returning person may be greeted with at this hour: the time-of-day lines and the
+ * "welcome back" ones. Each has a `.named` twin that carries the name in a `{name}` slot, so a
+ * line that ends in "!" or "?" puts the name before the mark ("Welcome back, Alex!") in every
+ * language, instead of after it ("Welcome back!, Alex").
+ */
+export function returnGreetingKeys(hour: number, gender: Gender): string[] {
+  const key = dayPart(hour);
+  return [key, `${key}.2`, `${key}.3`, `greet.back.1.${gender}`, 'greet.back.2', 'greet.back.3', `greet.back.4.${gender}`];
+}
+
 /** birthdate is ISO "YYYY-MM-DD" or ''. `gender` picks the right gendered copy
  *  (bienvenido/bienvenida/bienvenidx); missing (legacy wallets) falls back to 'x'. */
-export function getGreeting(name: string, birthdate: string, t: TFn, gender?: Gender): Greeting {
+export function getGreeting(
+  name: string,
+  birthdate: string,
+  t: TFn,
+  gender?: Gender,
+  now: Date = new Date(),
+  random: () => number = Math.random,
+): Greeting {
   const who = name?.trim() || 'astronauta';
   let isBirthday = false;
   const age = ageFromBirthdate(birthdate);
@@ -56,19 +74,20 @@ export function getGreeting(name: string, birthdate: string, t: TFn, gender?: Ge
   if (birthdate) {
     const d = new Date(birthdate + 'T00:00:00');
     if (!Number.isNaN(d.getTime())) {
-      const now = new Date();
       isBirthday = d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
     }
   }
 
-  const key = dayPart(new Date().getHours());
   // Random salutation, always coherent with the hour: the time-of-day variants plus
   // the generic "welcome back" lines. Callers memoize per mount so it doesn't
   // flicker between renders (a new one appears on each app open).
   const g: Gender = gender === 'm' || gender === 'f' ? gender : 'x';
-  const pool = [t(key), t(`${key}.2`), t(`${key}.3`), t(`greet.back.1.${g}`), t('greet.back.2'), t('greet.back.3'), t(`greet.back.4.${g}`)];
-  const picked = pool[Math.floor(Math.random() * pool.length)];
-  const line = isBirthday ? t('greet.birthday', { name: who }) : `${picked}, ${who}`;
+  const keys = returnGreetingKeys(now.getHours(), g);
+  const pickedKey = keys[Math.floor(random() * keys.length)];
+  const picked = t(pickedKey);
+  // The line with the name is its own translation (`.named`, a `{name}` slot), never the
+  // salutation with ", name" glued on: that put the name after a "!" or a "?".
+  const line = isBirthday ? t('greet.birthday', { name: who }) : t(`${pickedKey}.named`, { name: who });
   // Salutation without the name (the header shows the name separately, big).
   // For birthdays, strip ", <name>" out of the localized line — works in all 5 langs.
   const salutation = isBirthday ? t('greet.birthday', { name: who }).replace(`, ${who}`, '') : picked;

@@ -13,6 +13,7 @@
 import type { ChainNet } from '@/constants/chains';
 import { NETWORK_GROUPS, type NetworkId } from '@/constants/networks';
 import {
+  RAMP_DEFAULT_CURRENCY,
   RAMP_FIAT_DECIMALS,
   RAMP_FIAT_MAX_DIGITS,
   RAMP_TOKEN_MAX_DIGITS,
@@ -136,6 +137,34 @@ export function rampNetworks(
   });
 }
 
+/* -------------------------------- defaults -------------------------------- */
+
+/** The currency a form starts on: pesos when the market trades them, else its first; '' with none. */
+export function rampDefaultCurrency(ids: readonly string[]): string {
+  return ids.includes(RAMP_DEFAULT_CURRENCY) ? RAMP_DEFAULT_CURRENCY : ids[0] ?? '';
+}
+
+/**
+ * Where a form's token starts, given the networks it may use (`rampNetworks`): the market's own
+ * default token when its network is one of them, else the first of them with no token in mind
+ * yet (`rampTokenPick` chooses one from that network's list). Null with no network at all.
+ */
+export function rampTokenStart(market: RampMarket, chainIds: readonly number[]): { chainId: number; token: RampToken | null } | null {
+  const d = market.defaultToken;
+  if (chainIds.includes(d.chainId)) return { chainId: d.chainId, token: d };
+  return chainIds.length ? { chainId: chainIds[0], token: null } : null;
+}
+
+/**
+ * The token a start lands on, from the first page of its network's list (read from the list so
+ * it carries its price): the start's own token when listed, else the first USD stablecoin, else
+ * the first token. A start's token that is missing from the page is kept as it came.
+ */
+export function rampTokenPick(page: readonly RampToken[], start: RampToken | null): RampToken | null {
+  if (start) return page.find((x) => x.address.toLowerCase() === start.address.toLowerCase()) ?? start;
+  return page.find((x) => RAMP_USD_STABLES.includes(x.symbol)) ?? page[0] ?? null;
+}
+
 /* -------------------------------- amounts -------------------------------- */
 
 /** A token's USD price, or null when the market lists none and it is not a USD stablecoin. */
@@ -171,6 +200,21 @@ export type RampAmountProblem = 'empty' | 'format' | 'decimals' | 'below-min';
 const fiatAmountRe = new RegExp(`^(0|[1-9]\\d{0,${RAMP_FIAT_MAX_DIGITS - 1}})(\\.\\d{1,${RAMP_FIAT_DECIMALS}})?$`);
 const tokenAmountRe = new RegExp(`^(0|[1-9]\\d{0,${RAMP_TOKEN_MAX_DIGITS - 1}})(\\.\\d+)?$`);
 
+/**
+ * Why an amount of local money cannot be asked for, or null when it can: at most two decimals and
+ * at least the currency's purchase minimum — what a purchase puts in, and what a QR charge asks
+ * the payer for (`src/lib/qrCharge.ts`), since the payer's side of a charge is a purchase.
+ */
+export function fiatAmountProblem(amount: string, currency: RampCurrency): RampAmountProblem | null {
+  const a = amount.trim();
+  if (!a || Number(a) === 0) return 'empty';
+  if (!fiatAmountRe.test(a)) return 'format';
+  if (!(Number(a) > 0)) return 'empty';
+  const min = Number(currency.minAmount);
+  // A hair under the minimum from float maths is not under it.
+  return Number.isFinite(min) && min >= 0 && Number(a) < min - 1e-12 ? 'below-min' : null;
+}
+
 /** Why `amount` cannot be ordered, or null when it can. */
 export function rampAmountProblem(
   side: RampSide,
@@ -178,14 +222,11 @@ export function rampAmountProblem(
   currency: RampCurrency,
   token: RampToken,
 ): RampAmountProblem | null {
+  if (side === 'buy') return fiatAmountProblem(amount, currency);
   const a = amount.trim();
   if (!a || Number(a) === 0) return 'empty';
-  if (side === 'buy') {
-    if (!fiatAmountRe.test(a)) return 'format';
-  } else {
-    if (!tokenAmountRe.test(a)) return 'format';
-    if ((a.split('.')[1] ?? '').length > token.decimals) return 'decimals';
-  }
+  if (!tokenAmountRe.test(a)) return 'format';
+  if ((a.split('.')[1] ?? '').length > token.decimals) return 'decimals';
   if (!(Number(a) > 0)) return 'empty';
   const min = rampMinIn(side, currency, token);
   // A hair under the minimum from float division is not under it.

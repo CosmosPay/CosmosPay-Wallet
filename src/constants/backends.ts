@@ -27,6 +27,14 @@ export const DEFAULT_GATEWAY_URL = 'https://api.cosmospay.lat';
 export const DEFAULT_GATEWAY_ENTRY = '/cosmos-api';
 
 /**
+ * The hosted payments site: the community server's `PAYMENT_LINK_CHECKOUT_URL`, under which it
+ * puts every payer page it answers, a QR charge's `<origin>/fiat/<id>` among them. The wallet
+ * never calls it; it pins the page a charge's QR opens to it (`chargeUrlOk` in
+ * `src/lib/qrCharge.ts`), so a request cannot point the payer anywhere else.
+ */
+export const DEFAULT_PAYMENTS_URL = 'https://payments.cosmospay.lat';
+
+/**
  * The two SEP-30 recovery servers (`src/lib/recovery.ts`).
  *
  * TWO deployments, deliberately separate: each holds one of the two signers an account is

@@ -33,7 +33,7 @@ test('off Stellar only a balance above zero is listed; Stellar keeps its trustli
   );
 });
 
-test('the filter: held networks first by value, then the rest in registry order, each saying what it knows', () => {
+test('the filter: held networks first by value, then the rest by name, each saying what it knows', () => {
   const rows = listedRows([
     row('XLM', 10, 1, { isNative: true }),
     row('MON', 2, 0.04, { chain: 'monad', asset: 'native' }),
@@ -47,9 +47,10 @@ test('the filter: held networks first by value, then the rest in registry order,
       ['base', 'held', 2],
       ['stellar', 'held', 1],
       ['monad', 'held', 1],
-      ['solana', 'empty', 0],
-      ['eth', 'empty', 0],
+      // Not the registry's order (Solana before Ethereum): A to Z, Bitcoin first.
       ['btc', 'unknown', 0],
+      ['eth', 'empty', 0],
+      ['solana', 'empty', 0],
     ],
   );
   assert.equal(sums[0].value, 1520);
