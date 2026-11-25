@@ -16,6 +16,8 @@ import { SendAssetPicker, type SendOption } from '@/features/money/SendAssetPick
 import { AmountInput, AmountMeta, FieldNote, RecipientInput, SendSection, useFieldId } from '@/features/money/SendParts';
 import { CHAIN_TOKENS_BY_NET } from '@/constants/chains';
 import { networkDefOn, sendsOn } from '@/lib/testnets';
+import { byHolding } from '@/lib/networkOrder';
+import { chainRows, computePortfolio, intentsPriceOf, networkRows, rowKey } from '@/lib/portfolio';
 import { NETWORKS, NETWORK_IDS, type NetworkId } from '@/constants/networks';
 import '@/styles/features/money/send.css';
 
@@ -24,6 +26,11 @@ const stellarKey = (a: { code: string; issuer: string | null }) => `stellar|${a.
 const splitKey = (key: string): { network: NetworkId; asset: string } => {
   const i = key.indexOf('|');
   return { network: key.slice(0, i) as NetworkId, asset: key.slice(i + 1) };
+};
+/** A pick's portfolio row (`rowKey`): Stellar's `CODE:ISSUER`, any other network's `network:asset`. */
+const rowKeyOf = (key: string): string => {
+  const { network, asset } = splitKey(key);
+  return network === 'stellar' ? asset : `${network}:${asset}`;
 };
 
 /* ------------------------------- SEND ------------------------------- */
@@ -49,7 +56,19 @@ export function Send({ store }: { store: WalletStore }) {
     void ensureChainAddresses();
   }, [ensureChainAddresses]);
 
-  // Every asset that can be sent, on every network offered, with what is held of it.
+  // What each holding is worth, priced the way Home prices it (`lib/portfolio.ts`): it orders
+  // the held assets, highest first.
+  const values = useMemo(() => {
+    const extra = [
+      ...chainRows(store.chainHoldings, chainNet, store.prices),
+      ...networkRows(store.networkHoldings, store.prices, { priceOf: intentsPriceOf(store.intentsAssets) }),
+    ];
+    const { rows } = computePortfolio(store.account, store.prices, store.network.id, extra);
+    return new Map(rows.map((r) => [rowKey(r), r.value]));
+  }, [store.account, store.prices, store.network.id, store.chainHoldings, store.networkHoldings, store.intentsAssets, chainNet]);
+
+  // Every asset that can be sent, on every network offered, with what is held of it: the held
+  // ones by value, then the rest by network name (`byHolding`), never the registry's order.
   const options = useMemo((): SendOption[] => {
     const out: SendOption[] = [];
     for (const net of offered) {
@@ -57,7 +76,8 @@ export function Send({ store }: { store: WalletStore }) {
       if (net === 'stellar') {
         for (const a of sendableAssets(store.account)) {
           const n = parseFloat(a.balance) || 0;
-          out.push({ key: stellarKey(a), network: net, networkName, code: a.code, balance: store.num.amount(n, 6), held: n > 0 });
+          const key = stellarKey(a);
+          out.push({ key, network: net, networkName, code: a.code, balance: store.num.amount(n, 6), held: n > 0, value: values.get(rowKeyOf(key)) ?? null });
         }
         continue;
       }
@@ -68,11 +88,20 @@ export function Send({ store }: { store: WalletStore }) {
       for (const tk of tokens) {
         const units = held ? held[tk.asset] ?? 0n : null;
         const n = units === null ? null : parseFloat(fromMinorUnits(units, tk.decimals) ?? '0') || 0;
-        out.push({ key: `${net}|${tk.asset}`, network: net, networkName, code: tk.symbol, balance: n === null ? null : store.num.amount(n, 6), held: (n ?? 0) > 0 });
+        const key = `${net}|${tk.asset}`;
+        out.push({
+          key,
+          network: net,
+          networkName,
+          code: tk.symbol,
+          balance: n === null ? null : store.num.amount(n, 6),
+          held: (n ?? 0) > 0,
+          value: values.get(rowKeyOf(key)) ?? null,
+        });
       }
     }
-    return out;
-  }, [offered, store.account, store.chainHoldings, store.networkHoldings, store.networkName, store.num, chainNet]);
+    return byHolding(out);
+  }, [offered, store.account, store.chainHoldings, store.networkHoldings, store.networkName, store.num, chainNet, values]);
 
   const [pick, setPick] = useState(() =>
     store.screen === 'chain-send' ? `${store.chainAsset.chain}|${store.chainAsset.asset}` : stellarKey(store.send.asset),

@@ -28,29 +28,131 @@ Wallet no custodial para más de 30 redes: envía, recibe e intercambia cripto y
 
 ## Detailed description
 
+No network names, token names or technical standards in the public descriptions (this one, the
+summary and their translations). The Chrome Web Store rejected 1.23.1 for keyword spam over a
+list of ten network names in this field (violation "Yellow Argon", 2026-11-24). Say "more than
+30 networks" instead. The permission justifications below are read only by the reviewers and
+may stay technical.
+
 ```
-Cosmos Pay Wallet is a non-custodial wallet for more than 30 networks: Ethereum, Base, Arbitrum, BNB Chain, Polygon, Bitcoin, Tron, TON, Sui, Stellar and many more. Your keys are generated and encrypted on your device, and every transaction is signed there.
+Cosmos Pay Wallet is a non-custodial crypto wallet that works on more than 30 networks. Your keys are generated and encrypted on your device, and every transaction is signed there.
 
 FEATURES
-• One recovery phrase, an address on every network. Create a wallet with a 12-word phrase, or import one from another wallet (phrase or secret key).
-• Send and receive on every network the wallet holds, with a scannable QR for each address.
-• Swap between networks and tokens with automatic quotes and slippage control.
+• One recovery phrase gives you an address on every supported network. Create a new wallet with a 12-word phrase, or import the one you already have.
+• Send and receive crypto and stablecoins, with a QR code for each address.
+• Swap between tokens and networks with live quotes and slippage control.
 • Buy and sell crypto with local money.
-• Activity, balances by network and asset, and favorites pinned to the top.
-• Unlock with a passkey instead of typing a password, on devices that support it.
+• See your balances by network and asset and your activity, and pin your favorites to the top.
+• Unlock with a passkey instead of typing your password, on devices that support it.
 • Move your wallet to another device with a QR code and a one-time code.
-• Several wallets under one password, 5 languages (EN/ES/PT/DE/FR), light and dark themes.
-• Use it as a toolbar popup or in the side panel; your choice is remembered.
-• Connect to dapps: Stellar dapps through window.cosmosWallet (address, transaction and message signatures, SEP-7 payments), EVM dapps through a standard EIP-1193 / EIP-6963 provider, and any site through WalletConnect. Every request opens an approval window where YOU review and confirm; nothing is signed without your password or passkey.
-• Type "pay" in the address bar followed by a web+stellar: link to pay directly.
+• Keep several wallets under one password. Available in 5 languages, with light and dark themes.
+• Use it as a toolbar popup or in the side panel.
+• Connect to websites that support browser wallets, or to any site through WalletConnect. Every request opens an approval window where you review and confirm it; nothing is signed without your password or passkey.
 
 SECURITY
-Your recovery phrase and keys are sealed with AES-256-GCM under a key derived from your password (PBKDF2-SHA256, 600,000 iterations). Unlocking decrypts them in memory only, and the wallet locks itself after the idle time you choose. Transactions are decoded and shown to you before anything is signed. The optional cloud backup is sealed on your device before it is uploaded, and only your own password or passkey opens it.
+Your recovery phrase and keys are encrypted with AES-256-GCM under a key derived from your password. They are decrypted only in memory while the wallet is unlocked, and the wallet locks itself after the idle time you choose. Every transaction is shown to you before it is signed. The optional cloud backup is encrypted on your device before it is uploaded, and only your own password or passkey can open it.
 
-NETWORKS
-Main networks and their test networks, switched with one tap.
+Test networks are one tap away for developers.
 
 Always keep your recovery phrase safe and offline.
+```
+
+Every language the wallet speaks gets the same text in the listing (Store listing → language).
+
+**Español (descripción):**
+```
+Cosmos Pay Wallet es una wallet cripto no custodial que funciona en más de 30 redes. Tus claves se generan y se cifran en tu dispositivo, y cada transacción se firma ahí.
+
+FUNCIONES
+• Una sola frase de recuperación te da una dirección en cada red compatible. Crea una wallet nueva con una frase de 12 palabras o importa la que ya tienes.
+• Envía y recibe cripto y stablecoins, con un código QR para cada dirección.
+• Intercambia entre tokens y redes con cotizaciones en vivo y control de slippage.
+• Compra y vende cripto con moneda local.
+• Mira tus saldos por red y por activo y tu actividad, y fija tus favoritos arriba.
+• Desbloquea con una passkey en lugar de escribir tu contraseña, en los dispositivos que lo permiten.
+• Pasa tu wallet a otro dispositivo con un código QR y un código de un solo uso.
+• Varias wallets con una sola contraseña. Disponible en 5 idiomas, con tema claro y oscuro.
+• Úsala como ventana de la barra de herramientas o en el panel lateral.
+• Conéctate a los sitios que aceptan wallets de navegador, o a cualquier sitio con WalletConnect. Cada solicitud abre una ventana de aprobación donde la revisas y la confirmas; nada se firma sin tu contraseña o tu passkey.
+
+SEGURIDAD
+Tu frase de recuperación y tus claves se cifran con AES-256-GCM con una clave derivada de tu contraseña. Solo se descifran en memoria mientras la wallet está desbloqueada, y la wallet se bloquea sola después del tiempo de inactividad que elijas. Cada transacción se te muestra antes de firmarla. La copia de seguridad opcional en la nube se cifra en tu dispositivo antes de subirse, y solo tu contraseña o tu passkey la abren.
+
+Las redes de prueba están a un toque para desarrolladores.
+
+Guarda siempre tu frase de recuperación en un lugar seguro y sin conexión.
+```
+
+**Português (Brasil):**
+```
+A Cosmos Pay Wallet é uma carteira cripto não custodial que funciona em mais de 30 redes. Suas chaves são geradas e cifradas no seu dispositivo, e cada transação é assinada nele.
+
+RECURSOS
+• Uma única frase de recuperação dá a você um endereço em cada rede compatível. Crie uma carteira nova com uma frase de 12 palavras ou importe a que você já tem.
+• Envie e receba cripto e stablecoins, com um código QR para cada endereço.
+• Troque entre tokens e redes com cotações em tempo real e controle do deslize máximo.
+• Compre e venda cripto com moeda local.
+• Veja seus saldos por rede e por ativo e sua atividade, e fixe seus favoritos no topo.
+• Desbloqueie com uma passkey em vez de digitar sua senha, nos dispositivos compatíveis.
+• Leve sua carteira para outro dispositivo com um código QR e um código de uso único.
+• Várias carteiras com uma única senha. Disponível em 5 idiomas, com tema claro e escuro.
+• Use como janela da barra de ferramentas ou no painel lateral.
+• Conecte-se a sites que aceitam carteiras de navegador, ou a qualquer site pelo WalletConnect. Cada solicitação abre uma janela de aprovação onde você a revisa e confirma; nada é assinado sem sua senha ou sua passkey.
+
+SEGURANÇA
+Sua frase de recuperação e suas chaves são cifradas com AES-256-GCM com uma chave derivada da sua senha. Elas só são decifradas na memória enquanto a carteira está desbloqueada, e a carteira se bloqueia sozinha após o tempo de inatividade que você escolher. Cada transação é mostrada a você antes de ser assinada. O backup opcional na nuvem é cifrado no seu dispositivo antes de ser enviado, e só a sua senha ou a sua passkey podem abri-lo.
+
+As redes de teste estão a um clique para desenvolvedores.
+
+Guarde sempre sua frase de recuperação em um lugar seguro e offline.
+```
+
+**Deutsch:**
+```
+Cosmos Pay Wallet ist eine nicht-verwahrende Krypto-Wallet für mehr als 30 Netzwerke. Ihre Schlüssel werden auf Ihrem Gerät erzeugt und verschlüsselt, und jede Transaktion wird dort signiert.
+
+FUNKTIONEN
+• Eine einzige Wiederherstellungsphrase gibt Ihnen eine Adresse in jedem unterstützten Netzwerk. Erstellen Sie eine neue Wallet mit einer Phrase aus 12 Wörtern oder importieren Sie Ihre bestehende.
+• Senden und empfangen Sie Krypto und Stablecoins, mit einem QR-Code für jede Adresse.
+• Tauschen Sie zwischen Token und Netzwerken mit Live-Kursen und einstellbarem maximalem Slippage.
+• Kaufen und verkaufen Sie Krypto mit lokaler Währung.
+• Sehen Sie Ihre Guthaben nach Netzwerk und Asset sowie Ihre Aktivität, und heften Sie Ihre Favoriten oben an.
+• Entsperren Sie mit einem Passkey statt mit Ihrem Passwort, auf Geräten, die das unterstützen.
+• Übertragen Sie Ihre Wallet mit einem QR-Code und einem Einmalcode auf ein anderes Gerät.
+• Mehrere Wallets unter einem Passwort. Verfügbar in 5 Sprachen, mit hellem und dunklem Design.
+• Nutzen Sie sie als Pop-up in der Symbolleiste oder in der Seitenleiste.
+• Verbinden Sie sich mit Websites, die Browser-Wallets unterstützen, oder über WalletConnect mit jeder Website. Jede Anfrage öffnet ein Freigabefenster, in dem Sie sie prüfen und bestätigen; ohne Ihr Passwort oder Ihren Passkey wird nichts signiert.
+
+SICHERHEIT
+Ihre Wiederherstellungsphrase und Ihre Schlüssel werden mit AES-256-GCM verschlüsselt, unter einem Schlüssel, der aus Ihrem Passwort abgeleitet wird. Entschlüsselt werden sie nur im Arbeitsspeicher, solange die Wallet entsperrt ist, und die Wallet sperrt sich nach der von Ihnen gewählten Inaktivitätszeit selbst. Jede Transaktion wird Ihnen angezeigt, bevor sie signiert wird. Das optionale Cloud-Backup wird auf Ihrem Gerät verschlüsselt, bevor es hochgeladen wird, und nur Ihr eigenes Passwort oder Ihr Passkey kann es öffnen.
+
+Testnetzwerke sind für Entwickler nur einen Klick entfernt.
+
+Bewahren Sie Ihre Wiederherstellungsphrase immer sicher und offline auf.
+```
+
+**Français:**
+```
+Cosmos Pay Wallet est un portefeuille crypto non dépositaire qui fonctionne sur plus de 30 réseaux. Vos clés sont générées et chiffrées sur votre appareil, et chaque transaction y est signée.
+
+FONCTIONNALITÉS
+• Une seule phrase de récupération vous donne une adresse sur chaque réseau pris en charge. Créez un nouveau portefeuille avec une phrase de 12 mots, ou importez celle que vous avez déjà.
+• Envoyez et recevez des cryptos et des stablecoins, avec un code QR pour chaque adresse.
+• Échangez entre jetons et réseaux avec des cotations en direct et un glissement maximal réglable.
+• Achetez et vendez des cryptos en monnaie locale.
+• Consultez vos soldes par réseau et par actif ainsi que votre activité, et épinglez vos favoris en haut.
+• Déverrouillez avec une passkey au lieu de saisir votre mot de passe, sur les appareils compatibles.
+• Transférez votre portefeuille vers un autre appareil avec un code QR et un code à usage unique.
+• Plusieurs portefeuilles sous un seul mot de passe. Disponible en 5 langues, avec thèmes clair et sombre.
+• Utilisez-le en fenêtre depuis la barre d'outils ou dans le panneau latéral.
+• Connectez-vous aux sites compatibles avec les portefeuilles de navigateur, ou à n'importe quel site via WalletConnect. Chaque demande ouvre une fenêtre d'approbation où vous la vérifiez et la confirmez ; rien n'est signé sans votre mot de passe ou votre passkey.
+
+SÉCURITÉ
+Votre phrase de récupération et vos clés sont chiffrées avec AES-256-GCM sous une clé dérivée de votre mot de passe. Elles ne sont déchiffrées qu'en mémoire tant que le portefeuille est déverrouillé, et le portefeuille se verrouille tout seul après le délai d'inactivité que vous choisissez. Chaque transaction vous est présentée avant d'être signée. La sauvegarde facultative dans le cloud est chiffrée sur votre appareil avant d'être envoyée, et seul votre mot de passe ou votre passkey peut l'ouvrir.
+
+Les réseaux de test sont à un clic pour les développeurs.
+
+Conservez toujours votre phrase de récupération en lieu sûr et hors ligne.
 ```
 
 ## Category
