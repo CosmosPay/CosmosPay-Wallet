@@ -1399,7 +1399,9 @@ directly. Neither side needs the BlindPay receiver, so both fiat entry screens o
 `features/fiat/Charge.tsx`, from Receive and Home → More; rules `lib/qrCharge.ts`, state
 `state/useQrCharge.ts`). The seller asks for an amount of local money; the API
 (`/v1/onramp/p2p/payment-requests`) answers a page `url` whose QR the wallet draws itself, and whoever
-opens it pays through a P2P purchase that delivers to this wallet's own EVM address. Four rules:
+opens it pays one of the ways the request's `methods` lists: `transfer` (a bank transfer the API
+converts and sends to this wallet's own EVM address; the request reads `processing` in between) or
+`p2p` (a P2P purchase that delivers there directly). Five rules:
 
 - **A request is checked before it is shown** (`chargeRequestProblem`): the currency, amount, network and
   token sent, this wallet's own address, and exactly `<payments site>/fiat/<id>` as its page. The site
@@ -1415,9 +1417,25 @@ opens it pays through a P2P purchase that delivers to this wallet's own EVM addr
   wait. No estimate, no reading: the balance is not even watched (`chargeBalanceWatched`). An expired or
   cancelled charge never moves from the balance; the API is asked only while the page is in view, and
   for half an hour after a charge expires or is cancelled (a payment already under way still lands).
-  `processing` (the payment received, the token on its way) never expires and cannot be cancelled.
-- **The ramp's copy rules**: the marketplace is never named, and the copy never promises a way to pay
-  the charge may not have: before there is a charge the payer "pays with a local payment method".
+- **`processing` is neither open nor paid** (`chargeStatus`, `chargeCancellable`): the money reached the
+  API and the token is on its way, so the screen drops the QR and the cancel, never reads it as expired,
+  and keeps watching until the API says paid. `methods` and `paidMethod` only change copy
+  (`chargeMethodsKey`, `chargePaidMethodKey`), so they are read leniently (`chargeMethods`: absent is the
+  older server's `["p2p"]`, an unknown way is dropped) and never asserted by the response contract.
+- **The ramp's copy rules**: no provider is ever named; the rails are "bank transfer" and "other payment
+  methods" (the purchase), and the copy never promises a way to pay the charge may not have: before
+  there is a charge the payer "pays with a local payment method", and a charge on screen says the ways
+  its own `methods` list.
+
+Bank transfers land in **the seller's own receiving account** (`/v1/onramp/transfer/account`; rules
+`lib/transferAccount.ts`, calls `state/useTransferAccount.ts`, card `features/fiat/TransferAccountCard.tsx`
+under the charge form). Only an account key has one: the card activates it (holder details, CUIT/CUIL
+check digit, a company gives its CUIT), opens the hosted verification in the system browser, and shows
+the alias and CVU once approved. The shared public key only probes the route: `403 account_required`
+shows "Sign in to accept bank transfers", anything else shows nothing — a deployment without the rail
+must not advertise it. An account's read that fails without saying why (5xx, a timeout) shows nothing
+either, unless that account was read in this session (`transferAccountReadError`'s `readBefore`):
+only then does the card stay, with a retry.
 
 ## Validation lives in `src/lib/`, never in a component
 

@@ -163,7 +163,7 @@ export function useQrCharge({ walletId, chainNet, accountKey, sharedKey, ownAddr
 
   /**
    * Stop the charge from being paid. One that is no longer open — here (`chargeCancellable`: a
-   * payment being credited, paid, expired) or at the API (409) — is read again instead, so the
+   * transfer being credited, paid, expired) or at the API (409) — is read again instead, so the
    * screen shows what it is. Throws for the screen to say.
    */
   const cancelQrCharge = useCallback(async (): Promise<void> => {

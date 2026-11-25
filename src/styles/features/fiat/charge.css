@@ -2,10 +2,11 @@
    src/features/fiat/Charge.tsx — charge with QR. The form is drawn like the ramp's purchase:
    the panels, the asset buttons and the error line are styles/ui/swap-widget.css; only the
    screen's own blocks are here. Then the QR on the canvas (no box), the amount, the estimate,
-   the countdown and the actions; on a PC window the QR stands beside them. Prefix: .charge-
+   how the customer can pay, the countdown and the actions; on a PC window the QR stands beside
+   them. Then processing (a transfer being credited), paid, expired or cancelled. Prefix: .charge-
    ===================================================================== */
 
-.charge > :is(.screen-header, form, .charge-state, .charge-body, .charge-result) {
+.charge > :is(.screen-header, form, .charge-state, .charge-body, .charge-result, .transfer-card, .transfer-signin) {
   width: 100%;
   max-width: 560px;
   margin-inline: auto;
@@ -131,6 +132,14 @@
   font-size: 15px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* How the customer can pay (the request's `methods`): a quiet line under the figures. */
+.charge-methods {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 .charge-expiry {

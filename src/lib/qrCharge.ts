@@ -2,8 +2,10 @@
  * Charging with a QR in local money: the seller's side of `/v1/onramp/p2p/payment-requests` (calls
  * in `src/lib/cosmospay.ts`, state in `src/state/useQrCharge.ts`, screen
  * `src/features/fiat/Charge.tsx`). The seller asks for an amount of local money; whoever scans the
- * QR opens the hosted page, pays with a local method through the same P2P purchase the ramp opens,
- * and the token is delivered straight to this wallet's own EVM account. Cosmos Pay never holds it.
+ * QR opens the hosted page and pays one of the ways the request lists (`methods`): a bank transfer
+ * to the deposit account the page shows, which the API converts and sends on (the request reads
+ * `processing` meanwhile), or the same P2P purchase the ramp opens, which delivers straight to
+ * this wallet's own EVM account. Either way the token lands there.
  *
  * Everything here is pure, so `tests/unit/qrCharge.test.ts` pins it: what a charge may ask for, the
  * check that the request the API answered is the one asked for and pays this wallet, how a charge
@@ -15,8 +17,11 @@ import type { ChainNet } from '@/constants/chains';
 import {
   CHARGE_DESCRIPTION_MAX,
   CHARGE_LATE_WATCH_MS,
+  CHARGE_LEGACY_METHODS,
+  CHARGE_METHODS,
   CHARGE_PAID_SHARE_BPS,
   CHARGE_STORAGE_PREFIX,
+  type ChargeMethod,
   type ChargeStatus,
 } from '@/constants/qrCharge';
 import { fromMinorUnits, toMinorUnitsBig } from '@/lib/amount';
@@ -63,8 +68,64 @@ export interface PaymentRequest {
   paidAt: string | null;
   /** What was delivered, once the API knows the charge was paid. */
   paidAmount: string | null;
+  /**
+   * How the payer can pay, in the API's order of preference — as it arrived, unchecked: read it
+   * through `chargeMethods` (a server that predates it leaves it out).
+   */
+  methods?: unknown;
+  /** How it was paid once `paid`, as it arrived, unchecked: read it through `chargePaidMethod`. */
+  paidMethod?: unknown;
   /** Only to the shared public key: reading or cancelling the request again needs it. */
   publicToken?: string;
+}
+
+/** A request as the wallet keeps it: without `publicToken` (kept apart), the ways to pay read. */
+export interface ChargeRequest extends Omit<PaymentRequest, 'publicToken' | 'methods' | 'paidMethod'> {
+  methods: ChargeMethod[];
+  paidMethod: ChargeMethod | null;
+}
+
+/** The fields that say which charge a request is: its id, its order and who it pays. */
+type ChargeIdentity = Pick<PaymentRequest, 'id' | 'currency' | 'amount' | 'chainId' | 'tokenAddress' | 'tokenDecimals' | 'address'>;
+
+/* ------------------------------ ways to pay ------------------------------ */
+
+const isMethod = (v: unknown): v is ChargeMethod => typeof v === 'string' && (CHARGE_METHODS as readonly string[]).includes(v);
+
+/**
+ * The ways the payer can pay, as the API listed them, in its order. A server that predates the
+ * field (absent or null) offers only the purchase; a way this release does not know is left
+ * out, and so is a repeat. Anything that is not a list says nothing: an empty list.
+ */
+export function chargeMethods(raw: unknown): ChargeMethod[] {
+  if (raw === undefined || raw === null) return [...CHARGE_LEGACY_METHODS];
+  if (!Array.isArray(raw)) return [];
+  const out: ChargeMethod[] = [];
+  for (const m of raw) if (isMethod(m) && !out.includes(m)) out.push(m);
+  return out;
+}
+
+/** How a request was paid, when the API says so in words this release knows; null otherwise. */
+export function chargePaidMethod(raw: unknown): ChargeMethod | null {
+  return isMethod(raw) ? raw : null;
+}
+
+/**
+ * The i18n key of the line that tells the seller how the customer can pay: by bank transfer, by
+ * the other ways (the purchase), or either. Null when the API named no way this release knows.
+ */
+export function chargeMethodsKey(methods: readonly ChargeMethod[]): string | null {
+  const transfer = methods.includes('transfer');
+  const other = methods.includes('p2p');
+  if (transfer && other) return 'charge.methodsBoth';
+  if (transfer) return 'charge.methodsTransfer';
+  return other ? 'charge.methodsOther' : null;
+}
+
+/** The i18n key of the line that says how a charge was paid; null when the API did not say. */
+export function chargePaidMethodKey(method: ChargeMethod | null): string | null {
+  if (method === 'transfer') return 'charge.paidByTransfer';
+  return method === 'p2p' ? 'charge.paidByOther' : null;
 }
 
 /* -------------------------------- the form -------------------------------- */
@@ -160,7 +221,7 @@ export function chargeRequestProblem(req: PaymentRequest, input: PaymentRequestI
 }
 
 /** Whether a later answer is about the same charge: the same id, order and recipient. */
-export function sameCharge(a: PaymentRequest, b: PaymentRequest): boolean {
+export function sameCharge(a: ChargeIdentity, b: ChargeIdentity): boolean {
   return (
     a.id === b.id &&
     a.currency === b.currency &&
@@ -201,7 +262,7 @@ export type ChargeView = ChargeStatus | 'arriving';
  */
 export interface QrCharge {
   /** The request as last answered, without `publicToken` (kept apart) or the API's `qr`. */
-  request: PaymentRequest;
+  request: ChargeRequest;
   /** Made with the shared public key: reading or cancelling it again takes that key and `publicToken`. */
   shared: boolean;
   publicToken: string | null;
@@ -215,8 +276,11 @@ export interface QrCharge {
   closedAt: number | null;
 }
 
-/** The fields kept of an answer: not the API's `qr` (the wallet draws its own) nor `publicToken`. */
-function keep(req: PaymentRequest): PaymentRequest {
+/**
+ * The fields kept of an answer: not the API's `qr` (the wallet draws its own) nor `publicToken`;
+ * the ways to pay read through `chargeMethods` and `chargePaidMethod`.
+ */
+function keep(req: PaymentRequest): ChargeRequest {
   return {
     id: req.id,
     status: req.status,
@@ -234,6 +298,8 @@ function keep(req: PaymentRequest): PaymentRequest {
     createdAt: req.createdAt,
     paidAt: req.paidAt ?? null,
     paidAmount: req.paidAmount ?? null,
+    methods: chargeMethods(req.methods),
+    paidMethod: chargePaidMethod(req.paidMethod),
   };
 }
 
@@ -274,6 +340,11 @@ export function chargeView(charge: QrCharge, now: number): ChargeView {
 /** Whether the seller may still cancel it: only while it is open (the API refuses anything else). */
 export function chargeCancellable(charge: QrCharge, now: number): boolean {
   return chargeStatus(charge, now) === 'open';
+}
+
+/** How a paid charge was paid, when the API said so; null while unpaid. */
+export function chargePaidVia(charge: QrCharge, now: number): ChargeMethod | null {
+  return chargeStatus(charge, now) === 'paid' ? charge.request.paidMethod : null;
 }
 
 /** Milliseconds until the charge expires, never below zero. */

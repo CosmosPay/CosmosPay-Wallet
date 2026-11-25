@@ -33,6 +33,7 @@ import {
   type Check,
 } from '@/lib/apiShape';
 import { CHARGE_STATUSES } from '@/constants/qrCharge';
+import { TRANSFER_ACCOUNT_STATUSES } from '@/constants/transferAccount';
 
 /* ------------------------------- swaps --------------------------------- */
 
@@ -447,7 +448,10 @@ export const RampSessionListShape = pageOf(RampSessionShape);
  * draws the QR of `url`, watches its own balance of `tokenAddress` in `tokenDecimals` against
  * `estimatedAmountOut`, and says what arrived from `paidAmount`. `publicToken` comes only to the
  * shared public key: reading or cancelling the request again needs it. `qr` is not read: the
- * wallet draws the code of the `url` it checked.
+ * wallet draws the code of the `url` it checked. `methods` (how the payer can pay) and
+ * `paidMethod` (how it was paid) are not asserted: they only change a line of copy, and
+ * `chargeMethods` / `chargePaidMethod` read them leniently — a server that predates them, or a
+ * way to pay this release does not know, must not hide a charge someone may be paying.
  */
 const PaymentRequestFields = object({
   id,
@@ -470,4 +474,21 @@ const PaymentRequestFields = object({
 export const PaymentRequestShape: Check<unknown> = variant(
   'status',
   Object.fromEntries(CHARGE_STATUSES.map((status) => [status, PaymentRequestFields])),
+);
+
+/**
+ * The seller's bank transfer account (`/v1/onramp/transfer/account`: read, activate). The card
+ * branches on `status`, so one it does not know is refused rather than read as `none` (which
+ * would offer to activate an account that exists); it opens `verificationUrl` (checked again by
+ * `transferVerificationUrlOk`) and shows `alias` and `cvu`. The rest is read leniently by
+ * `readTransferAccount` in `lib/transferAccount.ts`.
+ */
+const TransferAccountFields = object({
+  verificationUrl: nullable(str),
+  alias: nullable(str),
+  cvu: nullable(str),
+});
+export const TransferAccountShape: Check<unknown> = variant(
+  'status',
+  Object.fromEntries(TRANSFER_ACCOUNT_STATUSES.map((status) => [status, TransferAccountFields])),
 );
