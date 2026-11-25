@@ -2,6 +2,11 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.25.0] - 2026-11-25
+
+### Features
+- Offer email recovery on Home instead of recovery signers (f079868)
+
 ## [1.24.0] - 2026-11-25
 
 ### Features
