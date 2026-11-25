@@ -2,6 +2,41 @@
 
 All notable changes to Cosmos Pay are documented here.
 Generated from [Conventional Commits](https://www.conventionalcommits.org) by [git-cliff](https://git-cliff.org).
+## [1.24.0] - 2026-11-25
+
+### Features
+- Charge with QR in local money (32af6c2)
+- Take QR charges paid by bank transfer (b1ea4cf)
+- Read a processing charge as in progress (cd8c86b)
+
+### Bug Fixes
+- Match the bank transfer account form to the server's contract (2aaf11a)
+- Only the API marks a QR charge paid (dc808a3)
+- Pin a charge's QR page to the configured payments site (cf81070)
+- Describe how a charge is paid without promising a bank transfer (b8feff4)
+- An unexplained transfer account error hides the card (3c43701)
+- The toolbar icons wear the new Cosmos mark (b3d155a)
+- Put the name inside greetings that end in a mark (d7bd6ca)
+- The connect card names the Cosmos Pay account, not a Stellar key (5aea080)
+- A restored wallet keeps its addresses on every network (89d5e3a)
+- Stellar, Solana and Monad no longer lead the network lists (5e1d820)
+
+### Miscellaneous
+- Sync the community server contract from its dev (e501b49)
+- Add the bank transfer fields and routes by hand (7b3868b)
+- Sync the community server contract from the bank transfer PR (b80e825)
+- Sync with the community server's dev spec (bank transfers) (c80184e)
+
+### Refactor
+- Charge figures in the app's number format (e01330d)
+
+### Documentation
+- Drop the network list from the store description (8dcdf73)
+- The store description in all five languages (aaec871)
+
+### Dependencies
+- In-range updates (tauri 2.12.5/2.12.6, @astrojs/react 7.1.9, playwright 1.65.1) (2d0bd01)
+
 ## [1.23.1] - 2026-11-24
 
 ### Bug Fixes
