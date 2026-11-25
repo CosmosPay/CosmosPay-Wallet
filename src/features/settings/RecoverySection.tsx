@@ -47,6 +47,12 @@ export function RecoverySection({ store }: { store: WalletStore }) {
 
   if (!configured) return null;
 
+  // A backed-up wallet recovers through its backup's email door (`BackupRecoverySection`):
+  // the whole wallet back, the same phrase, nothing on the ledger. SEP-30 is offered only
+  // where that door cannot be, a wallet without a cloud backup, and stays here to be
+  // managed or turned off on an account that already has it.
+  if (store.meta?.cloudBackup && !store.recovery?.enabled) return null;
+
   // Configured but not answering: the controls below would each end in "server not found".
   // Say what is wrong instead; `null` is still asking, and shows the description alone.
   if (reachable !== true) {

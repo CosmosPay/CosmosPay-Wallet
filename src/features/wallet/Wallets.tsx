@@ -67,15 +67,23 @@ export function Wallets({ store }: { store: WalletStore }) {
   };
 
   const rec = store.recovery;
-  const recoveryLine = !rec
-    ? t('wallets.recoveryChecking')
-    : rec.enabled
-      ? t('wallets.recoveryOn', { email: store.meta?.recoveryEmail || store.meta?.email || '' })
-      : !rec.exists
-        ? t('wallets.recoveryNotFunded')
-        : recoveryUp === false
-          ? t('wallets.recoveryUnavailable')
-          : t('wallets.recoveryOff');
+  // Either door counts: the backup's email door (`lib/backupRecovery.ts`, nothing on the
+  // ledger, so it needs no funded account) or SEP-30, the one a wallet without a cloud
+  // backup has. Only SEP-30 waits for funds.
+  const emailDoor = store.meta?.backupRecoveryEmail ?? '';
+  const backedUp = !!store.meta?.cloudBackup;
+  const recoveryOn = !!emailDoor || !!rec?.enabled;
+  const recoveryLine = emailDoor
+    ? t('wallets.recoveryOn', { email: emailDoor })
+    : !rec
+      ? t('wallets.recoveryChecking')
+      : rec.enabled
+        ? t('wallets.recoveryOn', { email: store.meta?.recoveryEmail || store.meta?.email || '' })
+        : !backedUp && !rec.exists
+          ? t('wallets.recoveryNotFunded')
+          : recoveryUp === false
+            ? t('wallets.recoveryUnavailable')
+            : t('wallets.recoveryOff');
 
   return (
     <div className="scr screen pb-110 wallets">
@@ -160,7 +168,7 @@ export function Wallets({ store }: { store: WalletStore }) {
             }}
             className="wallets-row"
           >
-            <span className={cx('wallets-row-icon', rec?.enabled && 'is-on')} aria-hidden="true">
+            <span className={cx('wallets-row-icon', recoveryOn && 'is-on')} aria-hidden="true">
               <ShieldIcon />
             </span>
             <span className="wallets-row-text">
